@@ -1,0 +1,29 @@
+[
+  {
+    "id": "0a71f278-4769-42c8-9a3a-ba320dcebe93",
+    "target": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "title": "New HR Notice",
+    "text": "You have a new disciplinary notice: Suspension",
+    "type": "system",
+    "read": false,
+    "created_at": "2026-06-03T08:38:21.879Z"
+  },
+  {
+    "id": "9bd3486f-7b13-496e-83ae-c65ea2fd1fb6",
+    "target": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "title": "New HR Notice",
+    "text": "You have a new disciplinary notice: Security Violation",
+    "type": "system",
+    "read": false,
+    "created_at": "2026-06-03T08:38:53.105Z"
+  },
+  {
+    "id": "a3b175d6-8df8-4802-843a-74af571b9cb5",
+    "target": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "title": "New HR Notice",
+    "text": "You have a new disciplinary notice: Termination",
+    "type": "system",
+    "read": false,
+    "created_at": "2026-06-03T08:42:12.075Z"
+  }
+]

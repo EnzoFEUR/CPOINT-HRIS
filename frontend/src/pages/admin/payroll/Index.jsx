@@ -1,0 +1,239 @@
+import React, { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import dayjs from 'dayjs';
+import { motion, AnimatePresence } from 'framer-motion';
+
+export default function PayrollIndex() {
+    const [payrolls, setPayrolls] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentMonth = searchParams.get('month') || '';
+    const currentYear = searchParams.get('year') || '';
+
+    const currentYearNum = new Date().getFullYear();
+    const years = Array.from({ length: 3 }, (_, i) => currentYearNum - 2 + i);
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+    const handleFilterSubmit = (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const month = formData.get('month');
+        const year = formData.get('year');
+        const params = new URLSearchParams();
+        if (month) params.set('month', month);
+        if (year) params.set('year', year);
+        setSearchParams(params);
+    };
+
+    useEffect(() => {
+        const fetchPayrolls = async () => {
+            try {
+                setIsLoading(true);
+                let url = 'http://localhost:5000/api/payroll';
+                const queryParams = new URLSearchParams();
+                if (currentMonth) queryParams.append('month', currentMonth);
+                if (currentYear) queryParams.append('year', currentYear);
+                
+                if (queryParams.toString()) {
+                    url += `?${queryParams.toString()}`;
+                }
+                
+                const res = await fetch(url);
+                const result = await res.json();
+                if (result && !result.error) {
+                    setPayrolls(result.data || result);
+                }
+            } catch (err) {
+                console.error('Failed to fetch payrolls:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchPayrolls();
+    }, [currentMonth, currentYear]);
+
+    // Animations
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+    };
+    
+    const rowVariants = {
+        hidden: { opacity: 0, y: 10 },
+        visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
+                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Vault...</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-7xl mx-auto pb-16 font-sans">
+            
+            {/* AMBIENT BACKGROUND */}
+            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-teal-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+
+            <div className="space-y-8">
+                
+                {/* 1. PREMIUM HEADER */}
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
+                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-emerald-500/20 to-teal-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                    
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+                        <div>
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                    <i className="ti ti-cash-banknote text-2xl text-emerald-400" />
+                                </div>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-xl border border-emerald-500/30">Financial Center</span>
+                            </div>
+                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Payroll Engine</h1>
+                            <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Generate, audit, and distribute digital payslips to your entire workforce.</p>
+                        </div>
+                        
+                        {/* Huge CTA */}
+                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                            <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-[2rem] shadow-xl shadow-emerald-500/30 overflow-hidden group/btn">
+                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
+                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
+                                    <i className="ti ti-plus text-xl text-white font-bold" />
+                                </div>
+                                <span className="text-white font-black text-lg tracking-wide relative z-10">Run Payroll</span>
+                            </Link>
+                        </motion.div>
+                    </div>
+                </motion.div>
+
+                {/* 2. FILTER BAR */}
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                    <form onSubmit={handleFilterSubmit} className="flex items-center gap-2 bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100">
+                        <div className="pl-4 pr-2 text-slate-400">
+                            <i className="ti ti-calendar-stats text-xl" />
+                        </div>
+
+                        <select name="month" defaultValue={currentMonth} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[140px]">
+                            <option value="">All Months</option>
+                            {months.map(m => {
+                                const date = new Date(2000, m - 1, 1);
+                                const monthName = date.toLocaleString('default', { month: 'long' });
+                                return <option key={m} value={m.toString().padStart(2, '0')}>{monthName}</option>;
+                            })}
+                        </select>
+
+                        <select name="year" defaultValue={currentYear} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[120px]">
+                            <option value="">All Years</option>
+                            {years.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+
+                        <button type="submit" className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl active:scale-95 transition-all shadow-md">
+                            Filter
+                        </button>
+
+                        {(currentMonth || currentYear) && (
+                            <Link to="/admin/payroll" className="w-12 h-12 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors ml-1" title="Clear Filters">
+                                <i className="ti ti-x text-lg font-bold" />
+                            </Link>
+                        )}
+                    </form>
+                </motion.div>
+
+                {/* 3. PAYROLL VAULT / TABLE */}
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
+                                <tr>
+                                    <th className="px-8 py-6">Employee</th>
+                                    <th className="px-8 py-6">Pay Period</th>
+                                    <th className="px-8 py-6">Ledger Summary</th>
+                                    <th className="px-8 py-6 text-right">Net Pay</th>
+                                    <th className="px-8 py-6 text-center">Status</th>
+                                    <th className="px-8 py-6 text-right">Receipt</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                <AnimatePresence>
+                                    {payrolls.length > 0 ? payrolls.map((payroll) => (
+                                        <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-lg shadow-inner border border-emerald-100">
+                                                        {(payroll.employees?.first_name || 'U').charAt(0)}{(payroll.employees?.last_name || 'S').charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-base font-black text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                                            {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">ID: #{payroll.employee_id.substring(0, 8)}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td className="px-8 py-5">
+                                                <div className="bg-slate-50 inline-block px-3 py-1.5 rounded-lg border border-slate-100">
+                                                    <p className="text-xs font-black text-slate-600">
+                                                        {dayjs(payroll.period_start).format('MMM DD')} - {dayjs(payroll.period_end).format('MMM DD, YYYY')}
+                                                    </p>
+                                                </div>
+                                            </td>
+
+                                            <td className="px-8 py-5">
+                                                <div className="flex flex-col gap-1 text-xs">
+                                                    <div className="flex justify-between max-w-[200px]">
+                                                        <span className="text-slate-500 font-bold">Earnings</span>
+                                                        <span className="font-mono font-bold text-slate-800">₱{Number(payroll.basic_pay + payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between max-w-[200px]">
+                                                        <span className="text-slate-500 font-bold">Deductions</span>
+                                                        <span className="font-mono font-bold text-red-500">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td className="px-8 py-5 text-right">
+                                                <span className="text-2xl font-black text-emerald-600 tracking-tight">
+                                                    ₱{Number(payroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </td>
+
+                                            <td className="px-8 py-5 text-center">
+                                                <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-200">
+                                                    {payroll.status}
+                                                </span>
+                                            </td>
+
+                                            <td className="px-8 py-5 text-right">
+                                                <Link to={`/admin/payroll/${payroll.id}`} 
+                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
+                                                    <i className="ti ti-receipt-2 text-lg" /> View
+                                                </Link>
+                                            </td>
+                                        </motion.tr>
+                                    )) : (
+                                        <motion.tr variants={rowVariants}>
+                                            <td colSpan="6" className="px-8 py-20 text-center">
+                                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                                    <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">
+                                                        <i className="ti ti-receipt-off text-4xl text-slate-300" />
+                                                    </div>
+                                                    <p className="text-xl font-black text-slate-800 tracking-tight">Vault Empty</p>
+                                                    <p className="text-sm font-medium mt-1 max-w-sm">No payroll records found for this period. Click "Run Payroll" to generate new payslips.</p>
+                                                </div>
+                                            </td>
+                                        </motion.tr>
+                                    )}
+                                </AnimatePresence>
+                            </tbody>
+                        </table>
+                    </div>
+                </motion.div>
+            </div>
+        </div>
+    );
+}

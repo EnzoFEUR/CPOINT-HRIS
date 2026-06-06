@@ -1,0 +1,29 @@
+[
+  {
+    "id": "1780475901877",
+    "employee_id": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "type": "Suspension",
+    "reason": "manyakis",
+    "severity": "Medium",
+    "date": "2026-06-03",
+    "status": "Acknowledged"
+  },
+  {
+    "id": "1780475933105",
+    "employee_id": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "type": "Security Violation",
+    "reason": "madamot",
+    "severity": "Medium",
+    "date": "2026-06-03",
+    "status": "Acknowledged"
+  },
+  {
+    "id": "1780476132075",
+    "employee_id": "2bfb8d09-e05c-41bb-abcc-5d0d2e7ffa92",
+    "type": "Termination",
+    "reason": "ilili",
+    "severity": "High",
+    "date": "2026-06-03",
+    "status": "Resolved"
+  }
+]
