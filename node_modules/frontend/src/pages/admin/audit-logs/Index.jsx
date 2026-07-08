@@ -100,28 +100,28 @@ export default function AuditLogsIndex() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-slate-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
             
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-slate-500/20 to-slate-700/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
                                     <i className="ti ti-server text-2xl text-slate-300" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-slate-500/20 text-slate-300 rounded-xl border border-slate-500/30">System Integrity</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-slate-500/20 text-slate-300 rounded-md border border-slate-500/30">System Integrity</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Audit Trail</h1>
                             <p className="text-slate-300 font-medium mt-2 text-lg max-w-xl">Immutable ledger of all administrative actions and system modifications.</p>
                         </div>
                         
                         {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-[2rem]">
+                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
                             <div className="text-right">
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Total Logs</p>
                                 <p className="text-3xl font-black text-white">{logs.length}</p>
@@ -135,38 +135,38 @@ export default function AuditLogsIndex() {
 
                 {/* 2. FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 bg-white p-3 rounded-[2rem] shadow-sm border border-slate-100 relative">
+                    <div className="flex-1 bg-white p-3 rounded-lg shadow-sm border border-slate-100 relative">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
                         <input 
                             type="text" 
                             placeholder="Search actions or targets..." 
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-slate-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-slate-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
 
-                    <form onSubmit={handleApplyFilters} className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 w-full md:w-auto">
+                    <form onSubmit={handleApplyFilters} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-full md:w-auto">
                         <input 
                             type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-                            className="px-4 py-3 bg-slate-50 border-none rounded-xl font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
+                            className="px-4 py-3 bg-slate-50 border-none rounded-md font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
                         />
                         <select 
                             value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}
-                            className="ml-2 px-4 py-3 bg-slate-50 border-none rounded-xl font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
+                            className="ml-2 px-4 py-3 bg-slate-50 border-none rounded-md font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
                         >
                             <option value="">All Admins / System</option>
                             {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                         </select>
-                        <button type="submit" className="ml-2 px-6 py-3 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition-all">Filter</button>
+                        <button type="submit" className="ml-2 px-6 py-3 bg-slate-900 text-white font-bold rounded-md active:scale-95 transition-all">Filter</button>
                         {(filterDate || filterUserId || searchQuery) && (
-                            <button type="button" onClick={handleClearFilters} className="ml-1 w-12 flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200"><i className="ti ti-x" /></button>
+                            <button type="button" onClick={handleClearFilters} className="ml-1 w-12 flex items-center justify-center bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200"><i className="ti ti-x" /></button>
                         )}
                     </form>
                 </motion.div>
 
                 {/* 3. DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -268,14 +268,14 @@ export default function AuditLogsIndex() {
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     <i className="ti ti-chevron-left text-lg" /> Prev
                                 </button>
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredLogs.length / itemsPerPage)))}
                                     disabled={currentPage === Math.ceil(filteredLogs.length / itemsPerPage)}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     Next <i className="ti ti-chevron-right text-lg" />
                                 </button>

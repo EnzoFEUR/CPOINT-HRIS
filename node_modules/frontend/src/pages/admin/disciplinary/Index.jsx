@@ -117,44 +117,44 @@ export default function DisciplinaryIndex() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-red-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-orange-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-red-500/20 to-orange-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-gavel text-2xl text-red-400" />
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
+                                    <i className="ti ti-gavel text-2xl text-rose-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-red-500/20 text-red-300 rounded-xl border border-red-500/30">HR Compliance</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-rose-500/20 text-rose-300 rounded-md border border-rose-500/30">HR Compliance</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Disciplinary Logs</h1>
-                            <p className="text-red-100/70 font-medium mt-2 text-lg max-w-xl">Track violations, issue warnings, and maintain facility security records.</p>
+                            <p className="text-rose-100/70 font-medium mt-2 text-lg max-w-xl">Track violations, issue warnings, and maintain facility security records.</p>
                         </div>
                         
                         <div className="flex items-center gap-4">
                             {/* Summary Widget */}
-                            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-[2rem] flex items-center gap-4 hidden sm:flex">
+                            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg flex items-center gap-4 hidden sm:flex">
                                 <div className="text-right">
                                     <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Active Cases</p>
                                     <p className="text-3xl font-black text-white">{activeCount}</p>
                                 </div>
-                                <div className="h-14 w-14 rounded-full bg-red-500/30 flex items-center justify-center text-red-300 border border-red-500/50">
+                                <div className="h-14 w-14 rounded-full bg-red-500/30 flex items-center justify-center text-rose-300 border border-red-500/50">
                                     <i className={`ti ti-alert-triangle text-2xl ${activeCount > 0 ? 'animate-pulse' : ''}`} />
                                 </div>
                             </div>
                             
                             {/* Huge CTA */}
                             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                <button onClick={() => setShowModal(true)} className="relative flex items-center gap-3 px-8 py-5 bg-gradient-to-r from-red-600 to-orange-500 rounded-[2rem] shadow-xl shadow-red-500/30 overflow-hidden group/btn">
+                                <button onClick={() => setShowModal(true)} className="relative flex items-center gap-3 px-8 py-5 bg-rose-500 rounded-lg shadow-sm overflow-hidden group/btn">
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
-                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
+                                    <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
                                         <i className="ti ti-plus text-xl text-white font-bold" />
                                     </div>
                                     <span className="text-white font-black text-lg tracking-wide relative z-10">Log Infraction</span>
@@ -165,13 +165,13 @@ export default function DisciplinaryIndex() {
                 </motion.div>
 
                 {/* 2. FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 w-max">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
                     <div className="flex gap-1">
                         {['All', 'Active', 'Resolved'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-6 py-3 rounded-xl text-sm font-bold transition-all ${
+                                className={`px-6 py-3 rounded-md text-sm font-bold transition-all ${
                                     filterStatus === status 
                                     ? 'bg-slate-900 text-white shadow-md' 
                                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
@@ -184,7 +184,7 @@ export default function DisciplinaryIndex() {
                 </motion.div>
 
                 {/* 3. DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -203,7 +203,7 @@ export default function DisciplinaryIndex() {
                                             
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-2xl bg-red-50 flex items-center justify-center font-black text-red-600 text-lg shadow-inner border border-red-100 shrink-0">
+                                                    <div className="h-12 w-12 rounded-lg bg-red-50 flex items-center justify-center font-black text-red-600 text-lg shadow-inner border border-red-100 shrink-0">
                                                         {record.employee_name.charAt(0)}
                                                     </div>
                                                     <div>
@@ -228,7 +228,7 @@ export default function DisciplinaryIndex() {
                                             </td>
 
                                             <td className="px-8 py-5 text-center">
-                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl border flex w-max items-center gap-2 mx-auto ${
+                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center gap-2 mx-auto ${
                                                     record.severity === 'High' ? 'bg-red-50 text-red-600 border-red-200' :
                                                     record.severity === 'Medium' ? 'bg-orange-50 text-orange-600 border-orange-200' :
                                                     'bg-amber-50 text-amber-600 border-amber-200'
@@ -244,11 +244,11 @@ export default function DisciplinaryIndex() {
 
                                             <td className="px-8 py-5 text-center">
                                                 {record.status === 'Active' ? (
-                                                    <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl bg-red-50 text-red-600 border border-red-200 shadow-sm flex w-max items-center gap-2 mx-auto animate-pulse">
+                                                    <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-red-50 text-red-600 border border-red-200 shadow-sm flex w-max items-center gap-2 mx-auto animate-pulse">
                                                         Unresolved
                                                     </span>
                                                 ) : (
-                                                    <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-2 mx-auto">
+                                                    <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-2 mx-auto">
                                                         <i className="ti ti-check" /> Resolved
                                                     </span>
                                                 )}
@@ -258,7 +258,7 @@ export default function DisciplinaryIndex() {
                                                 {record.status === 'Active' ? (
                                                     <button 
                                                         onClick={() => handleResolve(record.id)} 
-                                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100 active:scale-95"
+                                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100 active:scale-95"
                                                     >
                                                         <i className="ti ti-check text-lg" /> Resolve
                                                     </button>
@@ -307,7 +307,7 @@ export default function DisciplinaryIndex() {
                         >
                             <div className="flex justify-between items-center mb-8">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center text-2xl border border-red-100">
+                                    <div className="w-12 h-12 rounded-lg bg-red-50 text-red-600 flex items-center justify-center text-2xl border border-red-100">
                                         <i className="ti ti-gavel" />
                                     </div>
                                     <h2 className="text-2xl font-black text-slate-800 tracking-tight">Log Infraction</h2>
@@ -322,7 +322,7 @@ export default function DisciplinaryIndex() {
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Employee</label>
                                     <select 
                                         required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                     >
                                         <option value="">Select an employee...</option>
                                         {employees.map(emp => (
@@ -336,7 +336,7 @@ export default function DisciplinaryIndex() {
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Type</label>
                                         <select 
                                             value={type} onChange={(e) => setType(e.target.value)}
-                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
+                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                         >
                                             <option>Warning</option>
                                             <option>Suspension</option>
@@ -348,7 +348,7 @@ export default function DisciplinaryIndex() {
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Severity</label>
                                         <select 
                                             value={severity} onChange={(e) => setSeverity(e.target.value)}
-                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
+                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                         >
                                             <option>Low</option>
                                             <option>Medium</option>
@@ -361,13 +361,13 @@ export default function DisciplinaryIndex() {
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Detailed Reason</label>
                                     <textarea 
                                         required rows="3" value={reason} onChange={(e) => setReason(e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all resize-none placeholder:font-medium placeholder:text-slate-400"
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all resize-none placeholder:font-medium placeholder:text-slate-400"
                                         placeholder="Describe the incident..."
                                     />
                                 </div>
 
                                 <div className="pt-4">
-                                    <button type="submit" className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 active:scale-95 transition-all text-lg flex justify-center items-center gap-2">
+                                    <button type="submit" className="w-full py-4 bg-rose-500 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm active:scale-95 transition-all text-lg flex justify-center items-center gap-2">
                                         <i className="ti ti-shield-lock" /> Submit Record
                                     </button>
                                 </div>

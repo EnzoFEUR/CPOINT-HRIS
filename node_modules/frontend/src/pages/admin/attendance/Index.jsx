@@ -81,29 +81,29 @@ const Index = () => {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-cyan-500/20 to-blue-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
                                     <i className="ti ti-scan text-2xl text-cyan-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-cyan-500/20 text-cyan-300 rounded-xl border border-cyan-500/30">Biometric Surveillance</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-cyan-500/20 text-cyan-300 rounded-md border border-cyan-500/30">Biometric Surveillance</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Real-Time Attendance</h1>
                             <p className="text-cyan-100/70 font-medium mt-2 text-lg max-w-xl">Monitor live clock-ins, verify Face-AI proofs, and track daily facility access.</p>
                         </div>
                         
                         {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-[2rem]">
+                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
                             <div className="text-right">
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Today's Scans</p>
                                 <p className="text-3xl font-black text-white">{todaysCount}</p>
@@ -116,7 +116,7 @@ const Index = () => {
                 </motion.div>
 
                 {/* SEARCH BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-[2rem] shadow-sm border border-slate-100">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
                         <input 
@@ -127,13 +127,13 @@ const Index = () => {
                                 setSearchQuery(e.target.value);
                                 setCurrentPage(1); // Reset pagination on search
                             }}
-                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-cyan-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-cyan-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
                 </motion.div>
 
                 {/* DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -153,7 +153,7 @@ const Index = () => {
                                             {/* Employee Column */}
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-2xl bg-cyan-50 flex items-center justify-center font-black text-cyan-600 text-lg shadow-inner border border-cyan-100 shrink-0">
+                                                    <div className="h-12 w-12 rounded-lg bg-cyan-50 flex items-center justify-center font-black text-cyan-600 text-lg shadow-inner border border-cyan-100 shrink-0">
                                                         {(log.employees?.first_name || '?').charAt(0)}
                                                     </div>
                                                     <div>
@@ -181,7 +181,7 @@ const Index = () => {
                                                     {log.time_in_photo ? (
                                                         <button 
                                                             onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`)}
-                                                            className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                            className="w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
@@ -209,7 +209,7 @@ const Index = () => {
                                                     {log.time_out_photo && (
                                                         <button 
                                                             onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`)}
-                                                            className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                            className="w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
@@ -222,7 +222,7 @@ const Index = () => {
 
                                             {/* Status Column */}
                                             <td className="px-8 py-5 text-center">
-                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl border ${
+                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border ${
                                                     log.status.includes('Late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
                                                     'bg-cyan-50 text-cyan-600 border-cyan-200'
                                                 }`}>
@@ -258,14 +258,14 @@ const Index = () => {
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     <i className="ti ti-chevron-left text-lg" /> Prev
                                 </button>
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredLogs.length / itemsPerPage)))}
                                     disabled={currentPage === Math.ceil(filteredLogs.length / itemsPerPage)}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     Next <i className="ti ti-chevron-right text-lg" />
                                 </button>
@@ -297,7 +297,7 @@ const Index = () => {
                             >
                                 <i className="ti ti-x text-xl font-bold" />
                             </button>
-                            <div className="rounded-[2.5rem] overflow-hidden bg-slate-100">
+                            <div className="rounded-md overflow-hidden bg-slate-100">
                                 <img src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[70vh]" />
                             </div>
                             <div className="p-4 text-center">

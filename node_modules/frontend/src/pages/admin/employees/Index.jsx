@@ -63,32 +63,32 @@ export default function Index() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-indigo-500/20 to-purple-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-users-group text-2xl text-indigo-400" />
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
+                                    <i className="ti ti-users-group text-2xl text-blue-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-500/30">Personnel Database</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Personnel Database</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Employee Directory</h1>
-                            <p className="text-indigo-100/70 font-medium mt-2 text-lg max-w-xl">Manage your staff roster, access ID cards, and update organizational records.</p>
+                            <p className="text-blue-100/70 font-medium mt-2 text-lg max-w-xl">Manage your staff roster, access ID cards, and update organizational records.</p>
                         </div>
                         
                         {/* Huge CTA */}
                         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                            <Link to="/admin/employees/create" className="relative flex items-center gap-3 px-8 py-5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[2rem] shadow-xl shadow-indigo-500/30 overflow-hidden group/btn">
+                            <Link to="/admin/employees/create" className="relative flex items-center gap-3 px-8 py-5 bg-blue-600 rounded-lg shadow-sm overflow-hidden group/btn">
                                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
-                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
+                                <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
                                     <i className="ti ti-user-plus text-xl text-white font-bold" />
                                 </div>
                                 <span className="text-white font-black text-lg tracking-wide relative z-10">Add Employee</span>
@@ -100,7 +100,7 @@ export default function Index() {
                 {/* ALERTS */}
                 <AnimatePresence>
                     {session.success && !session.temp_password && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
                             <div className="h-8 w-8 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
                                 <i className="ti ti-check text-lg" />
                             </div>
@@ -109,9 +109,9 @@ export default function Index() {
                     )}
 
                     {session.temp_password && (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
                             <div className="flex gap-4">
-                                <div className="w-12 h-12 bg-slate-50 text-slate-800 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
+                                <div className="w-12 h-12 bg-slate-50 text-slate-800 rounded-lg flex items-center justify-center shrink-0 border border-slate-100">
                                     <i className="ti ti-key text-xl" />
                                 </div>
                                 <div>
@@ -124,10 +124,10 @@ export default function Index() {
                             </div>
                             
                             <div className="flex items-center gap-2 w-full md:w-auto">
-                                <div className="flex-1 md:w-48 px-4 py-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center">
+                                <div className="flex-1 md:w-48 px-4 py-3 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center">
                                     <span className="font-mono text-lg font-black text-slate-900 tracking-widest" dangerouslySetInnerHTML={{ __html: session.temp_password_html || session.temp_password }} />
                                 </div>
-                                <button onClick={() => copyPassword(session.temp_password)} className="h-[52px] px-6 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-colors active:scale-95 text-sm">
+                                <button onClick={() => copyPassword(session.temp_password)} className="h-[52px] px-6 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md transition-colors active:scale-95 text-sm">
                                     Copy
                                 </button>
                             </div>
@@ -136,7 +136,7 @@ export default function Index() {
                 </AnimatePresence>
 
                 {/* SEARCH BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-[2rem] shadow-sm border border-slate-100">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
                         <input 
@@ -147,13 +147,13 @@ export default function Index() {
                                 setSearchQuery(e.target.value);
                                 setCurrentPage(1); // Reset pagination on search
                             }}
-                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
                 </motion.div>
 
                 {/* DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -176,9 +176,9 @@ export default function Index() {
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.id}.jpg`}
                                                             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                                                             alt={employee.first_name}
-                                                            className="absolute inset-0 w-full h-full object-cover rounded-2xl shadow-sm border border-slate-100"
+                                                            className="absolute inset-0 w-full h-full object-cover rounded-lg shadow-sm border border-slate-100"
                                                         />
-                                                        <div className="absolute inset-0 w-full h-full rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl shadow-inner border border-indigo-100" style={{ display: 'none' }}>
+                                                        <div className="absolute inset-0 w-full h-full rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl shadow-inner border border-indigo-100" style={{ display: 'none' }}>
                                                             {employee.first_name ? employee.first_name.charAt(0) : '?'}
                                                         </div>
                                                     </div>
@@ -204,7 +204,7 @@ export default function Index() {
                                             </td>
 
                                             <td className="px-8 py-5">
-                                                <span className="px-3 py-1.5 text-xs font-black uppercase tracking-widest rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                <span className="px-3 py-1.5 text-xs font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
                                                     ₱{Number(employee.salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </span>
                                             </td>
@@ -215,7 +215,7 @@ export default function Index() {
 
                                             <td className="px-8 py-5 text-right">
                                                 <Link to={`/admin/employees/${employee.id}`} 
-                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-600 hover:text-white transition-all border border-slate-200 hover:border-indigo-600 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
+                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-blue-600 hover:text-white transition-all border border-slate-200 hover:border-indigo-600 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
                                                     <i className="ti ti-id text-lg" /> Profile
                                                 </Link>
                                             </td>
@@ -248,14 +248,14 @@ export default function Index() {
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     <i className="ti ti-chevron-left text-lg" /> Prev
                                 </button>
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredEmployees.length / itemsPerPage)))}
                                     disabled={currentPage === Math.ceil(filteredEmployees.length / itemsPerPage)}
-                                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
                                 >
                                     Next <i className="ti ti-chevron-right text-lg" />
                                 </button>

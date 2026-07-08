@@ -83,29 +83,29 @@ export default function LeavesIndex() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-pink-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-purple-500/20 to-pink-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
                                     <i className="ti ti-plane-departure text-2xl text-purple-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30">Time Off Management</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-purple-500/20 text-purple-300 rounded-md border border-purple-500/30">Time Off Management</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Leave Engine</h1>
                             <p className="text-purple-100/70 font-medium mt-2 text-lg max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
                         </div>
                         
                         {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-[2rem]">
+                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
                             <div className="text-right">
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
                                 <p className="text-3xl font-black text-white">{pendingCount}</p>
@@ -118,13 +118,13 @@ export default function LeavesIndex() {
                 </motion.div>
 
                 {/* 2. FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 w-max">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
                     <div className="flex gap-1">
                         {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-6 py-3 rounded-xl text-sm font-bold transition-all ${
+                                className={`px-6 py-3 rounded-md text-sm font-bold transition-all ${
                                     filterStatus === status 
                                     ? 'bg-slate-900 text-white shadow-md' 
                                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
@@ -137,7 +137,7 @@ export default function LeavesIndex() {
                 </motion.div>
 
                 {/* 3. DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -159,7 +159,7 @@ export default function LeavesIndex() {
                                                 
                                                 <td className="px-8 py-5">
                                                     <div className="flex items-center gap-4">
-                                                        <div className="h-12 w-12 rounded-2xl bg-purple-50 flex items-center justify-center font-black text-purple-600 text-lg shadow-inner border border-purple-100 shrink-0">
+                                                        <div className="h-12 w-12 rounded-lg bg-purple-50 flex items-center justify-center font-black text-purple-600 text-lg shadow-inner border border-purple-100 shrink-0">
                                                             {leave.employees?.first_name ? leave.employees.first_name.charAt(0) : '?'}
                                                         </div>
                                                         <div>
@@ -195,17 +195,17 @@ export default function LeavesIndex() {
 
                                                 <td className="px-8 py-5 text-center">
                                                     {leave.status === 'New' && (
-                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl bg-amber-50 text-amber-600 border border-amber-200 shadow-sm flex w-max items-center gap-2 mx-auto">
+                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-sm flex w-max items-center gap-2 mx-auto">
                                                             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Pending
                                                         </span>
                                                     )}
                                                     {leave.status === 'Approved' && (
-                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-2 mx-auto">
+                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-2 mx-auto">
                                                             <span className="w-2 h-2 rounded-full bg-emerald-500" /> Approved
                                                         </span>
                                                     )}
                                                     {leave.status === 'Rejected' && (
-                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl bg-red-50 text-red-600 border border-red-200 flex w-max items-center gap-2 mx-auto">
+                                                        <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-red-50 text-red-600 border border-red-200 flex w-max items-center gap-2 mx-auto">
                                                             <span className="w-2 h-2 rounded-full bg-red-500" /> Rejected
                                                         </span>
                                                     )}
@@ -216,14 +216,14 @@ export default function LeavesIndex() {
                                                         <div className="flex items-center justify-end gap-3 opacity-100 lg:opacity-50 group-hover:opacity-100 transition-opacity">
                                                             <button 
                                                                 onClick={() => handleStatusChange(leave.id, 'Approved')} 
-                                                                className="h-10 w-10 flex items-center justify-center bg-white border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-sm active:scale-95" 
+                                                                className="h-10 w-10 flex items-center justify-center bg-white border border-emerald-200 text-emerald-600 rounded-md hover:bg-emerald-500 hover:text-white transition-all shadow-sm active:scale-95" 
                                                                 title="Approve"
                                                             >
                                                                 <i className="ti ti-check text-xl font-bold" />
                                                             </button>
                                                             <button 
                                                                 onClick={() => handleStatusChange(leave.id, 'Rejected')} 
-                                                                className="h-10 w-10 flex items-center justify-center bg-white border border-red-200 text-red-600 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-95" 
+                                                                className="h-10 w-10 flex items-center justify-center bg-white border border-red-200 text-red-600 rounded-md hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-95" 
                                                                 title="Reject"
                                                             >
                                                                 <i className="ti ti-x text-xl font-bold" />

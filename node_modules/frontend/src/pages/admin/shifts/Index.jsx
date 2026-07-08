@@ -107,29 +107,29 @@ export default function ShiftsIndex() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-blue-500/20 to-indigo-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
                                     <i className="ti ti-calendar-time text-2xl text-blue-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-xl border border-blue-500/30">Workforce Control</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Workforce Control</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Shift Deployment</h1>
                             <p className="text-blue-100/70 font-medium mt-2 text-lg max-w-xl">Assign operating schedules and manage 24/7 coverage for all facility staff in real-time.</p>
                         </div>
                         
                         {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-[2rem]">
+                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
                             <div className="text-right">
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Total Staff</p>
                                 <p className="text-3xl font-black text-white">{employees.length}</p>
@@ -142,7 +142,7 @@ export default function ShiftsIndex() {
                 </motion.div>
 
                 {/* 2. SEARCH & FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4 bg-white p-3 rounded-[2rem] shadow-sm border border-slate-100">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4 bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
                         <input 
@@ -150,7 +150,7 @@ export default function ShiftsIndex() {
                             placeholder="Search employees by name..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
                     <div className="relative min-w-[200px]">
@@ -158,7 +158,7 @@ export default function ShiftsIndex() {
                         <select 
                             value={filterDept}
                             onChange={(e) => setFilterDept(e.target.value)}
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all appearance-none cursor-pointer"
+                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all appearance-none cursor-pointer"
                         >
                             {departments.map(dept => <option key={dept} value={dept}>{dept} Dept</option>)}
                         </select>
@@ -178,7 +178,7 @@ export default function ShiftsIndex() {
                                     variants={cardVariants}
                                     initial="hidden" animate="visible" exit={{ opacity: 0, scale: 0.9 }}
                                     key={employee.id} 
-                                    className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 relative overflow-hidden group"
+                                    className="bg-white rounded-md p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 relative overflow-hidden group"
                                 >
                                     {/* Ambient Glow behind card */}
                                     <div className={`absolute -right-10 -top-10 w-32 h-32 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity ${activeShift.styles.bg}`} />
@@ -186,7 +186,7 @@ export default function ShiftsIndex() {
                                     {/* Top Section: Identity & Current Shift */}
                                     <div className="flex items-start justify-between relative z-10">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-14 w-14 rounded-2xl bg-slate-50 flex items-center justify-center font-black text-slate-800 text-xl shadow-inner border border-slate-100 shrink-0">
+                                            <div className="h-14 w-14 rounded-lg bg-slate-50 flex items-center justify-center font-black text-slate-800 text-xl shadow-inner border border-slate-100 shrink-0">
                                                 {employee.first_name.charAt(0)}{employee.last_name.charAt(0)}
                                             </div>
                                             <div>
@@ -200,7 +200,7 @@ export default function ShiftsIndex() {
 
                                     {/* Middle Section: Current Status */}
                                     <div className="mt-6 mb-6">
-                                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border ${activeShift.styles.lightBg} ${activeShift.styles.text} ${activeShift.styles.border}`}>
+                                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-md border ${activeShift.styles.lightBg} ${activeShift.styles.text} ${activeShift.styles.border}`}>
                                             <div className={`w-2 h-2 rounded-full ${activeShift.styles.bg} animate-pulse`} />
                                             <span className="text-sm font-black uppercase tracking-widest">{activeShift.id}</span>
                                         </div>
@@ -212,14 +212,14 @@ export default function ShiftsIndex() {
                                     {/* Bottom Section: Segmented Control Assignment */}
                                     <div className="relative z-10 pt-5 border-t border-slate-50">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Reassign Schedule</p>
-                                        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                                        <div className="flex bg-slate-50 p-1.5 rounded-lg border border-slate-100">
                                             {SHIFT_TYPES.slice(0, 3).map(shift => {
                                                 const isSelected = employee.shift === shift.id;
                                                 return (
                                                     <button 
                                                         key={shift.id}
                                                         onClick={() => handleAssignShift(employee.id, shift.id)}
-                                                        className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-300 relative ${
+                                                        className={`flex-1 py-2.5 text-xs font-bold rounded-md transition-all duration-300 relative ${
                                                             isSelected 
                                                                 ? `${shift.styles.bg} text-white shadow-md shadow-${shift.styles.bg}/30` 
                                                                 : 'text-slate-500 hover:bg-white hover:text-slate-800 hover:shadow-sm'

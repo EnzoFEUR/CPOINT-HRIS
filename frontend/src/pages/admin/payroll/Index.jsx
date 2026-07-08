@@ -76,22 +76,22 @@ export default function PayrollIndex() {
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
             {/* AMBIENT BACKGROUND */}
-            <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-teal-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            
+            
 
             <div className="space-y-8">
                 
                 {/* 1. PREMIUM HEADER */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-slate-900/20 group">
-                    <div className="absolute top-0 right-0 w-[30rem] h-[30rem] bg-gradient-to-bl from-emerald-500/20 to-teal-600/20 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                    
                     
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
                                     <i className="ti ti-cash-banknote text-2xl text-emerald-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-xl border border-emerald-500/30">Financial Center</span>
+                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-md border border-emerald-500/30">Financial Center</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Payroll Engine</h1>
                             <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Generate, audit, and distribute digital payslips to your entire workforce.</p>
@@ -99,9 +99,9 @@ export default function PayrollIndex() {
                         
                         {/* Huge CTA */}
                         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                            <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-[2rem] shadow-xl shadow-emerald-500/30 overflow-hidden group/btn">
+                            <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-emerald-600 rounded-lg shadow-sm overflow-hidden group/btn">
                                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
-                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
+                                <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
                                     <i className="ti ti-plus text-xl text-white font-bold" />
                                 </div>
                                 <span className="text-white font-black text-lg tracking-wide relative z-10">Run Payroll</span>
@@ -112,12 +112,12 @@ export default function PayrollIndex() {
 
                 {/* 2. FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
-                    <form onSubmit={handleFilterSubmit} className="flex items-center gap-2 bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100">
+                    <form onSubmit={handleFilterSubmit} className="flex items-center gap-2 bg-white p-2 rounded-lg shadow-sm border border-slate-100">
                         <div className="pl-4 pr-2 text-slate-400">
                             <i className="ti ti-calendar-stats text-xl" />
                         </div>
 
-                        <select name="month" defaultValue={currentMonth} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[140px]">
+                        <select name="month" defaultValue={currentMonth} className="bg-slate-50 border border-slate-100 rounded-md px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[140px]">
                             <option value="">All Months</option>
                             {months.map(m => {
                                 const date = new Date(2000, m - 1, 1);
@@ -126,17 +126,17 @@ export default function PayrollIndex() {
                             })}
                         </select>
 
-                        <select name="year" defaultValue={currentYear} className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[120px]">
+                        <select name="year" defaultValue={currentYear} className="bg-slate-50 border border-slate-100 rounded-md px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 cursor-pointer appearance-none min-w-[120px]">
                             <option value="">All Years</option>
                             {years.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
 
-                        <button type="submit" className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl active:scale-95 transition-all shadow-md">
+                        <button type="submit" className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md active:scale-95 transition-all shadow-md">
                             Filter
                         </button>
 
                         {(currentMonth || currentYear) && (
-                            <Link to="/admin/payroll" className="w-12 h-12 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors ml-1" title="Clear Filters">
+                            <Link to="/admin/payroll" className="w-12 h-12 flex items-center justify-center rounded-md bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors ml-1" title="Clear Filters">
                                 <i className="ti ti-x text-lg font-bold" />
                             </Link>
                         )}
@@ -144,7 +144,7 @@ export default function PayrollIndex() {
                 </motion.div>
 
                 {/* 3. PAYROLL VAULT / TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -163,7 +163,7 @@ export default function PayrollIndex() {
                                         <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-lg shadow-inner border border-emerald-100">
+                                                    <div className="h-12 w-12 rounded-lg bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-lg shadow-inner border border-emerald-100">
                                                         {(payroll.employees?.first_name || 'U').charAt(0)}{(payroll.employees?.last_name || 'S').charAt(0)}
                                                     </div>
                                                     <div>
@@ -203,14 +203,14 @@ export default function PayrollIndex() {
                                             </td>
 
                                             <td className="px-8 py-5 text-center">
-                                                <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-200">
+                                                <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-200">
                                                     {payroll.status}
                                                 </span>
                                             </td>
 
                                             <td className="px-8 py-5 text-right">
                                                 <Link to={`/admin/payroll/${payroll.id}`} 
-                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
+                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
                                                     <i className="ti ti-receipt-2 text-lg" /> View
                                                 </Link>
                                             </td>
