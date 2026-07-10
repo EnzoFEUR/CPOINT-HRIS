@@ -28,20 +28,20 @@ import shiftRoutes from './routes/shifts.js';
 import disciplinaryRoutes from './routes/disciplinary.js';
 import notificationRoutes from './routes/notifications.js';
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
-import { verifyToken, checkRole } from './middleware/authMiddleware.js';
+import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
 
 // Global Security Middleware
 app.use(securityHeaders);
 app.use(removeExposedHeaders);
 
 // Mount Authenticated Routes
-app.use('/api/employees', verifyToken, employeeRoutes);
+app.use('/api/employees', verifyToken, checkAdminOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
-app.use('/api/payroll', verifyToken, payrollRoutes);
-app.use('/api/leaves', verifyToken, leaveRoutes);
+app.use('/api/payroll', verifyToken, checkAdminOrOwnership, payrollRoutes);
+app.use('/api/leaves', verifyToken, checkAdminOrOwnership, leaveRoutes);
 app.use('/api/dashboard', verifyToken, dashboardRoutes);
-app.use('/api/shifts', verifyToken, shiftRoutes);
-app.use('/api/disciplinary', verifyToken, disciplinaryRoutes);
+app.use('/api/shifts', verifyToken, checkAdminOrOwnership, shiftRoutes);
+app.use('/api/disciplinary', verifyToken, checkAdminOrOwnership, disciplinaryRoutes);
 app.use('/api/profile', verifyToken, profileRoutes);
 app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);

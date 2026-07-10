@@ -2,15 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const EmployeeDashboard = () => {
-    const [user, setUser] = useState({ name: 'Loading...', id: '', department: 'Team Member' });
-    const [recentLogs, setRecentLogs] = useState([]);
-    const [latestPayroll, setLatestPayroll] = useState(null);
-    const [shift, setShift] = useState('Unassigned');
-    const [infractions, setInfractions] = useState([]);
-    const [unresolvedInfractions, setUnresolvedInfractions] = useState([]);
-    const [myLeaves, setMyLeaves] = useState([]);
+    const queryClient = useQueryClient();
+    const storedUser = JSON.parse(localStorage.getItem('user')) || { name: 'Loading...', id: '', department: 'Team Member' };
+    const [user, setUser] = useState(storedUser);
     
     // Modals
     const [showQrModal, setShowQrModal] = useState(false);
@@ -28,52 +25,51 @@ const EmployeeDashboard = () => {
     const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
     useEffect(() => {
-        const storedUser = JSON.parse(localStorage.getItem('user'));
-        if (storedUser) {
-            setUser(storedUser);
-            if (storedUser.role === 'security') {
-                window.location.href = '/scanner';
-                return;
-            }
-            fetchDashboardData(storedUser.id);
-            
-            const handleRefresh = () => fetchDashboardData(storedUser.id);
-            window.addEventListener('refresh_dashboard', handleRefresh);
-            return () => window.removeEventListener('refresh_dashboard', handleRefresh);
+        if (storedUser.role === 'security') {
+            window.location.href = '/scanner';
         }
-    }, []);
+    }, [storedUser.role]);
 
     const fetchDashboardData = async (userId) => {
-        try {
-            const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
-                fetch(`http://localhost:5000/api/attendance?employee_id=${userId}`),
-                fetch(`http://localhost:5000/api/payroll?employee_id=${userId}&limit=1`),
-                fetch('http://localhost:5000/api/shifts'),
-                fetch('http://localhost:5000/api/disciplinary'),
-                fetch(`http://localhost:5000/api/leaves?employee_id=${userId}`)
-            ]);
+        const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
+            fetch(`http://localhost:5000/api/attendance?employee_id=${userId}`),
+            fetch(`http://localhost:5000/api/payroll?employee_id=${userId}&limit=1`),
+            fetch(`http://localhost:5000/api/shifts?employee_id=${userId}`),
+            fetch(`http://localhost:5000/api/disciplinary?employee_id=${userId}`),
+            fetch(`http://localhost:5000/api/leaves?employee_id=${userId}`)
+        ]);
 
-            const [attendanceData, payrollData, shiftData, discData, leaveData] = await Promise.all([
-                attRes.json(), payRes.json(), shiftRes.json(), discRes.json(), leaveRes.json()
-            ]);
-
-            setRecentLogs(Array.isArray(attendanceData) ? attendanceData.slice(0, 5) : []);
-            if (payrollData && payrollData.length > 0) setLatestPayroll(payrollData[0]);
-            
-            const myData = shiftData.find(emp => String(emp.id) === String(userId));
-            if (myData && myData.shift) setShift(myData.shift);
-
-            const myInfractions = discData.filter(log => String(log.employee_id) === String(userId) && log.status === 'Active');
-            setInfractions(myInfractions);
-
-            const allUnresolved = discData.filter(log => String(log.employee_id) === String(userId) && log.status !== 'Resolved');
-            setUnresolvedInfractions(allUnresolved);
-
-            setMyLeaves(Array.isArray(leaveData) ? leaveData.slice(0, 5) : []);
-        } catch (error) {
-            console.error('Failed to fetch dashboard data:', error);
+        if (attRes.status === 401) {
+            localStorage.removeItem('user');
+            window.location.href = '/login';
         }
+
+        const [attendanceData, payrollData, shiftData, discData, leaveData] = await Promise.all([
+            attRes.json(), payRes.json(), shiftRes.json(), discRes.json(), leaveRes.json()
+        ]);
+
+        return { attendanceData, payrollData, shiftData, discData, leaveData };
     };
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['employeeDashboard', user.id],
+        queryFn: () => fetchDashboardData(user.id),
+        enabled: !!user.id && user.role !== 'security'
+    });
+
+    // Derived State from React Query cache
+    const recentLogs = data?.attendanceData && Array.isArray(data.attendanceData) ? data.attendanceData.slice(0, 5) : [];
+    const latestPayroll = data?.payrollData && data.payrollData.length > 0 ? data.payrollData[0] : null;
+    
+    const myData = data?.shiftData ? data.shiftData.find(emp => String(emp.id) === String(user.id)) : null;
+    const shift = myData?.shift || 'Unassigned';
+
+    const discData = data?.discData || [];
+    const infractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status === 'Active');
+    const unresolvedInfractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status !== 'Resolved');
+    
+    const myLeaves = data?.leaveData && Array.isArray(data.leaveData) ? data.leaveData.slice(0, 5) : [];
+
 
     const handleLeaveSubmit = async (e) => {
         e.preventDefault();
@@ -89,7 +85,7 @@ const EmployeeDashboard = () => {
                 toast.success('Leave request submitted to HR!');
                 setShowLeaveModal(false);
                 setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-                fetchDashboardData(user.id); 
+                queryClient.invalidateQueries(['employeeDashboard', user.id]);
             } else {
                 toast.error(data.error || 'Failed to submit leave.');
             }

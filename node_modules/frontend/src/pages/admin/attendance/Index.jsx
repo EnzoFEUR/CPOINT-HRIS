@@ -1,34 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 
 const Index = () => {
-    const [logs, setLogs] = useState([]);
+    const fetchAttendance = async () => {
+        const res = await fetch('http://localhost:5000/api/attendance');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch');
+        return data || [];
+    };
+
+    const { data: logs = [], isLoading } = useQuery({
+        queryKey: ['adminAttendance'],
+        queryFn: fetchAttendance
+    });
+
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
-    const [todaysCount, setTodaysCount] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
     const [selectedImage, setSelectedImage] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        const fetchAttendance = async () => {
-            try {
-                const res = await fetch('http://localhost:5000/api/attendance');
-                const data = await res.json();
-                setLogs(data);
-                
-                const todayStr = new Date().toISOString().split('T')[0];
-                const count = data.filter(log => log.date === todayStr).length;
-                setTodaysCount(count);
-            } catch (err) {
-                console.error("Failed to fetch attendance:", err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchAttendance();
-    }, []);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysCount = logs.filter(log => log.date === todayStr).length;
 
     const openImageModal = (imageUrl) => {
         if (!imageUrl) return;
@@ -134,7 +128,7 @@ const Index = () => {
 
                 {/* Data table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>

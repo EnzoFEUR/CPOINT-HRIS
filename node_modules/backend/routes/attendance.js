@@ -1,11 +1,12 @@
 import express from 'express';
 import { supabase } from '../index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // 1. GET /api/attendance (Admin View)
-router.get('/', async (req, res) => {
+router.get('/', checkAdminOrOwnership, async (req, res) => {
     try {
         let query = supabase
             .from('attendances')
@@ -43,13 +44,14 @@ router.post('/scan', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Invalid QR Code. User not found.' });
         }
 
-        
-        // Face match validation
-        // Reject if score < 48% to prevent buddy-punching.
-        
-        
-        
-        if (user.has_registered_biometrics === true && face_match_score !== null && face_match_score !== undefined) {
+        // SECURITY FIX: Enforce biometrics if registered
+        if (user.has_registered_biometrics) {
+            if (face_match_score === undefined || face_match_score === null) {
+                return res.status(403).json({ status: 'error', message: 'BIOMETRIC BYPASS DETECTED: Missing face match score.' });
+            }
+            if (!image_data) {
+                return res.status(403).json({ status: 'error', message: 'BIOMETRIC BYPASS DETECTED: Missing camera frame.' });
+            }
             const SERVER_MATCH_THRESHOLD = 48; // percent
             if (face_match_score < SERVER_MATCH_THRESHOLD) {
                 console.log(`[SECURITY ALERT] Face identity mismatch for ${employee_id}. Score: ${face_match_score}%`);
@@ -228,7 +230,7 @@ Reply with ONLY a valid JSON object: {"is_real_person": true/false, "confidence"
 });
 
 // 3. GET /api/attendance/calendar
-router.get('/calendar', async (req, res) => {
+router.get('/calendar', checkAdminOrOwnership, async (req, res) => {
     try {
         const date = req.query.date || new Date().toISOString().split('T')[0];
         const [year, month] = date.split('-');

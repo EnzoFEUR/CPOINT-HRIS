@@ -36,6 +36,21 @@ export const checkRole = (requiredRole) => {
     };
 };
 
+export const checkAdminOrOwnership = (req, res, next) => {
+    // Admins have full access
+    if (req.user && req.user.role === 'admin') return next();
+    
+    // For non-admins, determine the target ID from params or query
+    const targetId = req.params.id || req.query.employee_id || req.body.employee_id;
+    
+    if (!targetId || targetId !== req.user.id) {
+        console.log(`[RBAC BLOCK] User ${req.user.id} attempted to access data for ${targetId || 'entire company'}`);
+        return res.status(403).json({ error: 'UNAUTHORIZED: You can only access your own records.' });
+    }
+    
+    next();
+};
+
 export const forcePasswordChange = (req, res, next) => {
     // If the route is already the force-change route, let it pass
     if (req.path.includes('/force-password-change')) {

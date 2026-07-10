@@ -1,33 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function LeavesIndex() {
-    const [leaves, setLeaves] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [filterStatus, setFilterStatus] = useState('All');
 
     const fetchLeaves = async () => {
-        try {
-            const res = await fetch('http://localhost:5000/api/leaves');
-            const data = await res.json();
-            setLeaves(data);
-        } catch (err) {
-            console.error("Failed to fetch leaves:", err);
-            toast.error("Failed to load leave requests");
-        } finally {
-            setIsLoading(false);
-        }
+        const res = await fetch('http://localhost:5000/api/leaves');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch leaves');
+        return data || [];
     };
 
-    useEffect(() => {
-        fetchLeaves();
-    }, []);
+    const { data: leaves = [], isLoading } = useQuery({
+        queryKey: ['adminLeaves'],
+        queryFn: fetchLeaves
+    });
 
     const handleStatusChange = async (id, status) => {
         // Optimistic UI Update
-        const previousLeaves = [...leaves];
-        setLeaves(prev => prev.map(l => l.id === id ? { ...l, status } : l));
+        const previousLeaves = queryClient.getQueryData(['adminLeaves']);
+        queryClient.setQueryData(['adminLeaves'], old => old.map(l => l.id === id ? { ...l, status } : l));
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
@@ -41,14 +36,15 @@ export default function LeavesIndex() {
                 toast.success(status === 'Approved' ? 'Leave Approved!' : 'Leave Rejected', {
                     icon: status === 'Approved' ? <i className="ti ti-check text-xl text-emerald-500" /> : <i className="ti ti-x text-xl text-rose-500" />
                 });
+                queryClient.invalidateQueries(['adminLeaves']);
             } else {
                 toast.error(data.error || 'Failed to update status');
-                setLeaves(previousLeaves); // rollback
+                queryClient.setQueryData(['adminLeaves'], previousLeaves); // rollback
             }
         } catch (err) {
             console.error(err);
             toast.error('Network error');
-            setLeaves(previousLeaves); // rollback
+            queryClient.setQueryData(['adminLeaves'], previousLeaves); // rollback
         }
     };
 
@@ -110,7 +106,7 @@ export default function LeavesIndex() {
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
                                 <p className="text-3xl font-black text-white">{pendingCount}</p>
                             </div>
-                            <div className="h-14 w-14 rounded-full bg-red-500/30 flex items-center justify-center text-red-300 border border-red-500/50">
+                            <div className="h-14 w-14 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 border border-purple-500/50">
                                 <i className={`ti ti-bell text-2xl ${pendingCount > 0 ? 'animate-[ringing_2s_ease-in-out_infinite]' : ''}`} />
                             </div>
                         </div>
@@ -138,7 +134,7 @@ export default function LeavesIndex() {
 
                 {/* 3. DATA TABLE */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
@@ -259,7 +255,7 @@ export default function LeavesIndex() {
                 </motion.div>
             </div>
             
-            <style jsx>{`
+            <style dangerouslySetInnerHTML={{__html: `
                 @keyframes ringing {
                     0% { transform: rotate(0deg); }
                     10% { transform: rotate(15deg); }
@@ -269,7 +265,7 @@ export default function LeavesIndex() {
                     50% { transform: rotate(0deg); }
                     100% { transform: rotate(0deg); }
                 }
-            `}</style>
+            `}} />
         </div>
     );
 }

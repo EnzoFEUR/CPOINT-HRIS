@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 
 export default function PayrollIndex() {
-    const [payrolls, setPayrolls] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [searchParams, setSearchParams] = useSearchParams();
     const currentMonth = searchParams.get('month') || '';
     const currentYear = searchParams.get('year') || '';
@@ -25,32 +24,26 @@ export default function PayrollIndex() {
         setSearchParams(params);
     };
 
-    useEffect(() => {
-        const fetchPayrolls = async () => {
-            try {
-                setIsLoading(true);
-                let url = 'http://localhost:5000/api/payroll';
-                const queryParams = new URLSearchParams();
-                if (currentMonth) queryParams.append('month', currentMonth);
-                if (currentYear) queryParams.append('year', currentYear);
-                
-                if (queryParams.toString()) {
-                    url += `?${queryParams.toString()}`;
-                }
-                
-                const res = await fetch(url);
-                const result = await res.json();
-                if (result && !result.error) {
-                    setPayrolls(result.data || result);
-                }
-            } catch (err) {
-                console.error('Failed to fetch payrolls:', err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchPayrolls();
-    }, [currentMonth, currentYear]);
+    const fetchPayrolls = async () => {
+        let url = 'http://localhost:5000/api/payroll';
+        const queryParams = new URLSearchParams();
+        if (currentMonth) queryParams.append('month', currentMonth);
+        if (currentYear) queryParams.append('year', currentYear);
+        
+        if (queryParams.toString()) {
+            url += `?${queryParams.toString()}`;
+        }
+        
+        const res = await fetch(url);
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to fetch');
+        return result.data || result || [];
+    };
+
+    const { data: payrolls = [], isLoading } = useQuery({
+        queryKey: ['adminPayrolls', currentMonth, currentYear],
+        queryFn: fetchPayrolls
+    });
 
     // Animations
     const containerVariants = {
@@ -145,7 +138,7 @@ export default function PayrollIndex() {
 
                 {/* Payroll table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>

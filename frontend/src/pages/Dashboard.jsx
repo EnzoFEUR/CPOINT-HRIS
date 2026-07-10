@@ -1,34 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Dashboard() {
-    const [dashboardData, setDashboardData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchDashboardData = async () => {
-            try {
-                const res = await fetch('http://localhost:5000/api/dashboard/admin');
-                const result = await res.json();
-                if (res.ok && result) {
-                    setDashboardData(result);
-                } else {
-                    console.error('Dashboard Error:', result.error || 'Failed to load');
-                    if (res.status === 401) {
-                        // Force logout if token is dead
-                        localStorage.removeItem('user');
-                        window.location.href = '/login';
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to load dashboard:', err);
-            } finally {
-                setIsLoading(false);
+    const fetchDashboardData = async () => {
+        const res = await fetch('http://localhost:5000/api/dashboard/admin');
+        const result = await res.json();
+        
+        if (!res.ok) {
+            if (res.status === 401) {
+                localStorage.removeItem('user');
+                window.location.href = '/login';
             }
-        };
-        fetchDashboardData();
-    }, []);
+            throw new Error(result.error || 'Failed to load dashboard');
+        }
+        return result;
+    };
+
+    const { data: dashboardData, isLoading, isError } = useQuery({
+        queryKey: ['adminDashboard'],
+        queryFn: fetchDashboardData
+    });
 
     if (isLoading || !dashboardData) {
         return (

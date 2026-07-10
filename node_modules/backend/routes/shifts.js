@@ -6,10 +6,13 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
     try {
-        const { data: employees, error } = await supabase
-            .from('employees')
-            .select('*')
-            .order('first_name', { ascending: true });
+        let query = supabase.from('employees').select('*').order('first_name', { ascending: true });
+        
+        if (req.query.employee_id) {
+            query = query.eq('id', req.query.employee_id);
+        }
+
+        const { data: employees, error } = await query;
 
         if (error) throw error;
         

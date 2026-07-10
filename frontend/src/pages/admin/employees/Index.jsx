@@ -1,33 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Index() {
     const location = useLocation();
-    const [employees, setEmployees] = useState([]);
+    const fetchEmployees = async () => {
+        const response = await fetch('http://localhost:5000/api/employees');
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to fetch');
+        return result.data || [];
+    };
+
+    const { data: employees = [], isLoading } = useQuery({
+        queryKey: ['adminEmployees'],
+        queryFn: fetchEmployees
+    });
+
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
-    const [isLoading, setIsLoading] = useState(true);
     const [session, setSession] = useState(location.state || {});
     const [searchQuery, setSearchQuery] = useState('');
-
-    useEffect(() => {
-        const fetchEmployees = async () => {
-            try {
-                const response = await fetch('http://localhost:5000/api/employees');
-                const result = await response.json();
-                if (result.success) {
-                    setEmployees(result.data);
-                }
-            } catch (error) {
-                console.error("Failed to fetch employees:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchEmployees();
-    }, []);
 
     const copyPassword = (password) => {
         window.navigator.clipboard.writeText(password);
@@ -154,7 +148,7 @@ export default function Index() {
 
                 {/* Data table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
