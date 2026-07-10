@@ -9,7 +9,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function seedAdmin() {
-    console.log('🌱 Seeding Super Admin Account...');
+    console.log('Seeding admin account...');
     
     const adminData = {
         first_name: 'System',
@@ -34,7 +34,7 @@ async function seedAdmin() {
 
         if (authError) {
             if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
-                console.log('⚠️ Admin already exists in Auth. Please delete it manually in Supabase if you want to re-seed.');
+                console.log('Admin already exists in Auth. Delete manually in Supabase to re-seed.');
                 return;
             } else {
                 throw authError;
@@ -71,14 +71,12 @@ async function seedAdmin() {
 
         if (empError) throw empError;
 
-        console.log('✅ Super Admin seeded successfully!');
-        console.log('-----------------------------------');
-        console.log(`📧 Email: ${adminData.email}`);
-        console.log(`🔑 Password: ${password}`);
-        console.log('-----------------------------------');
+        console.log('Admin account seeded successfully.');
+        console.log('Email: ' + adminData.email);
+        console.log('Password: ' + password);
 
     } catch (err) {
-        console.error('❌ Error seeding admin:', err.message);
+        console.error('Error seeding admin:', err.message);
     }
 }
 

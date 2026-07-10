@@ -34,7 +34,7 @@ export default function AdminDashboard() {
           <div className="relative z-10 h-full flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2 text-slate-400 mb-2">
-                <i className="ti ti-chart-pie text-blue-400">📊</i>
+                <i className="ti ti-chart-pie text-blue-400"></i>
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-300">Total Staff</p>
               </div>
               <p className="text-6xl font-semibold tracking-tight text-white/95">{totalStaff}</p>
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-sm border border-slate-100 hover:border-indigo-100 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 group relative overflow-hidden cursor-pointer">
             <div className="relative z-10 flex justify-between items-start">
               <div className="h-12 w-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <i className="ti ti-building-factory-2 text-2xl">🏭</i>
+                <i className="ti ti-building-factory-2 text-2xl"></i>
               </div>
               <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-lg group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors duration-500">Production</span>
             </div>
@@ -67,7 +67,7 @@ export default function AdminDashboard() {
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-sm border border-slate-100 hover:border-orange-100 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 group relative overflow-hidden cursor-pointer">
             <div className="relative z-10 flex justify-between items-start">
               <div className="h-12 w-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <i className="ti ti-shopping-bag text-2xl">🛍️</i>
+                <i className="ti ti-shopping-bag text-2xl"></i>
               </div>
               <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-lg group-hover:bg-orange-50 group-hover:text-orange-600 transition-colors duration-500">Store</span>
             </div>
@@ -80,7 +80,7 @@ export default function AdminDashboard() {
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-sm border border-slate-100 hover:border-pink-100 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 group relative overflow-hidden cursor-pointer">
             <div className="relative z-10 flex justify-between items-start">
               <div className="h-12 w-12 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <i className="ti ti-plane-departure text-2xl">🏖️</i>
+                <i className="ti ti-plane-departure text-2xl"></i>
               </div>
               <span className="text-xs font-bold bg-pink-100 text-pink-600 px-2 py-1 rounded-lg group-hover:bg-pink-200 transition-colors duration-500">Today</span>
             </div>
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-sm border border-slate-100 hover:border-emerald-100 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 group relative overflow-hidden cursor-pointer">
             <div className="relative z-10 flex justify-between items-start">
               <div className="h-12 w-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <i className="ti ti-user-plus text-2xl">➕</i>
+                <i className="ti ti-user-plus text-2xl"></i>
               </div>
               <span className="text-xs font-bold bg-emerald-100 text-emerald-600 px-2 py-1 rounded-lg group-hover:bg-emerald-200 transition-colors duration-500">+{newHiresCount}</span>
             </div>

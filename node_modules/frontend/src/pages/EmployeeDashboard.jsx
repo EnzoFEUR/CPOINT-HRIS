@@ -118,10 +118,10 @@ const EmployeeDashboard = () => {
     const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
     const shiftDetails = {
-        'Morning': { time: '06:00 AM - 02:00 PM', icon: 'ti-sunrise', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-        'Swing': { time: '02:00 PM - 10:00 PM', icon: 'ti-sunset', color: 'text-orange-500', bg: 'bg-orange-500/10' },
-        'Night': { time: '10:00 PM - 06:00 AM', icon: 'ti-moon', color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-        'Unassigned': { time: 'No Schedule', icon: 'ti-calendar-cancel', color: 'text-slate-400', bg: 'bg-slate-100' }
+        'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
+        'Swing': { time: '02:00 PM - 10:00 PM', color: 'text-orange-500', bg: 'bg-orange-500/10' },
+        'Night': { time: '10:00 PM - 06:00 AM', color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+        'Unassigned': { time: 'No Schedule', color: 'text-slate-400', bg: 'bg-slate-100' }
     };
     
     const sDetails = shiftDetails[shift] || shiftDetails['Unassigned'];
@@ -140,11 +140,11 @@ const EmployeeDashboard = () => {
     return (
         <div className="max-w-5xl mx-auto pb-16 font-sans">
             
-            {/* BACKGROUND DECORATIONS */}
+            
             <div className="fixed top-0 left-0 w-full h-[40vh] bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none -z-10" />
             <div className="fixed top-[-10%] right-[-5%] w-[50vw] h-[50vw] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-            {/* REAL-WORLD ALERTS */}
+            {/* Alerts */}
             <AnimatePresence>
                 {infractions.length > 0 && (
                     <motion.div 
@@ -169,7 +169,7 @@ const EmployeeDashboard = () => {
 
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8">
                 
-                {/* 1. HUGE WELCOME HEADER */}
+                {/* Welcome header */}
                 <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
                     <div>
                         <p className="text-blue-600 font-bold tracking-widest uppercase text-sm mb-2">{formattedToday}</p>
@@ -187,10 +187,10 @@ const EmployeeDashboard = () => {
                     </div>
                 </motion.div>
 
-                {/* 2. THE BIG ACTION GRID */}
+                {/* Action cards */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     
-                    {/* DIGITAL ID - MASSIVE CTA */}
+                    {/* Digital ID card */}
                     <motion.div 
                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={() => setShowQrModal(true)}
@@ -211,7 +211,7 @@ const EmployeeDashboard = () => {
                         </div>
                     </motion.div>
 
-                    {/* PAYROLL - WALLET STYLE */}
+                    {/* Payroll card */}
                     <motion.div 
                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
@@ -238,10 +238,10 @@ const EmployeeDashboard = () => {
 
                 </motion.div>
 
-                {/* 3. SECONDARY ACTIONS ROW */}
+                {/* Secondary actions */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     
-                    {/* SHIFT SCHEDULE */}
+                    {/* Shift schedule */}
                     <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex items-center gap-5">
                         <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0 ${sDetails.bg} ${sDetails.color}`}>
                             <i className={`ti ${sDetails.icon}`} />
@@ -253,7 +253,7 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
 
-                    {/* TIME OFF BUTTON */}
+                    {/* Leave request */}
                     <motion.div 
                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={() => setShowLeaveModal(true)}
@@ -271,7 +271,7 @@ const EmployeeDashboard = () => {
                     </motion.div>
                 </motion.div>
 
-                {/* 4. HR RECORDS WIDGET */}
+                {/* HR records */}
                 {unresolvedInfractions.length > 0 && (
                     <motion.div variants={itemVariants} className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
                         <div className="flex justify-between items-center mb-6">
@@ -315,10 +315,10 @@ const EmployeeDashboard = () => {
                 )}
 
 
-                {/* 4. ACTIVITY TIMELINES */}
+                {/* Activity timelines */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
                     
-                    {/* RECENT ATTENDANCE */}
+                    {/* Recent attendance */}
                     <div className="bg-white rounded-[2rem] p-6 md:p-8 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
@@ -362,7 +362,7 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
 
-                    {/* LEAVE HISTORY */}
+                    {/* Leave history */}
                     <div className="bg-white rounded-[2rem] p-6 md:p-8 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
@@ -403,11 +403,11 @@ const EmployeeDashboard = () => {
                 </motion.div>
             </motion.div>
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* MODALS */}
-            {/* ════════════════════════════════════════════════════════ */}
+            {/*  */}
+            {/* Modals */}
+            {/*  */}
 
-            {/* QR / DIGITAL ID MODAL */}
+            {/* QR modal */}
             <AnimatePresence>
                 {showQrModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -445,7 +445,7 @@ const EmployeeDashboard = () => {
                 )}
             </AnimatePresence>
 
-            {/* PAYSLIP MODAL */}
+            {/* Payslip modal */}
             <AnimatePresence>
                 {showPayslipModal && latestPayroll && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -500,7 +500,7 @@ const EmployeeDashboard = () => {
                 )}
             </AnimatePresence>
 
-            {/* REQUEST LEAVE MODAL */}
+            {/* Leave request modal */}
             <AnimatePresence>
                 {showLeaveModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -586,7 +586,7 @@ const EmployeeDashboard = () => {
                 )}
             </AnimatePresence>
 
-            {/* INFRACTIONS MODAL */}
+            {/* Infractions modal */}
             <AnimatePresence>
                 {showInfractionsModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

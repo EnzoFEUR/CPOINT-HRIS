@@ -39,7 +39,7 @@ export default function LeavesIndex() {
             const data = await res.json();
             if (data.success) {
                 toast.success(status === 'Approved' ? 'Leave Approved!' : 'Leave Rejected', {
-                    icon: status === 'Approved' ? '✅' : '❌'
+                    icon: status === 'Approved' ? <i className="ti ti-check text-xl text-emerald-500" /> : <i className="ti ti-x text-xl text-rose-500" />
                 });
             } else {
                 toast.error(data.error || 'Failed to update status');
@@ -82,13 +82,13 @@ export default function LeavesIndex() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     

@@ -67,7 +67,7 @@ router.post('/', async (req, res) => {
         records.push(newRecord);
         fs.writeFileSync(discFilePath, JSON.stringify(records, null, 2));
 
-        // Enterprise: Broadcast Realtime Notification to specific employee
+        // Send notification to employee
         await createNotification({
             target: employee_id,
             title: 'New HR Notice',

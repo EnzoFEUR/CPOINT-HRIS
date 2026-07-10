@@ -80,13 +80,13 @@ const Index = () => {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -115,7 +115,7 @@ const Index = () => {
                     </div>
                 </motion.div>
 
-                {/* SEARCH BAR */}
+                {/* Search */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
@@ -132,7 +132,7 @@ const Index = () => {
                     </div>
                 </motion.div>
 
-                {/* DATA TABLE */}
+                {/* Data table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
@@ -248,7 +248,7 @@ const Index = () => {
                         </table>
                     </div>
 
-                    {/* PAGINATION */}
+                    {/* Pagination */}
                     {Math.ceil(filteredLogs.length / itemsPerPage) > 1 && (
                         <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -275,7 +275,7 @@ const Index = () => {
                 </motion.div>
             </div>
 
-            {/* IMAGE MODAL */}
+            {/* Image modal */}
             <AnimatePresence>
                 {isModalOpen && selectedImage && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

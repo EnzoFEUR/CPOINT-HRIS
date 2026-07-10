@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Dashboard() {
     const [dashboardData, setDashboardData] = useState(null);
@@ -24,12 +25,18 @@ export default function Dashboard() {
 
     if (isLoading || !dashboardData) {
         return (
-            <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+            <motion.div 
+                key="loading"
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center h-[60vh] space-y-4"
+            >
                 <div className="h-16 w-16 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
                     <i className="ti ti-chart-pie-3 text-3xl text-blue-500"></i>
                 </div>
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Initializing Enterprise Data...</p>
-            </div>
+                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Analytics...</p>
+            </motion.div>
         );
     }
 
@@ -43,9 +50,15 @@ export default function Dashboard() {
     const maxTrendValue = Math.max(...weeklyTrends.map(t => t.value));
 
     return (
-        <div className="space-y-6 pb-10">
+        <motion.div 
+            key="dashboard"
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ duration: 0.3 }}
+            className="space-y-6 pb-10"
+        >
             
-            {/* COMMAND CENTER HEADER */}
+            {/* Page header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
                 <div>
                     <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Enterprise Analytics</h2>
@@ -56,17 +69,10 @@ export default function Dashboard() {
                         <i className="ti ti-download text-slate-500"></i>
                         <span className="text-sm font-bold text-slate-700">Export Report</span>
                     </button>
-                    <div className="flex items-center gap-3 bg-slate-900 px-5 py-2.5 rounded-xl shadow-lg shadow-slate-900/20 text-white">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                        </span>
-                        <span className="text-sm font-bold">Live Sync</span>
-                    </div>
                 </div>
             </div>
 
-            {/* TOP KPI ROW */}
+            {/* KPI cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -116,7 +122,7 @@ export default function Dashboard() {
                 </Link>
             </div>
 
-            {/* MAIN METRICS GRID */}
+            {/* Metrics grid */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 
                 {/* Weekly Trend Chart (2/3 width) */}
@@ -241,6 +247,6 @@ export default function Dashboard() {
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
             `}</style>
-        </div>
+        </motion.div>
     );
 }

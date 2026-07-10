@@ -75,13 +75,13 @@ export default function PayrollIndex() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -97,7 +97,7 @@ export default function PayrollIndex() {
                             <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Generate, audit, and distribute digital payslips to your entire workforce.</p>
                         </div>
                         
-                        {/* Huge CTA */}
+                        {/* Action button */}
                         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                             <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-emerald-600 rounded-lg shadow-sm overflow-hidden group/btn">
                                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
@@ -143,7 +143,7 @@ export default function PayrollIndex() {
                     </form>
                 </motion.div>
 
-                {/* 3. PAYROLL VAULT / TABLE */}
+                {/* Payroll table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">

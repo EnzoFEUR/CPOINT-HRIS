@@ -96,13 +96,13 @@ function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   
-  // Fake auth user (matches blade template)
+  // Current user from localStorage
   const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { name: 'Admin User', role: 'admin' });
 
   const isAttendanceActive = location.pathname.includes('/admin/attendance');
   const [attendanceDropdownOpen, setAttendanceDropdownOpen] = useState(isAttendanceActive);
 
-  // Enterprise Header States
+  // Header state
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -136,7 +136,7 @@ function MainLayout({ children }) {
     setSidebarOpen(false); // close on route change
   }, [location.pathname]);
 
-  // SUPABASE REAL-TIME NOTIFICATIONS ENGINE
+  // Real-time notification listener
   useEffect(() => {
     if (!user || !user.id) return;
 
@@ -147,7 +147,7 @@ function MainLayout({ children }) {
         // Check if notif is for me
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
             toast(notif.text, { 
-                icon: notif.type === 'leave' ? '✈️' : notif.type === 'shift' ? '⏰' : '🔔', 
+                icon: notif.type === 'leave' ? <i className="ti ti-plane-departure text-xl text-teal-400" /> : notif.type === 'shift' ? <i className="ti ti-calendar-time text-xl text-cyan-400" /> : <i className="ti ti-bell-ringing text-xl text-blue-400" />, 
                 duration: 6000 
             });
             setNotifications(prev => [notif, ...prev]);
@@ -185,7 +185,7 @@ function MainLayout({ children }) {
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
       
-      {/* MOBILE/TABLET OVERLAY */}
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div 
           onClick={() => setSidebarOpen(false)}
@@ -193,12 +193,12 @@ function MainLayout({ children }) {
         ></div>
       )}
 
-      {/* MODERN FLOATING SIDEBAR */}
+      {/* Sidebar */}
       <aside 
         className={`fixed inset-y-4 left-4 z-50 w-72 rounded-[2rem] glass-sidebar text-slate-300 flex flex-col shadow-2xl shadow-slate-900/20 transition-transform duration-500 bg-slate-900 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-[150%]'}`}
         style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
       >
-        {/* LOGO AREA */}
+        {/* Logo */}
         <div className="flex items-center h-24 px-8 border-b border-white/5 shrink-0">
           <div className="flex items-center gap-4 group cursor-pointer">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">CP</div>
@@ -212,7 +212,7 @@ function MainLayout({ children }) {
           </button>
         </div>
 
-        {/* NAVIGATION LINKS */}
+        {/* Navigation */}
         <nav className="flex-1 mt-6 px-4 space-y-1.5 overflow-y-auto pb-6 custom-scrollbar">
           <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
           
@@ -227,7 +227,7 @@ function MainLayout({ children }) {
 
           {user.role === 'admin' ? (
             <>
-              {/* TIME & ATTENDANCE DROPDOWN */}
+              {/* Attendance submenu */}
               <div className="space-y-1">
                 <button 
                   onClick={() => setAttendanceDropdownOpen(!attendanceDropdownOpen)}
@@ -254,7 +254,7 @@ function MainLayout({ children }) {
                 )}
               </div>
 
-              {/* OTHER NAV ITEMS */}
+              {/* Nav links */}
               {[
                 { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
                 { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Engine' },
@@ -278,7 +278,7 @@ function MainLayout({ children }) {
 
         </nav>
 
-        {/* BOTTOM SECTION */}
+        {/* User profile */}
         <div className="p-4 mt-auto border-t border-white/5 bg-slate-900/20 rounded-b-[2rem] shrink-0">
           <Link to="/profile" className="flex items-center p-3 rounded-2xl group mb-2 cursor-pointer hover:bg-white/5">
             <div className="relative">
@@ -298,11 +298,11 @@ function MainLayout({ children }) {
         </div>
       </aside>
 
-      {/* MAIN CONTENT WRAPPER */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen w-full transition-all duration-500 ease-in-out lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           
-          {/* FLOATING TOP HEADER */}
+          {/* Header */}
           <header className="flex items-center justify-between px-6 py-4 mt-4 mx-4 lg:mx-8 sticky top-4 z-30 bg-white/70 backdrop-blur-xl shadow-sm border border-slate-200/60 rounded-2xl transition-all duration-300">
             <div className="flex items-center gap-4">
               <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 text-slate-500 hover:text-slate-800 lg:hidden transition-transform active:scale-95 bg-slate-100/50 rounded-xl">
@@ -318,7 +318,7 @@ function MainLayout({ children }) {
 
             <div className="flex items-center gap-3 sm:gap-4 relative">
               
-              {/* ENTERPRISE SEARCH BAR */}
+              {/* Search */}
               <div className="relative hidden md:block">
                 <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input 
@@ -330,7 +330,7 @@ function MainLayout({ children }) {
                   className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80" 
                 />
                 
-                {/* SEARCH DROPDOWN */}
+                {/* Search results */}
                 {showSearch && searchQuery && (
                   <div className="absolute top-full right-0 mt-2 w-full bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
                     <div className="p-2 border-b border-slate-100 bg-slate-50">
@@ -352,7 +352,7 @@ function MainLayout({ children }) {
                 )}
               </div>
 
-              {/* NOTIFICATIONS BELL */}
+              {/* Notifications */}
               <button 
                 onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
                 className={`relative p-2.5 transition-all rounded-xl active:scale-95 shadow-sm border border-slate-200/50 ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 bg-slate-100'}`}
@@ -363,7 +363,7 @@ function MainLayout({ children }) {
                 )}
               </button>
 
-              {/* NOTIFICATIONS DROPDOWN */}              {showNotifications && (
+              {/* Notification panel */}              {showNotifications && (
                 <div className="absolute top-full right-0 mt-3 w-80 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
                   <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <h3 className="font-bold text-slate-800">Notifications</h3>

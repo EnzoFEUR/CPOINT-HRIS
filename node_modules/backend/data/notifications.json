@@ -25,5 +25,32 @@
     "type": "system",
     "read": false,
     "created_at": "2026-06-03T08:42:12.075Z"
+  },
+  {
+    "id": "208963b7-23ed-4b7f-80d7-7d882984b74e",
+    "target": "admin",
+    "title": "New Leave Request",
+    "text": "A new Sick Leave request was submitted.",
+    "type": "leave",
+    "read": false,
+    "created_at": "2026-07-10T01:42:39.979Z"
+  },
+  {
+    "id": "03ef52d9-1091-4c11-80cc-ce5b2c886e52",
+    "target": "b06d1a0f-f742-4dd6-9461-8c452db2eea6",
+    "title": "Leave Request Update",
+    "text": "Your leave request was approved.",
+    "type": "leave",
+    "read": false,
+    "created_at": "2026-07-10T01:42:51.067Z"
+  },
+  {
+    "id": "73c48d19-a5f4-42b2-96ac-a5fbfa4e6d55",
+    "target": "b06d1a0f-f742-4dd6-9461-8c452db2eea6",
+    "title": "Shift Assignment Updated",
+    "text": "Your shift schedule was updated to: Morning",
+    "type": "shift",
+    "read": false,
+    "created_at": "2026-07-10T01:45:08.537Z"
   }
 ]

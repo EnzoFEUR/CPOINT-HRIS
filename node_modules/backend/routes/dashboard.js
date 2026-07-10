@@ -34,7 +34,7 @@ router.get('/admin', async (req, res) => {
             supabase.from('attendances').select('*, employees:employee_id(*)').eq('date', todayStr).order('created_at', { ascending: false }).limit(5)
         ]);
 
-        // Mock Weekly Trend for "Mind Blowing Dashboard" Visuals
+        // Placeholder weekly trend data
         const weeklyTrends = [
             { day: 'Mon', value: 92 },
             { day: 'Tue', value: 95 },

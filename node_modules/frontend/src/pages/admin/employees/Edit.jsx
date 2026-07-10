@@ -63,7 +63,7 @@ export default function Edit() {
             const result = await res.json();
             
             if (result.success) {
-                toast.success('Profile updated successfully!', { icon: '✨' });
+                toast.success('Profile updated successfully!');
                 navigate(`/admin/employees/${id}`);
             } else {
                 toast.error('Error: ' + result.error);
@@ -85,7 +85,7 @@ export default function Edit() {
     return (
         <div className="max-w-4xl mx-auto space-y-8 pb-16 font-sans relative">
             
-            {/* AMBIENT BACKGROUND */}
+            
             <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
             <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 

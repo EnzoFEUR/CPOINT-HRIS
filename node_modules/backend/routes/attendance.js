@@ -43,12 +43,12 @@ router.post('/scan', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Invalid QR Code. User not found.' });
         }
 
-        // ==========================================
-        // SERVER-SIDE FACE IDENTITY GATE
-        // The frontend sends the face_match_score (0-100).
-        // If an employee has a registered baseline, the score MUST be >= 48%.
-        // This prevents buddy-punching even if someone manipulates the frontend.
-        // ==========================================
+        
+        // Face match validation
+        // Reject if score < 48% to prevent buddy-punching.
+        
+        
+        
         if (user.has_registered_biometrics === true && face_match_score !== null && face_match_score !== undefined) {
             const SERVER_MATCH_THRESHOLD = 48; // percent
             if (face_match_score < SERVER_MATCH_THRESHOLD) {
@@ -67,12 +67,12 @@ router.post('/scan', async (req, res) => {
                     message: `IDENTITY MISMATCH: Face verification failed (${face_match_score}%). This incident has been logged.`
                 });
             }
-            console.log(`[IDENTITY OK] Employee ${employee_id}: face_match_score=${face_match_score}%`);
+            console.log(`[IDENTITY_PASS] Employee ${employee_id}: face_match_score=${face_match_score}%`);
         }
 
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // CRITICAL QR ATTENDANCE RULE: Check for existing daily log
+        // Check for existing daily record
         const { data: attendance, error: attError } = await supabase
             .from('attendances')
             .select('*')
@@ -90,9 +90,9 @@ router.post('/scan', async (req, res) => {
             return error ? null : fileName;
         };
 
-        // ==========================================
-        // ENTERPRISE: GOOGLE AI ANTI-SPOOFING LIVENESS CHECK
-        // ==========================================
+        
+        // AI liveness verification
+        
         if (image_data) {
             if (!process.env.GEMINI_API_KEY) {
                 return res.status(500).json({ status: 'error', message: 'Google AI Engine Offline. Please add GEMINI_API_KEY to backend/.env' });
@@ -125,14 +125,14 @@ Reply with ONLY a valid JSON object: {"is_real_person": true/false, "confidence"
             try {
                 const aiResult = await model.generateContent([prompt, imagePart]);
                 const responseText = aiResult.response.text().trim();
-                console.log(`[GEMINI SCAN RAW] ${responseText.substring(0, 300)}`);
+                console.log(`[AI_SCAN] ${responseText.substring(0, 300)}`);
                 
                 let aiAnalysis;
                 try {
                     const jsonStr = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
                     aiAnalysis = JSON.parse(jsonStr);
                 } catch (parseErr) {
-                    console.warn("[GEMINI] Non-JSON scan response, text parsing:", responseText);
+                    console.warn("[AI_SCAN] Non-JSON scan response, text parsing:", responseText);
                     const looksReal = /real|genuine|live|actual person|not a spoof/i.test(responseText);
                     aiAnalysis = { is_real_person: looksReal, confidence: looksReal ? 0.7 : 0.3, reason: responseText.substring(0, 100) };
                 }
@@ -148,7 +148,7 @@ Reply with ONLY a valid JSON object: {"is_real_person": true/false, "confidence"
                         date: new Date().toISOString().split('T')[0]
                     }).catch(() => {});
                     
-                    // Broadcast security alert to admin dashboard!
+                    // Broadcast security alert to admin dashboard
                     const channel = supabase.channel('system-notifications');
                     await channel.send({
                         type: 'broadcast',
@@ -162,14 +162,14 @@ Reply with ONLY a valid JSON object: {"is_real_person": true/false, "confidence"
                     });
                 }
                 
-                console.log(`[LIVENESS OK] Employee ${employee_id}: confidence=${aiAnalysis.confidence}, reason=${aiAnalysis.reason}`);
+                console.log(`[LIVENESS_PASS] Employee ${employee_id}: confidence=${aiAnalysis.confidence}, reason=${aiAnalysis.reason}`);
             } catch (aiError) {
-                // Gemini API failure — log but allow clock-in to proceed
-                console.error("[GEMINI ERROR] Scan liveness check failed, allowing clock-in:", aiError.message || aiError);
+                // AI API failure - log but allow clock-in to proceed
+                console.error("[AI_ERROR] Scan liveness check failed, allowing clock-in:", aiError.message || aiError);
                 console.warn(`[SECURITY WARNING] Employee ${employee_id} clocked in WITHOUT liveness verification due to AI service outage.`);
             }
         }
-        // ==========================================
+        
 
         if (!attendance) {
             // TIME IN
@@ -262,9 +262,9 @@ router.post('/register-baseline', async (req, res) => {
         const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, 'base64');
 
-        // ==========================================
-        // ENTERPRISE: GOOGLE AI ANTI-SPOOFING LIVENESS CHECK
-        // ==========================================
+        
+        // AI liveness verification
+        
         if (!process.env.GEMINI_API_KEY) {
             return res.status(500).json({ error: 'Google AI Engine Offline. Please add GEMINI_API_KEY to backend/.env' });
         }
@@ -294,7 +294,7 @@ Be STRICT during enrollment. When in doubt, reject. Reply with ONLY a valid JSON
         try {
             const aiResult = await model.generateContent([prompt, imagePart]);
             const responseText = aiResult.response.text().trim();
-            console.log(`[GEMINI RAW RESPONSE] ${responseText.substring(0, 300)}`);
+            console.log(`[AI_SCAN] ${responseText.substring(0, 300)}`);
             
             // Parse JSON - handle various response formats
             let aiAnalysis;
@@ -303,7 +303,7 @@ Be STRICT during enrollment. When in doubt, reject. Reply with ONLY a valid JSON
                 aiAnalysis = JSON.parse(jsonStr);
             } catch (parseErr) {
                 // If Gemini returned non-JSON, try to extract the verdict from text
-                console.warn("[GEMINI] Non-JSON response, attempting text parsing:", responseText);
+                console.warn("[AI_SCAN] Non-JSON response, attempting text parsing:", responseText);
                 const looksReal = /real|genuine|live|actual person|not a spoof/i.test(responseText);
                 aiAnalysis = { is_real_person: looksReal, confidence: looksReal ? 0.7 : 0.3, reason: responseText.substring(0, 100) };
             }
@@ -315,13 +315,13 @@ Be STRICT during enrollment. When in doubt, reject. Reply with ONLY a valid JSON
                 });
             }
             
-            console.log(`[ENROLLMENT LIVENESS OK] Employee ${employee_id}: confidence=${aiAnalysis.confidence}, reason=${aiAnalysis.reason}`);
+            console.log(`[LIVENESS_PASS] enrollment: Employee ${employee_id}: confidence=${aiAnalysis.confidence}, reason=${aiAnalysis.reason}`);
         } catch (aiError) {
-            // Gemini API failure (rate limit, network, key issue) — log but DON'T block registration
-            console.error("[GEMINI ERROR] Liveness check failed, proceeding with registration:", aiError.message || aiError);
+            // AI API failure - log but allow registration to proceed
+            console.error("[AI_ERROR] Liveness check failed, proceeding with registration:", aiError.message || aiError);
             console.warn(`[SECURITY WARNING] Employee ${employee_id} registered WITHOUT liveness verification due to AI service outage.`);
         }
-        // ==========================================
+        
 
         const { error: uploadError } = await supabase.storage
             .from('public-bucket')

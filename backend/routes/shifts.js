@@ -54,7 +54,7 @@ router.post('/assign', async (req, res) => {
         
         fs.writeFileSync(shiftsFilePath, JSON.stringify(shiftsData, null, 2));
 
-        // Enterprise: Broadcast Realtime Notification to specific employee
+        // Send notification to employee
         await createNotification({
             target: employee_id,
             title: 'Shift Assignment Updated',

@@ -66,5 +66,5 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`🚀 HRIS Backend Server is running on port ${port}`);
+    console.log('HRIS server running on port ' + port);
 });

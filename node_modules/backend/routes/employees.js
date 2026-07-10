@@ -28,7 +28,7 @@ router.post('/', async (req, res) => {
     try {
         const { first_name, last_name, email, department, job_title, monthly_salary, role = 'employee' } = req.body;
 
-        // Strict Validation (1-to-1 with Laravel)
+        // Input validation
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
         if (!last_name || typeof last_name !== 'string' || last_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid last name' });
         if (!email || !email.includes('@')) return res.status(400).json({ success: false, error: 'Invalid email' });
@@ -54,7 +54,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, error: 'This email is already registered.' });
         }
 
-        // Create auth user securely using Service Role Key
+        // Create auth user
         const defaultPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
         
         const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -132,7 +132,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        // Delete from Auth (will cascade to employees if foreign key is set up with ON DELETE CASCADE)
+        // Delete from auth (cascades via foreign key)
         const { error } = await supabase.auth.admin.deleteUser(req.params.id);
         if (error) throw error;
         

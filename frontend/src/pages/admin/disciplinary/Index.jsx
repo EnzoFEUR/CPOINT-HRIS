@@ -55,7 +55,7 @@ export default function DisciplinaryIndex() {
             });
             const data = await res.json();
             if (data.success) {
-                toast.success(data.message, { icon: '🚨' });
+                toast.success(data.message);
                 setShowModal(false);
                 setEmployeeId('');
                 setReason('');
@@ -76,7 +76,7 @@ export default function DisciplinaryIndex() {
             const res = await fetch(`http://localhost:5000/api/disciplinary/${id}/resolve`, { method: 'PUT' });
             const data = await res.json();
             if (data.success) {
-                toast.success('Case marked as Resolved', { icon: '✅' });
+                toast.success('Case marked as Resolved');
             } else {
                 toast.error(data.error);
                 setRecords(previousRecords);
@@ -116,13 +116,13 @@ export default function DisciplinaryIndex() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -150,7 +150,7 @@ export default function DisciplinaryIndex() {
                                 </div>
                             </div>
                             
-                            {/* Huge CTA */}
+                            {/* Action button */}
                             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                                 <button onClick={() => setShowModal(true)} className="relative flex items-center gap-3 px-8 py-5 bg-rose-500 rounded-lg shadow-sm overflow-hidden group/btn">
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
@@ -289,7 +289,7 @@ export default function DisciplinaryIndex() {
                 </motion.div>
             </div>
 
-            {/* RECORD MODAL */}
+            {/* Record modal */}
             <AnimatePresence>
                 {showModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

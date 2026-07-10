@@ -46,7 +46,7 @@ export default function ShiftsIndex() {
     }, []);
 
     const handleAssignShift = async (employee_id, shift) => {
-        // Optimistic UI update for premium snappy feel
+        // Optimistic UI update
         const previousEmployees = [...employees];
         const employee = employees.find(e => e.id === employee_id);
         setEmployees(prev => prev.map(emp => emp.id === employee_id ? { ...emp, shift } : emp));
@@ -60,7 +60,7 @@ export default function ShiftsIndex() {
             });
             const data = await res.json();
             if (data.success) {
-                toast.success('Shift assigned successfully!', { icon: '✨' });
+                toast.success('Shift assigned successfully!');
             } else {
                 toast.error(data.error);
                 setEmployees(previousEmployees); // Rollback
@@ -106,13 +106,13 @@ export default function ShiftsIndex() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -237,7 +237,7 @@ export default function ShiftsIndex() {
                     </AnimatePresence>
                 </motion.div>
 
-                {/* EMPTY STATE */}
+                {/* Empty state */}
                 {filteredEmployees.length === 0 && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center p-16 bg-white rounded-[3rem] border border-slate-100 shadow-sm text-center">
                         <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">

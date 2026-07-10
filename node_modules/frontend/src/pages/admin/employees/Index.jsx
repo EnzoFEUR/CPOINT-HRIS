@@ -31,7 +31,7 @@ export default function Index() {
 
     const copyPassword = (password) => {
         window.navigator.clipboard.writeText(password);
-        toast.success('Password copied to clipboard!', { icon: '🔐' });
+        toast.success('Password copied to clipboard!');
     };
 
     const filteredEmployees = employees.filter(emp => 
@@ -62,13 +62,13 @@ export default function Index() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
 
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -84,7 +84,7 @@ export default function Index() {
                             <p className="text-blue-100/70 font-medium mt-2 text-lg max-w-xl">Manage your staff roster, access ID cards, and update organizational records.</p>
                         </div>
                         
-                        {/* Huge CTA */}
+                        {/* Action button */}
                         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                             <Link to="/admin/employees/create" className="relative flex items-center gap-3 px-8 py-5 bg-blue-600 rounded-lg shadow-sm overflow-hidden group/btn">
                                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
@@ -97,7 +97,7 @@ export default function Index() {
                     </div>
                 </motion.div>
 
-                {/* ALERTS */}
+                {/* Alerts */}
                 <AnimatePresence>
                     {session.success && !session.temp_password && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
@@ -135,7 +135,7 @@ export default function Index() {
                     )}
                 </AnimatePresence>
 
-                {/* SEARCH BAR */}
+                {/* Search */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
@@ -152,7 +152,7 @@ export default function Index() {
                     </div>
                 </motion.div>
 
-                {/* DATA TABLE */}
+                {/* Data table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
@@ -238,7 +238,7 @@ export default function Index() {
                         </table>
                     </div>
 
-                    {/* PAGINATION */}
+                    {/* Pagination */}
                     {Math.ceil(filteredEmployees.length / itemsPerPage) > 1 && (
                         <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">

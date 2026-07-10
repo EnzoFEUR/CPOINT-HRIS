@@ -5,9 +5,9 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 
-// ═══════════════════════════════════════════════════════════
+// 
 //  CONFIGURATION
-// ═══════════════════════════════════════════════════════════
+// 
 const CONFIG = {
     REQUIRED_LOCK_FRAMES: 10,          // Consecutive matching frames needed
     FACE_MATCH_THRESHOLD: 0.50,        // Euclidean distance: lower = stricter
@@ -22,9 +22,9 @@ const CONFIG = {
     API_BASE: 'http://localhost:5000/api',
 };
 
-// ═══════════════════════════════════════════════════════════
+// 
 //  AUDIO FEEDBACK ENGINE
-// ═══════════════════════════════════════════════════════════
+// 
 const playSound = (type) => {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -51,9 +51,9 @@ const playSound = (type) => {
     } catch (_) { /* silent */ }
 };
 
-// ═══════════════════════════════════════════════════════════
+// 
 //  FACE MESH RENDERER
-// ═══════════════════════════════════════════════════════════
+// 
 const drawFaceMesh = (ctx, landmarks, box, state) => {
     const points = landmarks.positions;
     const palette = {
@@ -94,13 +94,13 @@ const drawFaceMesh = (ctx, landmarks, box, state) => {
     ctx.stroke();
 };
 
-// ═══════════════════════════════════════════════════════════
+// 
 //  MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════
+// 
 const Scanner = () => {
     const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { name: 'Gate Guard', role: 'security' });
 
-    // ── ACCESS GATE ──
+    //  ACCESS GATE 
     if (user.role !== 'security' && user.role !== 'admin') {
         return (
             <div className="min-h-screen flex items-center justify-center bg-black p-6 font-mono">
@@ -114,7 +114,7 @@ const Scanner = () => {
         );
     }
 
-    // ── STATE ──
+    //  STATE 
     const [mode, setMode] = useState('qr'); // qr | prep | face | feedback
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [loadingMsg, setLoadingMsg] = useState('BOOTING NEURAL NET...');
@@ -133,7 +133,7 @@ const Scanner = () => {
     // Feedback state
     const [feedback, setFeedback] = useState({ type: '', title: '', message: '', image: null });
 
-    // ── REFS ──
+    //  REFS 
     const qrRef = useRef(null);
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -144,9 +144,9 @@ const Scanner = () => {
     const employeeIdRef = useRef(null);
     const baselineRef = useRef(null);  // Float32Array[128] — the registered face descriptor
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  BOOT: Load AI Models + Clock + Inject CSS
-    // ═══════════════════════════════════════════════════
+    // 
     useEffect(() => {
         let mounted = true;
         (async () => {
@@ -186,9 +186,9 @@ const Scanner = () => {
         };
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  MODE LIFECYCLE: Start/stop cameras on mode change
-    // ═══════════════════════════════════════════════════
+    // 
     useEffect(() => {
         if (mode === 'qr' && modelsLoaded) startQr();
         if (mode !== 'qr') stopQr();
@@ -197,9 +197,9 @@ const Scanner = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, modelsLoaded]);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  QR SCANNER
-    // ═══════════════════════════════════════════════════
+    // 
     const startQr = useCallback(() => {
         if (qrRef.current) return;
         setAiStatus('AWAITING ID SCAN...');
@@ -217,9 +217,9 @@ const Scanner = () => {
         catch (_) { qrRef.current?.clear(); qrRef.current = null; }
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  QR SCANNED → Fetch baseline → Show prep screen
-    // ═══════════════════════════════════════════════════
+    // 
     const onQrScan = useCallback(async (text) => {
         if (processingRef.current) return;
         processingRef.current = true;
@@ -271,9 +271,9 @@ const Scanner = () => {
         setLoadingMsg('');
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  FACE CAMERA: Start / Stop
-    // ═══════════════════════════════════════════════════
+    // 
     const startFaceCamera = useCallback(async () => {
         setLoadingMsg('STARTING CAMERA...');
         try {
@@ -299,9 +299,9 @@ const Scanner = () => {
         if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  FACE DETECTION LOOP — Identity Verification
-    // ═══════════════════════════════════════════════════
+    // 
     const runDetectionLoop = useCallback(() => {
         setAiStatus('SCANNING FACE...');
         const video = videoRef.current;
@@ -342,14 +342,14 @@ const Scanner = () => {
             const box = det.detection.box;
             const liveDsc = det.descriptor;
 
-            // ── Centering check ──
+            //  Centering check 
             const nw = canvas.width, nh = canvas.height;
             const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
             const centered = Math.abs(cx - nw / 2) < nw * CONFIG.CENTER_THRESHOLD_X
                           && Math.abs(cy - nh / 2) < nh * CONFIG.CENTER_THRESHOLD_Y;
             const bigEnough = box.width >= nw * CONFIG.MIN_FACE_RATIO;
 
-            // ── Identity match (128-dim Euclidean distance) ──
+            //  Identity match (128-dim Euclidean distance) 
             let matched = true, dist = 0;
             if (baselineRef.current && liveDsc) {
                 dist = faceapi.euclideanDistance(baselineRef.current, liveDsc);
@@ -373,7 +373,7 @@ const Scanner = () => {
                 return;
             }
 
-            // ── Lock-in progression ──
+            //  Lock-in progression 
             lockFramesRef.current += 1;
             const progress = Math.min((lockFramesRef.current / CONFIG.REQUIRED_LOCK_FRAMES) * 100, 100);
             setLockProgress(progress);
@@ -394,9 +394,9 @@ const Scanner = () => {
         }, CONFIG.DETECTION_INTERVAL_MS);
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  CAPTURE & SUBMIT — Send face + id to backend
-    // ═══════════════════════════════════════════════════
+    // 
     const captureAndSubmit = useCallback(async () => {
         let img64 = null;
         if (videoRef.current) {
@@ -438,9 +438,9 @@ const Scanner = () => {
         setTimeout(resetAll, CONFIG.FEEDBACK_DISPLAY_MS);
     }, [matchScore]);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  RESET
-    // ═══════════════════════════════════════════════════
+    // 
     const resetAll = useCallback(() => {
         processingRef.current = false;
         lockFramesRef.current = 0;
@@ -457,9 +457,9 @@ const Scanner = () => {
         setMode('qr');
     }, []);
 
-    // ═══════════════════════════════════════════════════
+    // 
     //  STATUS PILL COLOR LOGIC
-    // ═══════════════════════════════════════════════════
+    // 
     const statusColor = aiStatus.includes('MISMATCH') || aiStatus.includes('DENIED')
         ? 'red' : (faceLockedIn || aiStatus.includes('CONFIRMED')) ? 'green' : 'blue';
     const pillClasses = {
@@ -469,13 +469,13 @@ const Scanner = () => {
     }[statusColor];
     const ringColor = { red: '#ef4444', green: '#22c55e', blue: '#3b82f6' }[statusColor];
 
-    // ═══════════════════════════════════════════════════════════
+    // 
     //  RENDER
-    // ═══════════════════════════════════════════════════════════
+    // 
     return (
         <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
 
-            {/* ─── QR MODE ─── */}
+            {/* QR mode */}
             <div className={`absolute inset-0 transition-opacity duration-500 ${mode === 'qr' ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'}`}>
                 <div id="qr-reader" className="w-full h-full" />
                 
@@ -501,7 +501,7 @@ const Scanner = () => {
                 </div>
             </div>
 
-            {/* ─── PREP MODE ─── */}
+            {/* Prep mode */}
             <AnimatePresence>
                 {mode === 'prep' && (
                     <motion.div
@@ -544,7 +544,7 @@ const Scanner = () => {
                 )}
             </AnimatePresence>
 
-            {/* ─── FACE BIOMETRIC MODE (Full-screen) ─── */}
+            {/* Face scan mode */}
             <AnimatePresence>
                 {mode === 'face' && (
                     <motion.div
@@ -597,7 +597,7 @@ const Scanner = () => {
                 )}
             </AnimatePresence>
 
-            {/* ─── TOP HUD (always visible except feedback) ─── */}
+            {/* Top HUD */}
             {mode !== 'feedback' && (
                 <div className="absolute top-0 inset-x-0 z-30 bg-gradient-to-b from-black/70 to-transparent pb-8 pointer-events-none">
                     <div className="flex justify-between items-start px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
@@ -620,7 +620,7 @@ const Scanner = () => {
                 </div>
             )}
 
-            {/* ─── BOTTOM HUD (QR mode only) ─── */}
+            {/* Bottom HUD */}
             {mode === 'qr' && (
                 <div className="absolute bottom-0 inset-x-0 z-30 pb-[max(env(safe-area-inset-bottom,16px),16px)] flex justify-center gap-3 px-4">
                     <button onClick={async () => {
@@ -638,7 +638,7 @@ const Scanner = () => {
                 </div>
             )}
 
-            {/* ─── FEEDBACK OVERLAY ─── */}
+            {/* Feedback overlay */}
             <AnimatePresence>
                 {mode === 'feedback' && feedback.title && (
                     <motion.div
@@ -687,7 +687,7 @@ const Scanner = () => {
                 )}
             </AnimatePresence>
 
-            {/* ─── GLOBAL LOADER ─── */}
+            {/* Loading overlay */}
             <AnimatePresence>
                 {loadingMsg && (
                     <motion.div

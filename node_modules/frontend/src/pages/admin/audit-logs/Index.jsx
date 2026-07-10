@@ -99,12 +99,12 @@ export default function AuditLogsIndex() {
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
             
-            {/* AMBIENT BACKGROUND */}
+            
             
             
             <div className="space-y-8">
                 
-                {/* 1. PREMIUM HEADER */}
+                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                     
                     
@@ -258,7 +258,7 @@ export default function AuditLogsIndex() {
                         </table>
                     </div>
 
-                    {/* PAGINATION */}
+                    {/* Pagination */}
                     {Math.ceil(filteredLogs.length / itemsPerPage) > 1 && (
                         <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">

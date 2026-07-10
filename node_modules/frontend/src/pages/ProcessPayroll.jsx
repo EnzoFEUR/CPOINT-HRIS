@@ -72,7 +72,7 @@ export default function ProcessPayroll() {
             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
                 <div className="flex items-center gap-4 mb-8">
                     <div className="h-12 w-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-100">
-                        📄
+                        
                     </div>
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">Process PH Payroll</h2>
@@ -82,7 +82,7 @@ export default function ProcessPayroll() {
 
                 {error && (
                     <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <span className="text-red-500 mt-0.5 text-xl">⚠️</span>
+                        <span className="text-red-500 mt-0.5 text-xl"></span>
                         <div>
                             <h4 className="text-sm font-bold text-red-800">Action Stopped</h4>
                             <p className="text-sm text-red-600 mt-1">{error}</p>
@@ -92,7 +92,7 @@ export default function ProcessPayroll() {
 
                 {success && (
                     <div className="mb-8 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <span className="text-green-500 mt-0.5 text-xl">✓</span>
+                        <span className="text-green-500 mt-0.5 text-xl"></span>
                         <div>
                             <h4 className="text-sm font-bold text-green-800">Success</h4>
                             <p className="text-sm text-green-600 mt-1">{success}</p>

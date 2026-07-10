@@ -60,7 +60,7 @@ export default function Show() {
             });
             const resData = await response.json();
             if (resData.success) {
-                toast.success('Employee deleted permanently.', { icon: '🗑️' });
+                toast.success('Employee deleted permanently.');
                 navigate('/admin/employees');
             } else {
                 toast.error(resData.error || 'Failed to delete employee.');
@@ -107,7 +107,7 @@ export default function Show() {
             
             <div className="max-w-5xl mx-auto space-y-8 pb-16 font-sans relative">
                 
-                {/* AMBIENT BACKGROUND */}
+                
                 <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
                 <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 

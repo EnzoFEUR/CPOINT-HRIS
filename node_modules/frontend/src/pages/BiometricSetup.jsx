@@ -5,13 +5,13 @@ import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ===== PHASE CONFIGURATION =====
+// Phase configuration
 const PHASES = [
-    { id: 0, label: 'CENTER',  icon: 'ti-circle-dot',  instruction: 'Hold still — looking straight',  color: '#3b82f6' },
-    { id: 1, label: 'LEFT',    icon: 'ti-arrow-left',  instruction: 'Turn your head LEFT',             color: '#8b5cf6' },
-    { id: 2, label: 'RIGHT',   icon: 'ti-arrow-right', instruction: 'Turn your head RIGHT',            color: '#06b6d4' },
-    { id: 3, label: 'UP',      icon: 'ti-arrow-up',    instruction: 'Tilt your head UP',               color: '#f59e0b' },
-    { id: 4, label: 'DOWN',    icon: 'ti-arrow-down',  instruction: 'Tilt your chin DOWN',             color: '#ef4444' },
+    { id: 0, label: 'CENTER',  instruction: 'Hold still — looking straight',  color: '#3b82f6' },
+    { id: 1, label: 'LEFT',  instruction: 'Turn your head LEFT',             color: '#8b5cf6' },
+    { id: 2, label: 'RIGHT', instruction: 'Turn your head RIGHT',            color: '#06b6d4' },
+    { id: 3, label: 'UP',    instruction: 'Tilt your head UP',               color: '#f59e0b' },
+    { id: 4, label: 'DOWN',  instruction: 'Tilt your chin DOWN',             color: '#ef4444' },
 ];
 
 const HOLD_FRAMES = 8;
@@ -42,14 +42,14 @@ export default function BiometricSetup() {
     const mountedRef = useRef(true);
     const capturedAngles = useRef([]);
 
-    // === CALIBRATION STATE ===
+    // Calibration state
     const calibrationSamples = useRef([]);
     const baseline = useRef(null);
     const CALIBRATION_FRAMES = 10;
 
-    // ============================================================
+    
     //  LIFECYCLE
-    // ============================================================
+    
     useEffect(() => {
         mountedRef.current = true;
         const stored = localStorage.getItem('user');
@@ -93,9 +93,9 @@ export default function BiometricSetup() {
         }
     };
 
-    // ============================================================
+    
     //  HEAD POSE ESTIMATION (landmark-based)
-    // ============================================================
+    
     const getPose = (landmarks) => {
         const p = landmarks.positions;
         const noseTip  = p[30];
@@ -116,9 +116,9 @@ export default function BiometricSetup() {
         return { yaw, pitch };
     };
 
-    // ============================================================
+    
     //  PHASE CHECK  (relative to calibrated baseline)
-    // ============================================================
+    
     const isPhaseMatch = (pose, phase) => {
         if (!baseline.current) return false;
         const dy = pose.yaw   - baseline.current.yaw;   // + = nose moved toward right jaw in image
@@ -134,9 +134,9 @@ export default function BiometricSetup() {
         }
     };
 
-    // ============================================================
+    
     //  MESH DRAWING
-    // ============================================================
+    
     const drawMesh = (ctx, landmarks, box, match, phaseIdx) => {
         const pts = landmarks.positions;
         const col = match ? '#22c55e' : (PHASES[phaseIdx]?.color || '#3b82f6');
@@ -176,9 +176,9 @@ export default function BiometricSetup() {
         });
     };
 
-    // ============================================================
+    
     //  CAPTURE
-    // ============================================================
+    
     const snap = () => {
         if (!videoRef.current) return null;
         const c = document.createElement('canvas');
@@ -187,9 +187,9 @@ export default function BiometricSetup() {
         return c.toDataURL('image/jpeg', 0.85);
     };
 
-    // ============================================================
+    
     //  MAIN DETECTION LOOP
-    // ============================================================
+    
     const startLoop = useCallback(() => {
         if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
 
@@ -251,7 +251,7 @@ export default function BiometricSetup() {
             // Live head-direction dot (map yaw 0→1 to x 0→100, mirrored for display)
             setHeadDot({ x: (1 - pose.yaw) * 100, y: pose.pitch * 100 });
 
-            // =======  CALIBRATION PHASE  =======
+              // CALIBRATION PHASE  =======
             if (!baseline.current) {
                 calibrationSamples.current.push(pose);
                 drawMesh(ctx, lm, box, false, 0);
@@ -267,7 +267,7 @@ export default function BiometricSetup() {
                 return;
             }
 
-            // =======  PHASE DETECTION  =======
+              // PHASE DETECTION  =======
             const phase = phaseRef.current;
             const match = isPhaseMatch(pose, phase);
             setPositionMatch(match);
@@ -314,9 +314,9 @@ export default function BiometricSetup() {
         }, 130);
     }, [modelsLoaded]);
 
-    // ============================================================
+    
     //  SUBMIT
-    // ============================================================
+    
     const submitBaseline = async () => {
         setIsUploading(true);
         setUploadStatus('Encrypting biometric data...');
@@ -336,7 +336,7 @@ export default function BiometricSetup() {
             const result = await res.json();
             if (!res.ok) throw new Error(result.error || 'Registration rejected');
 
-            setUploadStatus('Biometric Identity Secured ✓');
+            setUploadStatus('Biometric Identity Secured ');
 
             const cur = JSON.parse(localStorage.getItem('user'));
             if (cur) { cur.has_registered_biometrics = true; localStorage.setItem('user', JSON.stringify(cur)); }
@@ -554,7 +554,7 @@ export default function BiometricSetup() {
                         {faceLockedIn && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                                 className="absolute inset-0 z-30 bg-black/80 backdrop-blur-xl flex flex-col items-center justify-center">
-                                {isUploading && !uploadStatus.includes('✓') ? (
+                                {isUploading && !uploadStatus.includes('') ? (
                                     <>
                                         <div className="relative w-20 h-20 mb-5">
                                             <div className="absolute inset-0 border-2 border-blue-500/30 rounded-full animate-ping" />
@@ -565,7 +565,7 @@ export default function BiometricSetup() {
                                         <p className="text-white font-bold text-lg mb-1">{uploadStatus}</p>
                                         <p className="text-slate-500 text-xs font-mono">Powered by Google Gemini AI</p>
                                     </>
-                                ) : uploadStatus.includes('✓') ? (
+                                ) : uploadStatus.includes('') ? (
                                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }} className="text-center">
                                         <div className="h-24 w-24 bg-emerald-500 rounded-full flex items-center justify-center text-white text-5xl shadow-[0_0_60px_rgba(34,197,94,0.5)] mx-auto mb-4"><i className="ti ti-check" /></div>
                                         <p className="text-white font-black text-2xl tracking-wide">REGISTERED</p>
