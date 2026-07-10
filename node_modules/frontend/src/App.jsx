@@ -24,7 +24,7 @@ const AuthGuard = ({ children }) => {
                 navigate('/force-password-change');
             }
             return;
-        } else if (user.has_registered_biometrics === false && user.role !== 'security' && user.role !== 'admin') {
+        } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
             if (location.pathname !== '/biometric-setup') {
                 navigate('/biometric-setup');
             }
@@ -147,7 +147,7 @@ function MainLayout({ children }) {
         // Check if notif is for me
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
             toast(notif.text, { 
-                icon: notif.type === 'leave' ? <i className="ti ti-plane-departure text-xl text-teal-400" /> : notif.type === 'shift' ? <i className="ti ti-calendar-time text-xl text-cyan-400" /> : <i className="ti ti-bell-ringing text-xl text-blue-400" />, 
+                icon: notif.type === 'leave' ? <i className="ti ti-plane-departure text-xl text-teal-400" /> : notif.type === 'shift' ? <i className="ti ti-calendar-time text-xl text-cyan-400" /> : notif.type === 'payroll' ? <i className="ti ti-cash text-xl text-emerald-400" /> : <i className="ti ti-bell-ringing text-xl text-blue-400" />, 
                 duration: 6000 
             });
             setNotifications(prev => [notif, ...prev]);

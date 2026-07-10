@@ -112,6 +112,18 @@ router.post('/', async (req, res) => {
             });
         }
 
+        try {
+            const { createNotification } = await import('./notifications.js');
+            await createNotification({
+                target: employee_id,
+                title: 'New Payslip',
+                text: `Your payslip for ${period_start} to ${period_end} is now available for viewing.`,
+                type: 'payroll'
+            });
+        } catch (notifErr) {
+            console.error('Failed to send payslip notification:', notifErr);
+        }
+
         res.json({ success: true, message: 'Payroll Computed & Saved!' });
 
     } catch (err) {

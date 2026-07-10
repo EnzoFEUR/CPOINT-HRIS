@@ -109,7 +109,7 @@ export default function Login() {
         if (userData.requires_password_change) {
             toast.success('Authentication successful. Please update your password.');
             navigate('/force-password-change');
-        } else if (userData.has_registered_biometrics === false && userData.role !== 'security' && userData.role !== 'admin') {
+        } else if (!userData.has_registered_biometrics && userData.role !== 'security' && userData.role !== 'admin') {
             toast.success('Authentication successful. Please register your biometric face scan.');
             navigate('/biometric-setup');
         } else {
