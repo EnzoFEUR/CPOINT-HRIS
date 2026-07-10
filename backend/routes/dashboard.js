@@ -1,9 +1,10 @@
 import express from 'express';
 import { supabase } from '../index.js';
+import { checkRole } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.get('/admin', async (req, res) => {
+router.get('/admin', checkRole('admin'), async (req, res) => {
     try {
         const todayStr = new Date().toISOString().split('T')[0];
 

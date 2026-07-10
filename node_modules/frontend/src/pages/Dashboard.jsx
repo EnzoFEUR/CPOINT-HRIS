@@ -11,8 +11,15 @@ export default function Dashboard() {
             try {
                 const res = await fetch('http://localhost:5000/api/dashboard/admin');
                 const result = await res.json();
-                if (result) {
+                if (res.ok && result) {
                     setDashboardData(result);
+                } else {
+                    console.error('Dashboard Error:', result.error || 'Failed to load');
+                    if (res.status === 401) {
+                        // Force logout if token is dead
+                        localStorage.removeItem('user');
+                        window.location.href = '/login';
+                    }
                 }
             } catch (err) {
                 console.error('Failed to load dashboard:', err);

@@ -1,26 +1,8 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
 import { supabase } from '../index.js';
-import { fileURLToPath } from 'url';
 import { createNotification } from './notifications.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const shiftsFilePath = path.join(__dirname, '../data/shifts.json');
-
 const router = express.Router();
-
-// Ensure shifts file exists
-const initShifts = () => {
-    if (!fs.existsSync(path.join(__dirname, '../data'))) {
-        fs.mkdirSync(path.join(__dirname, '../data'));
-    }
-    if (!fs.existsSync(shiftsFilePath)) {
-        fs.writeFileSync(shiftsFilePath, JSON.stringify({}));
-    }
-};
-initShifts();
 
 router.get('/', async (req, res) => {
     try {
@@ -30,13 +12,11 @@ router.get('/', async (req, res) => {
             .order('first_name', { ascending: true });
 
         if (error) throw error;
-
-        const shiftsData = JSON.parse(fs.readFileSync(shiftsFilePath, 'utf8'));
-
-        // Attach shifts to employees
+        
+        // Ensure every employee object returns 'Unassigned' if shift is null, for frontend consistency
         const employeesWithShifts = employees.map(emp => ({
             ...emp,
-            shift: shiftsData[emp.id] || 'Unassigned'
+            shift: emp.shift || 'Unassigned'
         }));
 
         res.json(employeesWithShifts);
@@ -49,33 +29,36 @@ router.post('/assign', async (req, res) => {
     try {
         const { employee_id, shift } = req.body;
         
-        const shiftsData = JSON.parse(fs.readFileSync(shiftsFilePath, 'utf8'));
-        shiftsData[employee_id] = shift;
-        
-        fs.writeFileSync(shiftsFilePath, JSON.stringify(shiftsData, null, 2));
+        const { error } = await supabase
+            .from('employees')
+            .update({ shift })
+            .eq('id', employee_id);
+            
+        if (error) throw error;
 
         // Send notification to employee
         await createNotification({
             target: employee_id,
             title: 'Shift Assignment Updated',
-            text: `Your shift schedule was updated to: ${shift}`,
-            type: 'shift'
+            text: `Your shift has been updated to: ${shift}`,
+            type: 'system'
         });
 
-        if (req.body.admin_id) {
+        // Optional Audit Logging
+        if (req.user && req.user.role === 'admin') {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'shifts',
-                description: `Assigned shift ${shift} to employee ID ${employee_id}`,
+                description: `Reassigned shift for employee ${employee_id} to ${shift}`,
                 subject_type: 'App\\Models\\Employee',
                 subject_id: employee_id,
                 event: 'updated',
-                causer_id: req.body.admin_id,
-                properties: { shift }
+                causer_id: req.user.id,
+                properties: { new_shift: shift }
             });
         }
 
-        res.json({ success: true, message: `Shift updated to ${shift} successfully.` });
+        res.json({ success: true, message: 'Shift assigned successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

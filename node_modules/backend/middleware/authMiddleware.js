@@ -1,11 +1,20 @@
 import { supabase } from '../index.js';
 
 export const verifyToken = async (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'No token provided' });
+    const authHeader = req.headers.authorization;
+    console.log(`[Auth] Checking token for ${req.path}. Header: ${authHeader ? 'Present' : 'Missing'}`);
+    
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+
+    const token = authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Invalid token format' });
 
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
+    
+    if (error || !user) {
+        console.log(`[Auth] Verify failed:`, error?.message || 'No user found');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     // Fetch custom user details from our DB
     const { data: employee } = await supabase

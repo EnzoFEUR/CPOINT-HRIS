@@ -28,22 +28,23 @@ import shiftRoutes from './routes/shifts.js';
 import disciplinaryRoutes from './routes/disciplinary.js';
 import notificationRoutes from './routes/notifications.js';
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
+import { verifyToken, checkRole } from './middleware/authMiddleware.js';
 
 // Global Security Middleware
 app.use(securityHeaders);
 app.use(removeExposedHeaders);
 
-// Mount Routes
-app.use('/api/employees', employeeRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/payroll', payrollRoutes);
-app.use('/api/leaves', leaveRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/shifts', shiftRoutes);
-app.use('/api/disciplinary', disciplinaryRoutes);
-app.use('/api/profile', profileRoutes);
-app.use('/api/audit-logs', auditLogRoutes);
-app.use('/api/notifications', notificationRoutes);
+// Mount Authenticated Routes
+app.use('/api/employees', verifyToken, employeeRoutes);
+app.use('/api/attendance', verifyToken, attendanceRoutes);
+app.use('/api/payroll', verifyToken, payrollRoutes);
+app.use('/api/leaves', verifyToken, leaveRoutes);
+app.use('/api/dashboard', verifyToken, dashboardRoutes);
+app.use('/api/shifts', verifyToken, shiftRoutes);
+app.use('/api/disciplinary', verifyToken, disciplinaryRoutes);
+app.use('/api/profile', verifyToken, profileRoutes);
+app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
+app.use('/api/notifications', verifyToken, notificationRoutes);
 
 // Basic Health Check Route to Verify Supabase Connection
 app.get('/api/health', async (req, res) => {
