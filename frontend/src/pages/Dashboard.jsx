@@ -61,8 +61,7 @@ export default function Dashboard() {
             {/* Page header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
                 <div>
-                    <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Enterprise Analytics</h2>
-                    <p className="text-slate-500 font-medium mt-1">Live workforce telemetry and operational intelligence.</p>
+                    <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">HRIS Analytics</h2>
                 </div>
                 <div className="flex gap-3">
                     <button className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50 transition-colors">

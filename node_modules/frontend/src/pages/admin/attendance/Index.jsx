@@ -18,15 +18,17 @@ const Index = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
     const [selectedImage, setSelectedImage] = useState(null);
+    const [selectedImageType, setSelectedImageType] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     const todayStr = new Date().toISOString().split('T')[0];
     const todaysCount = logs.filter(log => log.date === todayStr).length;
 
-    const openImageModal = (imageUrl) => {
+    const openImageModal = (imageUrl, type) => {
         if (!imageUrl) return;
         setSelectedImage(imageUrl);
+        setSelectedImageType(type);
         setIsModalOpen(true);
         document.body.style.overflow = 'hidden';
     };
@@ -174,8 +176,8 @@ const Index = () => {
                                                     </span>
                                                     {log.time_in_photo ? (
                                                         <button 
-                                                            onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`)}
-                                                            className="w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
+                                                            className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
@@ -202,8 +204,8 @@ const Index = () => {
                                                     )}
                                                     {log.time_out_photo && (
                                                         <button 
-                                                            onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`)}
-                                                            className="w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
+                                                            className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
@@ -291,11 +293,14 @@ const Index = () => {
                             >
                                 <i className="ti ti-x text-xl font-bold" />
                             </button>
-                            <div className="rounded-md overflow-hidden bg-slate-100">
-                                <img src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[70vh]" />
+                            <div className="rounded-md overflow-hidden bg-slate-100 flex justify-center min-h-[200px]">
+                                <img key={selectedImage} src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[70vh]" />
                             </div>
                             <div className="p-4 text-center">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Face-AI Verification Capture</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                    {selectedImageType} Verification Capture
+                                </p>
+                                <p className="text-[9px] text-slate-300 mt-1 max-w-full break-all px-4">{selectedImage.split('/').pop()}</p>
                             </div>
                         </motion.div>
                     </div>
