@@ -260,7 +260,7 @@ export default function Login() {
             </div>
             
             <div className="absolute bottom-6 w-full text-center pointer-events-none">
-                <p className="text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase">Enterprise Secure Auth</p>
+                <p className="text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase">Secure Auth</p>
             </div>
         </motion.div>
     );

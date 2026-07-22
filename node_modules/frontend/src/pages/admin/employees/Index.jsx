@@ -28,9 +28,12 @@ export default function Index() {
         toast.success('Password copied to clipboard!');
     };
 
-    const filteredEmployees = employees.filter(emp => 
-        `${emp.first_name} ${emp.last_name} ${emp.department} ${emp.role}`.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredEmployees = employees.filter(emp => {
+        const roleStr = (emp.role || '').toLowerCase();
+        if (roleStr === 'admin' || roleStr === 'security') return false;
+        
+        return `${emp.first_name} ${emp.last_name} ${emp.department} ${emp.role}`.toLowerCase().includes(searchQuery.toLowerCase());
+    });
 
     const paginatedEmployees = filteredEmployees.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 

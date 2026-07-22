@@ -175,7 +175,14 @@ function MainLayout({ children }) {
       } catch (err) { console.error(err); }
   };
 
-  const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const [currentDate, setCurrentDate] = useState(() => new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDate(new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('user');

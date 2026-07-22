@@ -197,9 +197,13 @@ const Index = () => {
                                                         <span className="font-mono text-slate-600 font-bold bg-slate-100 px-3 py-1 rounded-lg text-sm border border-slate-200">
                                                             {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
-                                                    ) : (
+                                                    ) : log.date === new Date().toISOString().split('T')[0] ? (
                                                         <span className="bg-amber-50 text-amber-600 border border-amber-100 px-3 py-1 rounded-lg text-sm font-bold animate-pulse">
                                                             Active
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-red-50 text-red-600 border border-red-100 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                                            Missed Punch
                                                         </span>
                                                     )}
                                                     {log.time_out_photo && (

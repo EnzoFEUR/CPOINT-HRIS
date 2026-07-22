@@ -66,6 +66,9 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// Initialize Cron Jobs
+import './cron/attendanceJobs.js';
+
 app.listen(port, () => {
     console.log('HRIS server running on port ' + port);
 });

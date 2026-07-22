@@ -45,6 +45,11 @@ export default function PayrollIndex() {
         queryFn: fetchPayrolls
     });
 
+    const filteredPayrolls = payrolls.filter(p => {
+        const roleStr = (p.employees?.role || '').toLowerCase();
+        return roleStr !== 'admin' && roleStr !== 'security';
+    });
+
     // Animations
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -152,7 +157,7 @@ export default function PayrollIndex() {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 <AnimatePresence>
-                                    {payrolls.length > 0 ? payrolls.map((payroll) => (
+                                    {filteredPayrolls.length > 0 ? filteredPayrolls.map((payroll) => (
                                         <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">

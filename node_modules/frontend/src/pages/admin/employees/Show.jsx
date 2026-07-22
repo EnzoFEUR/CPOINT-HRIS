@@ -203,7 +203,7 @@ export default function Show() {
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Base Salary</p>
                                 <p className="text-3xl font-black text-slate-800 tracking-tight flex items-end gap-1">
                                     <span className="text-emerald-500 text-2xl mb-0.5">₱</span>
-                                    {Number(employee.monthly_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {Number(employee.salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     <span className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1.5 ml-1">/ mo</span>
                                 </p>
                             </div>

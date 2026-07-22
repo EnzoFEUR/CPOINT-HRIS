@@ -78,6 +78,9 @@ export default function ShiftsIndex() {
 
     const filteredEmployees = useMemo(() => {
         return employees.filter(emp => {
+            const roleStr = (emp.role || '').toLowerCase();
+            if (roleStr === 'admin' || roleStr === 'security') return false;
+
             const matchSearch = `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
             const matchDept = filterDept === 'All' || emp.department === filterDept;
             return matchSearch && matchDept;

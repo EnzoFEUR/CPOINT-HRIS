@@ -398,7 +398,7 @@ export default function BiometricSetup() {
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-4">
                     <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em] mb-3">
                         <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                        Enterprise Biometric Enrollment
+                        Biometric Enrollment
                     </div>
                     <h2 className="text-3xl font-black text-white tracking-tight">Face ID Registration</h2>
                     <p className="text-slate-500 mt-1.5 text-sm">
