@@ -29,7 +29,12 @@ const MyQr = () => {
 
                 <div className="flex justify-center mb-8">
                     <div className="p-4 bg-white border-2 border-slate-900 rounded-xl">
-                        <QRCode value={String(user.id)} size={250} />
+                        <QRCode 
+                            value={user.company_id || String(user.id)} 
+                            size={280} 
+                            level="H"
+                            fgColor="#0f172a"
+                        />
                     </div>
                 </div>
 

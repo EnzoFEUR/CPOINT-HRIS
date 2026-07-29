@@ -304,7 +304,7 @@ const Scanner = () => {
     const style = document.createElement('style');
     style.id = 'scanner-css';
     style.textContent = `
-      #qr-reader video { object-fit:cover!important; width:100vw!important; height:100dvh!important; }
+      #qr-reader video { object-fit:contain!important; width:100vw!important; height:100dvh!important; }
       #qr-reader { width:100vw; height:100dvh; overflow:hidden; }
       #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
       #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
@@ -351,7 +351,11 @@ const Scanner = () => {
     qrRef.current = new Html5Qrcode('qr-reader');
     qrRef.current.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 280, height: 280 }, disableFlip: false },
+      { 
+        fps: 30, 
+        qrbox: window.innerWidth < 500 ? 250 : 320, 
+        disableFlip: false 
+      },
       onQrSuccess,
       () => {} // ignore decode failures
     ).catch(() => {
@@ -458,8 +462,13 @@ const Scanner = () => {
   const startFaceCamera = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
+      const isPortrait = window.innerHeight > window.innerWidth;
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: isPortrait ? 720 : 1280 }, 
+          height: { ideal: isPortrait ? 1280 : 720 } 
+        }
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -1031,7 +1040,7 @@ const Scanner = () => {
             <span><i className="ti ti-wand"></i></span> <span className="hidden sm:inline">Mock Scan</span>
           </button>
           <button
-            onClick={() => { localStorage.removeItem('user'); window.location.href = '/login'; }}
+            onClick={async () => { await supabase.auth.signOut(); localStorage.removeItem('user'); window.location.href = '/login'; }}
             className="h-11 px-5 bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-2xl border border-white/10 transition-all font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2"
           >
             <span><i className="ti ti-plug-x"></i></span> <span className="hidden sm:inline">Sign Out</span>

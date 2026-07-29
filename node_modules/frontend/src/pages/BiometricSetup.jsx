@@ -340,8 +340,13 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_MODELS_LOADED' });
         dispatch({ type: 'SET_STATUS', payload: 'Requesting optical sensor...' });
 
+        const isPortrait = window.innerHeight > window.innerWidth;
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+          video: { 
+            facingMode: 'user', 
+            width: { ideal: isPortrait ? 720 : 1280 }, 
+            height: { ideal: isPortrait ? 1280 : 720 } 
+          }
         });
         if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
 

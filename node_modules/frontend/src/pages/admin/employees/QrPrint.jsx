@@ -27,7 +27,12 @@ export default function QrPrint({ employee = {} }) {
 
                 <div className="flex justify-center mb-6">
                     <div className="p-2 border-4 border-slate-900 rounded-xl">
-                        <QRCode value={String(employee.id)} size={200} />
+                        <QRCode 
+                            value={employee.company_id || String(employee.id)} 
+                            size={250} 
+                            level="H"
+                            fgColor="#0f172a"
+                        />
                     </div>
                 </div>
 

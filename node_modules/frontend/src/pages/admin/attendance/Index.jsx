@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 const Index = () => {
     const fetchAttendance = async () => {
-        const res = await fetch('http://localhost:5000/api/attendance');
+        const res = await fetchWithAuth('http://localhost:5000/api/attendance');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch');
-        return data || [];
+        return data.data || data || [];
     };
 
     const { data: logs = [], isLoading } = useQuery({
