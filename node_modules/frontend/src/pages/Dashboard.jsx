@@ -3,19 +3,12 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
+import { fetchWithAuth } from '../utils/api';
 
 export default function Dashboard() {
     const fetchDashboardData = async () => {
-        const res = await fetch('http://localhost:5000/api/dashboard/admin');
+        const res = await fetchWithAuth('/api/dashboard/admin');
         const result = await res.json();
-        
-        if (!res.ok) {
-            if (res.status === 401) {
-                localStorage.removeItem('user');
-                window.location.href = '/login';
-            }
-            throw new Error(result.error || 'Failed to load dashboard');
-        }
         return result;
     };
 

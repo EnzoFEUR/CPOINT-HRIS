@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { motion } from 'framer-motion';
+import { fetchWithAuth } from '../utils/api';
 
 export default function ProcessPayroll() {
     const [employees, setEmployees] = useState([]);
@@ -36,9 +38,8 @@ export default function ProcessPayroll() {
         setSuccess('');
 
         try {
-            const res = await fetch('http://localhost:5000/api/payroll', {
+            const res = await fetchWithAuth('/api/payroll', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     employee_id: employeeId,
                     period_start: periodStart,

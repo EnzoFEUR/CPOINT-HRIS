@@ -3,6 +3,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchWithAuth } from '../utils/api';
+import { supabase } from '../supabaseClient';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -32,17 +34,12 @@ const EmployeeDashboard = () => {
 
     const fetchDashboardData = async (userId) => {
         const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
-            fetch(`http://localhost:5000/api/attendance?employee_id=${userId}`),
-            fetch(`http://localhost:5000/api/payroll?employee_id=${userId}&limit=1`),
-            fetch(`http://localhost:5000/api/shifts?employee_id=${userId}`),
-            fetch(`http://localhost:5000/api/disciplinary?employee_id=${userId}`),
-            fetch(`http://localhost:5000/api/leaves?employee_id=${userId}`)
+            fetchWithAuth(`/api/attendance?employee_id=${userId}`),
+            fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
+            fetchWithAuth(`/api/shifts?employee_id=${userId}`),
+            fetchWithAuth(`/api/disciplinary?employee_id=${userId}`),
+            fetchWithAuth(`/api/leaves?employee_id=${userId}`)
         ]);
-
-        if (attRes.status === 401) {
-            localStorage.removeItem('user');
-            window.location.href = '/login';
-        }
 
         const [attendanceData, payrollData, shiftData, discData, leaveData] = await Promise.all([
             attRes.json(), payRes.json(), shiftRes.json(), discRes.json(), leaveRes.json()
@@ -75,9 +72,8 @@ const EmployeeDashboard = () => {
         e.preventDefault();
         setIsSubmittingLeave(true);
         try {
-            const res = await fetch('http://localhost:5000/api/leaves', {
+            const res = await fetchWithAuth('/api/leaves', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ employee_id: user.id, ...leaveForm })
             });
             const data = await res.json();
@@ -99,7 +95,7 @@ const EmployeeDashboard = () => {
     const handleAcknowledgeAll = async () => {
         try {
             await Promise.all(infractions.map(inf => 
-                fetch(`http://localhost:5000/api/disciplinary/${inf.id}/acknowledge`, { method: 'PUT' })
+                fetchWithAuth(`/api/disciplinary/${inf.id}/acknowledge`, { method: 'PUT' })
             ));
             toast.success('All memos acknowledged.');
             setShowInfractionsModal(false);

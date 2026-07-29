@@ -85,7 +85,8 @@ router.post('/scan', async (req, res) => {
         const uploadImage = async (base64Str, type) => {
             if (!base64Str) return null;
             const buffer = Buffer.from(base64Str.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-            const fileName = `attendance/${type}_${employee_id}_${Date.now()}.jpg`;
+            const fileIdentifier = user.company_id || employee_id;
+            const fileName = `attendance/${type}-${fileIdentifier}-${Date.now()}.jpg`;
             const { data, error } = await supabase.storage
                 .from('public-bucket')
                 .upload(fileName, buffer, { contentType: 'image/jpeg' });

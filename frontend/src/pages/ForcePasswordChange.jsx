@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { fetchWithAuth } from '../utils/api';
 import { motion } from 'framer-motion';
 
 export default function ForcePasswordChange() {
@@ -44,9 +45,8 @@ export default function ForcePasswordChange() {
             if (authError) throw authError;
 
             // Update DB so progress is saved
-            await fetch('http://localhost:5000/api/attendance/password-changed', {
+            await fetchWithAuth('/api/attendance/password-changed', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ employee_id: user.id })
             });
 

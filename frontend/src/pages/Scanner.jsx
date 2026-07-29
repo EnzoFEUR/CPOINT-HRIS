@@ -3,6 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 
 // 
@@ -155,6 +156,7 @@ const Scanner = () => {
     const [lockProgress, setLockProgress] = useState(0);
     const [faceLockedIn, setFaceLockedIn] = useState(false);
     const [matchScore, setMatchScore] = useState(null);
+    const matchScoreRef = useRef(null); // Enterprise Data Vault: Immune to stale closures
 
     // Liveness detection state (anti-spoofing)
     const [blinkDetected, setBlinkDetected] = useState(false);
@@ -379,6 +381,7 @@ const Scanner = () => {
                 lockFramesRef.current = Math.max(0, lockFramesRef.current - 2);
                 setLockProgress(Math.max(0, (lockFramesRef.current / CONFIG.REQUIRED_LOCK_FRAMES) * 100));
                 setMatchScore(null);
+                matchScoreRef.current = null;
                 setAiStatus('SEARCHING FOR FACE...');
                 return;
             }
@@ -395,11 +398,13 @@ const Scanner = () => {
             const bigEnough = box.width >= nw * CONFIG.MIN_FACE_RATIO;
 
             //  Identity match (128-dim Euclidean distance) 
-            let matched = true, dist = 0;
+            let matched = true, dist = 0, currentScore = 0;
             if (baselineRef.current && liveDsc) {
                 dist = faceapi.euclideanDistance(baselineRef.current, liveDsc);
                 matched = dist < CONFIG.FACE_MATCH_THRESHOLD;
-                setMatchScore(Math.round((1 - dist) * 100));
+                currentScore = Math.round((1 - dist) * 100);
+                setMatchScore(currentScore);
+                matchScoreRef.current = currentScore; // Instantly update the vault
             }
 
             if (!centered || !bigEnough) {
@@ -413,7 +418,7 @@ const Scanner = () => {
             if (!matched) {
                 lockFramesRef.current = 0;
                 setLockProgress(0);
-                setAiStatus('IDENTITY MISMATCH — ACCESS DENIED');
+                setAiStatus(`IDENTITY MISMATCH [${currentScore}%] — ACCESS DENIED`);
                 drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
                 return;
             }
@@ -459,9 +464,9 @@ const Scanner = () => {
                 clearInterval(detectionRef.current);
                 detectionRef.current = null;
                 setFaceLockedIn(true);
-                setAiStatus('IDENTITY CONFIRMED');
+                setAiStatus(`IDENTITY CONFIRMED [${currentScore}%]`);
                 drawFaceMesh(ctx, det.landmarks, box, 'locked');
-                captureAndSubmit();
+                captureAndSubmit(currentScore);
             } else {
                 setAiStatus(baselineRef.current
                     ? `VERIFYING [${lockFramesRef.current}/${CONFIG.REQUIRED_LOCK_FRAMES}]`
@@ -474,7 +479,7 @@ const Scanner = () => {
     // 
     //  CAPTURE & SUBMIT — Send face + id to backend
     // 
-    const captureAndSubmit = useCallback(async () => {
+    const captureAndSubmit = useCallback(async (finalMatchScore) => {
         if (submitLockRef.current) return;
         submitLockRef.current = true;
 
@@ -489,19 +494,13 @@ const Scanner = () => {
 
         const eid = employeeIdRef.current || '';
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
-
-            const res = await fetch(`${CONFIG.API_BASE}/attendance/scan`, {
+            const res = await fetchWithAuth('/api/attendance/scan', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
                 body: JSON.stringify({
                     employee_id: eid,
                     image_data: img64,
-                    face_match_score: matchScore,
+                    face_match_score: finalMatchScore ?? matchScoreRef.current, // Fallback to the Data Vault
+                    liveness_data: {}
                 }),
             });
             const data = await res.json();
@@ -538,6 +537,7 @@ const Scanner = () => {
         setFaceLockedIn(false);
         setLockProgress(0);
         setMatchScore(null);
+        matchScoreRef.current = null;
         setBlinkDetected(false);
         setLivenessStatus('WAITING');
         setEmployeeName('');

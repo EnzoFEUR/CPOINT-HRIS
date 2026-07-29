@@ -150,7 +150,36 @@ router.delete('/:id', async (req, res) => {
         // Fetch company_id BEFORE deleting the user, because the deleteUser cascades and wipes the employee row!
         const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
 
-        // Delete from auth (cascades via foreign key)
+        // --------------------------------------------------------------------------------
+        // ENTERPRISE ORPHAN DATA CLEANUP: Fetch all daily attendance photos to shred them
+        // --------------------------------------------------------------------------------
+        const { data: attendanceLogs } = await supabase
+            .from('attendances')
+            .select('time_in_photo, time_out_photo')
+            .eq('employee_id', req.params.id);
+
+        let photosToShred = [];
+        if (attendanceLogs) {
+            attendanceLogs.forEach(log => {
+                if (log.time_in_photo) photosToShred.push(log.time_in_photo);
+                if (log.time_out_photo) photosToShred.push(log.time_out_photo);
+            });
+        }
+        
+        // Add the baseline face photo to the shred list
+        if (empData?.company_id) {
+            photosToShred.push(`face-baselines/${empData.company_id}.jpg`);
+        } else {
+            photosToShred.push(`face-baselines/${req.params.id}.jpg`);
+        }
+
+        // Bulk delete all photos from the storage bucket in one network request
+        if (photosToShred.length > 0) {
+            await supabase.storage.from('public-bucket').remove(photosToShred).catch(() => {});
+        }
+        // --------------------------------------------------------------------------------
+
+        // Delete from auth (cascades via foreign key and wipes all database rows)
         const { error } = await supabase.auth.admin.deleteUser(req.params.id);
         if (error) throw error;
         
@@ -158,23 +187,16 @@ router.delete('/:id', async (req, res) => {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
-                description: `Deleted employee record ID ${req.params.id}`,
+                description: `Deleted employee record ID ${req.params.id}. Shredded ${photosToShred.length} associated biometric/attendance files.`,
                 subject_type: 'App\\Models\\Employee',
                 subject_id: req.params.id,
                 event: 'deleted',
                 causer_id: req.body.admin_id,
-                properties: {}
+                properties: { files_shredded: photosToShred.length }
             });
         }
 
-        // Delete the image properly using the fetched company_id
-        if (empData?.company_id) {
-            await supabase.storage.from('public-bucket').remove([`face-baselines/${empData.company_id}.jpg`]).catch(() => {});
-        } else {
-            await supabase.storage.from('public-bucket').remove([`face-baselines/${req.params.id}.jpg`]).catch(() => {});
-        }
-
-        res.json({ success: true, message: 'Employee deleted permanently.' });
+        res.json({ success: true, message: `Employee deleted permanently. Shredded ${photosToShred.length} orphaned files.` });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
