@@ -927,7 +927,7 @@ const Scanner = () => {
               <div className="text-center sm:text-left flex-1 w-full">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 mb-4">
                   <div className={`h-12 w-12 rounded-full flex items-center justify-center text-2xl shadow-xl shrink-0 ${state.feedback.type === 'success' ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-red-500 shadow-red-500/50'}`}>
-                    {state.feedback.type === 'success' ? '✓' : '✕'}
+                    {state.feedback.type === 'success' ? <i className="ti ti-check"></i> : <i className="ti ti-x"></i>}
                   </div>
                   <h2 className={`text-2xl sm:text-4xl font-black tracking-tighter uppercase ${state.feedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {state.feedback.title}
