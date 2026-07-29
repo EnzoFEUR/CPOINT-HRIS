@@ -41,7 +41,11 @@ export default function Login() {
             }
 
             // Instead of logging in, save employee data and proceed to OTP step
-            setEmployeeData(employee);
+            // Store auth metadata here to bypass the missing column in the public database schema
+            setEmployeeData({ 
+                ...employee, 
+                _auth_metadata: authData.user.user_metadata 
+            });
             setStep(2);
         }
     };
@@ -102,8 +106,13 @@ export default function Login() {
         const userData = { 
             ...employeeData, 
             ...dbData,
+            has_registered_biometrics: employeeData._auth_metadata?.has_registered_biometrics || false,
             name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
         };
+        
+        // Remove the temporary auth metadata object so it doesn't pollute localStorage
+        delete userData._auth_metadata;
+
         localStorage.setItem('user', JSON.stringify(userData));
 
         if (userData.requires_password_change) {

@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { supabase } from '../index.js';
+import { supabase } from '../supabaseClient.js';
 
 /**
  * Initializes all Enterprise Cron Jobs for Background Data Management.

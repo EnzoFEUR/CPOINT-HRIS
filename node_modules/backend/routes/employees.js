@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase } from '../index.js';
+import { supabase } from '../supabaseClient.js';
 
 const router = express.Router();
 
@@ -166,11 +166,11 @@ router.delete('/:id', async (req, res) => {
             });
         }
         
-        // Add the baseline face photo to the shred list
+        // Add the baseline face photo to the shred list using the new nested structure
         if (empData?.company_id) {
-            photosToShred.push(`face-baselines/${empData.company_id}.jpg`);
+            photosToShred.push(`face-baselines/${empData.company_id}/${req.params.id}.jpg`);
         } else {
-            photosToShred.push(`face-baselines/${req.params.id}.jpg`);
+            photosToShred.push(`face-baselines/${req.params.id}/${req.params.id}.jpg`);
         }
 
         // Bulk delete all photos from the storage bucket in one network request
@@ -179,10 +179,30 @@ router.delete('/:id', async (req, res) => {
         }
         // --------------------------------------------------------------------------------
 
-        // Delete from auth (cascades via foreign key and wipes all database rows)
-        const { error } = await supabase.auth.admin.deleteUser(req.params.id);
-        if (error) throw error;
+        // --------------------------------------------------------------------------------
+        // ENTERPRISE ORPHAN DB RECORD CLEANUP: Remove constraint blockers
+        // (Since the DB schema might be missing ON DELETE CASCADE, we manually purge relations)
+        // --------------------------------------------------------------------------------
+        const tablesToClean = [
+            'attendances', 
+            'schedules', 
+            'leave_requests', 
+            'payrolls', 
+            'audit_logs', 
+            'disciplinary_logs'
+        ];
         
+        for (const table of tablesToClean) {
+            // Delete where employee_id matches
+            await supabase.from(table).delete().eq('employee_id', req.params.id);
+            // Delete where user_id matches (for tables that use user_id instead)
+            await supabase.from(table).delete().eq('user_id', req.params.id);
+        }
+
+        // 1. Delete from auth.users (This CASCADES and deletes the employee row too)
+        const { error } = await supabase.auth.admin.deleteUser(req.params.id);
+        if (error && !error.message.includes('User not found')) throw error;
+
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({

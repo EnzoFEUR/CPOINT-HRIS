@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { supabase } from '../index.js';
+import { supabase } from '../supabaseClient.js';
 
 // Schedule job to run every day at midnight (00:00)
 cron.schedule('0 0 * * *', async () => {
