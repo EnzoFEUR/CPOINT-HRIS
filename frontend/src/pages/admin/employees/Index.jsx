@@ -113,20 +113,33 @@ export default function Index() {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-black text-slate-900 tracking-tight">{session.success ?? 'Account Created'}</h3>
-                                    <p className="text-sm text-slate-500 font-medium mt-0.5">Securely distribute this temporary password to the employee.</p>
+                                    <p className="text-sm text-slate-500 font-medium mt-0.5">Securely distribute this ID and temporary password to the employee.</p>
                                     <p className="text-[10px] font-bold text-slate-400 mt-2 flex items-center gap-1.5 uppercase tracking-widest">
                                         <i className="ti ti-shield-check" /> Forced change on first login
                                     </p>
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-2 w-full md:w-auto">
-                                <div className="flex-1 md:w-48 px-4 py-3 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center">
-                                    <span className="font-mono text-lg font-black text-slate-900 tracking-widest" dangerouslySetInnerHTML={{ __html: session.temp_password_html || session.temp_password }} />
+                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                                {session.company_id && (
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-1">Company ID</span>
+                                        <div className="px-4 py-3 bg-blue-50 text-blue-700 rounded-md border border-blue-100 flex items-center justify-center w-full">
+                                            <span className="font-mono text-lg font-black tracking-widest">{session.company_id}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-1">Temp Password</span>
+                                    <div className="flex items-center gap-2 w-full">
+                                        <div className="px-4 py-3 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center flex-1">
+                                            <span className="font-mono text-lg font-black text-slate-900 tracking-widest">{session.temp_password}</span>
+                                        </div>
+                                        <button onClick={() => copyPassword(session.temp_password)} className="h-[52px] px-6 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md transition-colors active:scale-95 text-sm">
+                                            Copy
+                                        </button>
+                                    </div>
                                 </div>
-                                <button onClick={() => copyPassword(session.temp_password)} className="h-[52px] px-6 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md transition-colors active:scale-95 text-sm">
-                                    Copy
-                                </button>
                             </div>
                         </motion.div>
                     )}

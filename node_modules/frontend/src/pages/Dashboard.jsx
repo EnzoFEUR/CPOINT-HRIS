@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../supabaseClient';
 
 export default function Dashboard() {
     const fetchDashboardData = async () => {
@@ -18,10 +19,25 @@ export default function Dashboard() {
         return result;
     };
 
-    const { data: dashboardData, isLoading, isError } = useQuery({
+    const { data: dashboardData, isLoading, isError, refetch } = useQuery({
         queryKey: ['adminDashboard'],
         queryFn: fetchDashboardData
     });
+
+    // Real-Time WebSockets for the Live Activity Feed
+    React.useEffect(() => {
+        const subscription = supabase
+            .channel('dashboard_live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
+                console.log('Live Feed Update:', payload);
+                refetch(); // Instantly reload dashboard data
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
+    }, [refetch]);
 
     if (isLoading || !dashboardData) {
         return (
@@ -205,32 +221,44 @@ export default function Dashboard() {
                         </div>
                         
                         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
-                            {recentLogs.length > 0 ? recentLogs.map(log => (
-                                <div key={log.id} className="flex gap-3">
-                                    <div className="mt-1">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 ring-4 ring-blue-50"></div>
-                                        <div className="w-px h-full bg-slate-100 mx-auto my-1"></div>
-                                    </div>
-                                    <div className="pb-4">
-                                        <p className="text-sm font-bold text-slate-700">
-                                            {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
-                                        </p>
-                                        <p className="text-[10px] text-slate-500 mt-0.5">
-                                            Clocked in at <span className="font-bold text-slate-700">{new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                        </p>
-                                        {log.status.includes('Late') && (
-                                            <span className="inline-block mt-1 px-2 py-0.5 bg-red-50 text-red-600 text-[9px] font-bold uppercase rounded border border-red-100">
-                                                {log.status}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            )) : (
-                                <div className="h-full flex flex-col items-center justify-center text-center pb-8">
-                                    <i className="ti ti-zzz text-3xl text-slate-200 mb-2"></i>
-                                    <p className="text-xs font-bold text-slate-400">No recent logs today.</p>
-                                </div>
-                            )}
+                            <AnimatePresence initial={false}>
+                                {recentLogs.length > 0 ? recentLogs.map(log => (
+                                    <motion.div 
+                                        key={log.id} 
+                                        initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        className="flex gap-3"
+                                        layout
+                                    >
+                                        <div className="mt-1">
+                                            <div className="w-2 h-2 rounded-full bg-blue-500 ring-4 ring-blue-50"></div>
+                                            <div className="w-px h-full bg-slate-100 mx-auto my-1"></div>
+                                        </div>
+                                        <div className="pb-4">
+                                            <p className="text-sm font-bold text-slate-700">
+                                                {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 mt-0.5">
+                                                Clocked in at <span className="font-bold text-slate-700">{new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                            </p>
+                                            {log.status.includes('Late') && (
+                                                <span className="inline-block mt-1 px-2 py-0.5 bg-red-50 text-red-600 text-[9px] font-bold uppercase rounded border border-red-100">
+                                                    {log.status}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )) : (
+                                    <motion.div 
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="h-full flex flex-col items-center justify-center text-center pb-8"
+                                    >
+                                        <i className="ti ti-zzz text-3xl text-slate-200 mb-2"></i>
+                                        <p className="text-xs font-bold text-slate-400">No recent logs today.</p>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
 

@@ -3,16 +3,19 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [employee, setEmployee] = useState(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [imageError, setImageError] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         if (!id || id === 'undefined') return;
@@ -51,6 +54,12 @@ export default function Show() {
             return;
         }
 
+        setIsDeleting(true);
+        
+        // Artificial delay for UX: lets the user see the "Deleting..." animation
+        // since the local server processes the request too fast (0 ping)
+        await new Promise(resolve => setTimeout(resolve, 800));
+
         try {
             const user = JSON.parse(localStorage.getItem('user'));
             const response = await fetch(`http://localhost:5000/api/employees/${employee.id}`, {
@@ -61,12 +70,20 @@ export default function Show() {
             const resData = await response.json();
             if (resData.success) {
                 toast.success('Employee deleted permanently.');
+                
+                // Instantly wipe the employee from the cache so they don't 'pop' out later
+                queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                    return oldData ? oldData.filter(emp => emp.id !== employee.id) : [];
+                });
+                
                 navigate('/admin/employees');
             } else {
                 toast.error(resData.error || 'Failed to delete employee.');
+                setIsDeleting(false);
             }
         } catch (error) {
             toast.error('Network error while deleting.');
+            setIsDeleting(false);
         }
     };
 
@@ -273,23 +290,27 @@ export default function Show() {
                                     value={deleteConfirmText}
                                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                                     placeholder="Type name here..."
-                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all text-center"
+                                    disabled={isDeleting}
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all text-center disabled:opacity-50"
                                 />
                             </div>
 
                             <div className="flex gap-3">
                                 <button 
                                     onClick={() => setIsDeleteModalOpen(false)} 
-                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95"
+                                    disabled={isDeleting}
+                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 disabled:opacity-50"
                                 >
                                     Cancel
                                 </button>
                                 <button 
                                     onClick={confirmDelete} 
-                                    disabled={deleteConfirmText !== employee.name}
-                                    className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95"
+                                    disabled={deleteConfirmText !== employee.name || isDeleting}
+                                    className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 flex items-center justify-center gap-2"
                                 >
-                                    Delete Forever
+                                    {isDeleting ? (
+                                        <><i className="ti ti-loader animate-spin text-xl" /> Deleting...</>
+                                    ) : 'Delete Forever'}
                                 </button>
                             </div>
                         </motion.div>

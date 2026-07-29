@@ -10,16 +10,46 @@ import { supabase } from '../supabaseClient';
 // 
 const CONFIG = {
     REQUIRED_LOCK_FRAMES: 10,          // Consecutive matching frames needed
-    FACE_MATCH_THRESHOLD: 0.50,        // Euclidean distance: lower = stricter
+    FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance: lower = stricter (was 0.50, tightened for accuracy)
     DETECTION_INTERVAL_MS: 150,        // Detection loop interval
-    DETECTION_INPUT_SIZE: 320,         // TinyFaceDetector input size
+    DETECTION_INPUT_SIZE: 320,         // TinyFaceDetector input size (used for fast pre-check)
     BASELINE_INPUT_SIZE: 416,          // Baseline computation input size
     MIN_FACE_RATIO: 0.12,             // Minimum face-to-screen width ratio
     CENTER_THRESHOLD_X: 0.30,         // X centering tolerance (% of screen width)
     CENTER_THRESHOLD_Y: 0.35,         // Y centering tolerance (% of screen height)
     FEEDBACK_DISPLAY_MS: 4500,        // How long feedback shows before reset
+    BLINK_EAR_THRESHOLD: 0.24,        // Eye Aspect Ratio below this = eyes closed (blink detected)
+    BLINK_CONSEC_FRAMES: 2,           // Consecutive frames with closed eyes to count as 1 blink
+    REQUIRED_BLINKS: 1,               // Minimum blinks required to pass liveness check
     MODEL_URL: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
     API_BASE: 'http://localhost:5000/api',
+};
+
+// 
+//  EYE ASPECT RATIO (EAR) — Anti-Spoofing Liveness Detection
+//  Uses the 68-point facial landmark model to calculate how "open" each eye is.
+//  A printed photo or phone screen cannot blink, so this defeats spoofing attacks.
+//  Formula: EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
+//  where p1-p6 are the 6 landmark points around each eye.
+// 
+const getEAR = (landmarks) => {
+    const pts = landmarks.positions;
+    // Left eye landmarks: indices 36-41
+    const leftEye = [pts[36], pts[37], pts[38], pts[39], pts[40], pts[41]];
+    // Right eye landmarks: indices 42-47
+    const rightEye = [pts[42], pts[43], pts[44], pts[45], pts[46], pts[47]];
+
+    const calcEAR = (eye) => {
+        // Vertical distances
+        const v1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
+        const v2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+        // Horizontal distance
+        const h = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
+        return (v1 + v2) / (2.0 * h);
+    };
+
+    // Average EAR of both eyes for stability
+    return (calcEAR(leftEye) + calcEAR(rightEye)) / 2.0;
 };
 
 // 
@@ -126,6 +156,10 @@ const Scanner = () => {
     const [faceLockedIn, setFaceLockedIn] = useState(false);
     const [matchScore, setMatchScore] = useState(null);
 
+    // Liveness detection state (anti-spoofing)
+    const [blinkDetected, setBlinkDetected] = useState(false);
+    const [livenessStatus, setLivenessStatus] = useState('WAITING');
+
     // Employee state
     const [employeeName, setEmployeeName] = useState('');
     const [employeePhoto, setEmployeePhoto] = useState(null);
@@ -143,6 +177,8 @@ const Scanner = () => {
     const processingRef = useRef(false);
     const employeeIdRef = useRef(null);
     const baselineRef = useRef(null);  // Float32Array[128] — the registered face descriptor
+    const blinkCountRef = useRef(0);   // Counts total blinks detected during scan
+    const blinkFramesRef = useRef(0);  // Consecutive frames where eyes are closed
 
     // 
     //  BOOT: Load AI Models + Clock + Inject CSS
@@ -151,7 +187,10 @@ const Scanner = () => {
         let mounted = true;
         (async () => {
             try {
+                // Loading SsdMobilenetv1 for higher accuracy face detection (heavier but more reliable)
+                // plus TinyFaceDetector as a fast fallback for initial detection
                 await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(CONFIG.MODEL_URL),
                     faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(CONFIG.MODEL_URL),
                     faceapi.nets.faceRecognitionNet.loadFromUri(CONFIG.MODEL_URL),
@@ -231,9 +270,12 @@ const Scanner = () => {
         employeeIdRef.current = id;
 
         try {
-            // 1. Fetch employee info
-            const { data: emp } = await supabase.from('employees').select('first_name, last_name').eq('id', id).single();
+            // 1. Fetch employee info using the clean company_id (e.g., CP-2026-001)
+            const { data: emp } = await supabase.from('employees').select('id, first_name, last_name').eq('company_id', id).single();
             setEmployeeName(emp ? `${emp.first_name} ${emp.last_name}` : 'Unknown');
+            
+            // Re-assign the internal UUID to the ref so the attendance API still links correctly to the database row
+            if (emp) employeeIdRef.current = emp.id;
 
             // 2. Download registered baseline face image
             const { data: blob, error: dlErr } = await supabase.storage.from('public-bucket').download(`face-baselines/${id}.jpg`);
@@ -249,7 +291,8 @@ const Scanner = () => {
             const url = URL.createObjectURL(blob);
             setEmployeePhoto(url);
 
-            // 3. Compute 128-dim face descriptor from baseline image
+            // 3. Compute 128-dim face descriptor from baseline image using SsdMobilenetv1
+            //    SSD is used here for maximum accuracy on the saved profile photo.
             setLoadingMsg('COMPUTING FACE DESCRIPTOR...');
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -257,7 +300,7 @@ const Scanner = () => {
             await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
 
             const det = await faceapi
-                .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: CONFIG.BASELINE_INPUT_SIZE, scoreThreshold: 0.3 }))
+                .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
                 .withFaceLandmarks()
                 .withFaceDescriptor();
 
@@ -373,7 +416,39 @@ const Scanner = () => {
                 return;
             }
 
-            //  Lock-in progression 
+            // ──────────────────────────────────────────────────────
+            //  ANTI-SPOOFING: Blink-Based Liveness Detection
+            //  A printed photo or phone screen cannot blink.
+            //  We use the Eye Aspect Ratio (EAR) algorithm to
+            //  detect when the user's eyes close and reopen.
+            //  The scan will NOT proceed until at least 1 blink
+            //  is detected, proving this is a live human.
+            // ──────────────────────────────────────────────────────
+            const ear = getEAR(det.landmarks);
+            if (ear < CONFIG.BLINK_EAR_THRESHOLD) {
+                // Eyes are closed
+                blinkFramesRef.current += 1;
+            } else {
+                // Eyes just reopened after being closed — count as 1 blink
+                if (blinkFramesRef.current >= CONFIG.BLINK_CONSEC_FRAMES) {
+                    blinkCountRef.current += 1;
+                    setBlinkDetected(true);
+                    setLivenessStatus('PASSED');
+                }
+                blinkFramesRef.current = 0;
+            }
+
+            const livenessOk = blinkCountRef.current >= CONFIG.REQUIRED_BLINKS;
+
+            if (!livenessOk) {
+                // Face matches but liveness not yet confirmed — prompt user to blink
+                setLivenessStatus('BLINK TO VERIFY');
+                setAiStatus('BLINK YOUR EYES');
+                drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+                return;
+            }
+
+            //  Lock-in progression (only starts after liveness is confirmed) 
             lockFramesRef.current += 1;
             const progress = Math.min((lockFramesRef.current / CONFIG.REQUIRED_LOCK_FRAMES) * 100, 100);
             setLockProgress(progress);
@@ -446,9 +521,13 @@ const Scanner = () => {
         lockFramesRef.current = 0;
         baselineRef.current = null;
         employeeIdRef.current = null;
+        blinkCountRef.current = 0;
+        blinkFramesRef.current = 0;
         setFaceLockedIn(false);
         setLockProgress(0);
         setMatchScore(null);
+        setBlinkDetected(false);
+        setLivenessStatus('WAITING');
         setEmployeeName('');
         setEmployeePhoto(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
         setAiStatus('AWAITING ID SCAN...');
@@ -587,10 +666,15 @@ const Scanner = () => {
                             <div className="bg-black/50 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10 shadow-xl text-center min-w-[200px]">
                                 <h3 className="text-lg sm:text-xl font-black tracking-tight">{employeeName}</h3>
                                 {matchScore !== null && (
-                                    <p className={`text-[10px] sm:text-xs font-bold tracking-[0.2em] mt-1 ${matchScore >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    <p className={`text-[10px] sm:text-xs font-bold tracking-[0.2em] mt-1 ${matchScore >= 58 ? 'text-emerald-400' : 'text-red-400'}`}>
                                         MATCH: {matchScore}%
                                     </p>
                                 )}
+                                {/* Liveness indicator */}
+                                <div className={`flex items-center justify-center gap-1.5 mt-1.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase ${blinkDetected ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`}>
+                                    <i className={`ti ${blinkDetected ? 'ti-eye-check' : 'ti-eye'} text-xs`} />
+                                    {blinkDetected ? 'LIVENESS PASSED' : 'BLINK TO VERIFY'}
+                                </div>
                             </div>
                         </div>
                     </motion.div>
@@ -624,9 +708,10 @@ const Scanner = () => {
             {mode === 'qr' && (
                 <div className="absolute bottom-0 inset-x-0 z-30 pb-[max(env(safe-area-inset-bottom,16px),16px)] flex justify-center gap-3 px-4">
                     <button onClick={async () => {
-                        const { data } = await supabase.from('employees').select('id').limit(1);
-                        if (data?.[0]) onQrScan(data[0].id);
-                        else toast.error('No employees in database');
+                        // Mock scan now grabs the clean company_id instead of the UUID
+                        const { data } = await supabase.from('employees').select('company_id').not('company_id', 'is', null).limit(1);
+                        if (data?.[0]) onQrScan(data[0].company_id);
+                        else toast.error('No employees with a company_id found');
                     }}
                         className="h-11 px-5 bg-blue-600/10 hover:bg-blue-600/25 text-blue-400 rounded-2xl border border-blue-500/20 transition-all font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2">
                         <i className="ti ti-wand" /> <span className="hidden sm:inline">Mock Scan</span>

@@ -72,12 +72,23 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, error: authError.message });
         }
 
+        // Generate Company ID (e.g., CP-2026-001)
+        const currentYear = new Date().getFullYear();
+        const { count } = await supabase
+            .from('employees')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', `${currentYear}-01-01`);
+            
+        const newIdNum = (count || 0) + 1;
+        const company_id = `CP-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
+
         // Insert into employees table
         const { data: empData, error: empError } = await supabase
             .from('employees')
             .insert({
                 id: authData.user.id,
                 auth_user_id: authData.user.id,
+                company_id: company_id,
                 first_name,
                 last_name,
                 email: normalizedEmail,

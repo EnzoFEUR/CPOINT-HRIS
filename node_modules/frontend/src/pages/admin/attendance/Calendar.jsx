@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../../supabaseClient';
+
 const Calendar = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [activeDates, setActiveDates] = useState([]);
@@ -29,6 +31,19 @@ const Calendar = () => {
 
     useEffect(() => {
         fetchCalendarData(selectedDate);
+        
+        // Supabase Realtime WebSocket Subscription
+        const subscription = supabase
+            .channel('attendance_live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
+                console.log('Real-Time Update Detected:', payload);
+                fetchCalendarData(selectedDate);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
     }, [selectedDate]);
 
     const onDateSelect = (dateStr) => {
@@ -102,7 +117,6 @@ const Calendar = () => {
 
     return (
         <div className="space-y-8 font-sans pb-10">
-            {/* Page header */}
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                     <div>
@@ -120,9 +134,7 @@ const Calendar = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 
-                {/* Left Column: Calendar & Stats */}
                 <div className="xl:col-span-1 space-y-6">
-                    {/* Stats Cards */}
                     <div className="grid grid-cols-2 gap-4">
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group flex flex-col justify-between min-h-[110px]">
                             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-1.5">
@@ -142,7 +154,6 @@ const Calendar = () => {
                         </motion.div>
                     </div>
 
-                    {/* The Calendar Widget */}
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }} className="bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex justify-between items-center mb-8">
                             <button onClick={onPrevMonth} className="h-10 w-10 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors border border-slate-200 shadow-sm active:scale-95">
@@ -169,7 +180,6 @@ const Calendar = () => {
                     </motion.div>
                 </div>
 
-                {/* Right Column: The Timeline Playback */}
                 <div className="xl:col-span-2">
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-6 sm:p-10 rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
                         <h3 className="font-black text-slate-800 text-xl sm:text-2xl mb-8 flex flex-wrap items-center gap-3">
@@ -199,13 +209,10 @@ const Calendar = () => {
                                             transition={{ delay: idx * 0.05, type: 'spring', stiffness: 400, damping: 30 }}
                                             className="relative group"
                                         >
-                                            {/* Timeline Dot */}
                                             <div className={`absolute -left-[35px] sm:-left-[43px] top-6 h-5 w-5 rounded-full border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-125 ${String(log.status).toLowerCase() === 'late' ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
                                             
-                                            {/* Activity Card */}
                                             <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300 transition-all flex flex-col sm:flex-row gap-5 sm:gap-6 items-start sm:items-center">
                                                 
-                                                {/* Photo Thumbnail */}
                                                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-lg bg-slate-100 overflow-hidden shadow-inner flex-shrink-0 relative border border-slate-200">
                                                     {log.time_in_photo ? (
                                                         <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="h-full w-full object-cover" alt="Time In Proof" />
@@ -216,9 +223,7 @@ const Calendar = () => {
                                                     )}
                                                 </div>
                                                 
-                                                {/* Employee Info & Timestamps */}
                                                 <div className="flex-1 w-full">
-                                                    {/* IN / OUT block */}
                                                     <div className="flex flex-wrap items-center gap-3 mb-2">
                                                         <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 text-xs shadow-sm flex items-center gap-1.5">
                                                             <i className="ti ti-login-2 text-blue-500 text-sm"></i>
@@ -240,7 +245,6 @@ const Calendar = () => {
                                                     </p>
                                                 </div>
 
-                                                {/* Status Badge */}
                                                 <div className="w-full sm:w-auto mt-2 sm:mt-0 flex sm:block shrink-0">
                                                     {String(log.status).toLowerCase() === 'late' ? (
                                                         <span className="w-full sm:w-auto bg-orange-100 text-orange-700 px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-widest border border-orange-200 flex items-center justify-center gap-2 shadow-sm">
