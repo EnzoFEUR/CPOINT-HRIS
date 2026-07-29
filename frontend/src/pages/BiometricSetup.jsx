@@ -334,9 +334,15 @@ export default function BiometricSetup() {
             const actualCompanyId = dbUser?.company_id || user.id;
 
             setUploadStatus('Running AI Liveness Analysis...');
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const res = await fetch('http://localhost:5000/api/attendance/register-baseline', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ employee_id: user.id, company_id: actualCompanyId, image_base64: primary, angles: capturedAngles.current.map(a => a.phase) })
             });
             const result = await res.json();

@@ -211,7 +211,7 @@ function MainLayout({ children }) {
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">CP</div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-wide">C-Point</h1>
-              <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">HRIS SYSTEM</p>
+              <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">HRIS</p>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden ml-auto text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">

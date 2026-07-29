@@ -147,6 +147,9 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        // Fetch company_id BEFORE deleting the user, because the deleteUser cascades and wipes the employee row!
+        const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
+
         // Delete from auth (cascades via foreign key)
         const { error } = await supabase.auth.admin.deleteUser(req.params.id);
         if (error) throw error;
@@ -164,8 +167,7 @@ router.delete('/:id', async (req, res) => {
             });
         }
 
-        // Fetch company_id before deleting to delete the image properly
-        const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
+        // Delete the image properly using the fetched company_id
         if (empData?.company_id) {
             await supabase.storage.from('public-bucket').remove([`face-baselines/${empData.company_id}.jpg`]).catch(() => {});
         } else {
