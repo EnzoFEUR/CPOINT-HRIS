@@ -173,8 +173,9 @@ const Scanner = () => {
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
     const detectionRef = useRef(null);
-    const lockFramesRef = useRef(0);
     const processingRef = useRef(false);
+    const submitLockRef = useRef(false);
+    const lockFramesRef = useRef(0);
     const employeeIdRef = useRef(null);
     const baselineRef = useRef(null);  // Float32Array[128] — the registered face descriptor
     const blinkCountRef = useRef(0);   // Counts total blinks detected during scan
@@ -277,8 +278,9 @@ const Scanner = () => {
             // Re-assign the internal UUID to the ref so the attendance API still links correctly to the database row
             if (emp) employeeIdRef.current = emp.id;
 
-            // 2. Download registered baseline face image
-            const { data: blob, error: dlErr } = await supabase.storage.from('public-bucket').download(`face-baselines/${id}.jpg`);
+            // 2. Download registered baseline face image using the company_id
+            const fileName = emp?.company_id ? emp.company_id : id;
+            const { data: blob, error: dlErr } = await supabase.storage.from('public-bucket').download(`face-baselines/${fileName}.jpg`);
 
             if (dlErr || !blob) {
                 baselineRef.current = null;
@@ -473,6 +475,9 @@ const Scanner = () => {
     //  CAPTURE & SUBMIT — Send face + id to backend
     // 
     const captureAndSubmit = useCallback(async () => {
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
+
         let img64 = null;
         if (videoRef.current) {
             const c = document.createElement('canvas');
@@ -518,6 +523,7 @@ const Scanner = () => {
     // 
     const resetAll = useCallback(() => {
         processingRef.current = false;
+        submitLockRef.current = false;
         lockFramesRef.current = 0;
         baselineRef.current = null;
         employeeIdRef.current = null;

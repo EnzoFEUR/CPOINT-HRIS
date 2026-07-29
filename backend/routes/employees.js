@@ -164,6 +164,14 @@ router.delete('/:id', async (req, res) => {
             });
         }
 
+        // Fetch company_id before deleting to delete the image properly
+        const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
+        if (empData?.company_id) {
+            await supabase.storage.from('public-bucket').remove([`face-baselines/${empData.company_id}.jpg`]).catch(() => {});
+        } else {
+            await supabase.storage.from('public-bucket').remove([`face-baselines/${req.params.id}.jpg`]).catch(() => {});
+        }
+
         res.json({ success: true, message: 'Employee deleted permanently.' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

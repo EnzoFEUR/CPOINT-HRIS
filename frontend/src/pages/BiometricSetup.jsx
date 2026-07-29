@@ -327,11 +327,17 @@ export default function BiometricSetup() {
         if (!primary) { toast.error('No capture. Retrying.'); resetScan(); return; }
 
         try {
+            setUploadStatus('Retrieving Secure Identity ID...');
+            
+            // Fetch company_id directly from the database since it might not be in localStorage
+            const { data: dbUser } = await supabase.from('employees').select('company_id').eq('id', user.id).single();
+            const actualCompanyId = dbUser?.company_id || user.id;
+
             setUploadStatus('Running AI Liveness Analysis...');
             const res = await fetch('http://localhost:5000/api/attendance/register-baseline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ employee_id: user.id, image_base64: primary, angles: capturedAngles.current.map(a => a.phase) })
+                body: JSON.stringify({ employee_id: user.id, company_id: actualCompanyId, image_base64: primary, angles: capturedAngles.current.map(a => a.phase) })
             });
             const result = await res.json();
             if (!res.ok) throw new Error(result.error || 'Registration rejected');

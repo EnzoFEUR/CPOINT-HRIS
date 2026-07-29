@@ -256,14 +256,15 @@ router.get('/calendar', checkAdminOrOwnership, async (req, res) => {
 // 4. POST /api/attendance/register-baseline
 router.post('/register-baseline', async (req, res) => {
     try {
-        const { employee_id, image_base64 } = req.body;
-        if (!employee_id || !image_base64) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        const { employee_id, company_id, image_base64, angles } = req.body;
+        
+        if (!employee_id || !image_base64 || !company_id) {
+            return res.status(400).json({ error: 'Missing employee_id, company_id, or image data.' });
         }
 
         const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, 'base64');
-
+        const fileName = `face-baselines/${company_id}.jpg`;
         
         // AI liveness verification
         
@@ -327,7 +328,7 @@ Be STRICT during enrollment. When in doubt, reject. Reply with ONLY a valid JSON
 
         const { error: uploadError } = await supabase.storage
             .from('public-bucket')
-            .upload(`face-baselines/${employee_id}.jpg`, buffer, { contentType: 'image/jpeg', upsert: true });
+            .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true });
 
         if (uploadError) throw uploadError;
 

@@ -183,7 +183,7 @@ export default function Index() {
                                                 <div className="flex items-center gap-4">
                                                     <div className="relative h-14 w-14 shrink-0 group-hover:scale-105 transition-transform">
                                                         <img 
-                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.id}.jpg`}
+                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id}.jpg`}
                                                             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                                                             alt={employee.first_name}
                                                             className="absolute inset-0 w-full h-full object-cover rounded-lg shadow-sm border border-slate-100"

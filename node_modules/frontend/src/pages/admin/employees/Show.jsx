@@ -157,7 +157,7 @@ export default function Show() {
                         <div className="relative h-40 w-40 sm:h-48 sm:w-48 group-hover:scale-105 transition-transform duration-500">
                             {!imageError ? (
                                 <img 
-                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.id}.jpg`} 
+                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id}.jpg`} 
                                     onError={() => setImageError(true)}
                                     alt={employee.name}
                                     className="absolute inset-0 w-full h-full object-cover rounded-[2.5rem] shadow-2xl border-4 border-white/10 bg-slate-800"
