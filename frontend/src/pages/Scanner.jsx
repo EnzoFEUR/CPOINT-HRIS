@@ -217,7 +217,7 @@ const Scanner = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6">
         <div className="bg-red-950/30 p-10 rounded-3xl shadow-2xl max-w-md text-center border border-red-500/30 backdrop-blur-xl">
-          <div className="text-6xl mb-6">🔒</div>
+          <div className="text-6xl mb-6"><i className="ti ti-lock-square-rounded text-red-500"></i></div>
           <h2 className="text-3xl font-black text-white mb-2 tracking-widest uppercase">Access Denied</h2>
           <p className="text-red-300 text-sm mb-8">Security clearance insufficient.</p>
           <button onClick={() => window.location.href = '/'} className="py-4 px-8 w-full bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition-all">Abort</button>
@@ -278,7 +278,10 @@ const Scanner = () => {
           faceapi.nets.faceLandmark68Net.loadFromUri(ENV.MODEL_URL),
           faceapi.nets.faceRecognitionNet.loadFromUri(ENV.MODEL_URL),
         ]);
-        if (mounted) dispatch({ type: 'SET_MODELS_LOADED' });
+        if (mounted) {
+          dispatch({ type: 'SET_MODELS_LOADED' });
+          dispatch({ type: 'SET_MODE', payload: MODES.QR });
+        }
       } catch (err) {
         console.error('[BOOT]', err);
         toast.error('Neural net failed to load. Check network.');
@@ -401,7 +404,7 @@ const Scanner = () => {
 
       // 2. Load baseline image from backend storage path: face-baselines/{company_id}/{employee_id}.jpg
       const { data: urlData } = supabase.storage
-        .from('face-baselines')
+        .from('public-bucket')
         .getPublicUrl(`face-baselines/${emp.company_id}/${emp.id}.jpg`);
 
       const cacheBusted = `${urlData.publicUrl}?t=${Date.now()}`;
@@ -816,7 +819,7 @@ const Scanner = () => {
                 </div>
               ) : (
                 <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-800/80 border-4 border-white/10 flex items-center justify-center mb-5">
-                  <span className="text-4xl sm:text-5xl text-slate-500">👤</span>
+                  <span className="text-4xl sm:text-5xl text-slate-500"><i className="ti ti-user-scan"></i></span>
                 </div>
               )}
               <h2 className="text-xl sm:text-2xl font-black text-white text-center tracking-tight mb-1">
@@ -832,7 +835,7 @@ const Scanner = () => {
                 onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
                 className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold tracking-[0.15em] uppercase transition-all shadow-[0_0_20px_rgba(59,130,246,0.35)] active:scale-[0.97] flex items-center justify-center gap-2.5 text-sm"
               >
-                <span>🔐</span> Ready for Scan
+                <span><i className="ti ti-face-id"></i></span> Ready for Scan
               </button>
               <button
                 onClick={handleReset}
@@ -893,7 +896,7 @@ const Scanner = () => {
                   </p>
                 )}
                 <div className={`flex items-center justify-center gap-1.5 mt-1.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase ${state.liveness.passed ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`}>
-                  <span>{state.liveness.passed ? '✅' : '👁'}</span>
+                  <span>{state.liveness.passed ? <i className="ti ti-check text-emerald-400"></i> : <i className="ti ti-eye text-amber-400"></i>}</span>
                   {state.liveness.passed ? 'LIVENESS PASSED' : 'BLINK TO VERIFY'}
                 </div>
               </div>
@@ -966,7 +969,7 @@ const Scanner = () => {
         {state.mode === MODES.ERROR && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
             <div className="bg-slate-900/90 border border-red-500/30 rounded-3xl p-8 max-w-md w-full text-center">
-              <div className="text-5xl mb-4">⚠️</div>
+              <div className="text-5xl mb-4"><i className="ti ti-alert-triangle text-red-500"></i></div>
               <h2 className="text-2xl font-black text-red-400 mb-2">SYSTEM ERROR</h2>
               <p className="text-slate-300 mb-6">{state.error?.message || 'An unexpected error occurred.'}</p>
               {state.error?.code && (
@@ -988,7 +991,7 @@ const Scanner = () => {
           <div className="flex justify-between items-start px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
             <div className="flex items-center gap-3 pt-2">
               <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center text-blue-400 border border-white/10">
-                <span className="text-lg sm:text-xl">🛡️</span>
+                <span className="text-lg sm:text-xl"><i className="ti ti-shield-check"></i></span>
               </div>
               <div>
                 <h1 className="text-xs sm:text-sm font-black tracking-[0.2em] uppercase">Gateway</h1>
@@ -1013,20 +1016,25 @@ const Scanner = () => {
           <button
             onClick={async () => {
               try {
-                const { data } = await supabase.from('employees').select('company_id').not('company_id', 'is', null).limit(1);
+                let { data } = await supabase.from('employees').select('company_id').eq('has_registered_biometrics', true).not('company_id', 'is', null).limit(1);
+                if (!data || data.length === 0) {
+                  // Fallback: just get any employee
+                  const res = await supabase.from('employees').select('company_id').not('company_id', 'is', null).limit(1);
+                  data = res.data;
+                }
                 if (data?.[0]) onQrSuccess(data[0].company_id);
-                else toast.error('No employees found');
+                else toast.error('No employees found in database');
               } catch (e) { toast.error('Mock scan failed'); }
             }}
             className="h-11 px-5 bg-blue-600/10 hover:bg-blue-600/25 text-blue-400 rounded-2xl border border-blue-500/20 transition-all font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2"
           >
-            <span>🪄</span> <span className="hidden sm:inline">Mock Scan</span>
+            <span><i className="ti ti-wand"></i></span> <span className="hidden sm:inline">Mock Scan</span>
           </button>
           <button
             onClick={() => { localStorage.removeItem('user'); window.location.href = '/login'; }}
             className="h-11 px-5 bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-2xl border border-white/10 transition-all font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2"
           >
-            <span>🔌</span> <span className="hidden sm:inline">Sign Out</span>
+            <span><i className="ti ti-plug-x"></i></span> <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       )}
@@ -1040,7 +1048,7 @@ const Scanner = () => {
             <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center mb-6">
               <div className="absolute inset-0 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin" style={{ animationDuration: '1.4s' }} />
               <div className="absolute inset-2 border-l-2 border-r-2 border-white/20 rounded-full animate-spin" style={{ animationDuration: '2s', animationDirection: 'reverse' }} />
-              <span className="text-3xl sm:text-4xl text-blue-400 drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-pulse">🧠</span>
+              <span className="text-3xl sm:text-4xl text-blue-400 drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-pulse"><i className="ti ti-brain"></i></span>
             </div>
             <h2 className="text-base sm:text-xl font-black tracking-[0.25em] uppercase mb-1 px-4 text-center">{state.loadingMsg}</h2>
             <p className="text-[10px] sm:text-xs text-blue-400/50 font-mono tracking-widest uppercase animate-pulse">Please stand by...</p>

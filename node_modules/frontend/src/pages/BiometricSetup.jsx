@@ -795,7 +795,7 @@ export default function BiometricSetup() {
                     ${isDone ? 'bg-emerald-500 border-emerald-400 text-white shadow-[0_0_12px_rgba(34,197,94,0.3)]' :
                       isActive ? 'text-white border-transparent scale-105' : 'bg-slate-800/80 text-slate-600 border-slate-700/50'}`}
                     style={isActive && !isDone ? { backgroundColor: ph.color, boxShadow: `0 4px 16px ${ph.color}40` } : {}}>
-                    {isDone ? '✓' : ph.label[0]}
+                    {isDone ? <i className="ti ti-check"></i> : ph.label[0]}
                   </div>
                   {isActive && !isDone && (
                     <svg className="absolute -inset-1 w-[calc(100%+8px)] h-[calc(100%+8px)]" viewBox="0 0 44 44">
@@ -840,7 +840,7 @@ export default function BiometricSetup() {
                 </>
               ) : (
                 <>
-                  <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-2xl mb-4">🔐</div>
+                  <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-2xl mb-4"><i className="ti ti-face-id"></i></div>
                   <h3 className="text-xl font-black text-white mb-2">Ready to Register?</h3>
                   <p className="text-slate-400 text-xs mb-6 max-w-xs">You will be guided through a 5-point facial scan. Remove masks, glasses, and hats.</p>
                   <button onClick={startEnrollment}
@@ -903,7 +903,7 @@ export default function BiometricSetup() {
                 {(state.quality.isDark || state.quality.isBright || state.quality.isBlurry) && (
                   <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     className="absolute top-4 inset-x-4 z-30 bg-amber-500/90 backdrop-blur-md rounded-xl px-4 py-2 flex items-center gap-3">
-                    <span className="text-black text-lg">⚠</span>
+                    <span className="text-black text-lg"><i className="ti ti-alert-triangle"></i></span>
                     <p className="text-[11px] font-bold text-black">
                       {state.quality.isDark ? 'TOO DARK' : state.quality.isBright ? 'TOO BRIGHT' : 'BLURRY'} — ADJUST ENVIRONMENT
                     </p>
@@ -940,7 +940,7 @@ export default function BiometricSetup() {
               <div className="relative w-20 h-20 mb-4">
                 <div className="absolute inset-0 border-2 border-blue-500/30 rounded-full animate-ping" />
                 <div className="absolute inset-0 border-2 border-blue-500 rounded-full animate-spin border-t-transparent" />
-                <div className="absolute inset-4 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 text-lg">🧬</div>
+                <div className="absolute inset-4 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 text-lg"><i className="ti ti-dna"></i></div>
               </div>
               <p className="text-white font-bold">{state.statusText}</p>
               <p className="text-slate-500 text-xs font-mono mt-1">Cross-validating 5 descriptors...</p>
@@ -953,7 +953,7 @@ export default function BiometricSetup() {
               <div className="relative w-20 h-20 mb-4">
                 <div className="absolute inset-0 border-2 border-indigo-500/30 rounded-full animate-ping" />
                 <div className="absolute inset-0 border-2 border-indigo-500 rounded-full animate-spin border-t-transparent" />
-                <div className="absolute inset-4 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 text-lg">🔒</div>
+                <div className="absolute inset-4 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 text-lg"><i className="ti ti-lock"></i></div>
               </div>
               <p className="text-white font-bold">{state.statusText}</p>
               <p className="text-slate-500 text-xs font-mono mt-1">End-to-end encrypted</p>
@@ -965,7 +965,7 @@ export default function BiometricSetup() {
             {state.mode === MODES.SUCCESS && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 bg-emerald-950/80 backdrop-blur-xl flex flex-col items-center justify-center">
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }} className="text-center">
-                  <div className="h-24 w-24 bg-emerald-500 rounded-full flex items-center justify-center text-white text-4xl shadow-[0_0_60px_rgba(34,197,94,0.5)] mx-auto mb-4">✓</div>
+                  <div className="h-24 w-24 bg-emerald-500 rounded-full flex items-center justify-center text-white text-4xl shadow-[0_0_60px_rgba(34,197,94,0.5)] mx-auto mb-4"><i className="ti ti-check"></i></div>
                   <p className="text-white font-black text-2xl tracking-wide">BIOMETRIC SEALED</p>
                   <p className="text-emerald-300 text-xs mt-2 font-bold">Redirecting to secure area...</p>
                 </motion.div>
@@ -975,7 +975,7 @@ export default function BiometricSetup() {
             {/* Error Overlay */}
             {state.mode === MODES.ERROR && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 bg-red-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
-                <div className="h-20 w-20 bg-red-500/20 border-2 border-red-500 rounded-full flex items-center justify-center text-red-400 text-3xl mb-4 shadow-[0_0_40px_rgba(239,68,68,0.4)]">⚠</div>
+                <div className="h-20 w-20 bg-red-500/20 border-2 border-red-500 rounded-full flex items-center justify-center text-red-400 text-3xl mb-4 shadow-[0_0_40px_rgba(239,68,68,0.4)]"><i className="ti ti-alert-triangle"></i></div>
                 <p className="text-white font-black text-xl mb-2">ENROLLMENT FAILED</p>
                 <p className="text-red-300 text-sm font-bold mb-6">{state.error?.message || 'An unknown error occurred.'}</p>
                 <button onClick={handleReset} className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold tracking-widest uppercase text-xs transition-all shadow-lg active:scale-95">
@@ -1004,7 +1004,7 @@ export default function BiometricSetup() {
         {/* Footer Info */}
         <div className="bg-slate-800/20 border border-slate-700/15 rounded-xl px-4 py-2 mb-3">
           <div className="flex items-center gap-3">
-            <span className="text-blue-500/50 text-sm">🛡️</span>
+            <span className="text-blue-500/50 text-sm"><i className="ti ti-shield-check"></i></span>
             <p className="text-[9px] text-slate-600">Protected by Google Gemini AI anti-spoofing — Photos, masks & screens auto-rejected</p>
           </div>
         </div>
