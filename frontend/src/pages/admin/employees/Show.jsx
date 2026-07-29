@@ -175,7 +175,7 @@ export default function Show() {
 
                     <div className="relative z-10 text-center sm:text-left flex-1">
                         <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 text-white font-bold text-[10px] rounded-xl border border-white/20 uppercase tracking-widest mb-4 backdrop-blur-md">
-                            <i className="ti ti-id text-indigo-300" /> Employee #{String(employee.id).substring(0,8)}
+                            <i className="ti ti-id text-indigo-300" /> {employee.company_id || 'Employee'}
                         </div>
                         <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-4">{employee.name}</h1>
                         
@@ -342,7 +342,7 @@ export default function Show() {
 
                             <div className="flex justify-center mb-8">
                                 <div className="p-4 border-4 border-slate-900 rounded-[2rem] bg-white flex items-center justify-center shadow-inner">
-                                    <QRCodeSVG value={String(employee.id)} size={200} />
+                                    <QRCodeSVG value={employee.company_id || String(employee.id)} size={200} />
                                 </div>
                             </div>
 
@@ -353,8 +353,8 @@ export default function Show() {
                             </div>
 
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-8">
-                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Employee ID</p>
-                                <p className="font-mono text-2xl font-black text-slate-700">#{String(employee.id).substring(0,8)}</p>
+                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Company ID</p>
+                                <p className="font-mono text-2xl font-black text-slate-700">{employee.company_id || `#${String(employee.id).substring(0,8)}`}</p>
                             </div>
 
                             <div className="no-print flex gap-3">
