@@ -29,6 +29,10 @@ import disciplinaryRoutes from './routes/disciplinary.js';
 import notificationRoutes from './routes/notifications.js';
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
 import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
+import { startCronJobs } from './utils/cronJobs.js';
+
+// Start background workers
+startCronJobs();
 
 // Global Security Middleware
 app.use(securityHeaders);
