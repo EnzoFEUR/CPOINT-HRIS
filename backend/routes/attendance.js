@@ -410,6 +410,33 @@ router.get(
 );
 
 /* =============================================================================
+   1.5 GET /api/attendance/verify-qr/:company_id
+   ============================================================================= */
+router.get(
+  '/verify-qr/:company_id',
+  asyncHandler(async (req, res) => {
+    const { reqId } = req;
+    const { company_id } = req.params;
+
+    // Use service role to securely fetch the employee without triggering RLS blocks
+    // Smart check: Some QR codes contain the UUID instead of the CP-XXXX ID.
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(company_id);
+    
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, is_active')
+      .eq(isUUID ? 'id' : 'company_id', company_id)
+      .single();
+
+    if (error || !employee) {
+      throw new NotFoundError('Employee not found.');
+    }
+
+    res.json({ status: 'success', data: employee });
+  })
+);
+
+/* =============================================================================
    2. POST /api/attendance/scan
    ============================================================================= */
 router.post(

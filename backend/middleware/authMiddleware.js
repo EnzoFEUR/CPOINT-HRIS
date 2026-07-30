@@ -1,6 +1,12 @@
 import { supabase } from '../supabaseClient.js';
 
 export const verifyToken = async (req, res, next) => {
+    // Whitelist public scanner routes (Tablet doesn't have a user session)
+    const publicRoutes = ['/verify-qr', '/scan'];
+    if (publicRoutes.some(route => req.path.includes(route))) {
+        return next();
+    }
+
     const authHeader = req.headers.authorization;
     console.log(`[Auth] Checking token for ${req.path}. Header: ${authHeader ? 'Present' : 'Missing'}`);
     

@@ -397,16 +397,16 @@ const Scanner = () => {
     const companyId = text.trim();
 
     try {
-      // 1. Resolve company_id → employee record
-      const { data: emp, error: empErr } = await supabase
-        .from('employees')
-        .select('id, first_name, last_name, company_id, has_registered_biometrics, is_active')
-        .eq('company_id', companyId)
-        .single();
-
-      if (empErr || !emp) {
+      // 1. Resolve company_id -> employee record via secure backend proxy
+      const res = await fetch(`${ENV.API_BASE}/attendance/verify-qr/${companyId}`);
+      const data = await res.json();
+      
+      if (!res.ok || data.status !== 'success') {
         throw new Error('EMPLOYEE_NOT_FOUND');
       }
+      
+      const emp = data.data;
+
       if (!emp.is_active) {
         throw new Error('EMPLOYEE_INACTIVE');
       }
