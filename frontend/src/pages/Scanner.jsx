@@ -436,7 +436,7 @@ const Scanner = () => {
       const img = await loadImage(url);
 
       const det = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
         .withFaceLandmarks()
         .withFaceDescriptor();
 
