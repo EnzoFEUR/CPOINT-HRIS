@@ -74,12 +74,26 @@ router.post('/', async (req, res) => {
 
         // Generate Company ID (e.g., CP-2026-001)
         const currentYear = new Date().getFullYear();
-        const { count } = await supabase
+        
+        // Fix: Don't use COUNT() because deleting employees breaks the sequence.
+        // Instead, get the highest company_id for this year and add 1.
+        const { data: latestEmp } = await supabase
             .from('employees')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', `${currentYear}-01-01`);
-            
-        const newIdNum = (count || 0) + 1;
+            .select('company_id')
+            .like('company_id', `CP-${currentYear}-%`)
+            .order('company_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let newIdNum = 1;
+        if (latestEmp && latestEmp.company_id) {
+            const parts = latestEmp.company_id.split('-');
+            if (parts.length === 3) {
+                const lastNum = parseInt(parts[2], 10);
+                if (!isNaN(lastNum)) newIdNum = lastNum + 1;
+            }
+        }
+        
         const company_id = `CP-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
 
         // Insert into employees table
