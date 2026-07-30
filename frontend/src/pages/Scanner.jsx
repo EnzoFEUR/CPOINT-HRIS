@@ -331,7 +331,7 @@ const Scanner = () => {
     if (state.mode === MODES.QR && state.modelsLoaded) startQr();
     if (state.mode !== MODES.QR) stopQr();
     if (state.mode === MODES.FACE) startFaceCamera();
-    if (state.mode !== MODES.FACE) stopFaceCamera();
+    // if (state.mode !== MODES.FACE) stopFaceCamera(); // DISABLED: Aggressively kills fetch requests
 
     // Session safety timer
     clearTimeout(sessionTimerRef.current);
