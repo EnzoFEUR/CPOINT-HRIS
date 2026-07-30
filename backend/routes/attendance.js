@@ -10,7 +10,7 @@ const router = express.Router();
    ============================================================================= */
 const CONFIG = Object.freeze({
   BIOMETRICS: {
-    MATCH_THRESHOLD: parseInt(process.env.BIOMETRIC_MATCH_THRESHOLD, 10) || 48,
+    MATCH_THRESHOLD: parseInt(process.env.BIOMETRIC_MATCH_THRESHOLD, 10) || 55,
     LIVENESS_CONFIDENCE_MIN: parseFloat(process.env.LIVENESS_CONFIDENCE_MIN) || 0.55,
     ENROLLMENT_CONFIDENCE_MIN: parseFloat(process.env.ENROLLMENT_CONFIDENCE_MIN) || 0.60,
   },
