@@ -1,5 +1,5 @@
 import React, { useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -349,12 +349,17 @@ const Scanner = () => {
     if (qrRef.current) return;
     dispatch({ type: 'SET_LOADING', payload: '' });
     qrRef.current = new Html5Qrcode('qr-reader');
+    const isPortrait = window.innerHeight > window.innerWidth;
     qrRef.current.start(
       { facingMode: 'environment' },
       { 
-        fps: 30, 
-        qrbox: window.innerWidth < 500 ? 250 : 320, 
-        disableFlip: false 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 }, 
+        disableFlip: false,
+        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        }
       },
       onQrSuccess,
       () => {} // ignore decode failures
