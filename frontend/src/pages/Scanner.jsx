@@ -351,21 +351,17 @@ const Scanner = () => {
     qrRef.current = new Html5Qrcode('qr-reader');
     const isPortrait = window.innerHeight > window.innerWidth;
     qrRef.current.start(
-      { facingMode: 'environment' },
+      { facingMode: { ideal: 'environment' } },
       { 
-        fps: 30, 
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.8) };
-        },
+        fps: 10, 
         disableFlip: false,
         formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
         experimentalFeatures: {
             useBarCodeDetectorIfSupported: true
         },
         videoConstraints: {
-            width: { ideal: 720, max: 1080 },
-            height: { ideal: 720, max: 1080 }
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
         }
       },
       onQrSuccess,
