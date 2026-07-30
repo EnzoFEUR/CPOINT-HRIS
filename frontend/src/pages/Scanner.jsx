@@ -353,12 +353,19 @@ const Scanner = () => {
     qrRef.current.start(
       { facingMode: 'environment' },
       { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 }, 
+        fps: 30, 
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.8) };
+        },
         disableFlip: false,
         formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
         experimentalFeatures: {
             useBarCodeDetectorIfSupported: true
+        },
+        videoConstraints: {
+            width: { ideal: 720, max: 1080 },
+            height: { ideal: 720, max: 1080 }
         }
       },
       onQrSuccess,
