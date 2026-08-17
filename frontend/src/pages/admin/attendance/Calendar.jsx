@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
+import { fetchWithAuth } from '../../../utils/api';
 
 const Calendar = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
@@ -17,11 +18,22 @@ const Calendar = () => {
             const day = String(dateObj.getDate()).padStart(2, '0');
             const dateStr = `${year}-${month}-${day}`;
 
-            const res = await fetch(`http://localhost:5000/api/attendance/calendar?date=${dateStr}`);
-            const data = await res.json();
+            const res = await fetchWithAuth(`/api/attendance/calendar?date=${dateStr}`);
+            const result = await res.json();
             
-            setDailyLogs(data.dailyLogs || []);
-            setActiveDates(data.activeDates || []);
+            const calendarData = result.data || result || {};
+            const logs = calendarData.dailyLogs || [];
+            const dates = calendarData.activeDates || [];
+
+            setDailyLogs(logs);
+            setActiveDates(dates);
+
+            // If current selected day has no logs but month has active dates, auto-focus latest active date on initial load
+            if (logs.length === 0 && dates.length > 0 && !sessionStorage.getItem('calendar_user_picked')) {
+                const latestDateStr = dates[dates.length - 1];
+                const [y, m, d] = latestDateStr.split('-');
+                setSelectedDate(new Date(y, m - 1, d));
+            }
         } catch (err) {
             console.error("Failed to fetch calendar:", err);
         } finally {
@@ -34,8 +46,8 @@ const Calendar = () => {
         
         // Supabase Realtime WebSocket Subscription
         const subscription = supabase
-            .channel('attendance_live')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
+            .channel('attendance_live_calendar')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, (payload) => {
                 console.log('Real-Time Update Detected:', payload);
                 fetchCalendarData(selectedDate);
             })
@@ -47,6 +59,7 @@ const Calendar = () => {
     }, [selectedDate]);
 
     const onDateSelect = (dateStr) => {
+        sessionStorage.setItem('calendar_user_picked', 'true');
         // Parse date properly to avoid timezone shifts
         const [y, m, d] = dateStr.split('-');
         setSelectedDate(new Date(y, m - 1, d));
