@@ -286,26 +286,35 @@ const Index = () => {
                             onClick={closeImageModal}
                         />
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            initial={{ scale: 0.95, y: 15, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                            exit={{ scale: 0.95, y: 15, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[3rem] p-4 w-full max-w-lg shadow-2xl"
+                            className="relative bg-white rounded-[2px] p-5 w-full max-w-lg shadow-2xl border border-slate-200"
                         >
-                            <button 
-                                onClick={closeImageModal}
-                                className="absolute -top-4 -right-4 w-12 h-12 bg-white text-slate-800 rounded-full shadow-xl flex items-center justify-center hover:bg-slate-100 hover:scale-110 transition-all z-10"
-                            >
-                                <i className="ti ti-x text-xl font-bold" />
-                            </button>
-                            <div className="rounded-md overflow-hidden bg-slate-100 flex justify-center min-h-[200px]">
-                                <img key={selectedImage} src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[70vh]" />
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-800 tracking-wide flex items-center gap-1.5">
+                                        <i className="ti ti-camera text-blue-500 text-base" />
+                                        <span>{selectedImageType} Verification Capture</span>
+                                    </h3>
+                                    <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[340px]">
+                                        {selectedImage.split('/').pop()}
+                                    </p>
+                                </div>
+                                <button 
+                                    onClick={closeImageModal}
+                                    title="Close Preview (Esc)"
+                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-all duration-200 hover:rotate-90 shadow-sm border border-slate-200 cursor-pointer active:scale-95"
+                                >
+                                    <i className="ti ti-x text-lg font-bold" />
+                                </button>
                             </div>
-                            <div className="p-4 text-center">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                    {selectedImageType} Verification Capture
-                                </p>
-                                <p className="text-[9px] text-slate-300 mt-1 max-w-full break-all px-4">{selectedImage.split('/').pop()}</p>
+
+                            {/* Image Container with subtle 2px rounding */}
+                            <div className="bg-slate-900/5 rounded-[2px] overflow-hidden flex justify-center min-h-[200px] border border-slate-200">
+                                <img key={selectedImage} src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[65vh] rounded-[2px]" />
                             </div>
                         </motion.div>
                     </div>
