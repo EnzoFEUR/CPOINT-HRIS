@@ -54,6 +54,11 @@ app.use('/api/profile', verifyToken, profileRoutes);
 app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 
+// Root Status
+app.get('/', (req, res) => {
+    res.status(200).json({ status: 'online', service: 'C-Point HRIS API', timestamp: new Date().toISOString() });
+});
+
 // Basic Health Check Route to Verify Supabase Connection
 app.get('/api/health', async (req, res) => {
     try {
