@@ -43,11 +43,27 @@ router.post('/', async (req, res) => {
 
         if (error) throw error;
         
+        // Fetch sender employee details for rich notification
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        const senderName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+        const avatarUrl = emp?.company_id && emp?.id 
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+            : null;
+
         await createNotification({
             target: 'admin',
-            title: 'New Leave Request',
-            text: `A new ${leave_type} request was submitted.`,
-            type: 'leave'
+            title: `Leave Request: ${senderName}`,
+            text: `${senderName} submitted a ${leave_type} request (${start_date} to ${end_date}).`,
+            type: 'leave',
+            sender_id: emp?.id,
+            company_id: emp?.company_id,
+            sender_name: senderName,
+            sender_avatar: avatarUrl
         });
 
         res.json({ success: true, message: 'Leave request submitted successfully!' });

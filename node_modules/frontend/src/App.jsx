@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate 
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast from 'react-hot-toast';
+import { fetchWithAuth } from './utils/api';
 
 const AuthGuard = ({ children }) => {
     const navigate = useNavigate();
@@ -130,9 +131,133 @@ const getPageTitle = (pathname) => {
   return segment.replace(/-/g, ' ');
 };
 
+// Synthetic High-Clarity Notification Chime (Zero External Files Needed)
+const playNotificationChime = () => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    
+    const now = ctx.currentTime;
+    // Note 1: D5 (587.33 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now);
+    gain1.gain.setValueAtTime(0.12, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    // Note 2: A5 (880.00 Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.08);
+    gain2.gain.setValueAtTime(0.18, now + 0.08);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.55);
+  } catch (err) {
+    // Audio autostart might be blocked if user has not interacted with DOM yet
+  }
+};
+
+// Category Icon, Color & Route Mapping Helper
+const getNotificationVisuals = (type) => {
+  switch ((type || '').toLowerCase()) {
+    case 'payroll':
+      return {
+        icon: 'ti-cash-banknote',
+        bg: 'bg-emerald-50 text-emerald-600 border-emerald-200/80',
+        badge: 'bg-emerald-500',
+        label: 'Payroll',
+        path: '/admin/payroll'
+      };
+    case 'leave':
+      return {
+        icon: 'ti-plane-departure',
+        bg: 'bg-blue-50 text-blue-600 border-blue-200/80',
+        badge: 'bg-blue-500',
+        label: 'Leave',
+        path: '/admin/leaves'
+      };
+    case 'shift':
+      return {
+        icon: 'ti-calendar-time',
+        bg: 'bg-purple-50 text-purple-600 border-purple-200/80',
+        badge: 'bg-purple-500',
+        label: 'Schedule',
+        path: '/admin/shifts'
+      };
+    case 'disciplinary':
+    case 'warning':
+      return {
+        icon: 'ti-alert-triangle',
+        bg: 'bg-amber-50 text-amber-600 border-amber-200/80',
+        badge: 'bg-amber-500',
+        label: 'Notice',
+        path: '/admin/disciplinary'
+      };
+    case 'attendance':
+      return {
+        icon: 'ti-clock-check',
+        bg: 'bg-teal-50 text-teal-600 border-teal-200/80',
+        badge: 'bg-teal-500',
+        label: 'Attendance',
+        path: '/admin/attendance'
+      };
+    default:
+      return {
+        icon: 'ti-bell',
+        bg: 'bg-slate-100 text-slate-600 border-slate-200',
+        badge: 'bg-blue-500',
+        label: 'General',
+        path: '/'
+      };
+  }
+};
+
+// Extract or generate employee profile picture / initials
+const getNotificationAvatar = (notif) => {
+  let initials = 'CP';
+  let avatarSrc = notif.sender_avatar || null;
+
+  if (!avatarSrc && notif.company_id && notif.sender_id) {
+    avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${notif.sender_id}.jpg`;
+  }
+
+  if (notif.sender_name) {
+    const parts = notif.sender_name.trim().split(' ').filter(Boolean);
+    initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+  } else if (notif.title && notif.title.includes(':')) {
+    const namePart = notif.title.split(':')[1]?.trim() || '';
+    const parts = namePart.split(' ').filter(Boolean);
+    if (parts.length > 0) {
+      initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+    }
+  } else if (notif.text) {
+    const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
+    if (match) {
+      const parts = match[1].split(' ');
+      initials = (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+  }
+
+  return { avatarSrc, initials };
+};
+
 function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   
   // Current user from localStorage
   const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { name: 'Admin User', role: 'admin' });
@@ -149,7 +274,7 @@ function MainLayout({ children }) {
   // Fetch initial notifications
   useEffect(() => {
     if (user?.id) {
-      fetch(`http://localhost:5000/api/notifications?user_id=${user.id}&role=${user.role}`)
+      fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`)
         .then(res => res.json())
         .then(data => {
             if (Array.isArray(data)) setNotifications(data);
@@ -174,6 +299,30 @@ function MainLayout({ children }) {
     setSidebarOpen(false); // close on route change
   }, [location.pathname]);
 
+  const handleNotificationClick = async (notif) => {
+    // Optimistically mark as read locally
+    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+    setShowNotifications(false);
+
+    try {
+      await fetchWithAuth('/api/notifications/read-all', {
+        method: 'PUT',
+        body: JSON.stringify({ user_id: user?.id, role: user?.role })
+      });
+    } catch (err) {
+      // fallback silently
+    }
+
+    const visuals = getNotificationVisuals(notif.type);
+    let targetPath = visuals.path;
+
+    if (user?.role !== 'admin') {
+      targetPath = '/employee/dashboard';
+    }
+
+    navigate(targetPath);
+  };
+
   // Real-time notification listener
   useEffect(() => {
     if (!user || !user.id) return;
@@ -184,10 +333,46 @@ function MainLayout({ children }) {
         const notif = payload.payload;
         // Check if notif is for me
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
-            toast(notif.text, { 
-                icon: notif.type === 'leave' ? <i className="ti ti-plane-departure text-xl text-teal-400" /> : notif.type === 'shift' ? <i className="ti ti-calendar-time text-xl text-cyan-400" /> : notif.type === 'payroll' ? <i className="ti ti-cash text-xl text-emerald-400" /> : <i className="ti ti-bell-ringing text-xl text-blue-400" />, 
-                duration: 6000 
-            });
+            playNotificationChime();
+            const visuals = getNotificationVisuals(notif.type);
+            const avatar = getNotificationAvatar(notif);
+            
+            toast.custom((t) => (
+              <div 
+                onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
+                className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
+              >
+                <div className="relative h-11 w-11 shrink-0">
+                  {avatar.avatarSrc ? (
+                    <img 
+                      src={avatar.avatarSrc} 
+                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                      alt={notif.sender_name || 'Sender'}
+                      className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
+                    />
+                  ) : null}
+                  <div 
+                    className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
+                    style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
+                  >
+                    {avatar.initials}
+                  </div>
+                  <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
+                    <i className={`ti ${visuals.icon}`} />
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
+                      {visuals.label}
+                    </span>
+                    <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
+                </div>
+              </div>
+            ), { duration: 6000 });
+
             setNotifications(prev => [notif, ...prev]);
             
             if (window.location.pathname.includes('/employee/dashboard')) {
@@ -205,9 +390,8 @@ function MainLayout({ children }) {
   const markAllRead = async () => {
       setNotifications(prev => prev.map(n => ({...n, read: true})));
       try {
-          await fetch('http://localhost:5000/api/notifications/read-all', {
+          await fetchWithAuth('/api/notifications/read-all', {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ user_id: user.id, role: user.role })
           });
       } catch (err) { console.error(err); }
@@ -408,31 +592,86 @@ function MainLayout({ children }) {
                 )}
               </button>
 
-              {/* Notification panel */}              {showNotifications && (
-                <div className="absolute top-full right-0 mt-3 w-80 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <h3 className="font-bold text-slate-800">Notifications</h3>
+              {/* Notification panel */}
+              {showNotifications && (
+                <div className="absolute top-full right-0 mt-3 w-88 sm:w-96 bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
+                      {notifications.filter(n => !n.read).length > 0 && (
+                        <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-500 text-white">
+                          {notifications.filter(n => !n.read).length} new
+                        </span>
+                      )}
+                    </div>
                     <button 
                       onClick={markAllRead} 
-                      className="text-[10px] font-bold text-blue-600 hover:underline uppercase tracking-wider"
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider"
                     >
                       Mark all read
                     </button>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notifications.length > 0 ? notifications.map(notif => (
-                      <div key={notif.id} className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors flex gap-3 ${!notif.read ? 'bg-blue-50/30' : ''}`}>
-                        <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${notif.read ? 'bg-slate-300' : 'bg-blue-500'}`}></div>
-                        <div>
-                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{notif.title}</p>
-                          <p className="text-sm text-slate-700 font-medium leading-snug mt-0.5">{notif.text}</p>
-                          <p className="text-[10px] text-slate-400 font-bold mt-2">{new Date(notif.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                  <div className="max-h-84 overflow-y-auto divide-y divide-slate-100">
+                    {notifications.length > 0 ? notifications.map(notif => {
+                      const visuals = getNotificationVisuals(notif.type);
+                      const avatar = getNotificationAvatar(notif);
+                      return (
+                        <div 
+                          key={notif.id} 
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`p-3.5 hover:bg-slate-50/80 transition-all flex items-start gap-3.5 cursor-pointer group relative ${!notif.read ? 'bg-blue-50/25' : ''}`}
+                        >
+                          {/* Employee Avatar with corner category badge */}
+                          <div className="relative h-10 w-10 shrink-0 group-hover:scale-105 transition-transform">
+                            {avatar.avatarSrc ? (
+                              <img 
+                                src={avatar.avatarSrc} 
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                alt={notif.sender_name || 'Profile'}
+                                className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-200"
+                              />
+                            ) : null}
+                            <div 
+                              className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner border ${visuals.bg}`}
+                              style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
+                            >
+                              {avatar.initials}
+                            </div>
+                            <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-2 ring-white ${visuals.badge}`}>
+                              <i className={`ti ${visuals.icon}`} />
+                            </span>
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/50">
+                                {visuals.label}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium font-mono">
+                                {new Date(notif.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-800 font-bold mt-1 group-hover:text-blue-600 transition-colors truncate">
+                              {notif.title || 'Notification'}
+                            </p>
+                            <p className="text-xs text-slate-600 leading-snug line-clamp-2 mt-0.5">
+                              {notif.text}
+                            </p>
+                          </div>
+                          {!notif.read ? (
+                            <div className="mt-2 h-2 w-2 rounded-full bg-blue-600 shrink-0 shadow-sm animate-pulse" />
+                          ) : (
+                            <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-2 text-xs" />
+                          )}
                         </div>
-                      </div>
-                    )) : (
-                      <div className="p-8 text-center flex flex-col items-center opacity-50">
-                        <i className="ti ti-bell-off text-3xl mb-2 text-slate-400"></i>
-                        <span className="text-xs font-bold text-slate-500">All caught up!</span>
+                      );
+                    }) : (
+                      <div className="p-8 text-center flex flex-col items-center opacity-60">
+                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                          <i className="ti ti-bell-off text-2xl text-slate-400"></i>
+                        </div>
+                        <span className="text-xs font-bold text-slate-500">No notifications yet</span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">You're all caught up!</p>
                       </div>
                     )}
                   </div>

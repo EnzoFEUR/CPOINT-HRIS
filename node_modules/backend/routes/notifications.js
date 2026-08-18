@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-export const createNotification = async ({ target, title, text, type }) => {
+export const createNotification = async ({ target, title, text, type, sender_id, company_id, sender_name, sender_avatar }) => {
     const { data: newNotif, error } = await supabase
         .from('notifications')
         .insert({
@@ -44,13 +44,21 @@ export const createNotification = async ({ target, title, text, type }) => {
         return null;
     }
 
+    const enrichedPayload = {
+        ...newNotif,
+        sender_id,
+        company_id,
+        sender_name,
+        sender_avatar
+    };
+
     const channel = supabase.channel('system-notifications');
     await channel.send({
         type: 'broadcast',
         event: 'NEW_NOTIFICATION',
-        payload: newNotif
+        payload: enrichedPayload
     });
-    return newNotif;
+    return enrichedPayload;
 };
 
 // POST new notification
