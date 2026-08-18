@@ -272,32 +272,42 @@ function MainLayout({ children }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
-  // PWA Install State
+  // PWA Install State & Platform Detection
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [browserType, setBrowserType] = useState('other'); // 'samsung', 'ios', 'chrome_android', 'desktop'
 
   useEffect(() => {
     // Check if app is already running in standalone mode (PWA installed)
-    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+    const isStandaloneMode = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      window.navigator.standalone === true || 
+      document.referrer.includes('android-app://');
     setIsStandalone(Boolean(isStandaloneMode));
 
-    // Detect iOS
-    const isIosDevice = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-    setIsIOS(isIosDevice);
+    // Detect browser / OS platform
+    const ua = window.navigator.userAgent.toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua)) {
+      setBrowserType('ios');
+    } else if (/samsungbrowser/.test(ua)) {
+      setBrowserType('samsung');
+    } else if (/android/.test(ua) && /chrome/.test(ua)) {
+      setBrowserType('chrome_android');
+    } else {
+      setBrowserType('desktop');
+    }
 
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setIsInstallable(true);
     };
 
     const handleAppInstalled = () => {
-      setIsInstallable(false);
       setDeferredPrompt(null);
       setIsStandalone(true);
+      setShowInstallGuide(false);
+      toast.success('C-Point HRIS installed to your Home Screen!', { icon: '🎉' });
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -311,15 +321,21 @@ function MainLayout({ children }) {
 
   const handleInstallApp = async () => {
     if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setIsInstallable(false);
-        setDeferredPrompt(null);
+      try {
+        await deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          setDeferredPrompt(null);
+          setIsStandalone(true);
+          setShowInstallGuide(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('[PWA] Native prompt error:', err);
       }
-    } else if (isIOS) {
-      setShowIOSInstallGuide(true);
     }
+    // Fallback: If native prompt wasn't triggered, show tailored browser guide
+    setShowInstallGuide(true);
   };
 
   // Fetch initial notifications
@@ -589,6 +605,18 @@ function MainLayout({ children }) {
 
             <div className="flex items-center gap-2 sm:gap-3 relative">
               
+              {/* Install App Quick Action in Mobile Header (When not installed) */}
+              {!isStandalone && (
+                <button
+                  onClick={handleInstallApp}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl shadow-md shadow-blue-500/20 font-bold text-[11px] sm:text-xs tap-active transition-all"
+                  title="Install C-Point App to Home Screen"
+                >
+                  <i className="ti ti-download text-xs sm:text-sm font-bold" />
+                  <span>Install App</span>
+                </button>
+              )}
+
               {/* Mobile Quick Search Button */}
               <button 
                 onClick={() => setShowSearch(!showSearch)} 
@@ -1016,58 +1044,168 @@ function MainLayout({ children }) {
             )}
           </AnimatePresence>
 
-          {/* iOS PWA Installation Guide Modal */}
+          {/* Universal PWA Installation Guide Modal (Samsung Internet, Chrome, iOS Safari, Desktop) */}
           <AnimatePresence>
-            {showIOSInstallGuide && (
+            {showInstallGuide && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
-                  onClick={() => setShowIOSInstallGuide(false)}
+                  onClick={() => setShowInstallGuide(false)}
                 />
                 <motion.div 
                   initial={{ scale: 0.95, opacity: 0, y: 20 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                  className="relative w-full max-w-sm bg-slate-900 border border-white/15 rounded-3xl p-6 text-white shadow-2xl z-10 space-y-4"
+                  className="relative w-full max-w-md bg-slate-900 border border-white/15 rounded-3xl p-5 sm:p-6 text-white shadow-2xl z-10 space-y-4 max-h-[90vh] overflow-y-auto"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-sm text-white shadow-md shadow-blue-500/30">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-black text-base text-white shadow-lg shadow-blue-500/30 shrink-0">
                         CP
                       </div>
                       <div>
-                        <h4 className="text-sm font-black">Install on iPhone / iPad</h4>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase">Safari Web App</p>
+                        <h4 className="text-sm sm:text-base font-black tracking-tight">Install C-Point HRIS</h4>
+                        <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Fast Fullscreen App</p>
                       </div>
                     </div>
-                    <button onClick={() => setShowIOSInstallGuide(false)} className="text-slate-400 hover:text-white p-1">
-                      <i className="ti ti-x text-lg" />
+                    <button 
+                      onClick={() => setShowInstallGuide(false)} 
+                      className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
+                      aria-label="Close modal"
+                    >
+                      <i className="ti ti-x text-base" />
                     </button>
                   </div>
 
-                  <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/5 text-xs text-slate-300">
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                      <p>Tap the <span className="font-bold text-white"><i className="ti ti-share inline text-sm text-blue-400" /> Share</span> button at the bottom of Safari.</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                      <p>Scroll down and tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home Screen</span>.</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                      <p>Tap <span className="font-bold text-white">Add</span> in the top right corner.</p>
-                    </div>
+                  {/* Direct Native Install Prompt (If available) */}
+                  {deferredPrompt && (
+                    <button
+                      onClick={handleInstallApp}
+                      className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2"
+                    >
+                      <i className="ti ti-download text-base" /> 1-Tap Quick Install
+                    </button>
+                  )}
+
+                  {/* Browser Selector Tabs */}
+                  <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                    <button
+                      onClick={() => setBrowserType('samsung')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'samsung' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                      Samsung
+                    </button>
+                    <button
+                      onClick={() => setBrowserType('chrome_android')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'chrome_android' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                      Chrome
+                    </button>
+                    <button
+                      onClick={() => setBrowserType('ios')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'ios' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                      iPhone / iPad
+                    </button>
+                    <button
+                      onClick={() => setBrowserType('desktop')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'desktop' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                      PC / Mac
+                    </button>
+                  </div>
+
+                  {/* Step Instructions by Browser */}
+                  <div className="space-y-2.5 bg-white/5 p-4 rounded-2xl border border-white/5 text-xs text-slate-300">
+                    {browserType === 'samsung' && (
+                      <>
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                          <i className="ti ti-brand-android text-base" /> Samsung Internet Browser Steps:
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-menu-2 inline text-sm text-blue-400" /> Menu (☰)</span> button at the bottom right corner.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                          <p>Tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> + Add page to</span> (or the Install icon).</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                          <p>Select <span className="font-bold text-white">Home screen</span> and tap <span className="font-bold text-white">Add</span>.</p>
+                        </div>
+                      </>
+                    )}
+
+                    {browserType === 'chrome_android' && (
+                      <>
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                          <i className="ti ti-brand-chrome text-base" /> Google Chrome Android Steps:
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-dots-vertical inline text-sm text-blue-400" /> Three Dots (⋮)</span> at the top right.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                          <p>Tap <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-emerald-400" /> Install app</span> or <span className="font-bold text-white">Add to Home screen</span>.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                          <p>Confirm by tapping <span className="font-bold text-white">Install</span>.</p>
+                        </div>
+                      </>
+                    )}
+
+                    {browserType === 'ios' && (
+                      <>
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                          <i className="ti ti-brand-apple text-base" /> Safari on iPhone / iPad Steps:
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-share inline text-sm text-blue-400" /> Share</span> button at the bottom of Safari.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                          <p>Scroll down and tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home Screen</span>.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                          <p>Tap <span className="font-bold text-white">Add</span> in the top right corner.</p>
+                        </div>
+                      </>
+                    )}
+
+                    {browserType === 'desktop' && (
+                      <>
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                          <i className="ti ti-device-desktop text-base" /> Desktop (Chrome / Edge) Steps:
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                          <p>Look in the browser address bar on the right.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                          <p>Click the <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-blue-400" /> Install C-Point HRIS</span> icon.</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                          <p>Click <span className="font-bold text-white">Install</span> to launch standalone window.</p>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <button 
-                    onClick={() => setShowIOSInstallGuide(false)}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 tap-active"
+                    onClick={() => setShowInstallGuide(false)}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl tap-active transition-all"
                   >
-                    Got it
+                    Close Guide
                   </button>
                 </motion.div>
               </div>
