@@ -1,5 +1,5 @@
-// C-Point HRIS Progressive Web App Service Worker
-const CACHE_NAME = 'cpoint-hris-v1.0.0';
+// C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
+const CACHE_NAME = 'cpoint-hris-v2.0.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,84 +9,115 @@ const STATIC_ASSETS = [
   '/pwa-512x512.png',
   '/pwa-maskable.png',
   '/apple-touch-icon.png',
-  '/pwa-192x192.svg',
-  '/pwa-512x512.svg',
-  '/pwa-maskable.svg',
   'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css'
 ];
 
-// Install Event - Pre-cache core shell
+// Install Event - Pre-cache core assets & activate immediately
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
         console.warn('[PWA SW] Pre-caching non-fatal asset issue:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
-// Activate Event - Clean old caches
+// Activate Event - Purge old cache versions and claim all clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            console.log('[PWA SW] Deleting outdated cache:', key);
+            return caches.delete(key);
+          }
+        })
       );
     }).then(() => self.clients.claim())
   );
 });
 
-// Fetch Event - Dynamic Network First for API, Stale-While-Revalidate for UI assets
+// Fetch Event
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests or browser-extensions
+  // 1. Skip non-GET and browser-extension requests
   if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
     return;
   }
 
-  // Network-First for API and Database endpoints
+  // 2. Network-First for API and Database endpoints
   if (
     url.pathname.startsWith('/api') || 
     url.hostname.includes('onrender.com') || 
     url.hostname.includes('supabase.co')
   ) {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match(request);
+      fetch(request).catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // 3. Navigation Requests (HTML / Page Routes) -> ALWAYS NETWORK-FIRST
+  // This prevents mobile white screens by ensuring fresh index.html with valid JS hashes is always loaded
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match('/index.html') || caches.match('/');
+        })
+    );
+    return;
+  }
+
+  // 4. Static Hashed Assets (/assets/...) -> Cache-First with Network fallback
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        }).catch((err) => {
+          console.warn('[PWA SW] Asset fetch failed:', url.pathname, err);
+          return cached;
+        });
       })
     );
     return;
   }
 
-  // Stale-While-Revalidate for Static Assets, HTML & Scripts
+  // 5. All Other Static Assets -> Stale-While-Revalidate
   event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(request).then((cachedResponse) => {
-        const fetchPromise = fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-              cache.put(request, networkResponse.clone());
-            }
-            return networkResponse;
-          })
-          .catch((err) => {
-            // If offline and requesting navigation, return index.html
-            if (request.mode === 'navigate') {
-              return caches.match('/index.html') || cachedResponse;
-            }
-            return cachedResponse;
-          });
+    caches.match(request).then((cachedResponse) => {
+      const fetchPromise = fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return networkResponse;
+      }).catch(() => cachedResponse);
 
-        return cachedResponse || fetchPromise;
-      });
+      return cachedResponse || fetchPromise;
     })
   );
 });
 
-// Listen for update messages
+// Message listener for skip waiting
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
