@@ -391,6 +391,10 @@ export default function Login() {
                 )}
             </motion.div>
 
+            {/* Footer */}
+            <div className="pb-2 text-center pointer-events-none">
+                <p className="text-slate-400 text-[10px] font-semibold tracking-wider uppercase"> </p>
+            </div>
         </div>
     );
 }
