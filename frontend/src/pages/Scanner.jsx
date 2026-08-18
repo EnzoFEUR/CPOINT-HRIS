@@ -7,9 +7,7 @@ import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
 
-/* =============================================================================
-   ENTERPRISE CONFIGURATION
-   ============================================================================= */
+// Scanner configuration
 const ENV = {
   MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
   API_BASE: import.meta.env?.VITE_API_BASE || 'http://localhost:5000/api',
@@ -720,7 +718,7 @@ const Scanner = () => {
         const reqId = data.requestId || 'unknown';
         let friendly = data.message || 'Verification failed.';
 
-        // Enterprise-friendly error mapping
+        // Map HTTP status codes to user-friendly messages
         if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
         else if (res.status === 403) friendly = `SECURITY ALERT: ${friendly}`;
         else if (res.status === 503) friendly = 'Biometric AI engine offline. Contact IT.';

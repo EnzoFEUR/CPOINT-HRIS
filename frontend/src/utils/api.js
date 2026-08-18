@@ -4,9 +4,8 @@ import toast from 'react-hot-toast';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 /**
- * Enterprise Global API Wrapper
- * Automatically injects the active Supabase JWT Session Token into every request.
- * Globally handles 401 Unauthorized errors by gracefully clearing the session.
+ * Fetch wrapper that attaches Supabase auth token
+ * and handles 401 session expiration redirects.
  */
 export const fetchWithAuth = async (endpoint, options = {}) => {
     try {

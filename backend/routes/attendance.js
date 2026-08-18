@@ -5,9 +5,7 @@ import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-/* =============================================================================
-   ENTERPRISE CONFIGURATION
-   ============================================================================= */
+// Attendance and biometrics configuration
 const CONFIG = Object.freeze({
   BIOMETRICS: {
     MATCH_THRESHOLD: parseInt(process.env.BIOMETRIC_MATCH_THRESHOLD, 10) || 55,
@@ -768,7 +766,7 @@ router.post(
       logger.error(reqId, 'Failed to update database with biometric status', dbErr);
     }
 
-    // ── Update Auth Metadata (Enterprise Fix for missing schema columns) ──
+    // Update auth user metadata
     const { error: metaErr } = await supabase.auth.admin.updateUserById(employee_id, {
       user_metadata: { has_registered_biometrics: true }
     });

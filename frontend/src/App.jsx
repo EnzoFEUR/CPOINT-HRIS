@@ -131,7 +131,7 @@ const getPageTitle = (pathname) => {
   return segment.replace(/-/g, ' ');
 };
 
-// Synthetic High-Clarity Notification Chime (Zero External Files Needed)
+// Notification chime synthesizer
 const playNotificationChime = () => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;

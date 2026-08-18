@@ -1,21 +1,13 @@
 import NodeCache from 'node-cache';
 
-/**
- * Enterprise In-Memory High-Speed Cache
- * stdTTL: 30 seconds default Time-To-Live
- * checkperiod: periodic garbage collection every 60s
- * useClones: false (maximum performance, avoids deep clone overhead)
- */
+// In-memory cache instance for frequently read endpoints
 export const memoryCache = new NodeCache({ 
     stdTTL: 30, 
     checkperiod: 60,
     useClones: false 
 });
 
-/**
- * Express Middleware to cache JSON GET responses
- * @param {number} ttlSeconds - Duration to store data in memory (in seconds)
- */
+// Cache GET responses in memory based on URL and user context
 export const cacheResponse = (ttlSeconds = 30) => {
     return (req, res, next) => {
         // Only cache idempotent GET requests

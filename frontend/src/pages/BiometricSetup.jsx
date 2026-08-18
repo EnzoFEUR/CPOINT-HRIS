@@ -7,9 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 
-/* =============================================================================
-   ENTERPRISE CONFIGURATION
-   ============================================================================= */
+// Biometric scanner config
 const ENV = {
   MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
   API_BASE: import.meta.env?.VITE_API_BASE || 'http://localhost:5000/api',

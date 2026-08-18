@@ -9,10 +9,10 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-// High-Performance Gzip/Brotli Compression Middleware (Shrinks payloads by ~75-85%)
+// Response compression
 app.use(compression({
     level: 6,
-    threshold: 1024 // Only compress payloads >= 1KB
+    threshold: 1024
 }));
 
 // Core Middleware

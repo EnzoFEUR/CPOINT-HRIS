@@ -169,9 +169,7 @@ router.delete('/:id', async (req, res) => {
         // Fetch company_id BEFORE deleting the user, because the deleteUser cascades and wipes the employee row!
         const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
 
-        // --------------------------------------------------------------------------------
-        // ENTERPRISE ORPHAN DATA CLEANUP: Fetch all daily attendance photos to shred them
-        // --------------------------------------------------------------------------------
+        // Delete stored attendance and biometric photos
         const { data: attendanceLogs } = await supabase
             .from('attendances')
             .select('time_in_photo, time_out_photo')
@@ -185,23 +183,19 @@ router.delete('/:id', async (req, res) => {
             });
         }
         
-        // Add the baseline face photo to the shred list using the new nested structure
+        // Add baseline face photo to deletion list
         if (empData?.company_id) {
             photosToShred.push(`face-baselines/${empData.company_id}/${req.params.id}.jpg`);
         } else {
             photosToShred.push(`face-baselines/${req.params.id}/${req.params.id}.jpg`);
         }
 
-        // Bulk delete all photos from the storage bucket in one network request
+        // Delete photos from storage bucket
         if (photosToShred.length > 0) {
             await supabase.storage.from('public-bucket').remove(photosToShred).catch(() => {});
         }
-        // --------------------------------------------------------------------------------
 
-        // --------------------------------------------------------------------------------
-        // ENTERPRISE ORPHAN DB RECORD CLEANUP: Remove constraint blockers
-        // (Since the DB schema might be missing ON DELETE CASCADE, we manually purge relations)
-        // --------------------------------------------------------------------------------
+        // Clean up related records in dependent tables
         const tablesToClean = [
             'attendances', 
             'schedules', 
