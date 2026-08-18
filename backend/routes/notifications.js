@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
         const { user_id, role } = req.query;
         if (!user_id) return res.status(400).json({ error: 'User ID is required' });
 
-        let query = supabase.from('notifications').select('*').order('created_at', { ascending: false });
+        let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
         
         if (role === 'admin') {
             query = query.or(`target.eq.admin,target.eq.${user_id}`);
@@ -17,10 +17,54 @@ router.get('/', async (req, res) => {
             query = query.eq('target', user_id);
         }
 
-        const { data, error } = await query;
+        const { data: notifications, error } = await query;
         if (error) throw error;
 
-        res.json(data);
+        // Fetch employees to enrich notifications with avatars
+        const { data: employees } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name');
+
+        const empMap = new Map();
+        (employees || []).forEach(emp => {
+            empMap.set(emp.id, emp);
+            const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+            empMap.set(fullName, emp);
+        });
+
+        const enriched = (notifications || []).map(notif => {
+            let matchedEmp = null;
+            if (notif.sender_id && empMap.has(notif.sender_id)) {
+                matchedEmp = empMap.get(notif.sender_id);
+            } else if (notif.target && empMap.has(notif.target)) {
+                matchedEmp = empMap.get(notif.target);
+            } else {
+                for (const emp of (employees || [])) {
+                    const fullName = `${emp.first_name} ${emp.last_name}`;
+                    if ((notif.title && notif.title.includes(fullName)) || (notif.text && notif.text.includes(fullName))) {
+                        matchedEmp = emp;
+                        break;
+                    }
+                }
+            }
+
+            const company_id = notif.company_id || matchedEmp?.company_id || null;
+            const sender_id = notif.sender_id || matchedEmp?.id || null;
+            const sender_name = notif.sender_name || (matchedEmp ? `${matchedEmp.first_name} ${matchedEmp.last_name}` : null);
+            const sender_avatar = notif.sender_avatar || (company_id && sender_id 
+                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${company_id}/${sender_id}.jpg`
+                : null);
+
+            return {
+                ...notif,
+                company_id,
+                sender_id,
+                sender_name,
+                sender_avatar
+            };
+        });
+
+        res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

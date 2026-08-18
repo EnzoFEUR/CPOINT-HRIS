@@ -152,7 +152,6 @@ export default function ShiftsIndex() {
                     </div>
                 </motion.div>
 
-                {/* 2. SEARCH & FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4 bg-white p-3 rounded-lg shadow-sm border border-slate-100">
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
@@ -177,7 +176,6 @@ export default function ShiftsIndex() {
                     </div>
                 </motion.div>
 
-                {/* 3. ROSTER GRID */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence>
                         {filteredEmployees.map(employee => {
@@ -191,14 +189,25 @@ export default function ShiftsIndex() {
                                     key={employee.id} 
                                     className="bg-white rounded-md p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 relative overflow-hidden group"
                                 >
-                                    {/* Ambient Glow behind card */}
                                     <div className={`absolute -right-10 -top-10 w-32 h-32 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity ${activeShift.styles.bg}`} />
                                     
-                                    {/* Top Section: Identity & Current Shift */}
                                     <div className="flex items-start justify-between relative z-10">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-14 w-14 rounded-lg bg-slate-50 flex items-center justify-center font-black text-slate-800 text-xl shadow-inner border border-slate-100 shrink-0">
-                                                {employee.first_name.charAt(0)}{employee.last_name.charAt(0)}
+                                            <div className="relative h-14 w-14 rounded-xl overflow-hidden shadow-inner border border-slate-200 shrink-0 bg-slate-50 flex items-center justify-center group-hover:scale-105 transition-transform">
+                                                {employee.company_id && employee.id ? (
+                                                    <img 
+                                                        src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id}/${employee.id}.jpg`}
+                                                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                        alt={`${employee.first_name} ${employee.last_name}`}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : null}
+                                                <div 
+                                                    className="w-full h-full rounded-xl flex items-center justify-center font-black text-slate-800 text-lg shadow-inner bg-slate-50 border border-slate-100"
+                                                    style={{ display: (employee.company_id && employee.id) ? 'none' : 'flex' }}
+                                                >
+                                                    {employee.first_name?.charAt(0)}{employee.last_name?.charAt(0)}
+                                                </div>
                                             </div>
                                             <div>
                                                 <h3 className="font-black text-slate-800 text-lg tracking-tight group-hover:text-blue-600 transition-colors">
@@ -209,7 +218,6 @@ export default function ShiftsIndex() {
                                         </div>
                                     </div>
 
-                                    {/* Middle Section: Current Status */}
                                     <div className="mt-6 mb-6">
                                         <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-md border ${activeShift.styles.lightBg} ${activeShift.styles.text} ${activeShift.styles.border}`}>
                                             <div className={`w-2 h-2 rounded-full ${activeShift.styles.bg} animate-pulse`} />
@@ -220,7 +228,6 @@ export default function ShiftsIndex() {
                                         </p>
                                     </div>
 
-                                    {/* Bottom Section: Segmented Control Assignment */}
                                     <div className="relative z-10 pt-5 border-t border-slate-50">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Reassign Schedule</p>
                                         <div className="flex bg-slate-50 p-1.5 rounded-lg border border-slate-100">

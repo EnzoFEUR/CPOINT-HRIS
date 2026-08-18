@@ -162,8 +162,21 @@ export default function PayrollIndex() {
                                         <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-lg bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-lg shadow-inner border border-emerald-100">
-                                                        {(payroll.employees?.first_name || 'U').charAt(0)}{(payroll.employees?.last_name || 'S').charAt(0)}
+                                                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-emerald-50 flex items-center justify-center">
+                                                        {payroll.employees?.company_id && payroll.employees?.id ? (
+                                                            <img 
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`}
+                                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                                alt={payroll.employees?.first_name || 'Employee'}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : null}
+                                                        <div 
+                                                            className="w-full h-full rounded-xl bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-base shadow-inner"
+                                                            style={{ display: (payroll.employees?.company_id && payroll.employees?.id) ? 'none' : 'flex' }}
+                                                        >
+                                                            {(payroll.employees?.first_name || 'U').charAt(0)}{(payroll.employees?.last_name || 'S').charAt(0)}
+                                                        </div>
                                                     </div>
                                                     <div>
                                                         <p className="text-base font-black text-slate-800 group-hover:text-emerald-700 transition-colors">

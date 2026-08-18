@@ -129,7 +129,6 @@ const Index = () => {
                     </div>
                 </motion.div>
 
-                {/* Data table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
@@ -146,12 +145,23 @@ const Index = () => {
                                 <AnimatePresence>
                                     {paginatedLogs.length > 0 ? paginatedLogs.map((log) => (
                                         <motion.tr variants={rowVariants} key={log.id} className="hover:bg-cyan-50/30 transition-colors group">
-                                            
-                                            {/* Employee Column */}
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-lg bg-cyan-50 flex items-center justify-center font-black text-cyan-600 text-lg shadow-inner border border-cyan-100 shrink-0">
-                                                        {(log.employees?.first_name || '?').charAt(0)}
+                                                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-cyan-50 flex items-center justify-center">
+                                                        {log.employees?.company_id && log.employees?.id ? (
+                                                            <img 
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${log.employees.company_id}/${log.employees.id}.jpg`}
+                                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                                alt={log.employees?.first_name || 'Employee'}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : null}
+                                                        <div 
+                                                            className="w-full h-full rounded-xl bg-cyan-50 flex items-center justify-center font-black text-cyan-600 text-base shadow-inner"
+                                                            style={{ display: (log.employees?.company_id && log.employees?.id) ? 'none' : 'flex' }}
+                                                        >
+                                                            {(log.employees?.first_name || '?').charAt(0)}
+                                                        </div>
                                                     </div>
                                                     <div>
                                                         <p className="text-base font-black text-slate-800 group-hover:text-cyan-600 transition-colors">

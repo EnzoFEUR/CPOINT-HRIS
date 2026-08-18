@@ -123,11 +123,7 @@ export default function DisciplinaryIndex() {
             
 
             <div className="space-y-8">
-                
-                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    
-                    
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
@@ -141,7 +137,6 @@ export default function DisciplinaryIndex() {
                         </div>
                         
                         <div className="flex items-center gap-4">
-                            {/* Summary Widget */}
                             <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg flex items-center gap-4 hidden sm:flex">
                                 <div className="text-right">
                                     <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Active Cases</p>
@@ -152,7 +147,6 @@ export default function DisciplinaryIndex() {
                                 </div>
                             </div>
                             
-                            {/* Action button */}
                             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                                 <button onClick={() => setShowModal(true)} className="relative flex items-center gap-3 px-8 py-5 bg-rose-500 rounded-lg shadow-sm overflow-hidden group/btn">
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
@@ -166,7 +160,6 @@ export default function DisciplinaryIndex() {
                     </div>
                 </motion.div>
 
-                {/* 2. FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
                     <div className="flex gap-1">
                         {['All', 'Active', 'Resolved'].map(status => (
@@ -185,7 +178,6 @@ export default function DisciplinaryIndex() {
                     </div>
                 </motion.div>
 
-                {/* 3. DATA TABLE */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
@@ -205,8 +197,21 @@ export default function DisciplinaryIndex() {
                                             
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-lg bg-red-50 flex items-center justify-center font-black text-red-600 text-lg shadow-inner border border-red-100 shrink-0">
-                                                        {record.employee_name.charAt(0)}
+                                                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-red-50 flex items-center justify-center">
+                                                        {record.company_id && record.employee_id ? (
+                                                            <img 
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${record.company_id}/${record.employee_id}.jpg`}
+                                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                                alt={record.employee_name}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : null}
+                                                        <div 
+                                                            className="w-full h-full rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-base shadow-inner"
+                                                            style={{ display: (record.company_id && record.employee_id) ? 'none' : 'flex' }}
+                                                        >
+                                                            {record.employee_name ? record.employee_name.charAt(0) : '?'}
+                                                        </div>
                                                     </div>
                                                     <div>
                                                         <p className="text-base font-black text-slate-800 group-hover:text-red-600 transition-colors">

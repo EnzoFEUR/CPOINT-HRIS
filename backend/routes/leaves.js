@@ -94,11 +94,26 @@ router.put('/:id/status', async (req, res) => {
         invalidateCache(['/api/leaves', '/api/dashboard']);
 
         if (updatedLeave) {
+            const { data: emp } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name')
+                .eq('id', updatedLeave.employee_id)
+                .maybeSingle();
+
+            const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+            const avatarUrl = emp?.company_id && emp?.id 
+                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+                : null;
+
             await createNotification({
                 target: updatedLeave.employee_id,
-                title: 'Leave Request Update',
-                text: `Your leave request was ${status.toLowerCase()}.`,
-                type: 'leave'
+                title: `Leave Request: ${status}`,
+                text: `Your ${updatedLeave.type || 'leave'} request has been ${status.toLowerCase()}.`,
+                type: 'leave',
+                sender_id: emp?.id,
+                company_id: emp?.company_id,
+                sender_name: empName,
+                sender_avatar: avatarUrl
             });
 
             if (req.body.admin_id) {
