@@ -207,18 +207,24 @@ const Scanner = () => {
 
   // ── Auth Gate ──
   const user = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('user')) || { name: 'Gate Guard', role: 'security' }; }
+    try { 
+      const raw = localStorage.getItem('user');
+      return (raw && raw !== 'undefined') ? JSON.parse(raw) : { name: 'Gate Guard', role: 'security' }; 
+    }
     catch { return { name: 'Gate Guard', role: 'security' }; }
   }, []);
 
-  if (user.role !== 'security' && user.role !== 'admin') {
+  const role = (user?.role || '').toLowerCase();
+  const isAuthorized = role === 'security' || role === 'guard' || role === 'security_guard' || role === 'admin' || role === 'superadmin' || role === 'hr';
+
+  if (!isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6">
         <div className="bg-red-950/30 p-10 rounded-3xl shadow-2xl max-w-md text-center border border-red-500/30 backdrop-blur-xl">
           <div className="text-6xl mb-6"><i className="ti ti-lock-square-rounded text-red-500"></i></div>
           <h2 className="text-3xl font-black text-white mb-2 tracking-widest uppercase">Access Denied</h2>
           <p className="text-red-300 text-sm mb-8">Security clearance insufficient.</p>
-          <button onClick={() => window.location.href = '/'} className="py-4 px-8 w-full bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition-all">Abort</button>
+          <button onClick={() => window.location.href = '/login'} className="py-4 px-8 w-full bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition-all">Sign In</button>
         </div>
       </div>
     );

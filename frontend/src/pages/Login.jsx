@@ -175,17 +175,21 @@ export default function Login() {
 
         localStorage.setItem('user', JSON.stringify(userData));
 
+        const role = (userData.role || '').toLowerCase();
+        const isSecurityRole = role === 'security' || role === 'guard' || role === 'security_guard';
+        const isAdminRole = role === 'admin' || role === 'superadmin' || role === 'hr';
+
         if (userData.requires_password_change) {
             toast.success('Authentication successful. Please update your password.');
             navigate('/force-password-change');
-        } else if (!userData.has_registered_biometrics && userData.role !== 'security' && userData.role !== 'admin') {
+        } else if (!userData.has_registered_biometrics && !isSecurityRole && !isAdminRole) {
             toast.success('Authentication successful. Please register your biometric face scan.');
             navigate('/biometric-setup');
         } else {
             toast.success('Authentication Successful!');
-            if (userData.role === 'admin') {
+            if (isAdminRole) {
                 navigate('/');
-            } else if (userData.role === 'security') {
+            } else if (isSecurityRole) {
                 navigate('/scanner');
             } else {
                 navigate('/employee/dashboard');

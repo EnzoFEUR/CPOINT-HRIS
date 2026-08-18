@@ -5,6 +5,16 @@ import { supabase } from './supabaseClient';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
 
+const getRole = (user) => (user?.role || '').toLowerCase();
+const isSecurity = (user) => {
+    const r = getRole(user);
+    return r === 'security' || r === 'guard' || r === 'security_guard';
+};
+const isAdmin = (user) => {
+    const r = getRole(user);
+    return r === 'admin' || r === 'superadmin' || r === 'hr';
+};
+
 const AuthGuard = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -32,7 +42,7 @@ const AuthGuard = ({ children }) => {
                     navigate('/force-password-change', { replace: true });
                 }
                 return;
-            } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
+            } else if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
                 if (location.pathname !== '/biometric-setup') {
                     navigate('/biometric-setup', { replace: true });
                 }
@@ -41,23 +51,23 @@ const AuthGuard = ({ children }) => {
 
             // Role-based root routing to prevent Dashboard flashing
             if (location.pathname === '/') {
-                if (user.role === 'security') {
+                if (isSecurity(user)) {
                     navigate('/scanner', { replace: true });
-                } else if (user.role !== 'admin') {
+                } else if (!isAdmin(user)) {
                     navigate('/employee/dashboard', { replace: true });
                 }
                 return;
             }
 
             // Strictly protect all /admin/* routes from non-admin accounts
-            if (location.pathname.startsWith('/admin') && user.role !== 'admin') {
+            if (location.pathname.startsWith('/admin') && !isAdmin(user)) {
                 toast.error('Access Denied: Admin privileges required.');
-                navigate(user.role === 'security' ? '/scanner' : '/employee/dashboard', { replace: true });
+                navigate(isSecurity(user) ? '/scanner' : '/employee/dashboard', { replace: true });
                 return;
             }
 
             // Strictly protect /scanner from non-authorized personnel (security & admin only)
-            if (location.pathname === '/scanner' && user.role !== 'admin' && user.role !== 'security') {
+            if (location.pathname === '/scanner' && !isAdmin(user) && !isSecurity(user)) {
                 toast.error('Access Denied: Gate scanner is restricted to authorized personnel.');
                 navigate('/employee/dashboard', { replace: true });
                 return;
@@ -377,7 +387,7 @@ function MainLayout({ children }) {
     }
   }, [user]);
 
-  const searchIndex = user?.role === 'admin' ? [
+  const searchIndex = isAdmin(user) ? [
     { label: 'Admin Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
     { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
@@ -390,7 +400,7 @@ function MainLayout({ children }) {
     { label: 'Calendar Roster', route: '/admin/attendance/calendar', icon: 'ti-calendar' },
     { label: 'Gate Terminal Scanner', route: '/scanner', icon: 'ti-scan' },
     { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },
-  ] : user?.role === 'security' ? [
+  ] : isSecurity(user) ? [
     { label: 'Gate Terminal Scanner', route: '/scanner', icon: 'ti-scan' },
     { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },
   ] : [
@@ -880,7 +890,7 @@ function MainLayout({ children }) {
                   {[
                     { to: '/employee/dashboard', label: 'Portal', icon: 'ti-smart-home', exact: true },
                     { to: '/employee/qr', label: 'My Pass', icon: 'ti-qrcode' },
-                    ...(user.role === 'security' ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
+                    ...(isSecurity(user) ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
                     { to: '/profile', label: 'Profile', icon: 'ti-user' }
                   ].map(tab => {
                     const isActive = tab.exact 
@@ -1033,7 +1043,7 @@ function MainLayout({ children }) {
                       </div>
                     </Link>
 
-                    {(user?.role === 'admin' || user?.role === 'security') && (
+                    {(isAdmin(user) || isSecurity(user)) && (
                       <Link 
                         to="/scanner" 
                         onClick={() => setSidebarOpen(false)}

@@ -8,7 +8,14 @@ import { supabase } from '../supabaseClient';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
-    const storedUser = JSON.parse(localStorage.getItem('user')) || { name: 'Loading...', id: '', department: 'Team Member' };
+    const storedUser = (() => {
+        try {
+            const raw = localStorage.getItem('user');
+            return (raw && raw !== 'undefined') ? JSON.parse(raw) : { name: 'Loading...', id: '', department: 'Team Member' };
+        } catch {
+            return { name: 'Loading...', id: '', department: 'Team Member' };
+        }
+    })();
     const [user, setUser] = useState(storedUser);
     
     // Modals
@@ -27,10 +34,11 @@ const EmployeeDashboard = () => {
     const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
     useEffect(() => {
-        if (storedUser.role === 'security') {
+        const role = (storedUser?.role || '').toLowerCase();
+        if (role === 'security' || role === 'guard' || role === 'security_guard') {
             window.location.href = '/scanner';
         }
-    }, [storedUser.role]);
+    }, [storedUser]);
 
     const fetchDashboardData = async (userId) => {
         const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
