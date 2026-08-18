@@ -709,113 +709,113 @@ function MainLayout({ children }) {
           {/* ═══════════════════════════════════════════════════════
               MODERN MOBILE FLOATING DOCK (Island Style)
               ═══════════════════════════════════════════════════════ */}
-          <div className="lg:hidden fixed bottom-3 inset-x-0 z-40 flex justify-center px-3 pointer-events-none pb-[max(0.2rem,env(safe-area-inset-bottom))]">
-            <nav className="pointer-events-auto bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl shadow-2xl p-1.5 flex items-center gap-1 shadow-slate-950/40 ring-1 ring-white/10">
+          {/* ═══════════════════════════════════════════════════════
+              MODERN DYNAMIC MOBILE FLOATING DOCK (Multi-Resolution Fluid Island)
+              ═══════════════════════════════════════════════════════ */}
+          <div className="lg:hidden fixed bottom-2.5 sm:bottom-4 inset-x-0 z-40 flex justify-center px-2 sm:px-4 pointer-events-none pb-[max(0.35rem,env(safe-area-inset-bottom))]">
+            <nav className="pointer-events-auto w-full max-w-[460px] bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl p-1 sm:p-1.5 flex items-center justify-between gap-0.5 sm:gap-1 shadow-slate-950/50 ring-1 ring-white/10">
               {user.role === 'admin' ? (
                 <>
-                  <Link 
-                    to="/" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Dashboard"
-                  >
-                    <i className="ti ti-smart-home text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Home</span>
-                  </Link>
+                  {[
+                    { to: '/', label: 'Home', icon: 'ti-smart-home', exact: true },
+                    { to: '/admin/employees', label: 'Staff', icon: 'ti-users-group' },
+                    { to: '/admin/attendance', label: 'Logs', icon: 'ti-clock-hour-4' },
+                    { to: '/admin/shifts', label: 'Shifts', icon: 'ti-calendar-time' },
+                    { to: '/admin/payroll', label: 'Payroll', icon: 'ti-wallet' },
+                    { to: '/admin/leaves', label: 'Leaves', icon: 'ti-plane-departure' }
+                  ].map(tab => {
+                    const isActive = tab.exact 
+                      ? location.pathname === tab.to 
+                      : location.pathname.startsWith(tab.to);
 
-                  <Link 
-                    to="/admin/employees" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/employees') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Staff"
-                  >
-                    <i className="ti ti-users-group text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Staff</span>
-                  </Link>
+                    return (
+                      <Link 
+                        key={tab.to}
+                        to={tab.to} 
+                        className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                          isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title={tab.label}
+                      >
+                        {isActive && (
+                          <motion.div
+                            layoutId="mobileActiveDockPill"
+                            className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
+                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                          />
+                        )}
+                        <i className={`ti ${tab.icon} text-lg sm:text-xl relative z-10 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
+                        <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                          {tab.label}
+                        </span>
+                      </Link>
+                    );
+                  })}
 
-                  <Link 
-                    to="/admin/attendance" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/attendance') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Attendance Logs"
-                  >
-                    <i className="ti ti-clock-hour-4 text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Logs</span>
-                  </Link>
-
-                  <Link 
-                    to="/admin/shifts" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/shifts') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Shifts"
-                  >
-                    <i className="ti ti-calendar-time text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Shifts</span>
-                  </Link>
-
-                  <Link 
-                    to="/admin/payroll" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/payroll') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Payroll"
-                  >
-                    <i className="ti ti-wallet text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Payroll</span>
-                  </Link>
-
-                  <Link 
-                    to="/admin/leaves" 
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/leaves') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                    title="Leaves"
-                  >
-                    <i className="ti ti-plane-departure text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Leaves</span>
-                  </Link>
-
+                  {/* More Apps Trigger */}
                   <button 
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${sidebarOpen ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                      sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                    }`}
                     title="More Apps"
                   >
-                    <i className="ti ti-grid-dots text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">More</span>
+                    {sidebarOpen && (
+                      <motion.div
+                        layoutId="mobileActiveDockPill"
+                        className="absolute inset-0 bg-purple-600 rounded-xl sm:rounded-2xl shadow-md shadow-purple-500/40"
+                        transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                      />
+                    )}
+                    <i className={`ti ti-grid-dots text-lg sm:text-xl relative z-10 transition-transform duration-200 ${sidebarOpen ? 'scale-110' : ''}`} />
+                    <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                      More
+                    </span>
                   </button>
                 </>
               ) : (
                 <>
-                  <Link 
-                    to="/employee/dashboard" 
-                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/employee/dashboard' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    <i className="ti ti-smart-home text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Portal</span>
-                  </Link>
+                  {[
+                    { to: '/employee/dashboard', label: 'Portal', icon: 'ti-smart-home', exact: true },
+                    { to: '/employee/qr', label: 'My Pass', icon: 'ti-qrcode' },
+                    { to: '/scanner', label: 'Scan', icon: 'ti-scan' },
+                    { to: '/profile', label: 'Profile', icon: 'ti-user' }
+                  ].map(tab => {
+                    const isActive = tab.exact 
+                      ? location.pathname === tab.to 
+                      : location.pathname.startsWith(tab.to);
 
-                  <Link 
-                    to="/employee/qr" 
-                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    <i className="ti ti-qrcode text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">My Pass</span>
-                  </Link>
-
-                  <Link 
-                    to="/scanner" 
-                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/scanner' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    <i className="ti ti-scan text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Scan</span>
-                  </Link>
-
-                  <Link 
-                    to="/profile" 
-                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    <i className="ti ti-user text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Profile</span>
-                  </Link>
+                    return (
+                      <Link 
+                        key={tab.to}
+                        to={tab.to} 
+                        className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                          isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {isActive && (
+                          <motion.div
+                            layoutId="mobileEmpActiveDockPill"
+                            className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
+                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                          />
+                        )}
+                        <i className={`ti ${tab.icon} text-xl relative z-10 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
+                        <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                          {tab.label}
+                        </span>
+                      </Link>
+                    );
+                  })}
 
                   <button 
                     onClick={handleLogout}
-                    className="flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                    className="relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-red-400 hover:text-red-300"
                   >
-                    <i className="ti ti-power text-xl" />
-                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Logout</span>
+                    <i className="ti ti-power text-xl relative z-10" />
+                    <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                      Logout
+                    </span>
                   </button>
                 </>
               )}
@@ -823,7 +823,7 @@ function MainLayout({ children }) {
           </div>
 
           {/* ═══════════════════════════════════════════════════════
-              MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL
+              MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL (With Drag Gestures)
               ═══════════════════════════════════════════════════════ */}
           <AnimatePresence>
             {sidebarOpen && (
@@ -832,26 +832,36 @@ function MainLayout({ children }) {
                   initial={{ opacity: 0 }} 
                   animate={{ opacity: 1 }} 
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+                  className="absolute inset-0 bg-slate-950/75 backdrop-blur-md"
                   onClick={() => setSidebarOpen(false)}
                 />
                 <motion.div 
                   initial={{ y: "100%" }} 
                   animate={{ y: 0 }} 
                   exit={{ y: "100%" }}
+                  drag="y"
+                  dragConstraints={{ top: 0, bottom: 0 }}
+                  dragElastic={{ top: 0.05, bottom: 0.5 }}
+                  onDragEnd={(e, info) => {
+                    if (info.offset.y > 100 || info.velocity.y > 500) {
+                      setSidebarOpen(false);
+                    }
+                  }}
                   transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                  className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-2xl border-t border-white/10 rounded-t-3xl p-5 text-white shadow-2xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24"
+                  className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl p-5 text-white shadow-2xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24"
                 >
-                  <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4" />
+                  {/* Drag Pill Handle */}
+                  <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
                   
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Dock</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Center</p>
                     </div>
                     <button 
                       onClick={() => setSidebarOpen(false)} 
                       className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
+                      aria-label="Close Sheet"
                     >
                       <i className="ti ti-x text-sm" />
                     </button>
@@ -866,9 +876,9 @@ function MainLayout({ children }) {
                       <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0">
                         <i className="ti ti-gavel text-xl" />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">Disciplinary</p>
-                        <p className="text-[9px] text-slate-400">Notices & incidents</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">Disciplinary</p>
+                        <p className="text-[9px] text-slate-400 truncate">Notices & infractions</p>
                       </div>
                     </Link>
 
@@ -880,9 +890,9 @@ function MainLayout({ children }) {
                       <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
                         <i className="ti ti-history text-xl" />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">Audit Trail</p>
-                        <p className="text-[9px] text-slate-400">Security history</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">Audit Trail</p>
+                        <p className="text-[9px] text-slate-400 truncate">Security history</p>
                       </div>
                     </Link>
 
@@ -894,9 +904,9 @@ function MainLayout({ children }) {
                       <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
                         <i className="ti ti-calendar text-xl" />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">Calendar</p>
-                        <p className="text-[9px] text-slate-400">Workforce roster</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">Calendar</p>
+                        <p className="text-[9px] text-slate-400 truncate">Workforce roster</p>
                       </div>
                     </Link>
 
@@ -908,9 +918,9 @@ function MainLayout({ children }) {
                       <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
                         <i className="ti ti-scan text-xl" />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">AI Scanner</p>
-                        <p className="text-[9px] text-slate-400">Gate terminal</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">AI Scanner</p>
+                        <p className="text-[9px] text-slate-400 truncate">Gate terminal</p>
                       </div>
                     </Link>
                   </div>
