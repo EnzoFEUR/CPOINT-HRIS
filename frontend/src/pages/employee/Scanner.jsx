@@ -75,28 +75,58 @@ const Scanner = () => {
         };
     }, []);
 
-    const startScanner = () => {
+    const startScanner = async () => {
         setIsScanning(true);
         setAiStatus("Waiting for ID Scan...");
-        html5QrCodeRef.current = new Html5Qrcode("reader");
-        
-        const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
-        
-        html5QrCodeRef.current.start(
-            { facingMode: "environment" }, 
-            config, 
-            (decodedText) => onScanSuccess(decodedText)
-        ).then(() => {
-            // Find the video element created by html5-qrcode
+
+        // Pre-request camera permission to trigger browser prompt
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: "environment" } },
+                    audio: false
+                });
+                stream.getTracks().forEach(t => t.stop());
+            }
+        } catch (permErr) {
+            console.warn('[Scanner] Camera permission request error:', permErr);
+            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+                showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
+                setIsScanning(false);
+                return;
+            }
+        }
+
+        try {
+            html5QrCodeRef.current = new Html5Qrcode("reader");
+            const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            
+            try {
+                await html5QrCodeRef.current.start(
+                    { facingMode: { ideal: "environment" } }, 
+                    config, 
+                    (decodedText) => onScanSuccess(decodedText)
+                );
+            } catch (camErr) {
+                console.warn('[Scanner] Fallback to user facing camera:', camErr);
+                await html5QrCodeRef.current.start(
+                    { facingMode: "user" }, 
+                    config, 
+                    (decodedText) => onScanSuccess(decodedText)
+                );
+            }
+
             const videoElement = document.querySelector('#reader video');
             if (videoElement) {
+                videoElement.setAttribute('playsinline', 'true');
+                videoElement.setAttribute('webkit-playsinline', 'true');
                 videoRef.current = videoElement;
             }
-        }).catch(err => {
+        } catch (err) {
             console.error(err);
-            showFeedback('error', 'Camera Error', 'Could not access camera.');
+            showFeedback('error', 'Camera Error', 'Could not access camera. Check device permissions.');
             setIsScanning(false);
-        });
+        }
     };
 
     const stopScanner = () => {

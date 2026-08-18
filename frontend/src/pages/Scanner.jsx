@@ -343,32 +343,71 @@ const Scanner = () => {
   }, [state.mode, state.modelsLoaded]);
 
   // ── QR Scanner ──
-  const startQr = useCallback(() => {
+  const startQr = useCallback(async () => {
     if (qrRef.current) return;
     dispatch({ type: 'SET_LOADING', payload: '' });
-    qrRef.current = new Html5Qrcode('qr-reader');
-    const isPortrait = window.innerHeight > window.innerWidth;
-    qrRef.current.start(
-      { facingMode: { ideal: 'environment' } },
-      { 
-        fps: 10, 
-        disableFlip: false,
-        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
-        experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
-        },
-        videoConstraints: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-        }
-      },
-      onQrSuccess,
-      () => {} // ignore decode failures
-    ).catch(() => {
-      toast.error('Camera unavailable');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Rear camera unavailable. Check permissions.', code: 'CAMERA_ERROR' } });
-    });
-  }, []);
+
+    // Step 1: Explicitly request camera permission to trigger browser prompt on mobile
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const testStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        testStream.getTracks().forEach(t => t.stop());
+      }
+    } catch (permErr) {
+      console.warn('[Scanner] Camera permission request:', permErr);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        toast.error('Camera permission required. Please allow camera access.');
+        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera permission denied. Please allow camera access in your browser settings.', code: 'CAMERA_PERMISSION_DENIED' } });
+        return;
+      }
+    }
+
+    try {
+      qrRef.current = new Html5Qrcode('qr-reader');
+      const isPortrait = window.innerHeight > window.innerWidth;
+      
+      // Try back camera first
+      try {
+        await qrRef.current.start(
+          { facingMode: { ideal: 'environment' } },
+          { 
+            fps: 15, 
+            disableFlip: false,
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            },
+            videoConstraints: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: isPortrait ? 720 : 1280 },
+              height: { ideal: isPortrait ? 1280 : 720 }
+            }
+          },
+          onQrSuccess,
+          () => {} // ignore decode failures
+        );
+      } catch (backCamErr) {
+        console.warn('[Scanner] Back camera unavailable, falling back to any camera:', backCamErr);
+        await qrRef.current.start(
+          { facingMode: 'user' },
+          { 
+            fps: 15, 
+            disableFlip: false,
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+          },
+          onQrSuccess,
+          () => {}
+        );
+      }
+    } catch (err) {
+      console.error('[Scanner] Failed to start QR scanner:', err);
+      toast.error('Camera unavailable. Check permissions.');
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera unavailable. Please grant camera permission and refresh.', code: 'CAMERA_ERROR' } });
+    }
+  }, [onQrSuccess]);
 
   const stopQr = useCallback(() => {
     if (!qrRef.current) return;
@@ -469,18 +508,31 @@ const Scanner = () => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
       const isPortrait = window.innerHeight > window.innerWidth;
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user', 
-          width: { ideal: isPortrait ? 720 : 1280 }, 
-          height: { ideal: isPortrait ? 1280 : 720 } 
-        }
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { ideal: 'user' }, 
+            width: { ideal: isPortrait ? 720 : 1280 }, 
+            height: { ideal: isPortrait ? 1280 : 720 } 
+          },
+          audio: false
+        });
+      } catch (camErr) {
+        console.warn('[FaceCam] Fallback to generic user camera:', camErr);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('webkit-playsinline', 'true');
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play();
+          videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
           dispatch({ type: 'SET_LOADING', payload: '' });
           runDetectionLoop();
         };
