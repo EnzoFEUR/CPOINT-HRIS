@@ -1,57 +1,66 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
 
-// Auth Pages
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ForcePasswordChange from './pages/ForcePasswordChange';
-import BiometricSetup from './pages/BiometricSetup';
-import VerifyEmail from './pages/VerifyEmail';
+// Auth Pages (Lazy Loaded)
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ForcePasswordChange = lazy(() => import('./pages/ForcePasswordChange'));
+const BiometricSetup = lazy(() => import('./pages/BiometricSetup'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
-// Core Flow Pages
-import Dashboard from './pages/Dashboard';
-import Scanner from './pages/Scanner';
-import EmployeeDashboard from './pages/EmployeeDashboard';
+// Core Flow Pages (Lazy Loaded)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Scanner = lazy(() => import('./pages/Scanner'));
+const EmployeeDashboard = lazy(() => import('./pages/EmployeeDashboard'));
 
 // Admin / Attendance
-import AttendanceIndex from './pages/admin/attendance/Index';
-import AttendanceCalendar from './pages/admin/attendance/Calendar';
+const AttendanceIndex = lazy(() => import('./pages/admin/attendance/Index'));
+const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'));
 
 // Admin / Employees
-import EmployeeIndex from './pages/admin/employees/Index';
-import EmployeeCreate from './pages/admin/employees/Create';
-import EmployeeEdit from './pages/admin/employees/Edit';
-import EmployeeShow from './pages/admin/employees/Show';
-import EmployeeQrPrint from './pages/admin/employees/QrPrint';
+const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
+const EmployeeCreate = lazy(() => import('./pages/admin/employees/Create'));
+const EmployeeEdit = lazy(() => import('./pages/admin/employees/Edit'));
+const EmployeeShow = lazy(() => import('./pages/admin/employees/Show'));
+const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
 
 // Admin / Payroll
-import PayrollIndex from './pages/admin/payroll/Index';
-import PayrollCreate from './pages/admin/payroll/Create';
-import PayrollShow from './pages/admin/payroll/Show';
+const PayrollIndex = lazy(() => import('./pages/admin/payroll/Index'));
+const PayrollCreate = lazy(() => import('./pages/admin/payroll/Create'));
+const PayrollShow = lazy(() => import('./pages/admin/payroll/Show'));
 
 // Admin / Audit Logs
-import AuditLogsIndex from './pages/admin/audit-logs/Index';
+const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 
 // Admin / Leaves
-import LeavesIndex from './pages/admin/leaves/Index';
+const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 
 // Admin / Shifts
-import ShiftsIndex from './pages/admin/shifts/Index';
+const ShiftsIndex = lazy(() => import('./pages/admin/shifts/Index'));
 
 // Admin / Disciplinary
-import DisciplinaryIndex from './pages/admin/disciplinary/Index';
+const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 
 // Employee
-import MyQr from './pages/employee/MyQr';
-import EmployeeScanner from './pages/employee/Scanner';
+const MyQr = lazy(() => import('./pages/employee/MyQr'));
+const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
 
 import './index.css';
+
+const RouteLoadingFallback = () => (
+  <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
+    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 animate-pulse">
+      <i className="ti ti-loader-2 text-2xl animate-spin" />
+    </div>
+    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Loading Module...</p>
+  </div>
+);
 
 const getRole = (user) => (user?.role || '').toLowerCase();
 const isSecurity = (user) => {
@@ -1286,55 +1295,57 @@ function App() {
         }} 
       />
       <AuthGuard>
-        <Routes>
-          {/* Auth */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        
-        {/* Force Setup Routes */}
-        <Route path="/force-password-change" element={<ForcePasswordChange />} />
-        <Route path="/biometric-setup" element={<BiometricSetup />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            {/* Auth */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            
+            {/* Force Setup Routes */}
+            <Route path="/force-password-change" element={<ForcePasswordChange />} />
+            <Route path="/biometric-setup" element={<BiometricSetup />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
 
-        {/* Global/Shared */}
-        <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
-        <Route path="/scanner" element={<Scanner />} />
+            {/* Global/Shared */}
+            <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
+            <Route path="/scanner" element={<Scanner />} />
 
-        {/* Admin - Employees */}
-        <Route path="/admin/employees" element={<MainLayout><EmployeeIndex /></MainLayout>} />
-        <Route path="/admin/employees/create" element={<MainLayout><EmployeeCreate /></MainLayout>} />
-        <Route path="/admin/employees/:id/edit" element={<MainLayout><EmployeeEdit /></MainLayout>} />
-        <Route path="/admin/employees/:id" element={<MainLayout><EmployeeShow /></MainLayout>} />
-        <Route path="/admin/employees/:id/qr" element={<EmployeeQrPrint />} />
+            {/* Admin - Employees */}
+            <Route path="/admin/employees" element={<MainLayout><EmployeeIndex /></MainLayout>} />
+            <Route path="/admin/employees/create" element={<MainLayout><EmployeeCreate /></MainLayout>} />
+            <Route path="/admin/employees/:id/edit" element={<MainLayout><EmployeeEdit /></MainLayout>} />
+            <Route path="/admin/employees/:id" element={<MainLayout><EmployeeShow /></MainLayout>} />
+            <Route path="/admin/employees/:id/qr" element={<EmployeeQrPrint />} />
 
-        {/* Admin - Attendance */}
-        <Route path="/admin/attendance" element={<MainLayout><AttendanceIndex /></MainLayout>} />
-        <Route path="/admin/attendance/calendar" element={<MainLayout><AttendanceCalendar /></MainLayout>} />
+            {/* Admin - Attendance */}
+            <Route path="/admin/attendance" element={<MainLayout><AttendanceIndex /></MainLayout>} />
+            <Route path="/admin/attendance/calendar" element={<MainLayout><AttendanceCalendar /></MainLayout>} />
 
-        {/* Admin - Payroll */}
-        <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
-        <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
-        <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
+            {/* Admin - Payroll */}
+            <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
+            <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
+            <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
 
-        {/* Admin - Audit Logs */}
-        <Route path="/admin/audit-logs" element={<MainLayout><AuditLogsIndex /></MainLayout>} />
+            {/* Admin - Audit Logs */}
+            <Route path="/admin/audit-logs" element={<MainLayout><AuditLogsIndex /></MainLayout>} />
 
-        {/* Admin - Leaves */}
-        <Route path="/admin/leaves" element={<MainLayout><LeavesIndex /></MainLayout>} />
+            {/* Admin - Leaves */}
+            <Route path="/admin/leaves" element={<MainLayout><LeavesIndex /></MainLayout>} />
 
-        {/* Admin - Shifts */}
-        <Route path="/admin/shifts" element={<MainLayout><ShiftsIndex /></MainLayout>} />
+            {/* Admin - Shifts */}
+            <Route path="/admin/shifts" element={<MainLayout><ShiftsIndex /></MainLayout>} />
 
-        {/* Admin - Disciplinary */}
-        <Route path="/admin/disciplinary" element={<MainLayout><DisciplinaryIndex /></MainLayout>} />
+            {/* Admin - Disciplinary */}
+            <Route path="/admin/disciplinary" element={<MainLayout><DisciplinaryIndex /></MainLayout>} />
 
-        {/* Employee */}
-        <Route path="/employee/dashboard" element={<MainLayout><EmployeeDashboard /></MainLayout>} />
-        <Route path="/employee/qr" element={<MainLayout><MyQr /></MainLayout>} />
-        <Route path="/employee/scanner" element={<MainLayout><EmployeeScanner /></MainLayout>} />
-        </Routes>
+            {/* Employee */}
+            <Route path="/employee/dashboard" element={<MainLayout><EmployeeDashboard /></MainLayout>} />
+            <Route path="/employee/qr" element={<MainLayout><MyQr /></MainLayout>} />
+            <Route path="/employee/scanner" element={<MainLayout><EmployeeScanner /></MainLayout>} />
+          </Routes>
+        </Suspense>
       </AuthGuard>
     </Router>
   );
