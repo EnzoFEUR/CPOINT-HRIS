@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function Show() {
     const { id } = useParams();
@@ -21,7 +22,7 @@ export default function Show() {
         if (!id || id === 'undefined') return;
         
         let isMounted = true;
-        fetch(`http://localhost:5000/api/employees/${id}`)
+        fetchWithAuth(`/api/employees/${id}`)
             .then(res => res.json())
             .then(data => {
                 if (!isMounted) return;
@@ -48,23 +49,17 @@ export default function Show() {
         window.print();
     };
 
-    const confirmDelete = async () => {
-        if (deleteConfirmText !== employee.name) {
-            toast.error("Name does not match.");
-            return;
-        }
-
+    const handleDelete = async () => {
+        if (!employee) return;
         setIsDeleting(true);
-        
-        // Artificial delay for UX: lets the user see the "Deleting..." animation
-        // since the local server processes the request too fast (0 ping)
+
+        // Artificial smooth UX delay
         await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
-            const response = await fetch(`http://localhost:5000/api/employees/${employee.id}`, {
+            const response = await fetchWithAuth(`/api/employees/${employee.id}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_id: user?.id })
             });
             const resData = await response.json();
@@ -78,12 +73,13 @@ export default function Show() {
                 
                 navigate('/admin/employees');
             } else {
-                toast.error(resData.error || 'Failed to delete employee.');
-                setIsDeleting(false);
+                toast.error('Failed: ' + resData.error);
             }
-        } catch (error) {
-            toast.error('Network error while deleting.');
+        } catch (err) {
+            toast.error('Network Error. Failed to delete employee.');
+        } finally {
             setIsDeleting(false);
+            setIsDeleteModalOpen(false);
         }
     };
 

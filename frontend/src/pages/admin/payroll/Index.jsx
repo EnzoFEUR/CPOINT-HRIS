@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function PayrollIndex() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -25,19 +26,19 @@ export default function PayrollIndex() {
     };
 
     const fetchPayrolls = async () => {
-        let url = 'http://localhost:5000/api/payroll';
+        let endpoint = '/api/payroll';
         const queryParams = new URLSearchParams();
         if (currentMonth) queryParams.append('month', currentMonth);
         if (currentYear) queryParams.append('year', currentYear);
         
         if (queryParams.toString()) {
-            url += `?${queryParams.toString()}`;
+            endpoint += `?${queryParams.toString()}`;
         }
         
-        const res = await fetch(url);
+        const res = await fetchWithAuth(endpoint);
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to fetch');
-        return result.data || result || [];
+        return Array.isArray(result) ? result : (result.data || []);
     };
 
     const { data: payrolls = [], isLoading } = useQuery({

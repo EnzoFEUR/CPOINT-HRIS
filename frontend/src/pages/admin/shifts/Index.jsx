@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function ShiftsIndex() {
     const [employees, setEmployees] = useState([]);
@@ -30,11 +31,18 @@ export default function ShiftsIndex() {
 
     const fetchEmployees = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/shifts');
+            const res = await fetchWithAuth('/api/shifts');
             const data = await res.json();
-            setEmployees(data);
+            if (Array.isArray(data)) {
+                setEmployees(data);
+            } else if (data?.data && Array.isArray(data.data)) {
+                setEmployees(data.data);
+            } else {
+                setEmployees([]);
+            }
         } catch (err) {
             console.error("Failed to fetch shifts:", err);
+            setEmployees([]);
             toast.error("Failed to load shift engine");
         } finally {
             setIsLoading(false);
@@ -46,23 +54,21 @@ export default function ShiftsIndex() {
     }, []);
 
     const handleAssignShift = async (employee_id, shift) => {
-        // Optimistic UI update
-        const previousEmployees = [...employees];
-        const employee = employees.find(e => e.id === employee_id);
-        setEmployees(prev => prev.map(emp => emp.id === employee_id ? { ...emp, shift } : emp));
+        const empList = Array.isArray(employees) ? employees : [];
+        const previousEmployees = [...empList];
+        setEmployees(prev => (Array.isArray(prev) ? prev : []).map(emp => emp.id === employee_id ? { ...emp, shift } : emp));
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
-            const res = await fetch('http://localhost:5000/api/shifts/assign', {
+            const res = await fetchWithAuth('/api/shifts/assign', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ employee_id, shift, admin_id: user?.id })
             });
             const data = await res.json();
             if (data.success) {
                 toast.success('Shift assigned successfully!');
             } else {
-                toast.error(data.error);
+                toast.error(data.error || 'Failed to assign shift');
                 setEmployees(previousEmployees); // Rollback
             }
         } catch (err) {
@@ -72,16 +78,18 @@ export default function ShiftsIndex() {
     };
 
     const departments = useMemo(() => {
-        const depts = new Set(employees.map(e => e.department));
+        const empList = Array.isArray(employees) ? employees : [];
+        const depts = new Set(empList.map(e => e.department));
         return ['All', ...Array.from(depts).filter(Boolean)];
     }, [employees]);
 
     const filteredEmployees = useMemo(() => {
-        return employees.filter(emp => {
+        const empList = Array.isArray(employees) ? employees : [];
+        return empList.filter(emp => {
             const roleStr = (emp.role || '').toLowerCase();
             if (roleStr === 'admin' || roleStr === 'security') return false;
 
-            const matchSearch = `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchSearch = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase().includes(searchQuery.toLowerCase());
             const matchDept = filterDept === 'All' || emp.department === filterDept;
             return matchSearch && matchDept;
         });

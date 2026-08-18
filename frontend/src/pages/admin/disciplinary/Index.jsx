@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function DisciplinaryIndex() {
     const [records, setRecords] = useState([]);
@@ -19,16 +20,18 @@ export default function DisciplinaryIndex() {
     const fetchData = async () => {
         try {
             const [recRes, empRes] = await Promise.all([
-                fetch('http://localhost:5000/api/disciplinary'),
-                fetch('http://localhost:5000/api/employees')
+                fetchWithAuth('/api/disciplinary'),
+                fetchWithAuth('/api/employees')
             ]);
             
             const recData = await recRes.json();
             const empData = await empRes.json();
             
-            setRecords(recData);
-            if (empData.success) {
+            setRecords(Array.isArray(recData) ? recData : (recData?.data || []));
+            if (empData.success && Array.isArray(empData.data)) {
                 setEmployees(empData.data);
+            } else if (Array.isArray(empData)) {
+                setEmployees(empData);
             }
         } catch (err) {
             console.error("Failed to fetch data:", err);
@@ -48,9 +51,8 @@ export default function DisciplinaryIndex() {
             const user = JSON.parse(localStorage.getItem('user'));
             const payload = { employee_id: employeeId, type, severity, reason, admin_id: user?.id };
             
-            const res = await fetch('http://localhost:5000/api/disciplinary', {
+            const res = await fetchWithAuth('/api/disciplinary', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
@@ -73,7 +75,7 @@ export default function DisciplinaryIndex() {
         setRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'Resolved' } : r));
 
         try {
-            const res = await fetch(`http://localhost:5000/api/disciplinary/${id}/resolve`, { method: 'PUT' });
+            const res = await fetchWithAuth(`/api/disciplinary/${id}/resolve`, { method: 'PUT' });
             const data = await res.json();
             if (data.success) {
                 toast.success('Case marked as Resolved');
