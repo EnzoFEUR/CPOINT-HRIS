@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function LeavesIndex() {
     const queryClient = useQueryClient();
     const [filterStatus, setFilterStatus] = useState('All');
 
     const fetchLeaves = async () => {
-        const res = await fetch('http://localhost:5000/api/leaves');
+        const res = await fetchWithAuth('/api/leaves');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch leaves');
-        return data || [];
+        return Array.isArray(data) ? data : (data?.data || []);
     };
 
     const { data: leaves = [], isLoading } = useQuery({
@@ -26,9 +27,8 @@ export default function LeavesIndex() {
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
-            const res = await fetch(`http://localhost:5000/api/leaves/${id}/status`, {
+            const res = await fetchWithAuth(`/api/leaves/${id}/status`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status, admin_id: user?.id })
             });
             const data = await res.json();

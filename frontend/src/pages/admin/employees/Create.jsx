@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
@@ -20,9 +21,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
     }
 
     const handleSalaryChange = (e) => {
-        const val = e.target.value;
-        setDisplaySalary(formatSalary(val));
-        setRawSalary(val.replace(/[^\d.]/g, ''));
+        const value = e.target.value.replace(/[^0-9.]/g, '');
+        setRawSalary(value);
+        setDisplaySalary(formatSalary(value));
     };
 
     const handleSubmit = async (e) => {
@@ -37,9 +38,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
         await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
-            const res = await fetch('http://localhost:5000/api/employees', {
+            const res = await fetchWithAuth('/api/employees', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             const result = await res.json();

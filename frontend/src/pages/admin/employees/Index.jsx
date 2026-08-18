@@ -3,11 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function Index() {
     const location = useLocation();
     const fetchEmployees = async () => {
-        const response = await fetch('http://localhost:5000/api/employees');
+        const response = await fetchWithAuth('/api/employees');
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to fetch');
         return result.data || [];

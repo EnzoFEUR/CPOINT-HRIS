@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function Edit() {
     const { id } = useParams();
@@ -13,7 +14,7 @@ export default function Edit() {
     const [rawSalary, setRawSalary] = useState('');
 
     useEffect(() => {
-        fetch(`http://localhost:5000/api/employees/${id}`)
+        fetchWithAuth(`/api/employees/${id}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
@@ -55,9 +56,8 @@ export default function Edit() {
             const user = JSON.parse(localStorage.getItem('user'));
             data.admin_id = user?.id;
 
-            const res = await fetch(`http://localhost:5000/api/employees/${id}`, {
+            const res = await fetchWithAuth(`/api/employees/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             const result = await res.json();
