@@ -604,18 +604,6 @@ function MainLayout({ children }) {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3 relative">
-              
-              {/* Install App Quick Action in Mobile Header (When not installed) */}
-              {!isStandalone && (
-                <button
-                  onClick={handleInstallApp}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl shadow-md shadow-blue-500/20 font-bold text-[11px] sm:text-xs tap-active transition-all"
-                  title="Install C-Point App to Home Screen"
-                >
-                  <i className="ti ti-download text-xs sm:text-sm font-bold" />
-                  <span>Install App</span>
-                </button>
-              )}
 
               {/* Mobile Quick Search Button */}
               <button 
@@ -945,8 +933,8 @@ function MainLayout({ children }) {
                     </button>
                   </div>
 
-                  {/* PWA Install Banner (When not already installed) */}
-                  {!isStandalone && (
+                  {/* PWA Install Banner (Discreetly visible for Admins only when not installed) */}
+                  {user?.role === 'admin' && !isStandalone && (
                     <div className="mb-4 p-3.5 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/30 shrink-0">
