@@ -1,5 +1,5 @@
 // C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
-const CACHE_NAME = 'cpoint-hris-v2.1.2';
+const CACHE_NAME = 'cpoint-hris-v2.1.3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

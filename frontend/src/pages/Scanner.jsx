@@ -148,6 +148,7 @@ const drawFaceMesh = (ctx, landmarks, box, state) => {
 const MODES = Object.freeze({
   BOOT: 'boot', QR: 'qr', PREP: 'prep', FACE: 'face',
   PROCESSING: 'processing', FEEDBACK: 'feedback', ERROR: 'error', UNAUTHORIZED: 'unauthorized',
+  CAMERA_PROMPT: 'camera_prompt',
 });
 
 const initialState = {
@@ -204,6 +205,8 @@ function reducer(state, action) {
    ============================================================================= */
 const Scanner = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [showPermHelp, setShowPermHelp] = useState(false);
+  const [permTab, setPermTab] = useState('ios');
 
   // ── Auth Gate ──
   const user = useMemo(() => {
@@ -681,25 +684,27 @@ const Scanner = () => {
   }, [vault, dispatch]);
 
   // ── 9. QR Scanner Starter ──
-  const startQr = useCallback(async () => {
+  const startQr = useCallback(async (isUserGesture = false) => {
     if (qrRef.current) return;
-    dispatch({ type: 'SET_LOADING', payload: '' });
+    dispatch({ type: 'SET_LOADING', payload: 'CONNECTING OPTICAL CAMERA...' });
 
-    // Step 1: Explicitly request camera permission to trigger browser prompt on mobile
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const testStream = await navigator.mediaDevices.getUserMedia({
+    // When explicitly triggered by user tap, trigger explicit getUserMedia to prompt OS permission dialog
+    if (isUserGesture && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false
         });
-        testStream.getTracks().forEach(t => t.stop());
-      }
-    } catch (permErr) {
-      console.warn('[Scanner] Camera permission request:', permErr);
-      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-        toast.error('Camera permission required. Please allow camera access.');
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera permission denied. Please allow camera access in your browser settings.', code: 'CAMERA_PERMISSION_DENIED' } });
-        return;
+        stream.getTracks().forEach(t => t.stop());
+      } catch (permErr) {
+        console.warn('[Scanner] Explicit user camera permission error:', permErr);
+        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+          toast.error('Camera permission was denied. Tap help to enable.');
+          setShowPermHelp(true);
+          dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
+          dispatch({ type: 'SET_LOADING', payload: '' });
+          return;
+        }
       }
     }
 
@@ -707,51 +712,66 @@ const Scanner = () => {
       qrRef.current = new Html5Qrcode('qr-reader');
       const isPortrait = window.innerHeight > window.innerWidth;
       
+      const qrConfig = { 
+        fps: 15, 
+        disableFlip: false,
+        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        },
+        videoConstraints: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: isPortrait ? 720 : 1280 },
+          height: { ideal: isPortrait ? 1280 : 720 }
+        }
+      };
+
       // Try back camera first
       try {
         await qrRef.current.start(
           { facingMode: { ideal: 'environment' } },
-          { 
-            fps: 15, 
-            disableFlip: false,
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
-            },
-            videoConstraints: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: isPortrait ? 720 : 1280 },
-              height: { ideal: isPortrait ? 1280 : 720 }
-            }
-          },
+          qrConfig,
           onQrSuccess,
           () => {} // ignore decode failures
         );
+        dispatch({ type: 'SET_MODE', payload: MODES.QR });
+        dispatch({ type: 'SET_LOADING', payload: '' });
       } catch (backCamErr) {
         console.warn('[Scanner] Back camera unavailable, falling back to any camera:', backCamErr);
         await qrRef.current.start(
           { facingMode: 'user' },
           { 
             fps: 15, 
-            disableFlip: false,
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+            disableFlip: false, 
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ] 
           },
           onQrSuccess,
           () => {}
         );
+        dispatch({ type: 'SET_MODE', payload: MODES.QR });
+        dispatch({ type: 'SET_LOADING', payload: '' });
       }
     } catch (err) {
-      console.error('[Scanner] Failed to start QR scanner:', err);
-      toast.error('Camera unavailable. Check permissions.');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera unavailable. Please grant camera permission and refresh.', code: 'CAMERA_ERROR' } });
+      console.warn('[Scanner] Automated camera start paused (permission required on mobile):', err);
+      try { qrRef.current?.clear(); } catch {}
+      qrRef.current = null;
+      dispatch({ type: 'SET_LOADING', payload: '' });
+      // Transition to clean permission prompt screen for mobile devices
+      dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
     }
   }, [onQrSuccess, dispatch]);
 
   // ── 10. Mode Lifecycle ──
   useEffect(() => {
-    if (state.mode === MODES.QR && state.modelsLoaded) startQr();
-    if (state.mode !== MODES.QR) stopQr();
-    if (state.mode === MODES.FACE) startFaceCamera();
+    if (state.mode === MODES.QR && state.modelsLoaded) {
+      startQr(false);
+    }
+    if (state.mode !== MODES.QR) {
+      stopQr();
+    }
+    if (state.mode === MODES.FACE) {
+      startFaceCamera();
+    }
 
     // Session safety timer
     clearTimeout(sessionTimerRef.current);
@@ -869,6 +889,172 @@ const Scanner = () => {
           <p className="absolute bottom-32 text-white/70 font-mono text-sm tracking-[0.25em] uppercase">Align QR Within Frame</p>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          MODE: CAMERA PROMPT (Mobile User Gesture Activation)
+          ═══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {state.mode === MODES.CAMERA_PROMPT && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-5 select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              className="bg-slate-900/95 border border-white/10 rounded-[2.5rem] shadow-2xl flex flex-col items-center w-full max-w-sm p-8 sm:p-10 text-center relative overflow-hidden"
+            >
+              {/* Glowing Background Pulse */}
+              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-48 h-48 bg-blue-500/20 blur-3xl rounded-full pointer-events-none" />
+
+              {/* Camera Icon Badge */}
+              <div className="w-24 h-24 rounded-3xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-6 shadow-[0_0_30px_rgba(59,130,246,0.25)] relative">
+                <i className="ti ti-camera text-4xl animate-pulse" />
+                <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs shadow-md">
+                  <i className="ti ti-lock-open" />
+                </span>
+              </div>
+
+              <h2 className="text-2xl font-black text-white tracking-tight mb-2">
+                Enable Camera Access
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm mb-7 leading-relaxed">
+                C-Point Guard Terminal requires camera permission to scan employee QR badges and verify biometric liveness.
+              </p>
+
+              <button
+                onClick={() => startQr(true)}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-black tracking-wider uppercase text-xs sm:text-sm shadow-[0_0_25px_rgba(59,130,246,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2.5"
+              >
+                <i className="ti ti-shield-check text-lg" />
+                <span>Allow Camera & Scan</span>
+              </button>
+
+              <button
+                onClick={() => setShowPermHelp(true)}
+                className="mt-4 text-xs font-semibold text-slate-400 hover:text-white underline decoration-slate-600 underline-offset-4 transition-colors flex items-center gap-1.5"
+              >
+                <i className="ti ti-help-circle" /> Blocked in browser? View Help
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════
+          PERMISSION INSTRUCTIONS MODAL (iOS & Android)
+          ═══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showPermHelp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[60] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.94, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-md p-6 sm:p-8 flex flex-col text-left shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center text-xl">
+                    <i className="ti ti-adjustments-horizontal" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Browser Camera Permissions</h3>
+                    <p className="text-[11px] text-slate-400">Step-by-step unblock instructions</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPermHelp(false)}
+                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <i className="ti ti-x text-base" />
+                </button>
+              </div>
+
+              {/* OS Tabs */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-black/40 rounded-xl mb-5 border border-white/5">
+                <button
+                  onClick={() => setPermTab('ios')}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    permTab === 'ios' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <i className="ti ti-brand-apple" /> iPhone (iOS)
+                </button>
+                <button
+                  onClick={() => setPermTab('android')}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    permTab === 'android' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <i className="ti ti-brand-android" /> Android
+                </button>
+              </div>
+
+              {/* iOS Guide */}
+              {permTab === 'ios' && (
+                <div className="space-y-3.5 text-xs text-slate-300">
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded">aA</span> icon in your Safari address bar.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <p>Select <span className="font-bold text-white">Website Settings</span>.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <p>Change <span className="font-bold text-white">Camera</span> from Deny to <span className="font-bold text-emerald-400">Allow</span>.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                    <p>Tap <span className="font-bold text-white">Done</span> and tap the button below to start.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Android Guide */}
+              {permTab === 'android' && (
+                <div className="space-y-3.5 text-xs text-slate-300">
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded">🔒 Lock</span> icon next to the URL.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <p>Tap <span className="font-bold text-white">Permissions</span> &rarr; <span className="font-bold text-white">Camera</span>.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <p>Switch setting to <span className="font-bold text-emerald-400">Allow</span>.</p>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                    <p>Return to this page and tap <span className="font-bold text-white">Retry Connection</span>.</p>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowPermHelp(false);
+                  startQr(true);
+                }}
+                className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold tracking-wider uppercase text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+              >
+                <i className="ti ti-refresh" /> Retry Connection
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══════════════════════════════════════════════════════
           MODE: PREP

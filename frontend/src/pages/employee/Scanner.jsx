@@ -180,24 +180,6 @@ const Scanner = () => {
         setIsScanning(true);
         setAiStatus("Waiting for ID Scan...");
 
-        // Pre-request camera permission to trigger browser prompt
-        try {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { ideal: "environment" } },
-                    audio: false
-                });
-                stream.getTracks().forEach(t => t.stop());
-            }
-        } catch (permErr) {
-            console.warn('[Scanner] Camera permission request error:', permErr);
-            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-                showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
-                setIsScanning(false);
-                return;
-            }
-        }
-
         try {
             html5QrCodeRef.current = new Html5Qrcode("reader");
             const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
@@ -224,8 +206,12 @@ const Scanner = () => {
                 videoRef.current = videoElement;
             }
         } catch (err) {
-            console.error(err);
-            showFeedback('error', 'Camera Error', 'Could not access camera. Check device permissions.');
+            console.error('[Scanner] Camera activation error:', err);
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
+            } else {
+                showFeedback('error', 'Camera Unavailable', 'Could not access camera device. Check device settings.');
+            }
             setIsScanning(false);
         }
     }, [onScanSuccess, showFeedback]);
