@@ -856,7 +856,7 @@ function MainLayout({ children }) {
                   {[
                     { to: '/employee/dashboard', label: 'Portal', icon: 'ti-smart-home', exact: true },
                     { to: '/employee/qr', label: 'My Pass', icon: 'ti-qrcode' },
-                    { to: '/scanner', label: 'Scan', icon: 'ti-scan' },
+                    ...(user.role === 'security' ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
                     { to: '/profile', label: 'Profile', icon: 'ti-user' }
                   ].map(tab => {
                     const isActive = tab.exact 
@@ -1009,19 +1009,21 @@ function MainLayout({ children }) {
                       </div>
                     </Link>
 
-                    <Link 
-                      to="/scanner" 
-                      onClick={() => setSidebarOpen(false)}
-                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                        <i className="ti ti-scan text-xl" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">AI Scanner</p>
-                        <p className="text-[9px] text-slate-400 truncate">Gate terminal</p>
-                      </div>
-                    </Link>
+                    {(user?.role === 'admin' || user?.role === 'security') && (
+                      <Link 
+                        to="/scanner" 
+                        onClick={() => setSidebarOpen(false)}
+                        className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <i className="ti ti-scan text-xl" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">AI Scanner</p>
+                          <p className="text-[9px] text-slate-400 truncate">Gate terminal</p>
+                        </div>
+                      </Link>
+                    )}
                   </div>
 
                   <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
