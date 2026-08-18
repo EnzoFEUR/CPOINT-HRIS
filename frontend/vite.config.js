@@ -11,20 +11,33 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('face-api.js')) {
+          // Normalize Windows and POSIX path separators
+          const normalizedId = id.replace(/\\/g, '/');
+          
+          // Shared Application Utilities & Infrastructure (Prevents circular imports from entry)
+          if (
+            normalizedId.includes('/src/utils/') || 
+            normalizedId.includes('/src/supabaseClient') || 
+            normalizedId.includes('/src/components/')
+          ) {
+            return 'app-shared';
+          }
+
+          // Isolated Vendor Dependencies
+          if (normalizedId.includes('node_modules')) {
+            if (normalizedId.includes('face-api.js')) {
               return 'vendor-faceapi';
             }
-            if (id.includes('html5-qrcode')) {
+            if (normalizedId.includes('html5-qrcode')) {
               return 'vendor-scanner';
             }
-            if (id.includes('@supabase')) {
+            if (normalizedId.includes('@supabase')) {
               return 'vendor-supabase';
             }
-            if (id.includes('framer-motion')) {
+            if (normalizedId.includes('framer-motion')) {
               return 'vendor-motion';
             }
-            if (id.includes('@tanstack/react-query')) {
+            if (normalizedId.includes('@tanstack/react-query')) {
               return 'vendor-query';
             }
             return 'vendor-core';
