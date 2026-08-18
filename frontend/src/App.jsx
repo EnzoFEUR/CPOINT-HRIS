@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
@@ -65,8 +65,8 @@ const isAdmin = (user) => {
     return r === 'admin' || r === 'superadmin' || r === 'hr';
 };
 
+// Synchronous Declarative Auth Guard (Zero-Flash Architecture)
 const AuthGuard = ({ children }) => {
-    const navigate = useNavigate();
     const location = useLocation();
     
     let user = null;
@@ -79,54 +79,47 @@ const AuthGuard = ({ children }) => {
 
     const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
     const isPublic = publicRoutes.includes(location.pathname);
-    
-    useEffect(() => {
-        if (!user && !isPublic) {
-            navigate('/login', { replace: true });
-            return;
-        }
 
-        if (user) {
-            if (user.requires_password_change) {
-                if (location.pathname !== '/force-password-change') {
-                    navigate('/force-password-change', { replace: true });
-                }
-                return;
-            } else if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
-                if (location.pathname !== '/biometric-setup') {
-                    navigate('/biometric-setup', { replace: true });
-                }
-                return;
-            }
-
-            // Role-based root routing to prevent Dashboard flashing
-            if (location.pathname === '/') {
-                if (isSecurity(user)) {
-                    navigate('/scanner', { replace: true });
-                } else if (!isAdmin(user)) {
-                    navigate('/employee/dashboard', { replace: true });
-                }
-                return;
-            }
-
-            // Strictly protect all /admin/* routes from non-admin accounts
-            if (location.pathname.startsWith('/admin') && !isAdmin(user)) {
-                toast.error('Access Denied: Admin privileges required.');
-                navigate(isSecurity(user) ? '/scanner' : '/employee/dashboard', { replace: true });
-                return;
-            }
-
-            // Strictly protect /scanner from non-authorized personnel (security & admin only)
-            if (location.pathname === '/scanner' && !isAdmin(user) && !isSecurity(user)) {
-                toast.error('Access Denied: Gate scanner is restricted to authorized personnel.');
-                navigate('/employee/dashboard', { replace: true });
-                return;
-            }
-        }
-    }, [navigate, location.pathname, isPublic]);
-
+    // 1. Unauthenticated users cannot access protected routes -> Instant synchronous redirect to login
     if (!user && !isPublic) {
-        return null;
+        return <Navigate to="/login" replace state={{ from: location }} />;
+    }
+
+    // 2. Authenticated users hitting auth pages -> Redirect to their respective home dashboard
+    if (user && (location.pathname === '/login' || location.pathname === '/register')) {
+        if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+        if (isAdmin(user)) return <Navigate to="/" replace />;
+        return <Navigate to="/employee/dashboard" replace />;
+    }
+
+    // 3. Forced setup gates
+    if (user) {
+        if (user.requires_password_change && location.pathname !== '/force-password-change') {
+            return <Navigate to="/force-password-change" replace />;
+        }
+        if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user) && location.pathname !== '/biometric-setup') {
+            return <Navigate to="/biometric-setup" replace />;
+        }
+
+        // 4. Root "/" role-based redirection to prevent dashboard flashing
+        if (location.pathname === '/') {
+            if (isSecurity(user)) {
+                return <Navigate to="/scanner" replace />;
+            }
+            if (!isAdmin(user)) {
+                return <Navigate to="/employee/dashboard" replace />;
+            }
+        }
+
+        // 5. Admin route protection
+        if (location.pathname.startsWith('/admin') && !isAdmin(user)) {
+            return <Navigate to={isSecurity(user) ? '/scanner' : '/employee/dashboard'} replace />;
+        }
+
+        // 6. Restrict gate scanner to authorized personnel (security & admin)
+        if (location.pathname === '/scanner' && !isAdmin(user) && !isSecurity(user)) {
+            return <Navigate to="/employee/dashboard" replace />;
+        }
     }
 
     return children;

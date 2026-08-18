@@ -38,7 +38,7 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
             // Only redirect if not already on the login page
             if (window.location.pathname !== '/login') {
                 toast.error('Session expired. Please log in again.');
-                window.location.href = '/login';
+                window.location.replace('/login');
             }
             throw new Error('Unauthorized');
         }
