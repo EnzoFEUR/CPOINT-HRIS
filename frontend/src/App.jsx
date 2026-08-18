@@ -2,8 +2,56 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
+
+// Auth Pages
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import ForcePasswordChange from './pages/ForcePasswordChange';
+import BiometricSetup from './pages/BiometricSetup';
+import VerifyEmail from './pages/VerifyEmail';
+
+// Core Flow Pages
+import Dashboard from './pages/Dashboard';
+import Scanner from './pages/Scanner';
+import EmployeeDashboard from './pages/EmployeeDashboard';
+
+// Admin / Attendance
+import AttendanceIndex from './pages/admin/attendance/Index';
+import AttendanceCalendar from './pages/admin/attendance/Calendar';
+
+// Admin / Employees
+import EmployeeIndex from './pages/admin/employees/Index';
+import EmployeeCreate from './pages/admin/employees/Create';
+import EmployeeEdit from './pages/admin/employees/Edit';
+import EmployeeShow from './pages/admin/employees/Show';
+import EmployeeQrPrint from './pages/admin/employees/QrPrint';
+
+// Admin / Payroll
+import PayrollIndex from './pages/admin/payroll/Index';
+import PayrollCreate from './pages/admin/payroll/Create';
+import PayrollShow from './pages/admin/payroll/Show';
+
+// Admin / Audit Logs
+import AuditLogsIndex from './pages/admin/audit-logs/Index';
+
+// Admin / Leaves
+import LeavesIndex from './pages/admin/leaves/Index';
+
+// Admin / Shifts
+import ShiftsIndex from './pages/admin/shifts/Index';
+
+// Admin / Disciplinary
+import DisciplinaryIndex from './pages/admin/disciplinary/Index';
+
+// Employee
+import MyQr from './pages/employee/MyQr';
+import EmployeeScanner from './pages/employee/Scanner';
+
+import './index.css';
 
 const getRole = (user) => (user?.role || '').toLowerCase();
 const isSecurity = (user) => {
@@ -81,54 +129,6 @@ const AuthGuard = ({ children }) => {
 
     return children;
 };
-
-// Auth Pages
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ForcePasswordChange from './pages/ForcePasswordChange';
-import BiometricSetup from './pages/BiometricSetup';
-import VerifyEmail from './pages/VerifyEmail';
-
-// Core Flow Pages
-import Dashboard from './pages/Dashboard';
-import Scanner from './pages/Scanner';
-import EmployeeDashboard from './pages/EmployeeDashboard';
-
-// Admin / Attendance
-import AttendanceIndex from './pages/admin/attendance/Index';
-import AttendanceCalendar from './pages/admin/attendance/Calendar';
-
-// Admin / Employees
-import EmployeeIndex from './pages/admin/employees/Index';
-import EmployeeCreate from './pages/admin/employees/Create';
-import EmployeeEdit from './pages/admin/employees/Edit';
-import EmployeeShow from './pages/admin/employees/Show';
-import EmployeeQrPrint from './pages/admin/employees/QrPrint';
-
-// Admin / Payroll
-import PayrollIndex from './pages/admin/payroll/Index';
-import PayrollCreate from './pages/admin/payroll/Create';
-import PayrollShow from './pages/admin/payroll/Show';
-
-// Admin / Audit Logs
-import AuditLogsIndex from './pages/admin/audit-logs/Index';
-
-// Admin / Leaves
-import LeavesIndex from './pages/admin/leaves/Index';
-
-// Admin / Shifts
-import ShiftsIndex from './pages/admin/shifts/Index';
-
-// Admin / Disciplinary
-import DisciplinaryIndex from './pages/admin/disciplinary/Index';
-
-// Employee
-import MyQr from './pages/employee/MyQr';
-import EmployeeScanner from './pages/employee/Scanner';
-
-import './index.css';
 
 const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
@@ -1252,8 +1252,6 @@ function MainLayout({ children }) {
     </div>
   );
 }
-
-import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
