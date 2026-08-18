@@ -1,13 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+
+// Status color logic lives in one place so a voided record actually
+// looks different from a paid one, instead of always rendering green.
+const statusStyles = {
+    paid: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    voided: 'bg-slate-200 text-slate-500 border-slate-300',
+};
 
 export default function PayrollIndex() {
     const [searchParams, setSearchParams] = useSearchParams();
     const currentMonth = searchParams.get('month') || '';
     const currentYear = searchParams.get('year') || '';
+    const [showVoided, setShowVoided] = useState(false);
 
     const currentYearNum = new Date().getFullYear();
     const years = Array.from({ length: 3 }, (_, i) => currentYearNum - 2 + i);
@@ -29,33 +38,38 @@ export default function PayrollIndex() {
         const queryParams = new URLSearchParams();
         if (currentMonth) queryParams.append('month', currentMonth);
         if (currentYear) queryParams.append('year', currentYear);
-        
+
         if (queryParams.toString()) {
             url += `?${queryParams.toString()}`;
         }
-        
+
         const res = await fetch(url);
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to fetch');
         return result.data || result || [];
     };
 
-    const { data: payrolls = [], isLoading } = useQuery({
+    const { data: payrolls = [], isLoading, isFetching } = useQuery({
         queryKey: ['adminPayrolls', currentMonth, currentYear],
-        queryFn: fetchPayrolls
+        queryFn: fetchPayrolls,
+        refetchInterval: 5000,
+        staleTime: 0,
+        placeholderData: keepPreviousData,
+        refetchOnWindowFocus: true,
     });
 
     const filteredPayrolls = payrolls.filter(p => {
         const roleStr = (p.employees?.role || '').toLowerCase();
-        return roleStr !== 'admin' && roleStr !== 'security';
+        if (roleStr === 'admin' || roleStr === 'security') return false;
+        if (!showVoided && p.status === 'voided') return false;
+        return true;
     });
 
-    // Animations
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
     };
-    
+
     const rowVariants = {
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
@@ -71,18 +85,16 @@ export default function PayrollIndex() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto pb-16 font-sans">
-            
-            
-            
-            
+        <div className="max-w-7xl mx-auto pb-16 font-sans relative">
+            {isFetching && !isLoading && (
+                <div className="fixed bottom-6 right-6 bg-slate-900 text-emerald-400 text-xs font-bold px-3 py-2 rounded-full shadow-lg flex items-center gap-2 border border-slate-700 z-50">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    Syncing...
+                </div>
+            )}
 
             <div className="space-y-8">
-                
-                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    
-                    
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
@@ -94,22 +106,44 @@ export default function PayrollIndex() {
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Payroll Engine</h1>
                             <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Generate, audit, and distribute digital payslips to your entire workforce.</p>
                         </div>
-                        
-                        {/* Action button */}
-                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                            <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-emerald-600 rounded-lg shadow-sm overflow-hidden group/btn">
-                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
-                                <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
-                                    <i className="ti ti-plus text-xl text-white font-bold" />
-                                </div>
-                                <span className="text-white font-black text-lg tracking-wide relative z-10">Run Payroll</span>
-                            </Link>
-                        </motion.div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                <Link
+                                    to="/admin/payroll/statutory-settings"
+                                    className="flex items-center gap-3 px-6 py-5 bg-slate-800/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-lg shadow-sm backdrop-blur-md group/stat transition-colors"
+                                >
+                                    <div className="w-10 h-10 bg-slate-700/50 rounded-md flex items-center justify-center border border-slate-600/50 group-hover/stat:border-slate-500 transition-colors">
+                                        <i className="ti ti-settings text-xl text-emerald-400" />
+                                    </div>
+                                    <span className="font-bold text-base tracking-wide">Statutory Settings</span>
+                                </Link>
+                            </motion.div>
+
+                            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                <Link to="/admin/payroll/process" className="relative flex items-center gap-3 px-8 py-5 bg-emerald-600 rounded-lg shadow-sm overflow-hidden group/btn">
+                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
+                                    <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
+                                        <i className="ti ti-plus text-xl text-white font-bold" />
+                                    </div>
+                                    <span className="text-white font-black text-lg tracking-wide relative z-10">Run Payroll</span>
+                                </Link>
+                            </motion.div>
+                        </div>
                     </div>
                 </motion.div>
 
-                {/* 2. FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-center flex-wrap gap-3">
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-500 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={showVoided}
+                            onChange={(e) => setShowVoided(e.target.checked)}
+                            className="rounded border-slate-300"
+                        />
+                        Show voided records
+                    </label>
+
                     <form onSubmit={handleFilterSubmit} className="flex items-center gap-2 bg-white p-2 rounded-lg shadow-sm border border-slate-100">
                         <div className="pl-4 pr-2 text-slate-400">
                             <i className="ti ti-calendar-stats text-xl" />
@@ -141,7 +175,6 @@ export default function PayrollIndex() {
                     </form>
                 </motion.div>
 
-                {/* Payroll table */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
@@ -158,7 +191,11 @@ export default function PayrollIndex() {
                             <tbody className="divide-y divide-slate-50">
                                 <AnimatePresence>
                                     {filteredPayrolls.length > 0 ? filteredPayrolls.map((payroll) => (
-                                        <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
+                                        <motion.tr
+                                            variants={rowVariants}
+                                            key={payroll.id}
+                                            className={`hover:bg-emerald-50/30 transition-colors group ${payroll.status === 'voided' ? 'opacity-60' : ''}`}
+                                        >
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
                                                     <div className="h-12 w-12 rounded-lg bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-lg shadow-inner border border-emerald-100">
@@ -195,20 +232,20 @@ export default function PayrollIndex() {
                                             </td>
 
                                             <td className="px-8 py-5 text-right">
-                                                <span className="text-2xl font-black text-emerald-600 tracking-tight">
+                                                <span className={`text-2xl font-black tracking-tight ${payroll.status === 'voided' ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
                                                     ₱{Number(payroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </span>
                                             </td>
 
                                             <td className="px-8 py-5 text-center">
-                                                <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-200">
+                                                <span className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest border ${statusStyles[payroll.status] || statusStyles.pending}`}>
                                                     {payroll.status}
                                                 </span>
                                             </td>
 
                                             <td className="px-8 py-5 text-right">
-                                                <Link to={`/admin/payroll/${payroll.id}`} 
-                                                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
+                                                <Link to={`/admin/payroll/${payroll.id}`}
+                                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100">
                                                     <i className="ti ti-receipt-2 text-lg" /> View
                                                 </Link>
                                             </td>

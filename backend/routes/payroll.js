@@ -3,16 +3,19 @@ import { supabase } from '../supabaseClient.js';
 
 const router = express.Router();
 
+// -------------------------------------------------------------
+// 1. LIST & COMPUTE PAYROLLS
+// -------------------------------------------------------------
 router.get('/', async (req, res) => {
     try {
         let query = supabase.from('payrolls').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
-        
+
         if (req.query.employee_id) {
             query = query.eq('employee_id', req.query.employee_id);
         }
-        
+
         if (req.query.month) query = query.gte('period_start', `${req.query.year || new Date().getFullYear()}-${req.query.month.padStart(2, '0')}-01`);
-        
+
         const { data, error } = await query;
         if (error) throw error;
         res.json(data);
@@ -60,7 +63,7 @@ router.post('/', async (req, res) => {
         if (philHealth > 2500) philHealth = 2500;
 
         const pagIbig = monthlyRate >= 5000 ? 200 : monthlyRate * 0.01;
-        
+
         let sss = monthlyRate * 0.05;
         if (sss > 1350) sss = 1350;
 
@@ -131,6 +134,54 @@ router.post('/', async (req, res) => {
     }
 });
 
+// -------------------------------------------------------------
+// 2. STATUTORY SETTINGS ENDPOINTS (MUST BE BEFORE /:id)
+// -------------------------------------------------------------
+router.get('/statutory-settings', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('statutory_settings')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        // Returns DB settings or default Philippine statutory contributions if table is empty
+        const settings = data || {
+            sss_rate: 0.05,
+            sss_max: 1350,
+            philhealth_rate: 0.025,
+            philhealth_min: 250,
+            philhealth_max: 2500,
+            pagibig_rate: 0.01,
+            pagibig_max: 200
+        };
+
+        res.json(settings);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.put('/statutory-settings', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('statutory_settings')
+            .upsert(req.body)
+            .select()
+            .single();
+
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// -------------------------------------------------------------
+// 3. DYNAMIC PARAMETERIZED ROUTES (GET /:id & DELETE /:id)
+// -------------------------------------------------------------
 router.get('/:id', async (req, res) => {
     try {
         const { data, error } = await supabase
