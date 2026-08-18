@@ -207,6 +207,18 @@ const Scanner = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [showPermHelp, setShowPermHelp] = useState(false);
   const [permTab, setPermTab] = useState('ios');
+  
+  // Dynamic Device & Orientation Detection
+  const [deviceInfo, setDeviceInfo] = useState(() => {
+    const isMobile = typeof navigator !== 'undefined' && (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024));
+    const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false;
+    return {
+      isMobile,
+      isPortrait,
+      width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+      height: typeof window !== 'undefined' ? window.innerHeight : 720,
+    };
+  });
 
   // ── Auth Gate ──
   const user = useMemo(() => {
@@ -575,13 +587,16 @@ const Scanner = () => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
       const isPortrait = window.innerHeight > window.innerWidth;
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
+
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: { ideal: 'user' }, 
-            width: { ideal: isPortrait ? 720 : 1280 }, 
-            height: { ideal: isPortrait ? 1280 : 720 } 
+            width: { ideal: isMobile && isPortrait ? 720 : 1280 }, 
+            height: { ideal: isMobile && isPortrait ? 1280 : 720 },
+            aspectRatio: { ideal: isMobile && isPortrait ? (window.innerWidth / (window.innerHeight || 1)) : 1.7777777778 }
           },
           audio: false
         });
@@ -714,16 +729,19 @@ const Scanner = () => {
     }
   }, [vault, dispatch]);
 
-  // ── 9. QR Scanner Starter ──
+  // ── 9. QR Scanner Starter (Dynamic Mobile / Desktop Camera Engine) ──
   const startQr = useCallback(async (isUserGesture = false) => {
     if (qrRef.current) return;
     dispatch({ type: 'SET_LOADING', payload: 'CONNECTING OPTICAL CAMERA...' });
+
+    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
+    const isPortrait = window.innerHeight > window.innerWidth;
 
     // When explicitly triggered by user tap, trigger explicit getUserMedia to prompt OS permission dialog
     if (isUserGesture && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: isMobile ? { facingMode: { ideal: 'environment' } } : { facingMode: 'user' },
           audio: false
         });
         stream.getTracks().forEach(t => t.stop());
@@ -741,38 +759,43 @@ const Scanner = () => {
 
     try {
       qrRef.current = new Html5Qrcode('qr-reader');
-      const isPortrait = window.innerHeight > window.innerWidth;
       
       const qrConfig = { 
-        fps: 15, 
-        disableFlip: false,
+        fps: isMobile ? 20 : 30, 
+        disableFlip: !isMobile, // Don't flip back camera, flip front camera on desktop
         formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
         experimentalFeatures: {
           useBarCodeDetectorIfSupported: true
         },
-        videoConstraints: {
+        videoConstraints: isMobile ? {
           facingMode: { ideal: 'environment' },
-          width: { ideal: isPortrait ? 720 : 1280 },
-          height: { ideal: isPortrait ? 1280 : 720 }
+          width: { ideal: isPortrait ? 1080 : 1920 },
+          height: { ideal: isPortrait ? 1920 : 1080 },
+          aspectRatio: { ideal: isPortrait ? (window.innerWidth / (window.innerHeight || 1)) : 1.7777777778 }
+        } : {
+          facingMode: 'user',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: { ideal: 1.7777777778 }
         }
       };
 
-      // Try back camera first
+      // Try preferred camera first (back on mobile, webcam on desktop)
       try {
         await qrRef.current.start(
-          { facingMode: { ideal: 'environment' } },
+          isMobile ? { facingMode: { ideal: 'environment' } } : { facingMode: 'user' },
           qrConfig,
           onQrSuccess,
           () => {} // ignore decode failures
         );
         dispatch({ type: 'SET_MODE', payload: MODES.QR });
         dispatch({ type: 'SET_LOADING', payload: '' });
-      } catch (backCamErr) {
-        console.warn('[Scanner] Back camera unavailable, falling back to any camera:', backCamErr);
+      } catch (primaryCamErr) {
+        console.warn('[Scanner] Primary camera unavailable, trying fallback camera:', primaryCamErr);
         await qrRef.current.start(
-          { facingMode: 'user' },
+          isMobile ? { facingMode: 'user' } : { facingMode: { ideal: 'environment' } },
           { 
-            fps: 15, 
+            fps: 20, 
             disableFlip: false, 
             formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ] 
           },
@@ -814,7 +837,7 @@ const Scanner = () => {
     }
   }, [state.mode, state.modelsLoaded, startQr, stopQr, startFaceCamera, handleReset]);
 
-  // ── 11. Boot Effect: Models + Clock + CSS + Online + Wake Lock ──
+  // ── 11. Boot Effect: Models + Clock + Dynamic Viewport + CSS + Wake Lock ──
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
@@ -839,6 +862,20 @@ const Scanner = () => {
       }
     })();
 
+    // Dynamic Orientation & Resize Listener
+    const handleViewportChange = () => {
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
+      const isPortrait = window.innerHeight > window.innerWidth;
+      setDeviceInfo({
+        isMobile,
+        isPortrait,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', handleViewportChange);
+
     // Clock
     const tick = setInterval(() => {
       dispatch({ type: 'SET_CLOCK', payload: new Date().toLocaleTimeString('en-US', { hour12: false }) });
@@ -850,12 +887,27 @@ const Scanner = () => {
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
 
-    // CSS injection
+    // Dynamic Responsive Camera CSS
     const style = document.createElement('style');
     style.id = 'scanner-css';
     style.textContent = `
-      #qr-reader video { object-fit:contain!important; width:100vw!important; height:100dvh!important; }
-      #qr-reader { width:100vw; height:100dvh; overflow:hidden; }
+      #qr-reader {
+        width: 100vw !important;
+        height: 100dvh !important;
+        overflow: hidden !important;
+        position: relative !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #000 !important;
+      }
+      #qr-reader video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        position: absolute !important;
+        inset: 0 !important;
+      }
       #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
       #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
     `;
@@ -869,6 +921,8 @@ const Scanner = () => {
     return () => {
       mounted = false;
       clearInterval(tick);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('orientationchange', handleViewportChange);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       document.getElementById('scanner-css')?.remove();
@@ -1279,13 +1333,17 @@ const Scanner = () => {
           <div className="flex justify-between items-start px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
             <div className="flex items-center gap-3 pt-2">
               <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center text-blue-400 border border-white/10">
-                <span className="text-lg sm:text-xl"><i className="ti ti-shield-check"></i></span>
+                <span className="text-lg sm:text-xl">
+                  <i className={`ti ${deviceInfo.isMobile ? (deviceInfo.isPortrait ? 'ti-device-mobile' : 'ti-device-mobile-rotated') : 'ti-device-desktop'}`}></i>
+                </span>
               </div>
               <div>
-                <h1 className="text-xs sm:text-sm font-black tracking-[0.2em] uppercase">Gateway</h1>
+                <h1 className="text-xs sm:text-sm font-black tracking-[0.2em] uppercase">
+                  {deviceInfo.isMobile ? (deviceInfo.isPortrait ? 'Mobile Gate' : 'Mobile Landscape') : 'Terminal Station'}
+                </h1>
                 <div className="text-[8px] sm:text-[10px] text-blue-300/60 font-mono tracking-widest flex items-center gap-1.5 mt-0.5">
                   <span className={`w-1.5 h-1.5 rounded-full ${state.isOnline ? (state.modelsLoaded ? 'bg-blue-400 shadow-[0_0_4px_#3b82f6]' : 'bg-amber-400 animate-pulse') : 'bg-red-500 animate-pulse'}`} />
-                  {!state.isOnline ? 'OFFLINE' : state.modelsLoaded ? 'Online' : 'Booting...'}
+                  {!state.isOnline ? 'OFFLINE' : state.modelsLoaded ? 'Ready' : 'Booting...'}
                 </div>
               </div>
             </div>
