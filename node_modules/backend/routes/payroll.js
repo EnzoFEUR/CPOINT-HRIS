@@ -131,40 +131,70 @@ router.post('/', async (req, res) => {
     }
 });
 
+const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+// GET single payroll
 router.get('/:id', async (req, res) => {
     try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ 
+                status: 'error', 
+                code: 'INVALID_UUID', 
+                message: 'Invalid Payroll ID format. Expected a valid UUID.' 
+            });
+        }
+
         const { data, error } = await supabase
             .from('payrolls')
             .select('*, employees:employee_id(*)')
-            .eq('id', req.params.id)
-            .single();
+            .eq('id', id)
+            .maybeSingle();
 
         if (error) throw error;
+        if (!data) {
+            return res.status(404).json({ 
+                status: 'error', 
+                code: 'NOT_FOUND', 
+                message: 'Payroll record not found.' 
+            });
+        }
+
         res.json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
+// DELETE payroll
 router.delete('/:id', async (req, res) => {
     try {
-        const { error } = await supabase.from('payrolls').delete().eq('id', req.params.id);
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ 
+                status: 'error', 
+                code: 'INVALID_UUID', 
+                message: 'Invalid Payroll ID format. Expected a valid UUID.' 
+            });
+        }
+
+        const { error } = await supabase.from('payrolls').delete().eq('id', id);
         if (error) throw error;
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'payroll',
-                description: `Deleted payroll record ID ${req.params.id}`,
+                description: `Deleted payroll record ID ${id}`,
                 subject_type: 'App\\Models\\Payroll',
-                subject_id: req.params.id,
+                subject_id: id,
                 event: 'deleted',
                 causer_id: req.body.admin_id,
                 properties: {}
             });
         }
 
-        res.json({ success: true });
+        res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

@@ -4,23 +4,40 @@ import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithAuth } from '../../../utils/api';
+
+const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
 export default function PayrollShow() {
     const { id } = useParams();
     const navigate = useNavigate();
     const [payroll, setPayroll] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [errorMessage, setErrorMessage] = useState(null);
 
     useEffect(() => {
+        // Defensive check: Do not execute network requests for undefined or malformed IDs
+        if (!id || id === 'undefined' || !isValidUUID(id)) {
+            setIsLoading(false);
+            setErrorMessage('Invalid or missing Payroll record ID.');
+            return;
+        }
+
         const fetchPayroll = async () => {
+            setIsLoading(true);
+            setErrorMessage(null);
             try {
-                const res = await fetch(`http://localhost:5000/api/payroll/${id}`);
+                const res = await fetchWithAuth(`/api/payroll/${id}`);
                 const result = await res.json();
-                if (result && !result.error) {
-                    setPayroll(result.data || result);
+                
+                if (!res.ok || result.error) {
+                    throw new Error(result.message || result.error || 'Failed to load payslip.');
                 }
+                
+                setPayroll(result.data || result);
             } catch (err) {
-                console.error('Failed to load payroll:', err);
+                console.error('[PAYROLL_SHOW] Load Error:', err);
+                setErrorMessage(err.message || 'Payslip record not found.');
             } finally {
                 setIsLoading(false);
             }
@@ -39,17 +56,16 @@ export default function PayrollShow() {
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
-            const res = await fetch(`http://localhost:5000/api/payroll/${id}`, { 
+            const res = await fetchWithAuth(`/api/payroll/${id}`, { 
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_id: user?.id })
             });
             const resultData = await res.json();
-            if (resultData.success) {
-                toast.success('Payroll record deleted.');
+            if (res.ok && resultData.success) {
+                toast.success('Payroll record deleted successfully.');
                 navigate('/admin/payroll');
             } else {
-                toast.error('Error deleting payroll: ' + resultData.error);
+                toast.error('Error deleting payroll: ' + (resultData.error || resultData.message));
             }
         } catch (err) {
             console.error('Failed to delete payroll:', err);
@@ -63,10 +79,28 @@ export default function PayrollShow() {
     };
 
     if (isLoading) {
-        return <div className="p-8 text-center text-slate-500 font-bold">Loading Payslip...</div>;
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <p className="text-slate-500 font-bold tracking-widest uppercase text-xs">Loading Payslip Document...</p>
+            </div>
+        );
     }
 
-    if (!payroll) return <div className="p-8 text-center text-red-500 font-bold">Payslip not found.</div>;
+    if (errorMessage || !payroll) {
+        return (
+            <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i className="ti ti-file-alert text-3xl" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
+                <p className="text-sm text-slate-500 mt-2 mb-6">{errorMessage || 'The requested payslip could not be found or has been removed.'}</p>
+                <Link to="/admin/payroll" className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-md">
+                    <i className="ti ti-arrow-left" /> Back to Payroll
+                </Link>
+            </div>
+        );
+    }
 
     // Logic to split the remarks string into itemized deductions
     const deductionItems = payroll.remarks ? payroll.remarks.split(', ') : [];
@@ -129,7 +163,7 @@ export default function PayrollShow() {
                         <div>
                             <p className="text-xs font-bold text-slate-400 uppercase mb-1">Employee Details</p>
                             <p className="text-xl font-bold text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>
-                            <p className="text-sm text-slate-500 mt-1">Employee ID: <span className="font-bold text-slate-700">#{payroll.employee_id}</span></p>
+                            <p className="text-sm text-slate-500 mt-1">Company ID: <span className="font-bold text-slate-700">{payroll.employees?.company_id || 'N/A'}</span></p>
                             <p className="text-sm text-slate-500 mt-1">Role: <span className="capitalize">{payroll.employees?.role || 'Employee'}</span></p>
                         </div>
                         <div className="md:text-right">

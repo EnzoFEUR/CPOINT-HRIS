@@ -168,7 +168,7 @@ export default function PayrollIndex() {
                                                         <p className="text-base font-black text-slate-800 group-hover:text-emerald-700 transition-colors">
                                                             {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
                                                         </p>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">ID: #{payroll.employee_id.substring(0, 8)}</p>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{payroll.employees?.company_id || `ID: #${payroll.employee_id.substring(0, 8)}`}</p>
                                                     </div>
                                                 </div>
                                             </td>
