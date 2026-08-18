@@ -1,0 +1,58 @@
+{
+  "name": "C-Point HRIS & Workforce Portal",
+  "short_name": "C-Point HRIS",
+  "description": "Next-Gen Human Resource Information System & Biometric Workforce Portal",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/pwa-192x192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Daily Logs",
+      "url": "/admin/attendance",
+      "description": "View Daily Attendance Logs"
+    },
+    {
+      "name": "My Pass",
+      "url": "/employee/qr",
+      "description": "Access Employee Digital QR"
+    },
+    {
+      "name": "AI Scanner",
+      "url": "/scanner",
+      "description": "Gate Terminal Biometric Scanner"
+    }
+  ]
+}

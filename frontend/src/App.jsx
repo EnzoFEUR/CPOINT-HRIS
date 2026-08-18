@@ -272,6 +272,56 @@ function MainLayout({ children }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    // Check if app is already running in standalone mode (PWA installed)
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+    setIsStandalone(Boolean(isStandaloneMode));
+
+    // Detect iOS
+    const isIosDevice = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+    setIsIOS(isIosDevice);
+
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setIsInstallable(false);
+        setDeferredPrompt(null);
+      }
+    } else if (isIOS) {
+      setShowIOSInstallGuide(true);
+    }
+  };
+
   // Fetch initial notifications
   useEffect(() => {
     if (user?.id) {
@@ -867,6 +917,27 @@ function MainLayout({ children }) {
                     </button>
                   </div>
 
+                  {/* PWA Install Banner (When not already installed) */}
+                  {!isStandalone && (
+                    <div className="mb-4 p-3.5 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/30 shrink-0">
+                          CP
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-white truncate">Install C-Point App</p>
+                          <p className="text-[9px] text-blue-200 truncate">Run fullscreen without browser bars</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleInstallApp}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl shadow-md shadow-blue-600/30 shrink-0 tap-active flex items-center gap-1"
+                      >
+                        <i className="ti ti-download text-sm" /> Install
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2.5 mb-5">
                     <Link 
                       to="/admin/disciplinary" 
@@ -940,6 +1011,64 @@ function MainLayout({ children }) {
                       <i className="ti ti-power" /> Sign Out
                     </button>
                   </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* iOS PWA Installation Guide Modal */}
+          <AnimatePresence>
+            {showIOSInstallGuide && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+                  onClick={() => setShowIOSInstallGuide(false)}
+                />
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                  className="relative w-full max-w-sm bg-slate-900 border border-white/15 rounded-3xl p-6 text-white shadow-2xl z-10 space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-sm text-white shadow-md shadow-blue-500/30">
+                        CP
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black">Install on iPhone / iPad</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">Safari Web App</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowIOSInstallGuide(false)} className="text-slate-400 hover:text-white p-1">
+                      <i className="ti ti-x text-lg" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/5 text-xs text-slate-300">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                      <p>Tap the <span className="font-bold text-white"><i className="ti ti-share inline text-sm text-blue-400" /> Share</span> button at the bottom of Safari.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                      <p>Scroll down and tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home Screen</span>.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                      <p>Tap <span className="font-bold text-white">Add</span> in the top right corner.</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => setShowIOSInstallGuide(false)}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 tap-active"
+                  >
+                    Got it
+                  </button>
                 </motion.div>
               </div>
             )}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="logoGrad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <filter id="shadow512" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="20" stdDeviation="20" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad512)" />
+  <rect x="96" y="96" width="320" height="320" rx="72" fill="url(#logoGrad512)" filter="url(#shadow512)" />
+  <text x="256" y="300" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="140" text-anchor="middle" letter-spacing="-5">CP</text>
+  <circle cx="356" cy="156" r="18" fill="#10b981" stroke="#0f172a" stroke-width="8" />
+</svg>
