@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
