@@ -65,63 +65,63 @@ export default function Create({ errors = [], defaultValues = {} }) {
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8 pb-16 font-sans relative">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-                <Link to="/admin/employees" className="px-5 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm border border-slate-200 flex items-center gap-2">
-                    <i className="ti ti-arrow-left text-lg" /> Back to Directory
+                <Link to="/admin/employees" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-xs sm:shadow-sm border border-slate-200 flex items-center gap-1.5 sm:gap-2 tap-active">
+                    <i className="ti ti-arrow-left text-base sm:text-lg" /> Back to Directory
                 </Link>
             </motion.div>
 
             {errors && errors.length > 0 && (
-                <div className="bg-red-500 text-white p-6 rounded-[2rem] shadow-xl shadow-red-500/20 flex items-start gap-4">
-                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
-                        <i className="ti ti-alert-triangle text-xl" />
+                <div className="bg-red-500 text-white p-4 sm:p-6 rounded-2xl shadow-lg flex items-start gap-3 sm:gap-4">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                        <i className="ti ti-alert-triangle text-lg sm:text-xl" />
                     </div>
                     <div>
-                        <p className="font-black text-lg tracking-tight mb-2">Please fix the following errors:</p>
-                        <ul className="list-disc ml-4 space-y-1 font-medium">
+                        <p className="font-black text-sm sm:text-lg tracking-tight mb-1">Please fix the following errors:</p>
+                        <ul className="list-disc ml-4 space-y-0.5 text-xs sm:text-sm font-medium">
                             {errors.map((error, index) => <li key={index}>{error}</li>)}
                         </ul>
                     </div>
                 </div>
             )}
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-slate-100">
-                <div className="mb-10 text-center">
-                    <h2 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">Onboard Personnel</h2>
-                    <p className="text-slate-500 font-medium mt-2">Create a new employee profile and system account.</p>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
+                <div className="mb-6 sm:mb-10 text-center">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-800 tracking-tight">Onboard Personnel</h2>
+                    <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">Create a new employee profile and system account.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-10">
+                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
                     
                     {/* ACCOUNT DETAILS */}
-                    <div className="p-8 bg-white rounded-[2rem] border border-slate-200 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-800 tracking-tight mb-6 flex items-center gap-3">
-                            <span className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center border border-slate-200"><i className="ti ti-mail text-xl" /></span>
+                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
+                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
+                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-mail text-lg sm:text-xl" /></span>
                             Account Security
                         </h3>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Email Address</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
                                 <input type="email" name="email" required defaultValue={defaultValues.email || ''}
-                                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all placeholder:text-slate-400"
+                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
                                        placeholder="employee@company.com" />
                             </div>
                             
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">System Privilege</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={defaultValues.role || 'employee'}
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all appearance-none cursor-pointer">
+                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
                                     <option value="admin">System Administrator</option>
                                 </select>
                             </div>
                             
-                            <div className="md:col-span-2 mt-2">
-                                <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-100 text-xs font-bold uppercase tracking-widest">
-                                    <i className="ti ti-wand text-lg" />
+                            <div className="md:col-span-2 mt-1">
+                                <div className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl border border-blue-100 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
+                                    <i className="ti ti-wand text-base" />
                                     A secure temporary password will be auto-generated.
                                 </div>
                             </div>
@@ -129,36 +129,36 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     </div>
 
                     {/* EMPLOYEE INFORMATION */}
-                    <div className="p-8 bg-white rounded-[2rem] border border-slate-200 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-800 tracking-tight mb-6 flex items-center gap-3">
-                            <span className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center border border-slate-200"><i className="ti ti-id text-xl" /></span>
+                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
+                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
+                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-id text-lg sm:text-xl" /></span>
                             Personal Profile
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">First Name</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
                                 <input type="text" name="first_name" required defaultValue={defaultValues.first_name || ''}
-                                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all placeholder:text-slate-400"
+                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
                                        placeholder="John" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Last Name</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
                                 <input type="text" name="last_name" required defaultValue={defaultValues.last_name || ''}
-                                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all placeholder:text-slate-400"
+                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
                                        placeholder="Doe" />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Job Title</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
                                 <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
-                                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all placeholder:text-slate-400"
+                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
                                        placeholder="e.g. Forklift Operator" />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Department</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>
                                 <select name="department" defaultValue={defaultValues.department || 'Factory'}
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-slate-700 transition-all appearance-none cursor-pointer">
+                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
                                     <option value="Factory">Factory Floor</option>
                                     <option value="Retail">Retail Store</option>
                                     <option value="Security">Security</option>
@@ -171,32 +171,32 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     </div>
 
                     {/* PAYROLL DETAILS */}
-                    <div className="p-8 bg-white rounded-[2rem] border border-slate-200 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-800 tracking-tight mb-6 flex items-center gap-3">
-                            <span className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center border border-slate-200"><i className="ti ti-cash-banknote text-xl" /></span>
+                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
+                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
+                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-cash-banknote text-lg sm:text-xl" /></span>
                             Payroll Configuration
                         </h3>
                         
                         <div className="max-w-md">
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Monthly Base Salary</label>
+                            <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Monthly Base Salary</label>
                             <div className="relative">
-                                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">₱</span>
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
                                 <input type="text" required value={displaySalary} onChange={handleSalaryChange}
-                                       className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-xl text-slate-800 transition-all placeholder:text-slate-300"
+                                       className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
                                        placeholder="0.00" />
                                 <input type="hidden" name="monthly_salary" value={rawSalary} />
                             </div>
-                            <p className="text-xs font-bold text-slate-400 mt-3 uppercase tracking-widest"><i className="ti ti-info-circle" /> Used for standard payslip generation</p>
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1"><i className="ti ti-info-circle" /> Used for standard payslip generation</p>
                         </div>
                     </div>
 
                     {/* SUBMIT */}
-                    <div className="pt-6">
-                        <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-black text-lg tracking-wide rounded-2xl shadow-xl shadow-slate-900/10 active:scale-95 transition-all flex items-center justify-center gap-3">
+                    <div className="pt-2 sm:pt-4">
+                        <button type="submit" disabled={isSubmitting} className="w-full py-3.5 sm:py-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-black text-sm sm:text-base tracking-wide rounded-xl shadow-lg tap-active transition-all flex items-center justify-center gap-2">
                             {isSubmitting ? (
-                                <><i className="ti ti-loader animate-spin text-2xl" /> Creating Profile...</>
+                                <><i className="ti ti-loader animate-spin text-lg sm:text-xl" /> Creating Profile...</>
                             ) : (
-                                <><i className="ti ti-user-plus text-2xl" /> Create Profile & Account</>
+                                <><i className="ti ti-user-plus text-lg sm:text-xl" /> Create Profile & Account</>
                             )}
                         </button>
                     </div>

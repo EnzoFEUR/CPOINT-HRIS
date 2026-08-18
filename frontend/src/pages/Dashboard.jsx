@@ -64,7 +64,7 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 10 }} 
             animate={{ opacity: 1, y: 0 }} 
             transition={{ duration: 0.3 }}
-            className="space-y-6 pb-10"
+            className="space-y-6 pb-6"
         >
             
             {/* Page header */}
@@ -73,7 +73,7 @@ export default function Dashboard() {
                     <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">HRIS Analytics</h2>
                 </div>
                 <div className="flex gap-2">
-                    <button className="flex items-center gap-2 bg-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200 shadow-xs hover:bg-slate-50 tap-active transition-colors">
+                    <button className="flex items-center gap-2 bg-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200 shadow-xs sm:shadow-sm hover:bg-slate-50 tap-active transition-colors">
                         <i className="ti ti-download text-slate-500"></i>
                         <span className="text-xs sm:text-sm font-bold text-slate-700">Export</span>
                     </button>
@@ -81,49 +81,49 @@ export default function Dashboard() {
             </div>
 
             {/* KPI cards (2 columns on mobile, 4 columns on desktop) */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6">
-                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-users text-4xl sm:text-6xl text-blue-600"></i>
                     </div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Total Staff</p>
+                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Total Staff</p>
                     <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{totalStaff}</h3>
-                    <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-emerald-500">
+                    <div className="mt-2 sm:mt-3 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-emerald-500">
                         <i className="ti ti-trending-up"></i>
                         <span>Active</span>
                     </div>
                 </div>
 
-                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-user-check text-4xl sm:text-6xl text-emerald-600"></i>
                     </div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Present Rate</p>
+                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Present Rate</p>
                     <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{presentPercentage}%</h3>
-                    <div className="mt-2 sm:mt-4 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-500 truncate">
+                    <div className="mt-2 sm:mt-3 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-500 truncate">
                         <span>{presentTodayCount} in today</span>
                     </div>
                 </div>
 
-                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-clock-exclamation text-4xl sm:text-6xl text-orange-600"></i>
                     </div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Late Arrivals</p>
+                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Late Arrivals</p>
                     <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{lateTodayCount}</h3>
-                    <div className="mt-2 sm:mt-4 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-orange-500">
+                    <div className="mt-2 sm:mt-3 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-orange-500">
                         <i className="ti ti-alert-triangle"></i>
                         <span>Check logs</span>
                     </div>
                 </div>
 
-                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-md shadow-blue-600/20 text-white tap-active transition-all relative overflow-hidden group block cursor-pointer">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden xs:block">
+                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-4 sm:p-6 rounded-2xl shadow-xs sm:shadow-sm shadow-blue-600/20 text-white tap-active transition-all relative overflow-hidden group block cursor-pointer">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden sm:block">
                         <i className="ti ti-plane-departure text-4xl sm:text-6xl text-white"></i>
                     </div>
-                    <p className="text-[10px] sm:text-xs font-bold text-blue-200 uppercase tracking-wider mb-1 sm:mb-2">Leaves</p>
+                    <p className="text-[11px] sm:text-xs font-bold text-blue-200 uppercase tracking-wider mb-1 sm:mb-2">Leaves</p>
                     <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight">{pendingLeavesCount}</h3>
-                    <div className="mt-2 sm:mt-4 flex items-center justify-between text-[11px] sm:text-xs font-bold text-white">
+                    <div className="mt-2 sm:mt-3 flex items-center justify-between text-[11px] sm:text-xs font-bold text-white">
                         <span>Pending</span>
                         <span>Review &rarr;</span>
                     </div>
@@ -134,42 +134,44 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
                 
                 {/* Weekly Trend Chart (2/3 width) */}
-                <div className="xl:col-span-2 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
+                <div className="xl:col-span-2 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 border border-slate-100 shadow-xs sm:shadow-sm overflow-hidden">
                     <div className="flex justify-between items-center mb-8">
                         <div>
                             <h3 className="text-xl font-bold text-slate-800">Attendance Volume Trend</h3>
                             <p className="text-xs font-medium text-slate-500 mt-1">Last 7 days workforce presence</p>
                         </div>
                         <div className="bg-slate-50 rounded-lg p-1 flex text-xs font-bold text-slate-500">
-                            <button className="px-3 py-1.5 bg-white text-blue-600 shadow-sm rounded-md">Weekly</button>
-                            <button className="px-3 py-1.5 hover:text-slate-800 transition-colors rounded-md">Monthly</button>
+                            <button className="px-3 py-1.5 bg-white text-blue-600 shadow-xs sm:shadow-sm rounded-md tap-active">Weekly</button>
+                            <button className="px-3 py-1.5 hover:text-slate-800 transition-colors rounded-md tap-active">Monthly</button>
                         </div>
                     </div>
                     
                     {/* CSS Bar Chart */}
-                    <div className="h-64 flex items-end justify-between gap-2 sm:gap-6 mt-4">
-                        {weeklyTrends.map((trend, i) => {
-                            const height = `${(trend.value / maxTrendValue) * 100}%`;
-                            const isToday = i === 4; // Mocking Friday as today for visual highlight
-                            return (
-                                <div key={i} className="flex-1 flex flex-col justify-end items-center group">
-                                    <div className="w-full flex justify-center items-end relative h-full">
-                                        {/* Tooltip */}
-                                        <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg transition-opacity pointer-events-none whitespace-nowrap z-10">
-                                            {trend.value}% Present
+                    <div className="overflow-x-auto touch-scroll">
+                        <div className="h-64 flex items-end justify-between gap-2 sm:gap-6 mt-4 min-w-[300px]">
+                            {weeklyTrends.map((trend, i) => {
+                                const height = `${(trend.value / maxTrendValue) * 100}%`;
+                                const isToday = i === 4; // Mocking Friday as today for visual highlight
+                                return (
+                                    <div key={i} className="flex-1 flex flex-col justify-end items-center group">
+                                        <div className="w-full flex justify-center items-end relative h-full">
+                                            {/* Tooltip */}
+                                            <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                                {trend.value}% Present
+                                            </div>
+                                            {/* Bar */}
+                                            <div 
+                                                className={`w-full max-w-[40px] rounded-t-xl transition-all duration-700 ease-out ${isToday ? 'bg-blue-600 shadow-lg shadow-blue-500/30' : 'bg-slate-100 group-hover:bg-blue-100'}`} 
+                                                style={{ height }}
+                                            ></div>
                                         </div>
-                                        {/* Bar */}
-                                        <div 
-                                            className={`w-full max-w-[40px] rounded-t-xl transition-all duration-700 ease-out ${isToday ? 'bg-blue-600 shadow-lg shadow-blue-500/30' : 'bg-slate-100 group-hover:bg-blue-100'}`} 
-                                            style={{ height }}
-                                        ></div>
+                                        <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
+                                            {trend.day}
+                                        </span>
                                     </div>
-                                    <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
-                                        {trend.day}
-                                    </span>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
 
@@ -177,7 +179,7 @@ export default function Dashboard() {
                 <div className="xl:col-span-1 space-y-6">
                     
                     {/* Department Breakdown */}
-                    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm">
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 lg:p-8 border border-slate-100 shadow-xs sm:shadow-sm">
                         <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2">
                             <i className="ti ti-chart-pie text-blue-600"></i> Department Allocation
                         </h3>
@@ -205,7 +207,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Live Activity Feed */}
-                    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm h-[320px] flex flex-col">
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-100 shadow-xs sm:shadow-sm h-[320px] flex flex-col">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                                 <i className="ti ti-activity text-red-500 animate-pulse"></i> Live Log Feed

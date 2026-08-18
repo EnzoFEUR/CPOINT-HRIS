@@ -123,112 +123,110 @@ export default function PayrollShow() {
     });
 
     return (
-        <div className="max-w-4xl mx-auto py-10 px-4">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
             {/* Top Actions */}
-            <div className="mb-6 flex justify-between items-center print:hidden">
-                <Link to="/admin/payroll" className="text-slate-500 hover:text-blue-600 font-bold transition flex items-center text-sm">
-                    <i className="ti ti-arrow-left mr-2 text-lg"></i> Back to Payroll
+            <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+                <Link to="/admin/payroll" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                    <i className="ti ti-arrow-left text-base sm:text-lg"></i> Back to Payroll
                 </Link>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     {/* Print Button */}
-                    <button onClick={() => window.print()} className="px-5 py-2.5 bg-slate-800 text-white text-sm font-bold rounded-xl hover:bg-slate-900 transition flex items-center shadow-md">
-                        <i className="ti ti-printer mr-2 text-lg"></i> Print Payslip
+                    <button onClick={() => window.print()} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-slate-800 text-white text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-slate-900 transition flex items-center gap-1.5 sm:gap-2 shadow-xs sm:shadow-sm tap-active">
+                        <i className="ti ti-printer text-base sm:text-lg"></i> Print
                     </button>
 
                     {/* Delete Button */}
                     <form onSubmit={handleDelete}>
-                        <button type="submit" className="px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition flex items-center shadow-md">
-                            <i className="ti ti-trash mr-2 text-lg"></i> Delete Record
+                        <button type="submit" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-red-600 text-white text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-red-700 transition flex items-center gap-1.5 sm:gap-2 shadow-xs sm:shadow-sm tap-active">
+                            <i className="ti ti-trash text-base sm:text-lg"></i> Delete
                         </button>
                     </form>
                 </div>
             </div>
 
             {/* Payslip Document */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none">
+            <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none">
                 
                 {/* Header */}
-                <div className="bg-slate-50 border-b border-slate-100 p-8 text-center print:bg-transparent print:border-b-2 print:border-slate-800">
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">C-Point</h1>
-                    <p className="text-slate-500 text-xs uppercase tracking-widest font-bold mt-1">Human Resource Information System</p>
-                    <div className="mt-6 inline-block bg-white border border-slate-200 px-6 py-2 rounded-full shadow-sm print:border-none print:shadow-none print:p-0">
-                        <h2 className="text-lg font-bold text-blue-600 uppercase tracking-wide">Payslip</h2>
+                <div className="bg-slate-50/80 border-b border-slate-100 p-5 sm:p-8 text-center print:bg-transparent print:border-b-2 print:border-slate-800">
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">C-Point</h1>
+                    <p className="text-slate-500 text-[10px] sm:text-xs uppercase tracking-widest font-bold mt-0.5">Human Resource Information System</p>
+                    <div className="mt-3 sm:mt-5 inline-block bg-white border border-slate-200 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full shadow-xs print:border-none print:shadow-none print:p-0">
+                        <h2 className="text-xs sm:text-sm font-black text-blue-600 uppercase tracking-widest">Official Payslip</h2>
                     </div>
                 </div>
 
-                <div className="p-8">
+                <div className="p-5 sm:p-8 space-y-6 sm:space-y-8">
                     {/* Employee & Period Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pb-6 border-b border-slate-100">
                         <div>
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Employee Details</p>
-                            <p className="text-xl font-bold text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>
-                            <p className="text-sm text-slate-500 mt-1">Company ID: <span className="font-bold text-slate-700">{payroll.employees?.company_id || 'N/A'}</span></p>
-                            <p className="text-sm text-slate-500 mt-1">Role: <span className="capitalize">{payroll.employees?.role || 'Employee'}</span></p>
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Employee Details</p>
+                            <p className="text-lg sm:text-xl font-black text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>
+                            <p className="text-xs sm:text-sm text-slate-500 mt-1">Company ID: <span className="font-bold text-slate-700">{payroll.employees?.company_id || 'N/A'}</span></p>
+                            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Role: <span className="capitalize">{payroll.employees?.role || 'Employee'}</span></p>
                         </div>
                         <div className="md:text-right">
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pay Period</p>
-                            <p className="text-lg font-bold text-slate-800">
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Pay Period</p>
+                            <p className="text-base sm:text-lg font-black text-slate-800">
                                 {dayjs(payroll.period_start).format('MMMM DD, YYYY')} - {' '}
                                 {dayjs(payroll.period_end).format('MMMM DD, YYYY')}
                             </p>
-                            <p className="text-sm text-slate-500 mt-2">Date Generated: {dayjs(payroll.created_at).format('MMM DD, YYYY')}</p>
-                            <div className="mt-2 inline-block px-3 py-1 bg-green-100 text-green-700 rounded-md text-xs font-bold uppercase print:border print:border-green-600 print:bg-transparent">
+                            <p className="text-xs sm:text-sm text-slate-500 mt-1">Date Generated: {dayjs(payroll.created_at).format('MMM DD, YYYY')}</p>
+                            <div className="mt-2 inline-block px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-widest print:border print:border-emerald-600 print:bg-transparent">
                                 Status: {payroll.status}
                             </div>
                         </div>
                     </div>
 
                     {/* Financial Breakdown */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                         
                         {/* Earnings Column */}
-                        <div>
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Earnings</h3>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-slate-600 font-medium">Basic Pay</span>
-                                    <span className="text-sm font-mono font-medium text-slate-800">₱{Number(payroll.basic_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <div className="bg-slate-50/60 p-4 sm:p-5 rounded-xl border border-slate-100">
+                            <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Earnings</h3>
+                            <div className="space-y-2.5">
+                                <div className="flex justify-between items-center text-xs sm:text-sm">
+                                    <span className="text-slate-600 font-medium">Basic Pay</span>
+                                    <span className="font-mono font-bold text-slate-800">₱{Number(payroll.basic_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-slate-600 font-medium">Overtime Pay</span>
-                                    <span className="text-sm font-mono font-medium text-slate-800">₱{Number(payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <div className="flex justify-between items-center text-xs sm:text-sm">
+                                    <span className="text-slate-600 font-medium">Overtime Pay</span>
+                                    <span className="font-mono font-bold text-slate-800">₱{Number(payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                             </div>
-                            <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-sm font-bold text-slate-800">Gross Earnings</span>
-                                <span className="text-base font-mono font-bold text-slate-800">₱{Number(payroll.basic_pay + payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center">
+                                <span className="text-xs sm:text-sm font-black text-slate-800">Gross Earnings</span>
+                                <span className="text-sm sm:text-base font-mono font-black text-slate-800">₱{Number(payroll.basic_pay + payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         </div>
 
                         {/* Deductions Column */}
-                        <div>
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Deductions</h3>
-                            <div className="space-y-3">
-                                
+                        <div className="bg-slate-50/60 p-4 sm:p-5 rounded-xl border border-slate-100">
+                            <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Deductions</h3>
+                            <div className="space-y-2.5">
                                 {hasItemizedDeductions ? itemizedDeductionsElements : (
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-slate-600 font-medium">Total Deductions</span>
-                                        <span className="text-sm font-mono font-medium text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <div className="flex justify-between items-center text-xs sm:text-sm">
+                                        <span className="text-slate-600 font-medium">Total Deductions</span>
+                                        <span className="font-mono font-bold text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 )}
-
                             </div>
-                            <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-sm font-bold text-slate-800">Total Deductions</span>
-                                <span className="text-base font-mono font-bold text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center">
+                                <span className="text-xs sm:text-sm font-black text-slate-800">Total Deductions</span>
+                                <span className="text-sm sm:text-base font-mono font-black text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Final Net Pay */}
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 flex flex-col md:flex-row justify-between items-center print:border-2 print:border-slate-800 print:bg-transparent">
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:border-2 print:border-slate-800 print:bg-transparent">
                         <div>
-                            <p className="text-sm font-bold text-blue-800 uppercase tracking-wider print:text-slate-800">Net Take Home Pay</p>
-                            <p className="text-xs text-blue-600 mt-1 print:text-slate-500">This is the final amount transferred to the employee.</p>
+                            <p className="text-xs sm:text-sm font-bold text-blue-800 uppercase tracking-wider print:text-slate-800">Net Take Home Pay</p>
+                            <p className="text-[11px] sm:text-xs text-blue-600 mt-0.5 print:text-slate-500">This is the final amount transferred to the employee.</p>
                         </div>
-                        <div className="mt-4 md:mt-0">
-                            <span className="text-3xl font-black font-mono text-blue-700 print:text-slate-900">
+                        <div>
+                            <span className="text-2xl sm:text-3xl font-black font-mono text-blue-700 print:text-slate-900">
                                 ₱{Number(payroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -252,30 +250,30 @@ export default function PayrollShow() {
             {/* DESTRUCTIVE DELETE MODAL */}
             <AnimatePresence>
                 {isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <motion.div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
                             onClick={() => setIsDeleteModalOpen(false)}
                         />
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center"
+                            className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 sm:p-8 text-center"
                         >
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
-                                <i className="ti ti-alert-triangle text-4xl text-red-500 animate-pulse" />
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 border-4 sm:border-8 border-white shadow-lg relative z-10">
+                                <i className="ti ti-alert-triangle text-3xl sm:text-4xl text-red-500 animate-pulse" />
                             </div>
                             
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
-                            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
+                            <p className="text-xs sm:text-sm text-slate-500 mb-4 sm:mb-6 leading-relaxed">
                                 You are about to permanently delete this payroll record. This cannot be undone.
                             </p>
 
-                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 mb-4 sm:mb-6 border border-slate-100 text-left">
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                     Type <span className="text-red-500 select-all">DELETE</span> to confirm
                                 </label>
                                 <input 
@@ -283,21 +281,21 @@ export default function PayrollShow() {
                                     value={deleteConfirmText}
                                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                                     placeholder="Type DELETE here..."
-                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all text-center"
+                                    className="w-full px-3.5 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-xs sm:text-sm text-slate-700 transition-all text-center"
                                 />
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex gap-2.5 sm:gap-3">
                                 <button 
                                     onClick={() => setIsDeleteModalOpen(false)} 
-                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95"
+                                    className="flex-1 py-3 sm:py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors tap-active text-xs sm:text-sm"
                                 >
                                     Cancel
                                 </button>
                                 <button 
                                     onClick={confirmDelete} 
                                     disabled={deleteConfirmText !== 'DELETE'}
-                                    className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95"
+                                    className="flex-1 py-3 sm:py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-xl shadow-red-600/30 transition-all tap-active text-xs sm:text-sm"
                                 >
                                     Delete Forever
                                 </button>

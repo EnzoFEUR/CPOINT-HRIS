@@ -151,42 +151,42 @@ export default function Login() {
             <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-purple-400/20 rounded-full blur-[120px] animate-blob-1 mix-blend-multiply pointer-events-none"></div>
             <div className="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-blue-400/20 rounded-full blur-[120px] animate-blob-2 mix-blend-multiply pointer-events-none"></div>
 
-            <div className="relative z-10 w-full max-w-[420px] p-8 mx-4 bg-white/70 backdrop-blur-2xl border border-white/60 rounded-3xl shadow-[0_20px_50px_rgba(8,112,184,0.1)] transition-all duration-500">
+            <div className="relative z-10 w-full max-w-[420px] p-5 sm:p-8 mx-3 sm:mx-4 bg-white/85 sm:bg-white/70 backdrop-blur-2xl border border-white/70 sm:border-white/60 rounded-2xl sm:rounded-3xl shadow-xl sm:shadow-[0_20px_50px_rgba(8,112,184,0.1)] transition-all duration-500">
                 
                 {step === 1 && (
                     <div className="animate-fade-in-up">
-                        <div className="text-center mb-8">
-                            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-4">
-                                <span className="font-bold text-xl tracking-tighter">CP</span>
+                        <div className="text-center mb-6 sm:mb-8">
+                            <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-3 sm:mb-4">
+                                <span className="font-bold text-lg sm:text-xl tracking-tighter">CP</span>
                             </div>
-                            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h1>
-                            <p className="text-slate-500 text-sm mt-1">Enter your credentials to access C-Point.</p>
+                            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h1>
+                            <p className="text-slate-500 text-xs sm:text-sm mt-1">Enter your credentials to access C-Point.</p>
                         </div>
-                        <form onSubmit={handleLogin} className="space-y-4">
+                        <form onSubmit={handleLogin} className="space-y-3.5 sm:space-y-4">
                             <div className="group">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Operator ID / Email</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 sm:mb-2 ml-1">Operator ID / Email</label>
                                 <div className="relative transition-all duration-300 transform group-focus-within:-translate-y-0.5">
-                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i className="ti ti-mail text-slate-400 text-lg group-focus-within:text-blue-500 transition-colors"></i>
+                                    <div className="absolute inset-y-0 left-0 pl-3.5 sm:pl-4 flex items-center pointer-events-none">
+                                        <i className="ti ti-mail text-slate-400 text-base sm:text-lg group-focus-within:text-blue-500 transition-colors"></i>
                                     </div>
                                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus 
-                                        className="w-full pl-11 pr-5 py-3.5 bg-white border border-slate-200 hover:border-blue-400/60 rounded-2xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                        className="w-full pl-10 sm:pl-11 pr-4 sm:pr-5 py-3 sm:py-3.5 bg-white border border-slate-200 hover:border-blue-400/60 rounded-xl sm:rounded-2xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-xs sm:shadow-sm"
                                         placeholder="name@company.com" />
                                 </div>
                             </div>
                             <div className="group">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Password</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 sm:mb-2 ml-1">Password</label>
                                 <div className="relative transition-all duration-300 transform group-focus-within:-translate-y-0.5">
-                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i className="ti ti-lock text-slate-400 text-lg group-focus-within:text-blue-500 transition-colors"></i>
+                                    <div className="absolute inset-y-0 left-0 pl-3.5 sm:pl-4 flex items-center pointer-events-none">
+                                        <i className="ti ti-lock text-slate-400 text-base sm:text-lg group-focus-within:text-blue-500 transition-colors"></i>
                                     </div>
                                     <input type="password" value={password} onChange={e => setPassword(e.target.value)} required 
-                                        className="w-full pl-11 pr-5 py-3.5 bg-white border border-slate-200 hover:border-blue-400/60 rounded-2xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                        className="w-full pl-10 sm:pl-11 pr-4 sm:pr-5 py-3 sm:py-3.5 bg-white border border-slate-200 hover:border-blue-400/60 rounded-xl sm:rounded-2xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-xs sm:shadow-sm"
                                         placeholder="••••••••" />
                                 </div>
                                 {error && <p className="text-red-500 text-xs mt-2 font-bold ml-1">{error}</p>}
                             </div>
-                            <button type="submit" className="w-full mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                            <button type="submit" className="w-full mt-3 sm:mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-3.5 sm:py-4 rounded-xl sm:rounded-2xl shadow-lg shadow-blue-500/30 tap-active transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
                                 <span>Secure Login</span> <i className="ti ti-arrow-right"></i>
                             </button>
                         </form>
@@ -195,35 +195,35 @@ export default function Login() {
 
                 {step === 2 && (
                     <div className="animate-fade-in-up text-center">
-                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-100 text-blue-600 mb-4 shadow-inner">
-                            <i className="ti ti-shield-lock text-2xl"></i>
+                        <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-slate-100 text-blue-600 mb-3 sm:mb-4 shadow-inner">
+                            <i className="ti ti-shield-lock text-xl sm:text-2xl"></i>
                         </div>
-                        <h2 className="text-xl font-bold text-slate-800 tracking-tight">Two-Factor Authentication</h2>
-                        <p className="text-slate-500 text-sm mt-1 mb-8">Please choose how you want to receive your security code.</p>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Two-Factor Authentication</h2>
+                        <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-6 sm:mb-8">Please choose how you want to receive your security code.</p>
 
-                        <div className="space-y-3">
-                            <button onClick={() => sendOtp('sms')} className="w-full p-4 bg-white border border-slate-200 rounded-2xl hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/10 transition-all group flex items-center text-left gap-4">
-                                <div className="h-10 w-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                                    <i className="ti ti-device-mobile-message text-xl"></i>
+                        <div className="space-y-2.5 sm:space-y-3">
+                            <button onClick={() => sendOtp('sms')} className="w-full p-3 sm:p-4 bg-white border border-slate-200 rounded-xl sm:rounded-2xl hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/10 transition-all group flex items-center text-left gap-3 sm:gap-4 tap-active">
+                                <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
+                                    <i className="ti ti-device-mobile-message text-lg sm:text-xl"></i>
                                 </div>
-                                <div>
-                                    <p className="font-bold text-slate-800">Send via SMS</p>
-                                    <p className="text-xs text-slate-400 font-medium">To mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-xs sm:text-sm text-slate-800">Send via SMS</p>
+                                    <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate">To mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
                                 </div>
                                 <i className="ti ti-chevron-right ml-auto text-slate-300 group-hover:text-blue-500"></i>
                             </button>
-                            <button onClick={() => sendOtp('email')} className="w-full p-4 bg-white border border-slate-200 rounded-2xl hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/10 transition-all group flex items-center text-left gap-4">
-                                <div className="h-10 w-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                    <i className="ti ti-mail-fast text-xl"></i>
+                            <button onClick={() => sendOtp('email')} className="w-full p-3 sm:p-4 bg-white border border-slate-200 rounded-xl sm:rounded-2xl hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/10 transition-all group flex items-center text-left gap-3 sm:gap-4 tap-active">
+                                <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
+                                    <i className="ti ti-mail-fast text-lg sm:text-xl"></i>
                                 </div>
-                                <div>
-                                    <p className="font-bold text-slate-800">Send via Email</p>
-                                    <p className="text-xs text-slate-400 font-medium">To {email}</p>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-xs sm:text-sm text-slate-800">Send via Email</p>
+                                    <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate">To {email}</p>
                                 </div>
                                 <i className="ti ti-chevron-right ml-auto text-slate-300 group-hover:text-indigo-500"></i>
                             </button>
                         </div>
-                        <button onClick={() => setStep(1)} className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600 underline">
+                        <button onClick={() => setStep(1)} className="mt-6 sm:mt-8 text-xs font-bold text-slate-400 hover:text-slate-600 underline tap-active">
                             Cancel & Return
                         </button>
                     </div>
@@ -231,14 +231,14 @@ export default function Login() {
 
                 {step === 3 && (
                     <div className="animate-fade-in-up text-center">
-                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 mb-4 shadow-inner">
-                            <i className="ti ti-dialpad text-2xl"></i>
+                        <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-emerald-100 text-emerald-600 mb-3 sm:mb-4 shadow-inner">
+                            <i className="ti ti-dialpad text-xl sm:text-2xl"></i>
                         </div>
-                        <h2 className="text-xl font-bold text-slate-800 tracking-tight">Verify Identity</h2>
-                        <p className="text-slate-500 text-sm mt-1 mb-8">Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.</p>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Verify Identity</h2>
+                        <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-6 sm:mb-8">Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.</p>
 
                         <form onSubmit={verifyOtp}>
-                            <div className="flex justify-center gap-2 mb-6">
+                            <div className="flex justify-center gap-1.5 sm:gap-2 mb-5 sm:mb-6">
                                 {otpCode.map((digit, idx) => (
                                     <input 
                                         key={idx}
@@ -248,19 +248,19 @@ export default function Login() {
                                         value={digit}
                                         onChange={(e) => handleOtpChange(idx, e.target.value)}
                                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                                        className="w-12 h-14 text-center text-2xl font-black text-slate-800 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                                        className="w-10 h-12 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-black text-slate-800 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-xs sm:shadow-sm"
                                         autoFocus={idx === 0}
                                     />
                                 ))}
                             </div>
                             {error && <p className="text-red-500 text-xs mb-4 font-bold">{error}</p>}
                             
-                            <button type="submit" className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-black hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2">
+                            <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3.5 sm:py-4 rounded-xl sm:rounded-2xl shadow-lg hover:bg-black tap-active transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
                                 Verify & Access Dashboard
                             </button>
                         </form>
                         
-                        <p className="mt-6 text-xs font-bold text-slate-500">
+                        <p className="mt-5 sm:mt-6 text-xs font-bold text-slate-500">
                             Didn't receive a code? <button onClick={() => sendOtp(otpMethod)} className="text-blue-600 hover:underline">Resend</button>
                         </p>
                     </div>

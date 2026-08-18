@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function AuditLogsIndex() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -18,14 +19,14 @@ export default function AuditLogsIndex() {
     useEffect(() => {
         const fetchLogs = async () => {
             try {
-                let url = 'http://localhost:5000/api/audit-logs';
+                let url = '/api/audit-logs';
                 const queryParams = new URLSearchParams();
                 if (filterDate) queryParams.append('date', filterDate);
                 if (filterUserId) queryParams.append('user_id', filterUserId);
                 
                 if (queryParams.toString()) url += '?' + queryParams.toString();
 
-                const res = await fetch(url);
+                const res = await fetchWithAuth(url);
                 const result = await res.json();
                 if (result.data) setLogs(result.data);
             } catch (err) {
@@ -40,7 +41,7 @@ export default function AuditLogsIndex() {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const res = await fetch('http://localhost:5000/api/employees');
+                const res = await fetchWithAuth('/api/employees');
                 const result = await res.json();
                 if (result.success && result.data) setUsers(result.data);
             } catch (err) {}
@@ -97,84 +98,163 @@ export default function AuditLogsIndex() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto pb-16 font-sans">
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
             
             
-            
-            
-            <div className="space-y-8">
+            <div className="space-y-4 sm:space-y-6">
                 
                 {/* Page header */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
                     
                     
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-8">
                         <div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-server text-2xl text-slate-300" />
+                            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
+                                <div className="h-9 w-9 sm:h-12 sm:w-12 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
+                                    <i className="ti ti-server text-lg sm:text-2xl text-slate-300" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-slate-500/20 text-slate-300 rounded-md border border-slate-500/30">System Integrity</span>
+                                <span className="px-2.5 sm:px-4 py-0.5 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-slate-500/20 text-slate-300 rounded-md border border-slate-500/30">System Integrity</span>
                             </div>
-                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Audit Trail</h1>
-                            <p className="text-slate-300 font-medium mt-2 text-lg max-w-xl">Immutable ledger of all administrative actions and system modifications.</p>
+                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Audit Trail</h1>
+                            <p className="text-slate-300 font-medium mt-1 text-xs sm:text-base max-w-xl">Immutable ledger of all administrative actions and system modifications.</p>
                         </div>
                         
                         {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
-                            <div className="text-right">
-                                <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Total Logs</p>
-                                <p className="text-3xl font-black text-white">{logs.length}</p>
+                        <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-5 rounded-xl">
+                            <div className="text-left sm:text-right">
+                                <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Total Logs</p>
+                                <p className="text-xl sm:text-3xl font-black text-white">{logs.length}</p>
                             </div>
-                            <div className="h-14 w-14 rounded-full bg-slate-500/30 flex items-center justify-center text-slate-300 border border-slate-500/50">
-                                <i className="ti ti-database-export text-2xl" />
+                            <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-full bg-slate-500/30 flex items-center justify-center text-slate-300 border border-slate-500/50">
+                                <i className="ti ti-database-export text-lg sm:text-2xl" />
                             </div>
                         </div>
                     </div>
                 </motion.div>
 
                 {/* 2. FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 bg-white p-3 rounded-lg shadow-sm border border-slate-100 relative">
-                        <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
+                    <div className="flex-1 bg-white p-2 sm:p-3 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 relative">
+                        <i className="ti ti-search absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 text-base sm:text-xl" />
                         <input 
                             type="text" 
                             placeholder="Search actions or targets..." 
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-slate-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-10 sm:pl-14 pr-4 sm:pr-6 py-2.5 sm:py-3 bg-slate-50 border-none rounded-xl outline-none focus:ring-4 focus:ring-slate-500/10 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
 
-                    <form onSubmit={handleApplyFilters} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-full md:w-auto">
+                    <form onSubmit={handleApplyFilters} className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 w-full md:w-auto gap-2">
                         <input 
                             type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-                            className="px-4 py-3 bg-slate-50 border-none rounded-md font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
+                            className="px-3 sm:px-4 py-2 sm:py-3 bg-slate-50 border-none rounded-xl font-bold text-xs sm:text-sm text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10 flex-1"
                         />
                         <select 
                             value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}
-                            className="ml-2 px-4 py-3 bg-slate-50 border-none rounded-md font-bold text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10"
+                            className="px-3 sm:px-4 py-2 sm:py-3 bg-slate-50 border-none rounded-xl font-bold text-xs sm:text-sm text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10 flex-1"
                         >
                             <option value="">All Admins / System</option>
                             {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                         </select>
-                        <button type="submit" className="ml-2 px-6 py-3 bg-slate-900 text-white font-bold rounded-md active:scale-95 transition-all">Filter</button>
+                        <button type="submit" className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-xl tap-active transition-all">Filter</button>
                         {(filterDate || filterUserId || searchQuery) && (
-                            <button type="button" onClick={handleClearFilters} className="ml-1 w-12 flex items-center justify-center bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200"><i className="ti ti-x" /></button>
+                            <button type="button" onClick={handleClearFilters} className="w-10 sm:w-12 flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 tap-active"><i className="ti ti-x" /></button>
                         )}
                     </form>
                 </motion.div>
 
-                {/* 3. DATA TABLE */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto overflow-y-hidden">
+                {/* 3. DATA TABLE & MOBILE CARDS */}
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
+                    
+                    {/* MOBILE CARDS VIEW (Phones) */}
+                    <div className="block md:hidden divide-y divide-slate-100">
+                        <AnimatePresence>
+                            {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
+                                const dateObj = new Date(log.created_at);
+                                const isSystem = !log.causer_id;
+                                const actionStr = (log.event || log.action || '').toUpperCase();
+                                const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
+                                const detailsStr = log.description || log.details || '';
+                                const targetIdStr = log.subject_id || log.target_id || '';
+                                const userNameStr = log.causer?.name || log.users?.first_name || 'Admin';
+
+                                return (
+                                    <motion.div 
+                                        variants={rowVariants} 
+                                        layout 
+                                        key={`mobile-${log.id}`} 
+                                        className="p-4 space-y-2.5 hover:bg-slate-50/50 transition-colors"
+                                    >
+                                        {/* Header: Actor + Timestamp */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                {isSystem ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-slate-200 text-[10px] font-black uppercase tracking-wider">
+                                                        <i className="ti ti-cpu text-xs" /> System
+                                                    </span>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                            {userNameStr.charAt(0)}
+                                                        </div>
+                                                        <span className="text-xs font-bold text-slate-700">{userNameStr}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <span className="text-[10px] font-mono font-bold text-slate-400">
+                                                {dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+
+                                        {/* Action & Target */}
+                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                                                actionStr.includes('CREATED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                actionStr.includes('UPDATED') || actionStr.includes('PROCESS') ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                actionStr.includes('DELETED') ? 'bg-red-50 text-red-600 border-red-100' :
+                                                'bg-slate-100 text-slate-600 border-slate-200'
+                                            }`}>
+                                                {actionStr}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-400">ON</span>
+                                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">
+                                                {targetTypeStr}
+                                            </span>
+                                        </div>
+
+                                        {/* Details & Target ID */}
+                                        {detailsStr && (
+                                            <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 leading-relaxed font-sans">
+                                                {detailsStr}
+                                            </p>
+                                        )}
+
+                                        {targetIdStr && (
+                                            <p className="text-[10px] font-mono text-slate-400">
+                                                Target: #{String(targetIdStr).substring(0, 12)}
+                                            </p>
+                                        )}
+                                    </motion.div>
+                                );
+                            }) : (
+                                <div className="p-8 text-center text-slate-400">
+                                    <p className="text-xs font-bold">No logs found</p>
+                                </div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    {/* DESKTOP TABLE VIEW */}
+                    <div className="hidden md:block overflow-x-auto touch-scroll">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
-                                    <th className="px-8 py-6">Timestamp</th>
-                                    <th className="px-8 py-6">Actor</th>
-                                    <th className="px-8 py-6">Action Details</th>
-                                    <th className="px-8 py-6 text-right">Target UUID</th>
+                                    <th className="px-6 py-4">Timestamp</th>
+                                    <th className="px-6 py-4">Actor</th>
+                                    <th className="px-6 py-4">Action Details</th>
+                                    <th className="px-6 py-4 text-right">Target UUID</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50 font-mono">
@@ -192,32 +272,32 @@ export default function AuditLogsIndex() {
 
                                         return (
                                             <motion.tr variants={rowVariants} layout key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-8 py-5">
+                                                <td className="px-6 py-4">
                                                     <div className="flex flex-col">
                                                         <span className="text-xs font-bold text-slate-500">{dateObj.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                                                         <span className="text-sm font-black text-slate-800">{dateObj.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                                                     </div>
                                                 </td>
 
-                                                <td className="px-8 py-5">
+                                                <td className="px-6 py-4">
                                                     {isSystem ? (
-                                                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-widest">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-widest">
                                                             <i className="ti ti-cpu" /> System
                                                         </span>
                                                     ) : (
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold font-sans">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold font-sans text-sm shrink-0">
                                                                 {userNameStr.charAt(0)}
                                                             </div>
-                                                            <div className="flex flex-col font-sans">
-                                                                <span className="text-sm font-bold text-slate-700">{userNameStr}</span>
+                                                            <div className="flex flex-col font-sans min-w-0">
+                                                                <span className="text-sm font-bold text-slate-700 truncate">{userNameStr}</span>
                                                                 <span className="text-[10px] text-slate-400 font-bold">ID: {String(causerIdStr).substring(0,8)}</span>
                                                             </div>
                                                         </div>
                                                     )}
                                                 </td>
 
-                                                <td className="px-8 py-5 font-sans">
+                                                <td className="px-6 py-4 font-sans">
                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
                                                         actionStr.includes('CREATED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         actionStr.includes('UPDATED') || actionStr.includes('PROCESS') ? 'bg-blue-50 text-blue-600 border-blue-100' :
@@ -226,16 +306,16 @@ export default function AuditLogsIndex() {
                                                     }`}>
                                                         {actionStr}
                                                     </span>
-                                                    <span className="mx-2 text-xs font-bold text-slate-400">ON</span>
+                                                    <span className="mx-1.5 text-xs font-bold text-slate-400">ON</span>
                                                     <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest border border-slate-200">
                                                         {targetTypeStr}
                                                     </span>
-                                                    <p className="text-xs text-slate-500 mt-2 truncate max-w-sm">{detailsStr}</p>
+                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-1 max-w-sm">{detailsStr}</p>
                                                 </td>
 
-                                                <td className="px-8 py-5 text-right">
+                                                <td className="px-6 py-4 text-right">
                                                     <span className="text-xs text-slate-400 font-bold bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                                                        {targetIdStr || 'N/A'}
+                                                        {targetIdStr ? String(targetIdStr).substring(0, 8) : 'N/A'}
                                                     </span>
                                                 </td>
                                             </motion.tr>
@@ -244,7 +324,7 @@ export default function AuditLogsIndex() {
                                         <motion.tr variants={rowVariants}>
                                             <td colSpan="4" className="px-8 py-20 text-center font-sans">
                                                 <div className="flex flex-col items-center justify-center text-slate-400">
-                                                    <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">
+                                                    <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mb-4">
                                                         <i className="ti ti-terminal-2 text-4xl text-slate-300" />
                                                     </div>
                                                     <p className="text-xl font-black text-slate-800 tracking-tight">No Logs Found</p>
@@ -260,22 +340,22 @@ export default function AuditLogsIndex() {
 
                     {/* Pagination */}
                     {Math.ceil(filteredLogs.length / itemsPerPage) > 1 && (
-                        <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        <div className="px-4 sm:px-8 py-4 sm:py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
                                 Showing <span className="text-slate-800">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800">{Math.min(currentPage * itemsPerPage, filteredLogs.length)}</span> of <span className="text-slate-800">{filteredLogs.length}</span>
                             </span>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto">
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
                                 >
                                     <i className="ti ti-chevron-left text-lg" /> Prev
                                 </button>
                                 <button 
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredLogs.length / itemsPerPage)))}
                                     disabled={currentPage === Math.ceil(filteredLogs.length / itemsPerPage)}
-                                    className="px-5 py-2.5 rounded-md bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-sm flex items-center gap-2"
+                                    className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
                                 >
                                     Next <i className="ti ti-chevron-right text-lg" />
                                 </button>

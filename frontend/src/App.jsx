@@ -418,18 +418,9 @@ function MainLayout({ children }) {
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
       
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div 
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden animate-fade-in"
-        ></div>
-      )}
-
-      {/* Sidebar */}
+      {/* Desktop Sidebar (Only visible on PC / lg+ screens) */}
       <aside 
-        className={`fixed inset-y-4 left-4 z-50 w-72 rounded-[2rem] glass-sidebar text-slate-300 flex flex-col shadow-2xl shadow-slate-900/20 transition-transform duration-500 bg-slate-900 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-[150%]'}`}
-        style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
+        className="hidden lg:flex fixed inset-y-4 left-4 z-50 w-72 rounded-[2rem] glass-sidebar text-slate-300 flex-col shadow-2xl shadow-slate-900/20 bg-slate-900"
       >
         {/* Logo */}
         <div className="flex items-center h-24 px-8 border-b border-white/5 shrink-0">
@@ -440,9 +431,6 @@ function MainLayout({ children }) {
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">HRIS</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden ml-auto text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
-            <i className="ti ti-x text-2xl"></i>
-          </button>
         </div>
 
         {/* Navigation */}
@@ -525,7 +513,7 @@ function MainLayout({ children }) {
               <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">{user.role}</p>
             </div>
           </Link>
-          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-3 text-sm font-bold text-red-400 bg-red-500/10 rounded-xl group hover:text-white hover:bg-red-500/20">
+          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-3 text-sm font-bold text-red-400 bg-red-500/10 rounded-xl group hover:text-white hover:bg-red-500/20 transition-all">
             <i className="ti ti-power mr-2 text-lg group-hover:animate-pulse"></i> Sign Out
           </button>
         </div>
@@ -536,44 +524,40 @@ function MainLayout({ children }) {
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           
           {/* Header */}
-          <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 sticky top-0 sm:top-4 z-30 bg-white/85 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <button 
-                onClick={() => setSidebarOpen(true)} 
-                className="p-2 -ml-1 text-slate-600 hover:text-slate-900 lg:hidden tap-active bg-slate-100/80 rounded-xl flex items-center justify-center h-10 w-10 shrink-0"
-                aria-label="Open Navigation Menu"
-              >
-                <i className="ti ti-menu-2 text-2xl"></i>
-              </button>
+          <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/85 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300">
+            <div className="flex items-center gap-3">
+              <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-black text-xs shadow-sm">
+                CP
+              </div>
               <div>
-                <h2 className="text-lg sm:text-2xl font-black text-slate-800 tracking-tight capitalize leading-tight">
+                <h2 className="text-base sm:text-2xl font-black text-slate-800 tracking-tight capitalize leading-tight">
                   {getPageTitle(location.pathname)}
                 </h2>
                 <p className="text-[11px] text-slate-400 font-medium hidden sm:block mt-0.5">{currentDate}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-4 relative">
+            <div className="flex items-center gap-2 sm:gap-3 relative">
               
               {/* Mobile Quick Search Button */}
               <button 
                 onClick={() => setShowSearch(!showSearch)} 
-                className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-10 w-10 flex items-center justify-center"
+                className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-9 w-9 flex items-center justify-center"
                 aria-label="Search"
               >
-                <i className="ti ti-search text-xl"></i>
+                <i className="ti ti-search text-lg"></i>
               </button>
 
               {/* Desktop Search */}
               <div className="relative hidden md:block">
-                <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
                 <input 
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
                   onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
                   placeholder="Search everywhere..." 
-                  className="pl-9 pr-4 py-2 bg-slate-100/90 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80 font-medium text-slate-700" 
+                  className="pl-8 pr-4 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700" 
                 />
               </div>
 
@@ -583,7 +567,7 @@ function MainLayout({ children }) {
                   <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
                     <button onClick={() => setShowSearch(false)} className="md:hidden text-slate-400 hover:text-slate-700 p-1">
-                      <i className="ti ti-x text-lg"></i>
+                      <i className="ti ti-x text-base"></i>
                     </button>
                   </div>
                   <div className="p-2 md:hidden">
@@ -593,16 +577,16 @@ function MainLayout({ children }) {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Type a page or tool..."
-                      className="w-full px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-medium text-slate-800 outline-none"
+                      className="w-full px-3 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-800 outline-none"
                     />
                   </div>
                   <div className="max-h-64 overflow-y-auto">
                     {filteredSearch.length > 0 ? filteredSearch.map(item => (
-                      <Link key={item.route} to={item.route} onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="flex items-center gap-3 p-3 hover:bg-blue-50/50 transition-colors cursor-pointer group">
-                        <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                          <i className={`ti ${item.icon}`}></i>
+                      <Link key={item.route} to={item.route} onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="flex items-center gap-3 p-2.5 hover:bg-blue-50/50 transition-colors cursor-pointer group">
+                        <div className="h-7 w-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                          <i className={`ti ${item.icon} text-sm`}></i>
                         </div>
-                        <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                        <span className="text-xs font-bold text-slate-700">{item.label}</span>
                       </Link>
                     )) : (
                       <div className="p-4 text-center text-xs text-slate-500 font-bold">
@@ -616,23 +600,23 @@ function MainLayout({ children }) {
               {/* Notifications Bell */}
               <button 
                 onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
-                className={`relative p-2.5 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-10 w-10 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
+                className={`relative p-2 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-9 w-9 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
                 aria-label="View Notifications"
               >
-                <i className="ti ti-bell text-xl"></i>
+                <i className="ti ti-bell text-lg"></i>
                 {notifications.some(n => !n.read) && (
-                  <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm animate-pulse"></span>
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border-2 border-white shadow-xs animate-pulse"></span>
                 )}
               </button>
 
               {/* Notification panel */}
               {showNotifications && (
                 <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-3 sm:w-96 bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                  <div className="p-3.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
+                      <h3 className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</h3>
                       {notifications.filter(n => !n.read).length > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-500 text-white">
+                        <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-blue-500 text-white">
                           {notifications.filter(n => !n.read).length} new
                         </span>
                       )}
@@ -650,57 +634,51 @@ function MainLayout({ children }) {
                       const avatar = getNotificationAvatar(notif);
                       return (
                         <div 
-                          key={notif.id} 
+                          key={notif.id}
                           onClick={() => handleNotificationClick(notif)}
-                          className={`p-3.5 hover:bg-slate-50/80 transition-all flex items-start gap-3.5 cursor-pointer group relative ${!notif.read ? 'bg-blue-50/25' : ''}`}
+                          className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
                         >
-                          <div className="relative h-10 w-10 shrink-0 group-hover:scale-105 transition-transform">
+                          <div className="relative h-9 w-9 shrink-0">
                             {avatar.avatarSrc ? (
                               <img 
                                 src={avatar.avatarSrc} 
                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                alt={notif.sender_name || 'Profile'}
-                                className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-200"
+                                alt=""
+                                className="w-full h-full object-cover rounded-xl border border-slate-200"
                               />
                             ) : null}
                             <div 
-                              className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner border ${visuals.bg}`}
+                              className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner ${visuals.bg}`}
                               style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
                             >
                               {avatar.initials}
                             </div>
-                            <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-2 ring-white ${visuals.badge}`}>
+                            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] text-white shadow-xs ring-1 ring-white ${visuals.badge}`}>
                               <i className={`ti ${visuals.icon}`} />
                             </span>
                           </div>
-
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/50">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                                 {visuals.label}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-medium font-mono">
-                                {new Date(notif.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                              </span>
+                              <p className="text-xs font-bold text-slate-800 truncate">{notif.title || 'System Alert'}</p>
                             </div>
-                            <p className="text-xs text-slate-800 font-bold mt-1 group-hover:text-blue-600 transition-colors truncate">
-                              {notif.title || 'Notification'}
-                            </p>
-                            <p className="text-xs text-slate-600 leading-snug line-clamp-2 mt-0.5">
+                            <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
                               {notif.text}
                             </p>
                           </div>
                           {!notif.read ? (
-                            <div className="mt-2 h-2 w-2 rounded-full bg-blue-600 shrink-0 shadow-sm animate-pulse" />
+                            <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0 shadow-xs animate-pulse" />
                           ) : (
-                            <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-2 text-xs" />
+                            <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 text-xs" />
                           )}
                         </div>
                       );
                     }) : (
                       <div className="p-8 text-center flex flex-col items-center opacity-60">
-                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-2">
-                          <i className="ti ti-bell-off text-2xl text-slate-400"></i>
+                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                          <i className="ti ti-bell-off text-xl text-slate-400"></i>
                         </div>
                         <span className="text-xs font-bold text-slate-500">No notifications yet</span>
                         <p className="text-[10px] text-slate-400 mt-0.5">You're all caught up!</p>
@@ -728,104 +706,234 @@ function MainLayout({ children }) {
             </AnimatePresence>
           </main>
 
-          {/* Modern Mobile Bottom Navigation Bar (Glassmorphic) */}
-          <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 glass-bottom-nav px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] shadow-lg flex items-center justify-around">
-            {user.role === 'admin' ? (
-              <>
-                <Link 
-                  to="/" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname === '/' ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-smart-home text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Home</span>
-                </Link>
+          {/* ═══════════════════════════════════════════════════════
+              MODERN MOBILE FLOATING DOCK (Island Style)
+              ═══════════════════════════════════════════════════════ */}
+          <div className="lg:hidden fixed bottom-3 inset-x-0 z-40 flex justify-center px-3 pointer-events-none pb-[max(0.2rem,env(safe-area-inset-bottom))]">
+            <nav className="pointer-events-auto bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl shadow-2xl p-1.5 flex items-center gap-1 shadow-slate-950/40 ring-1 ring-white/10">
+              {user.role === 'admin' ? (
+                <>
+                  <Link 
+                    to="/" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Dashboard"
+                  >
+                    <i className="ti ti-smart-home text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Home</span>
+                  </Link>
 
-                <Link 
-                  to="/admin/employees" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/employees') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/employees') ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-users-group text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Staff</span>
-                </Link>
+                  <Link 
+                    to="/admin/employees" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/employees') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Staff"
+                  >
+                    <i className="ti ti-users-group text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Staff</span>
+                  </Link>
 
-                <Link 
-                  to="/admin/attendance" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/attendance') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/attendance') ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-clock-check text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Logs</span>
-                </Link>
+                  <Link 
+                    to="/admin/attendance" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/attendance') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Attendance Logs"
+                  >
+                    <i className="ti ti-clock-hour-4 text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Logs</span>
+                  </Link>
 
-                <Link 
-                  to="/admin/leaves" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/leaves') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/leaves') ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-plane-departure text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Leaves</span>
-                </Link>
+                  <Link 
+                    to="/admin/shifts" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/shifts') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Shifts"
+                  >
+                    <i className="ti ti-calendar-time text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Shifts</span>
+                  </Link>
 
-                <button 
-                  onClick={() => setSidebarOpen(true)}
-                  className="flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active text-slate-400 hover:text-slate-800"
-                >
-                  <div className="p-1 rounded-lg">
-                    <i className="ti ti-category text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">More</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <Link 
-                  to="/employee/dashboard" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/employee/dashboard' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname === '/employee/dashboard' ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-smart-home text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Portal</span>
-                </Link>
+                  <Link 
+                    to="/admin/payroll" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/payroll') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Payroll"
+                  >
+                    <i className="ti ti-wallet text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Payroll</span>
+                  </Link>
 
-                <Link 
-                  to="/employee/qr" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/employee/qr' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname === '/employee/qr' ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-qrcode text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">My Pass</span>
-                </Link>
+                  <Link 
+                    to="/admin/leaves" 
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/leaves') ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="Leaves"
+                  >
+                    <i className="ti ti-plane-departure text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Leaves</span>
+                  </Link>
 
-                <Link 
-                  to="/profile" 
-                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/profile' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
-                >
-                  <div className={`p-1 rounded-lg ${location.pathname === '/profile' ? 'bg-blue-50' : ''}`}>
-                    <i className="ti ti-user text-2xl" />
-                  </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Profile</span>
-                </Link>
+                  <button 
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl tap-active transition-all ${sidebarOpen ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    title="More Apps"
+                  >
+                    <i className="ti ti-grid-dots text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">More</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link 
+                    to="/employee/dashboard" 
+                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/employee/dashboard' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                  >
+                    <i className="ti ti-smart-home text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Portal</span>
+                  </Link>
 
-                <button 
-                  onClick={() => setSidebarOpen(true)}
-                  className="flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active text-slate-400 hover:text-slate-800"
+                  <Link 
+                    to="/employee/qr" 
+                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                  >
+                    <i className="ti ti-qrcode text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">My Pass</span>
+                  </Link>
+
+                  <Link 
+                    to="/scanner" 
+                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/scanner' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                  >
+                    <i className="ti ti-scan text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Scan</span>
+                  </Link>
+
+                  <Link 
+                    to="/profile" 
+                    className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active transition-all ${location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                  >
+                    <i className="ti ti-user text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Profile</span>
+                  </Link>
+
+                  <button 
+                    onClick={handleLogout}
+                    className="flex flex-col items-center justify-center w-14 h-12 rounded-xl tap-active text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                  >
+                    <i className="ti ti-power text-xl" />
+                    <span className="text-[8px] font-bold tracking-tight mt-0.5">Logout</span>
+                  </button>
+                </>
+              )}
+            </nav>
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════
+              MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL
+              ═══════════════════════════════════════════════════════ */}
+          <AnimatePresence>
+            {sidebarOpen && (
+              <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+                <motion.div 
+                  initial={{ opacity: 0 }} 
+                  animate={{ opacity: 1 }} 
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+                  onClick={() => setSidebarOpen(false)}
+                />
+                <motion.div 
+                  initial={{ y: "100%" }} 
+                  animate={{ y: 0 }} 
+                  exit={{ y: "100%" }}
+                  transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                  className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-2xl border-t border-white/10 rounded-t-3xl p-5 text-white shadow-2xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24"
                 >
-                  <div className="p-1 rounded-lg">
-                    <i className="ti ti-category text-2xl" />
+                  <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4" />
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Dock</p>
+                    </div>
+                    <button 
+                      onClick={() => setSidebarOpen(false)} 
+                      className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
+                    >
+                      <i className="ti ti-x text-sm" />
+                    </button>
                   </div>
-                  <span className="text-[10px] tracking-tight mt-0.5">Menu</span>
-                </button>
-              </>
+
+                  <div className="grid grid-cols-2 gap-2.5 mb-5">
+                    <Link 
+                      to="/admin/disciplinary" 
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0">
+                        <i className="ti ti-gavel text-xl" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Disciplinary</p>
+                        <p className="text-[9px] text-slate-400">Notices & incidents</p>
+                      </div>
+                    </Link>
+
+                    <Link 
+                      to="/admin/audit-logs" 
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                        <i className="ti ti-history text-xl" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Audit Trail</p>
+                        <p className="text-[9px] text-slate-400">Security history</p>
+                      </div>
+                    </Link>
+
+                    <Link 
+                      to="/admin/attendance/calendar" 
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                        <i className="ti ti-calendar text-xl" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Calendar</p>
+                        <p className="text-[9px] text-slate-400">Workforce roster</p>
+                      </div>
+                    </Link>
+
+                    <Link 
+                      to="/scanner" 
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                        <i className="ti ti-scan text-xl" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">AI Scanner</p>
+                        <p className="text-[9px] text-slate-400">Gate terminal</p>
+                      </div>
+                    </Link>
+                  </div>
+
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+                    <Link 
+                      to="/profile" 
+                      onClick={() => setSidebarOpen(false)}
+                      className="flex-1 py-3 px-4 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-center text-slate-300 tap-active"
+                    >
+                      My Profile
+                    </Link>
+                    <button 
+                      onClick={handleLogout}
+                      className="flex-1 py-3 px-4 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl text-xs font-bold text-center tap-active flex items-center justify-center gap-1.5"
+                    >
+                      <i className="ti ti-power" /> Sign Out
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
             )}
-          </nav>
+          </AnimatePresence>
         </div>
       </div>
     </div>

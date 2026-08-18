@@ -1,57 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 const MyQr = () => {
-    const [user, setUser] = useState(null);
-
-    useEffect(() => {
-        fetch('http://localhost:5000/api/employees')
-            .then(res => res.json())
-            .then(data => {
-                if(data.success && data.data.length > 0) {
-                    setUser(data.data[0]);
-                }
-            })
-            .catch(err => console.error(err));
-    }, []);
-
-    if (!user) {
-        return <div className="p-8 text-center text-slate-500 font-bold">Loading QR Code...</div>;
-    }
+    const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { first_name: 'Employee', last_name: '', id: '0' });
 
     return (
-        <div className="max-w-xl mx-auto py-10">
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center">
-                
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">My Attendance QR</h2>
-                <p className="text-slate-500 text-sm mb-8">Show this to the admin or scanner to log in.</p>
+        <div className="max-w-md mx-auto pb-24 lg:pb-6 px-4 sm:px-6 font-sans">
+            <motion.div 
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                className="bg-white p-5 sm:p-8 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 text-center"
+            >
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-50 text-blue-600 mb-3">
+                    <i className="ti ti-qrcode text-2xl" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight mb-1">My Digital Pass</h2>
+                <p className="text-slate-500 text-xs sm:text-sm mb-6">Hold near the terminal scanner to log your attendance.</p>
 
-                <div className="flex justify-center mb-8">
-                    <div className="p-4 bg-white border-2 border-slate-900 rounded-xl">
+                <div className="flex justify-center mb-6">
+                    <div className="p-4 sm:p-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-inner">
                         <QRCode 
                             value={user.company_id || String(user.id)} 
-                            size={280} 
+                            size={200} 
                             level="H"
                             fgColor="#0f172a"
                         />
                     </div>
                 </div>
 
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 inline-block text-left w-full">
-                    <p className="text-xs font-bold text-blue-500 uppercase">Employee Details</p>
-                    <p className="text-lg font-bold text-slate-800">{user.first_name} {user.last_name}</p>
-                    <p className="text-sm text-slate-600">{user.email}</p>
-                    <p className="text-xs text-slate-400 mt-1">ID: #{user.id}</p>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-left w-full">
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Personnel Information</p>
+                    <p className="text-base font-bold text-slate-800 truncate">{user.name || `${user.first_name || ''} ${user.last_name || ''}`}</p>
+                    <p className="text-xs text-slate-500 font-medium truncate">{user.job_title || 'Staff'} &bull; {user.department || 'General'}</p>
+                    <p className="text-[10px] font-mono font-bold text-slate-400 mt-1">ID: #{user.company_id || user.id}</p>
                 </div>
 
-                <div className="mt-8">
-                    <Link to="/dashboard" className="text-slate-400 hover:text-slate-600 font-bold text-sm">
-                        &larr; Back to Dashboard
+                <div className="mt-6">
+                    <Link to="/employee/dashboard" className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 font-bold text-xs sm:text-sm tap-active transition-colors">
+                        <i className="ti ti-arrow-left" /> Back to Portal
                     </Link>
                 </div>
-
-            </div>
+            </motion.div>
         </div>
     );
 };

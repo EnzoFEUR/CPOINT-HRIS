@@ -118,132 +118,132 @@ export default function Show() {
                 }
             `}</style>
             
-            <div className="max-w-5xl mx-auto space-y-8 pb-16 font-sans relative">
+            <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
                 
                 
                 <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
                 <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
                 {/* TOP NAVIGATION */}
-                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-                    <Link to="/admin/employees" className="px-5 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm border border-slate-100 flex items-center gap-2">
-                        <i className="ti ti-arrow-left text-lg" /> Back to Directory
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-3">
+                    <Link to="/admin/employees" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                        <i className="ti ti-arrow-left text-base sm:text-lg" /> Back to Directory
                     </Link>
                     
-                    <div className="flex gap-3">
-                        <button onClick={() => setIsPrintModalOpen(true)} className="px-5 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm border border-slate-100 flex items-center gap-2 active:scale-95">
-                            <i className="ti ti-qrcode text-lg" /> Print ID
+                    <div className="flex flex-wrap gap-2 sm:gap-3">
+                        <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                            <i className="ti ti-qrcode text-base sm:text-lg" /> Print ID
                         </button>
                         
-                        <Link to={`/admin/employees/${employee.id}/edit`} className="px-5 py-2.5 bg-indigo-50 text-indigo-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-100 transition-all shadow-sm border border-indigo-100 flex items-center gap-2 active:scale-95">
-                            <i className="ti ti-pencil text-lg" /> Edit Profile
+                        <Link to={`/admin/employees/${employee.id}/edit`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-indigo-50 text-indigo-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-100 transition-all shadow-xs sm:shadow-sm border border-indigo-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                            <i className="ti ti-pencil text-base sm:text-lg" /> Edit
                         </Link>
 
-                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-5 py-2.5 bg-red-50 text-red-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-100 flex items-center gap-2 active:scale-95">
-                            <i className="ti ti-trash text-lg" /> Delete
+                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-red-50 text-red-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-xs sm:shadow-sm border border-red-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                            <i className="ti ti-trash text-base sm:text-lg" /> Delete
                         </button>
                     </div>
                 </motion.div>
 
                 {/* HERO PROFILE CARD */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 rounded-[3rem] shadow-2xl shadow-slate-900/20 p-8 sm:p-12 flex flex-col sm:flex-row items-center gap-10 relative overflow-hidden group">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 rounded-2xl shadow-xs sm:shadow-sm p-5 sm:p-8 lg:p-10 flex flex-col sm:flex-row items-center gap-5 sm:gap-8 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-bl from-indigo-500/30 to-purple-600/30 rounded-full blur-3xl -mr-20 -mt-20 transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
 
                     <div className="relative z-10 shrink-0">
-                        <div className="relative h-40 w-40 sm:h-48 sm:w-48 group-hover:scale-105 transition-transform duration-500">
+                        <div className="relative h-28 w-28 sm:h-40 sm:w-40 group-hover:scale-105 transition-transform duration-500">
                             {!imageError ? (
                                 <img 
                                     src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id}/${employee.id}.jpg`} 
                                     onError={() => setImageError(true)}
                                     alt={employee.name}
-                                    className="absolute inset-0 w-full h-full object-cover rounded-[2.5rem] shadow-2xl border-4 border-white/10 bg-slate-800"
+                                    className="absolute inset-0 w-full h-full object-cover rounded-2xl shadow-2xl border-4 border-white/10 bg-slate-800"
                                 />
                             ) : (
-                                <div className="absolute inset-0 w-full h-full rounded-[2.5rem] bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-6xl font-black shadow-2xl border-4 border-white/10">
+                                <div className="absolute inset-0 w-full h-full rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl sm:text-6xl font-black shadow-2xl border-4 border-white/10">
                                     {employee.name ? employee.name.charAt(0) : ''}
                                 </div>
                             )}
-                            <div className="absolute -bottom-2 -right-2 h-12 w-12 bg-emerald-500 rounded-full border-4 border-slate-900 shadow-xl flex items-center justify-center" title="Active Account">
-                                <i className="ti ti-check text-white text-xl font-bold" />
+                            <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 h-8 w-8 sm:h-10 sm:w-10 bg-emerald-500 rounded-full border-2 sm:border-4 border-slate-900 shadow-xl flex items-center justify-center" title="Active Account">
+                                <i className="ti ti-check text-white text-base sm:text-lg font-bold" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="relative z-10 text-center sm:text-left flex-1">
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 text-white font-bold text-[10px] rounded-xl border border-white/20 uppercase tracking-widest mb-4 backdrop-blur-md">
+                    <div className="relative z-10 text-center sm:text-left flex-1 min-w-0">
+                        <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 bg-white/10 text-white font-bold text-[10px] sm:text-xs rounded-xl border border-white/20 uppercase tracking-widest mb-2 sm:mb-3 backdrop-blur-md">
                             <i className="ti ti-id text-indigo-300" /> {employee.company_id || 'Employee'}
                         </div>
-                        <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-4">{employee.name}</h1>
+                        <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-2 sm:mb-3 truncate">{employee.name}</h1>
                         
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mb-6">
-                            <span className="bg-indigo-500 text-white px-4 py-1.5 rounded-xl text-xs font-bold shadow-md tracking-wider">
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                            <span className="bg-indigo-500 text-white px-3 sm:px-4 py-1 rounded-xl text-xs font-bold shadow-md tracking-wider">
                                 {employee.job_title || 'Staff'}
                             </span>
-                            <span className="bg-white/10 backdrop-blur-md text-white px-4 py-1.5 rounded-xl text-xs font-bold border border-white/10 flex items-center gap-2">
+                            <span className="bg-white/10 backdrop-blur-md text-white px-3 sm:px-4 py-1 rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5">
                                 <i className="ti ti-building text-indigo-300" /> {employee.department || 'General'} Dept.
                             </span>
                         </div>
 
-                        <p className="text-indigo-200 font-medium text-sm flex items-center justify-center sm:justify-start gap-2">
+                        <p className="text-indigo-200 font-medium text-xs sm:text-sm flex items-center justify-center sm:justify-start gap-1.5 truncate">
                             <i className="ti ti-mail text-indigo-400" /> {employee.email}
                         </p>
                     </div>
                 </motion.div>
 
                 {/* DETAILS GRID */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     
                     {/* Employment Details */}
-                    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8 relative overflow-hidden group hover:shadow-xl transition-shadow">
-                        <div className="flex items-center gap-4 mb-8">
-                            <div className="h-12 w-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100">
-                                <i className="ti ti-briefcase text-2xl" />
+                    <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden group hover:shadow-lg transition-shadow">
+                        <div className="flex items-center gap-3 sm:gap-4 mb-5 sm:mb-8">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-indigo-50 text-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center border border-indigo-100">
+                                <i className="ti ti-briefcase text-xl sm:text-2xl" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 tracking-tight">Employment</h3>
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Employment</h3>
                         </div>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-4 sm:space-y-6">
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date Joined</p>
-                                <p className="text-slate-700 font-bold flex items-center gap-2 text-base">
-                                    <i className="ti ti-calendar-star text-indigo-400 text-xl" />
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Date Joined</p>
+                                <p className="text-slate-700 font-bold flex items-center gap-2 text-sm sm:text-base">
+                                    <i className="ti ti-calendar-star text-indigo-400 text-lg" />
                                     {employee.created_at ? formatDate(employee.created_at) : ''} 
                                     {employee.created_at_human && <span className="text-xs text-slate-400 font-medium ml-1">({employee.created_at_human})</span>}
                                 </p>
                             </div>
                             
-                            <div className="pt-4 border-t border-slate-50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Base Salary</p>
-                                <p className="text-3xl font-black text-slate-800 tracking-tight flex items-end gap-1">
-                                    <span className="text-emerald-500 text-2xl mb-0.5">₱</span>
+                            <div className="pt-3 sm:pt-4 border-t border-slate-50">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Base Salary</p>
+                                <p className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-end gap-1">
+                                    <span className="text-emerald-500 text-xl sm:text-2xl mb-0.5">₱</span>
                                     {Number(employee.salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    <span className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1.5 ml-1">/ mo</span>
+                                    <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-widest mb-1 ml-1">/ mo</span>
                                 </p>
                             </div>
                         </div>
                     </div>
 
                     {/* System Access */}
-                    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8 relative overflow-hidden group hover:shadow-xl transition-shadow">
-                        <div className="flex items-center gap-4 mb-8">
-                            <div className="h-12 w-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100">
-                                <i className="ti ti-shield-lock text-2xl" />
+                    <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden group hover:shadow-lg transition-shadow">
+                        <div className="flex items-center gap-3 sm:gap-4 mb-5 sm:mb-8">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-purple-50 text-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center border border-purple-100">
+                                <i className="ti ti-shield-lock text-xl sm:text-2xl" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 tracking-tight">System Access</h3>
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">System Access</h3>
                         </div>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-4 sm:space-y-6">
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account Role</p>
-                                <span className="inline-flex px-4 py-2 bg-slate-50 text-slate-700 font-black text-xs rounded-xl border border-slate-200 uppercase tracking-widest">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Account Role</p>
+                                <span className="inline-flex px-3.5 py-1.5 bg-slate-50 text-slate-700 font-black text-xs rounded-xl border border-slate-200 uppercase tracking-widest">
                                     {employee.role ?? 'Employee'}
                                 </span>
                             </div>
 
-                            <div className="pt-4 border-t border-slate-50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Last Profile Update</p>
-                                <p className="text-slate-600 font-bold flex items-center gap-2 text-sm">
-                                    <i className="ti ti-clock text-purple-400 text-lg" />
+                            <div className="pt-3 sm:pt-4 border-t border-slate-50">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Last Profile Update</p>
+                                <p className="text-slate-600 font-bold flex items-center gap-2 text-xs sm:text-sm">
+                                    <i className="ti ti-clock text-purple-400 text-base sm:text-lg" />
                                     {employee.updated_at ? formatDateTime(employee.updated_at) : ''}
                                 </p>
                             </div>
@@ -255,30 +255,30 @@ export default function Show() {
             {/* DESTRUCTIVE DELETE MODAL */}
             <AnimatePresence>
                 {isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <motion.div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
                             onClick={() => setIsDeleteModalOpen(false)}
                         />
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center"
+                            className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 sm:p-8 text-center"
                         >
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
-                                <i className="ti ti-alert-triangle text-4xl text-red-500 animate-pulse" />
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 border-4 sm:border-8 border-white shadow-lg relative z-10">
+                                <i className="ti ti-alert-triangle text-3xl sm:text-4xl text-red-500 animate-pulse" />
                             </div>
                             
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Employee?</h2>
-                            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Employee?</h2>
+                            <p className="text-xs sm:text-sm text-slate-500 mb-4 sm:mb-6 leading-relaxed">
                                 You are about to permanently delete <strong className="text-slate-800">{employee.name}</strong>. This will wipe their entire history and cannot be undone.
                             </p>
 
-                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 mb-4 sm:mb-6 border border-slate-100 text-left">
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                     Type <span className="text-red-500 select-all">{employee.name}</span> to confirm
                                 </label>
                                 <input 
@@ -287,25 +287,25 @@ export default function Show() {
                                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                                     placeholder="Type name here..."
                                     disabled={isDeleting}
-                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all text-center disabled:opacity-50"
+                                    className="w-full px-3.5 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-xs sm:text-sm text-slate-700 transition-all text-center disabled:opacity-50"
                                 />
                             </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex gap-2.5 sm:gap-3">
                                 <button 
                                     onClick={() => setIsDeleteModalOpen(false)} 
                                     disabled={isDeleting}
-                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 disabled:opacity-50"
+                                    className="flex-1 py-3 sm:py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors tap-active disabled:opacity-50 text-xs sm:text-sm"
                                 >
                                     Cancel
                                 </button>
                                 <button 
-                                    onClick={confirmDelete} 
+                                    onClick={handleDelete} 
                                     disabled={deleteConfirmText !== employee.name || isDeleting}
-                                    className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    className="flex-1 py-3 sm:py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-xl shadow-red-600/30 transition-all tap-active flex items-center justify-center gap-2 text-xs sm:text-sm"
                                 >
                                     {isDeleting ? (
-                                        <><i className="ti ti-loader animate-spin text-xl" /> Deleting...</>
+                                        <><i className="ti ti-loader animate-spin text-lg" /> Deleting...</>
                                     ) : 'Delete Forever'}
                                 </button>
                             </div>
@@ -317,48 +317,48 @@ export default function Show() {
             {/* PRINT ID MODAL */}
             <AnimatePresence>
                 {isPrintModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <motion.div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity no-print"
                             onClick={() => setIsPrintModalOpen(false)}
                         />
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             id="qr-print-card"
-                            className="relative bg-white rounded-[3rem] p-10 text-center shadow-2xl w-full max-w-sm border border-slate-100 z-10"
+                            className="relative bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-10 text-center shadow-2xl w-full max-w-sm border border-slate-100 z-10"
                         >
-                            <div className="mb-8">
-                                <h1 className="text-2xl font-black text-slate-800 uppercase tracking-widest">Company ID</h1>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Official Identification</p>
+                            <div className="mb-6 sm:mb-8">
+                                <h1 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-widest">Company ID</h1>
+                                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Official Identification</p>
                             </div>
 
-                            <div className="flex justify-center mb-8">
-                                <div className="p-4 border-4 border-slate-900 rounded-[2rem] bg-white flex items-center justify-center shadow-inner">
-                                    <QRCodeSVG value={employee.company_id || String(employee.id)} size={200} />
+                            <div className="flex justify-center mb-6 sm:mb-8">
+                                <div className="p-3 sm:p-4 border-4 border-slate-900 rounded-2xl bg-white flex items-center justify-center shadow-inner">
+                                    <QRCodeSVG value={employee.company_id || String(employee.id)} size={180} />
                                 </div>
                             </div>
 
-                            <div className="mb-8">
-                                <h2 className="text-3xl font-black text-slate-800 tracking-tight leading-tight">{employee.name}</h2>
-                                <p className="text-indigo-600 font-black uppercase text-sm tracking-widest mt-2">{employee.job_title ?? 'STAFF'}</p>
-                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{employee.department ? employee.department + ' Dept.' : ''}</p>
+                            <div className="mb-6 sm:mb-8">
+                                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight leading-tight truncate">{employee.name}</h2>
+                                <p className="text-indigo-600 font-black uppercase text-xs sm:text-sm tracking-widest mt-1.5">{employee.job_title ?? 'STAFF'}</p>
+                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? employee.department + ' Dept.' : ''}</p>
                             </div>
 
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-8">
-                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Company ID</p>
-                                <p className="font-mono text-2xl font-black text-slate-700">{employee.company_id || `#${String(employee.id).substring(0,8)}`}</p>
+                            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 mb-6 sm:mb-8">
+                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-0.5">Company ID</p>
+                                <p className="font-mono text-xl sm:text-2xl font-black text-slate-700">{employee.company_id || `#${String(employee.id).substring(0,8)}`}</p>
                             </div>
 
-                            <div className="no-print flex gap-3">
-                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-200 transition active:scale-95">
+                            <div className="no-print flex gap-2.5 sm:gap-3">
+                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-3 sm:py-4 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition tap-active text-xs sm:text-sm">
                                     Cancel
                                 </button>
-                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/30 transition active:scale-95">
-                                    <i className="ti ti-printer text-lg" /> Print
+                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/30 transition tap-active text-xs sm:text-sm">
+                                    <i className="ti ti-printer text-base sm:text-lg" /> Print
                                 </button>
                             </div>
                         </motion.div>

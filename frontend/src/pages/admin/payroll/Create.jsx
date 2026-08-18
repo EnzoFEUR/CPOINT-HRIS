@@ -279,55 +279,55 @@ const PayrollCreate = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
-            <div className="bg-white p-6 sm:p-10 rounded-[2rem] shadow-sm border border-slate-100">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
+            <div className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
                 
-                <div className="flex items-center gap-4 mb-8">
-                    <div className="h-14 w-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-500/20">
+                <div className="flex items-center gap-3.5 sm:gap-4 mb-6 sm:mb-8">
+                    <div className="h-11 w-11 sm:h-14 sm:w-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-md shadow-blue-500/20 shrink-0">
                         <i className="ti ti-calculator"></i>
                     </div>
                     <div>
-                        <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">Payroll Calculator</h2>
-                        <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider mt-0.5">Automated DOLE Wage & Deductions Computation</p>
+                        <h2 className="text-xl sm:text-3xl font-black text-slate-800 tracking-tight">Payroll Calculator</h2>
+                        <p className="text-slate-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mt-0.5">Automated DOLE Wage & Deductions Computation</p>
                     </div>
                 </div>
 
                 {error && (
-                    <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-xl"></i>
+                    <div className="mb-6 sm:mb-8 p-3.5 sm:p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-xs flex items-start gap-2.5 sm:gap-3">
+                        <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-lg sm:text-xl shrink-0"></i>
                         <div>
-                            <h4 className="text-sm font-bold text-red-800">Action Stopped</h4>
-                            <p className="text-sm text-red-600 mt-1">{error}</p>
+                            <h4 className="text-xs sm:text-sm font-bold text-red-800">Action Stopped</h4>
+                            <p className="text-xs sm:text-sm text-red-600 mt-0.5">{error}</p>
                         </div>
                     </div>
                 )}
 
                 {success && (
-                    <div className="mb-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <i className="ti ti-circle-check text-emerald-500 mt-0.5 text-xl"></i>
+                    <div className="mb-6 sm:mb-8 p-3.5 sm:p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-xl shadow-xs flex items-start gap-2.5 sm:gap-3">
+                        <i className="ti ti-circle-check text-emerald-500 mt-0.5 text-lg sm:text-xl shrink-0"></i>
                         <div>
-                            <h4 className="text-sm font-bold text-emerald-800">Success</h4>
-                            <p className="text-sm text-emerald-600 mt-1">{success}</p>
+                            <h4 className="text-xs sm:text-sm font-bold text-emerald-800">Success</h4>
+                            <p className="text-xs sm:text-sm text-emerald-600 mt-0.5">{success}</p>
                         </div>
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+                    <div className="bg-slate-50/60 p-4 sm:p-6 rounded-2xl border border-slate-200/80">
+                        <div className="flex items-center gap-2.5 sm:gap-3 mb-3">
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">
                                 <i className="ti ti-user"></i>
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
-                                <p className="text-[11px] text-slate-400 font-medium">Select an employee from your active workforce</p>
+                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
+                                <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">Select an employee from your active workforce</p>
                             </div>
                         </div>
                         <select 
                             name="employee_id" 
                             value={formData.employee_id}
                             onChange={handleInputChange} 
-                            className="w-full p-4 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-sm text-base" 
+                            className="w-full p-3 sm:p-4 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-xs text-xs sm:text-base" 
                             required
                         >                            
                             <option value="" disabled>Choose an employee to compute wages...</option>
@@ -345,29 +345,29 @@ const PayrollCreate = () => {
                             <motion.div 
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-xl border border-slate-200/70"
+                                className="mt-3.5 sm:mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200/70"
                             >
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Monthly Basic</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
+                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-400">Monthly Basic</span>
+                                    <p className="font-mono font-bold text-slate-800 text-xs sm:text-sm truncate">
                                         ₱{parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Daily Rate (21.75)</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
+                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-400">Daily Rate</span>
+                                    <p className="font-mono font-bold text-slate-800 text-xs sm:text-sm truncate">
                                         ₱{(parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) / 21.75).toFixed(2)}
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Hourly Rate</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
+                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-400">Hourly Rate</span>
+                                    <p className="font-mono font-bold text-slate-800 text-xs sm:text-sm truncate">
                                         ₱{((parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) / 21.75) / 8).toFixed(2)}
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Department</span>
-                                    <p className="font-semibold text-slate-800 text-sm truncate">
+                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-400">Department</span>
+                                    <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate">
                                         {selectedEmployee.department || 'Operations'}
                                     </p>
                                 </div>
@@ -375,15 +375,15 @@ const PayrollCreate = () => {
                         )}
                     </div>
 
-                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100 space-y-5">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                    <div className="bg-slate-50/60 p-4 sm:p-6 rounded-2xl border border-slate-200/80 space-y-4 sm:space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+                            <div className="flex items-center gap-2.5 sm:gap-3">
+                                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">
                                     <i className="ti ti-calendar-event"></i>
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium">Standard semi-monthly cutoff or custom date range</p>
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">Standard semi-monthly cutoff or custom date range</p>
                                 </div>
                             </div>
                             
@@ -391,34 +391,34 @@ const PayrollCreate = () => {
                                 <button
                                     type="button"
                                     onClick={() => applyCutoffPreset('current_1st')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'current_1st' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all tap-active ${activePreset === 'current_1st' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
                                 >
                                     1st - 15th
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => applyCutoffPreset('current_2nd')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'current_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all tap-active ${activePreset === 'current_2nd' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
                                 >
                                     16th - End
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => applyCutoffPreset('prev_2nd')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'prev_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all tap-active ${activePreset === 'prev_2nd' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
                                 >
                                     Last Mo (16th-End)
                                 </button>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <i className="ti ti-calendar-event text-blue-600 text-sm"></i> Cutoff Start Date
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                        <i className="ti ti-calendar-event text-blue-600 text-sm"></i> Cutoff Start
                                     </span>
-                                    <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
                                         {formatReadableDate(formData.period_start)}
                                     </span>
                                 </div>
@@ -437,17 +437,17 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm transition-colors"
+                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-xs sm:text-sm transition-colors"
                                     placeholder="Click to pick start date"
                                 />
                             </div>
 
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <i className="ti ti-flag text-emerald-600 text-sm"></i> Cutoff End Date
+                            <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                        <i className="ti ti-flag text-emerald-600 text-sm"></i> Cutoff End
                                     </span>
-                                    <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
                                         {formatReadableDate(formData.period_end)}
                                     </span>
                                 </div>
@@ -466,93 +466,93 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm transition-colors"
+                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-xs sm:text-sm transition-colors"
                                     placeholder="Click to pick end date"
                                 />
                             </div>
                         </div>
 
                         {periodDaysCount > 0 && (
-                            <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 px-4 py-2.5 rounded-xl text-xs text-blue-900 font-medium">
-                                <div className="flex items-center gap-2">
-                                    <i className="ti ti-info-circle text-blue-600 text-base"></i>
-                                    <span>
-                                        Active Pay Window: <strong>{formatReadableDate(formData.period_start)}</strong> to <strong>{formatReadableDate(formData.period_end)}</strong>
+                            <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs text-blue-900 font-medium">
+                                <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                                    <i className="ti ti-info-circle text-blue-600 text-sm sm:text-base shrink-0"></i>
+                                    <span className="truncate">
+                                        Window: <strong>{formatReadableDate(formData.period_start)}</strong> to <strong>{formatReadableDate(formData.period_end)}</strong>
                                     </span>
                                 </div>
-                                <span className="font-black bg-blue-600 text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-sm">
+                                <span className="font-black bg-blue-600 text-white px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] shadow-xs shrink-0">
                                     {periodDaysCount} Days
                                 </span>
                             </div>
                         )}
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3.5 sm:space-y-4">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                            <div className="flex items-center gap-2.5 sm:gap-3">
+                                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">
                                     <i className="ti ti-clock-check"></i>
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Attendance & Rendered Hours</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium">Verified biometric time logs & overtime</p>
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Attendance & Rendered Hours</h3>
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">Verified biometric time logs & overtime</p>
                                 </div>
                             </div>
                             {isCalculating && (
-                                <div className="text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 animate-pulse">
-                                    <i className="ti ti-loader animate-spin"></i> Calculating attendance...
+                                <div className="text-[10px] sm:text-xs font-semibold text-blue-600 flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 animate-pulse">
+                                    <i className="ti ti-loader animate-spin"></i> Calculating...
                                 </div>
                             )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Days Worked (Present)</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="bg-slate-50/60 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase mb-1.5 sm:mb-2">Days Worked (Present)</label>
                                 <input 
                                     type="number" 
                                     step="0.5" 
                                     name="days_worked" 
                                     value={formData.days_worked} 
                                     readOnly 
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner" 
+                                    className="w-full p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black text-slate-800 outline-none shadow-inner" 
                                     required 
                                 />
-                                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400 mt-1.5 sm:mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
                                     <i className="ti ti-bolt text-amber-500"></i> Auto-computed from biometric logs
                                 </p>
                             </div>
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Overtime Hours (&gt;9h shifts)</label>
+                            <div className="bg-slate-50/60 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase mb-1.5 sm:mb-2">Overtime Hours (&gt;9h shifts)</label>
                                 <input 
                                     type="number" 
                                     step="0.5" 
                                     name="overtime_hours" 
                                     value={formData.overtime_hours} 
                                     readOnly 
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner" 
+                                    className="w-full p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black text-slate-800 outline-none shadow-inner" 
                                 />
-                                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400 mt-1.5 sm:mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
                                     <i className="ti ti-clock text-blue-500"></i> Computed per standard shift schedule
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                    <div className="space-y-3.5 sm:space-y-4">
+                        <div className="flex items-center gap-2.5 sm:gap-3">
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">
                                 <i className="ti ti-adjustments"></i>
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Adjustments & Manual Overrides</h3>
-                                <p className="text-[11px] text-slate-400 font-medium">Calculated tardiness deductions and allowable HR overrides</p>
+                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Adjustments & Manual Overrides</h3>
+                                <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">Calculated tardiness deductions and allowable HR overrides</p>
                             </div>
                         </div>
 
-                        <div className="p-5 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">
+                        <div className="p-4 sm:p-5 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">
                             <div className="flex justify-between items-center">
-                                <label className="block text-xs font-bold text-red-600 uppercase">Late Deductions / Absences (₱)</label>
-                                <span className="text-[10px] font-bold text-red-600 uppercase bg-red-100/80 px-2 py-0.5 rounded-md">
+                                <label className="block text-[10px] sm:text-xs font-bold text-red-600 uppercase">Late Deductions / Absences (₱)</label>
+                                <span className="text-[9px] sm:text-[10px] font-bold text-red-600 uppercase bg-red-100/80 px-2 py-0.5 rounded-md">
                                     Admin Override Allowed
                                 </span>
                             </div>
@@ -562,36 +562,36 @@ const PayrollCreate = () => {
                                 name="late_deductions" 
                                 value={formData.late_deductions}
                                 onChange={handleInputChange} 
-                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm" 
+                                className="w-full p-3 sm:p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-lg sm:text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-xs" 
                                 placeholder="0.00" 
                             />
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-[10px] sm:text-[11px] text-slate-500">
                                 15-minute grace period automatically accounted for. You can adjust this amount manually before saving.
                             </p>
                         </div>
                     </div>
 
-                    <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-3">
-                        <i className="ti ti-shield-check text-blue-600 text-xl mt-0.5"></i>
-                        <p className="text-xs text-slate-600 leading-relaxed">
+                    <div className="p-3.5 sm:p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-2.5 sm:gap-3">
+                        <i className="ti ti-shield-check text-blue-600 text-lg sm:text-xl mt-0.5 shrink-0"></i>
+                        <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed">
                             <strong>DOLE Compliance Engine:</strong> Government mandatory deductions (SSS, PhilHealth, Pag-IBIG, and TRAIN Law Withholding Tax) are automatically calculated and deducted upon generation.
                         </p>
                     </div>
 
-                    <div className="pt-4">
+                    <div className="pt-2 sm:pt-4">
                         <button 
                             type="submit" 
                             disabled={isSubmitting || !formData.employee_id}
-                            className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900"
+                            className="w-full py-3.5 sm:py-4 bg-slate-900 hover:bg-blue-600 text-white font-black text-sm sm:text-base rounded-xl shadow-lg tap-active transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {!isSubmitting ? (
                                 <>
-                                    <i className="ti ti-cash text-2xl"></i>
+                                    <i className="ti ti-cash text-lg sm:text-xl"></i>
                                     <span>Compute & Distribute Payslip</span>
                                 </>
                             ) : (
                                 <>
-                                    <i className="ti ti-loader text-2xl animate-spin"></i>
+                                    <i className="ti ti-loader text-lg sm:text-xl animate-spin"></i>
                                     <span>Computing DOLE Contributions...</span>
                                 </>
                             )}
