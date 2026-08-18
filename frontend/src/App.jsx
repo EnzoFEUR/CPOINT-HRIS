@@ -9,53 +9,65 @@ const AuthGuard = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
     
+    let user = null;
+    try {
+        const raw = localStorage.getItem('user');
+        user = (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
+    } catch {
+        user = null;
+    }
+
+    const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
+    const isPublic = publicRoutes.includes(location.pathname);
+    
     useEffect(() => {
-        const user = JSON.parse(localStorage.getItem('user'));
-        const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
-        
-        if (!user) {
-            if (!publicRoutes.includes(location.pathname)) {
-                navigate('/login');
-            }
+        if (!user && !isPublic) {
+            navigate('/login', { replace: true });
             return;
         }
 
-        if (user.requires_password_change) {
-            if (location.pathname !== '/force-password-change') {
-                navigate('/force-password-change');
+        if (user) {
+            if (user.requires_password_change) {
+                if (location.pathname !== '/force-password-change') {
+                    navigate('/force-password-change', { replace: true });
+                }
+                return;
+            } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
+                if (location.pathname !== '/biometric-setup') {
+                    navigate('/biometric-setup', { replace: true });
+                }
+                return;
             }
-            return;
-        } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
-            if (location.pathname !== '/biometric-setup') {
-                navigate('/biometric-setup');
-            }
-            return;
-        }
 
-        // Role-based root routing to prevent Dashboard flashing
-        if (location.pathname === '/') {
-            if (user.role === 'security') {
-                navigate('/scanner', { replace: true });
-            } else if (user.role !== 'admin') {
+            // Role-based root routing to prevent Dashboard flashing
+            if (location.pathname === '/') {
+                if (user.role === 'security') {
+                    navigate('/scanner', { replace: true });
+                } else if (user.role !== 'admin') {
+                    navigate('/employee/dashboard', { replace: true });
+                }
+                return;
+            }
+
+            // Strictly protect all /admin/* routes from non-admin accounts
+            if (location.pathname.startsWith('/admin') && user.role !== 'admin') {
+                toast.error('Access Denied: Admin privileges required.');
+                navigate(user.role === 'security' ? '/scanner' : '/employee/dashboard', { replace: true });
+                return;
+            }
+
+            // Strictly protect /scanner from non-authorized personnel (security & admin only)
+            if (location.pathname === '/scanner' && user.role !== 'admin' && user.role !== 'security') {
+                toast.error('Access Denied: Gate scanner is restricted to authorized personnel.');
                 navigate('/employee/dashboard', { replace: true });
+                return;
             }
-            return;
         }
+    }, [navigate, location.pathname, isPublic]);
 
-        // Strictly protect all /admin/* routes from non-admin accounts
-        if (location.pathname.startsWith('/admin') && user.role !== 'admin') {
-            toast.error('Access Denied: Admin privileges required.');
-            navigate(user.role === 'security' ? '/scanner' : '/employee/dashboard', { replace: true });
-            return;
-        }
-
-        // Strictly protect /scanner from non-authorized personnel (security & admin only)
-        if (location.pathname === '/scanner' && user.role !== 'admin' && user.role !== 'security') {
-            toast.error('Access Denied: Gate scanner is restricted to authorized personnel.');
-            navigate('/employee/dashboard', { replace: true });
-            return;
-        }
-    }, [navigate, location.pathname]);
+    if (!user && !isPublic) {
+        return null;
+    }
 
     return children;
 };

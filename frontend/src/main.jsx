@@ -5,11 +5,11 @@ import './index.css'
 import App from './App.jsx'
 import { supabase } from './supabaseClient'
 
-// Error Boundary to eliminate mobile white screens
+// Error Boundary to eliminate mobile white screens and provide actionable recovery
 class RootErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, showDetails: false };
   }
 
   static getDerivedStateFromError(error) {
@@ -20,11 +20,30 @@ class RootErrorBoundary extends Component {
     console.error('[RootErrorBoundary] Caught unhandled error:', error, errorInfo);
   }
 
-  handleReload = () => {
-    if ('caches' in window) {
-      caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+  handleGoToLogin = () => {
+    window.location.href = '/login';
+  };
+
+  handleHardReset = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          await caches.delete(k);
+        }
+      }
+    } catch (e) {
+      console.warn('Cache clearing error:', e);
     }
-    window.location.reload();
+    localStorage.removeItem('user');
+    sessionStorage.clear();
+    window.location.href = '/login';
   };
 
   render() {
@@ -32,7 +51,7 @@ class RootErrorBoundary extends Component {
       return (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f172a',
+          backgroundColor: '#090d16',
           color: '#ffffff',
           display: 'flex',
           flexDirection: 'column',
@@ -43,40 +62,94 @@ class RootErrorBoundary extends Component {
           textAlign: 'center'
         }}>
           <div style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+            width: '60px',
+            height: '60px',
+            borderRadius: '18px',
+            background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '20px',
+            fontSize: '22px',
             fontWeight: '900',
             marginBottom: '20px',
-            boxShadow: '0 10px 25px rgba(59, 130, 246, 0.4)'
+            boxShadow: '0 12px 30px rgba(37, 99, 235, 0.35)',
+            border: '1px solid rgba(255, 255, 255, 0.15)'
           }}>
             CP
           </div>
-          <h1 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px' }}>C-Point HRIS</h1>
-          <p style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '300px', marginBottom: '24px' }}>
-            A new version was updated. Tap below to reload fresh assets.
+          <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>C-Point HRIS</h1>
+          <p style={{ fontSize: '14px', color: '#94a3b8', maxWidth: '320px', marginBottom: '28px', lineHeight: '1.5' }}>
+            The session was refreshed. Tap below to navigate safely to the portal.
           </p>
-          <button
-            onClick={this.handleReload}
-            style={{
-              padding: '12px 28px',
-              backgroundColor: '#2563eb',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '12px',
-              fontWeight: '700',
-              fontSize: '14px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)'
-            }}
-          >
-            Refresh App
-          </button>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px' }}>
+            <button
+              onClick={this.handleGoToLogin}
+              style={{
+                padding: '14px 24px',
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '14px',
+                fontWeight: '700',
+                fontSize: '15px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(37, 99, 235, 0.4)',
+                transition: 'transform 0.15s ease'
+              }}
+            >
+              Sign In to HRIS
+            </button>
+            
+            <button
+              onClick={this.handleHardReset}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                color: '#cbd5e1',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '14px',
+                fontWeight: '600',
+                fontSize: '13px',
+                cursor: 'pointer'
+              }}
+            >
+              Clear Cache & Reset
+            </button>
+          </div>
+
+          {this.state.error && (
+            <div style={{ marginTop: '32px', maxWidth: '340px' }}>
+              <button
+                onClick={() => this.setState(prev => ({ showDetails: !prev.showDetails }))}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                {this.state.showDetails ? 'Hide Diagnostics' : 'Show Diagnostics'}
+              </button>
+              {this.state.showDetails && (
+                <pre style={{
+                  marginTop: '8px',
+                  padding: '12px',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  borderRadius: '8px',
+                  color: '#f87171',
+                  fontSize: '11px',
+                  textAlign: 'left',
+                  overflowX: 'auto',
+                  border: '1px solid rgba(239, 68, 68, 0.2)'
+                }}>
+                  {this.state.error.toString()}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
       );
     }
@@ -84,7 +157,7 @@ class RootErrorBoundary extends Component {
   }
 }
 
-// Configure React Query to cache data for 5 minutes
+// Configure React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -130,7 +203,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
         console.log('[PWA] Service Worker active with scope:', registration.scope);
-        // Periodically check for updates
         registration.update();
       })
       .catch((error) => {
