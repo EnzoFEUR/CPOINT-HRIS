@@ -1,10 +1,11 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(30), async (req, res) => {
     try {
         let query = supabase.from('employees').select('*').order('first_name', { ascending: true });
         
@@ -60,6 +61,8 @@ router.post('/assign', async (req, res) => {
                 properties: { new_shift: shift }
             });
         }
+
+        invalidateCache(['/api/shifts', '/api/employees']);
 
         res.json({ success: true, message: 'Shift assigned successfully.' });
     } catch (err) {

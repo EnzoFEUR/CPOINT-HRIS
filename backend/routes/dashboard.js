@@ -1,10 +1,11 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { checkRole } from '../middleware/authMiddleware.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/admin', checkRole('admin'), async (req, res) => {
+router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = new Date().toISOString().split('T')[0];
 
@@ -66,11 +67,11 @@ router.get('/admin', checkRole('admin'), async (req, res) => {
     }
 });
 
-router.get('/employee/:id', async (req, res) => {
+router.get('/employee/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
         const { data: recentLogs, error } = await supabase
-            .from('attendance')
+            .from('attendances')
             .select('*')
             .eq('employee_id', id)
             .order('created_at', { ascending: false })

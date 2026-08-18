@@ -1,10 +1,11 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(20), async (req, res) => {
     try {
         let query = supabase.from('leave_requests').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
         if (req.query.employee_id) {
@@ -66,6 +67,8 @@ router.post('/', async (req, res) => {
             sender_avatar: avatarUrl
         });
 
+        invalidateCache(['/api/leaves', '/api/dashboard']);
+
         res.json({ success: true, message: 'Leave request submitted successfully!' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -88,6 +91,8 @@ router.put('/:id/status', async (req, res) => {
 
         if (error) throw error;
         
+        invalidateCache(['/api/leaves', '/api/dashboard']);
+
         if (updatedLeave) {
             await createNotification({
                 target: updatedLeave.employee_id,

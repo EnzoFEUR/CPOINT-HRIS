@@ -1,9 +1,10 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(30), async (req, res) => {
     try {
         let query = supabase.from('employees').select('*').order('created_at', { ascending: false });
         if (req.query.employee_id) {
@@ -17,7 +18,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', cacheResponse(30), async (req, res) => {
     try {
         const { id } = req.params;
         const { data, error } = await supabase.from('employees').select('*').eq('id', id).single();
@@ -119,6 +120,8 @@ router.post('/', async (req, res) => {
 
         if (empError) throw empError;
 
+        invalidateCache(['/api/employees', '/api/dashboard']);
+
         res.status(201).json({ 
             success: true, 
             data: empData, 
@@ -139,6 +142,8 @@ router.put('/:id', async (req, res) => {
             .eq('id', req.params.id);
 
         if (error) throw error;
+
+        invalidateCache(['/api/employees', '/api/dashboard']);
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
@@ -229,6 +234,8 @@ router.delete('/:id', async (req, res) => {
                 properties: { files_shredded: photosToShred.length }
             });
         }
+
+        invalidateCache(['/api/employees', '/api/dashboard']);
 
         res.json({ success: true, message: `Employee deleted permanently. Shredded ${photosToShred.length} orphaned files.` });
     } catch (error) {

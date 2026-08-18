@@ -1,14 +1,21 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import compression from 'compression';
+import { supabase } from './supabaseClient.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Middleware
+// High-Performance Gzip/Brotli Compression Middleware (Shrinks payloads by ~75-85%)
+app.use(compression({
+    level: 6,
+    threshold: 1024 // Only compress payloads >= 1KB
+}));
+
+// Core Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 

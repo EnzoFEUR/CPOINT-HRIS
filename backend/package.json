@@ -16,9 +16,11 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.106.2",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "node-cache": "^5.1.2",
     "node-cron": "^4.6.0",
     "pg": "^8.21.0",
     "uuid": "^14.0.0"

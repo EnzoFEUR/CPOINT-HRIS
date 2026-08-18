@@ -1,9 +1,10 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(20), async (req, res) => {
     try {
         let query = supabase.from('payrolls').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
         
@@ -124,6 +125,8 @@ router.post('/', async (req, res) => {
             console.error('Failed to send payslip notification:', notifErr);
         }
 
+        invalidateCache(['/api/payroll', '/api/dashboard']);
+
         res.json({ success: true, message: 'Payroll Computed & Saved!' });
 
     } catch (err) {
@@ -134,7 +137,7 @@ router.post('/', async (req, res) => {
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
 // GET single payroll
-router.get('/:id', async (req, res) => {
+router.get('/:id', cacheResponse(20), async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {
@@ -180,6 +183,8 @@ router.delete('/:id', async (req, res) => {
 
         const { error } = await supabase.from('payrolls').delete().eq('id', id);
         if (error) throw error;
+
+        invalidateCache(['/api/payroll', '/api/dashboard']);
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
