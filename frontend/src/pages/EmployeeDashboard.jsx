@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -432,7 +432,7 @@ const EmployeeDashboard = () => {
                             <p className="text-slate-500 font-medium mt-1 text-sm">{user.department}</p>
 
                             <div className="my-6 sm:my-8 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
-                                <QRCodeSVG value={user.id} size={180} fgColor="#1e293b" />
+                                <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
                             </div>
 
                             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>

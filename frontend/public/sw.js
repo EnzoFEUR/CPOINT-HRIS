@@ -1,5 +1,5 @@
 // C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
-const CACHE_NAME = 'cpoint-hris-v2.0.1';
+const CACHE_NAME = 'cpoint-hris-v2.0.2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -74,8 +74,12 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => {
-          return caches.match('/index.html') || caches.match('/');
+        .catch(async () => {
+          const cached = await caches.match('/index.html') || await caches.match('/');
+          if (cached) return cached;
+          return new Response('<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body style="background:#090d16;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><p>Connecting to C-Point HRIS...</p><script>window.location.reload();</script></body></html>', {
+            headers: { 'Content-Type': 'text/html' }
+          });
         })
     );
     return;

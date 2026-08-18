@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
@@ -338,7 +338,7 @@ export default function Show() {
 
                             <div className="flex justify-center mb-6 sm:mb-8">
                                 <div className="p-3 sm:p-4 border-4 border-slate-900 rounded-2xl bg-white flex items-center justify-center shadow-inner">
-                                    <QRCodeSVG value={employee.company_id || String(employee.id)} size={180} />
+                                    <QRCode value={employee.company_id || String(employee.id)} size={180} />
                                 </div>
                             </div>
 
