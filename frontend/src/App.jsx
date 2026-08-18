@@ -39,6 +39,21 @@ const AuthGuard = ({ children }) => {
             } else if (user.role !== 'admin') {
                 navigate('/employee/dashboard', { replace: true });
             }
+            return;
+        }
+
+        // Strictly protect all /admin/* routes from non-admin accounts
+        if (location.pathname.startsWith('/admin') && user.role !== 'admin') {
+            toast.error('Access Denied: Admin privileges required.');
+            navigate(user.role === 'security' ? '/scanner' : '/employee/dashboard', { replace: true });
+            return;
+        }
+
+        // Strictly protect /scanner from non-authorized personnel (security & admin only)
+        if (location.pathname === '/scanner' && user.role !== 'admin' && user.role !== 'security') {
+            toast.error('Access Denied: Gate scanner is restricted to authorized personnel.');
+            navigate('/employee/dashboard', { replace: true });
+            return;
         }
     }, [navigate, location.pathname]);
 
@@ -350,8 +365,8 @@ function MainLayout({ children }) {
     }
   }, [user]);
 
-  const searchIndex = [
-    { label: 'Dashboard', route: '/', icon: 'ti-smart-home' },
+  const searchIndex = user?.role === 'admin' ? [
+    { label: 'Admin Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
     { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
@@ -360,6 +375,15 @@ function MainLayout({ children }) {
     { label: 'Disciplinary & Notices', route: '/admin/disciplinary', icon: 'ti-alert-triangle' },
     { label: 'Audit Trail', route: '/admin/audit-logs', icon: 'ti-history' },
     { label: 'Attendance Daily Logs', route: '/admin/attendance', icon: 'ti-list-details' },
+    { label: 'Calendar Roster', route: '/admin/attendance/calendar', icon: 'ti-calendar' },
+    { label: 'Gate Terminal Scanner', route: '/scanner', icon: 'ti-scan' },
+    { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },
+  ] : user?.role === 'security' ? [
+    { label: 'Gate Terminal Scanner', route: '/scanner', icon: 'ti-scan' },
+    { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },
+  ] : [
+    { label: 'My Portal', route: '/employee/dashboard', icon: 'ti-smart-home' },
+    { label: 'My Digital Pass (QR)', route: '/employee/qr', icon: 'ti-qrcode' },
     { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },
   ];
 
