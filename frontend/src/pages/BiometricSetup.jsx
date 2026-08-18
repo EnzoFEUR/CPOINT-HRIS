@@ -283,10 +283,6 @@ export default function BiometricSetup() {
     catch { return null; }
   }, []);
 
-  useEffect(() => {
-    if (!user) navigate('/login');
-  }, [user, navigate]);
-
   // Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);

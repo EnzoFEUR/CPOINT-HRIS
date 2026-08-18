@@ -65,64 +65,66 @@ const isAdmin = (user) => {
     return r === 'admin' || r === 'superadmin' || r === 'hr';
 };
 
-// Synchronous Declarative Auth Guard (Zero-Flash Architecture)
-const AuthGuard = ({ children }) => {
-    const location = useLocation();
-    
-    let user = null;
+const getUser = () => {
     try {
         const raw = localStorage.getItem('user');
-        user = (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
+        return (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
     } catch {
-        user = null;
+        return null;
+    }
+};
+
+// Route Guard: Protected Routes
+const ProtectedRoute = ({ children, allowedRoles = null, requireBiometrics = false }) => {
+    const user = getUser();
+
+    if (!user) {
+        return <Navigate to="/login" replace />;
     }
 
-    const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
-    const isPublic = publicRoutes.includes(location.pathname);
-
-    // 1. Unauthenticated users cannot access protected routes -> Instant synchronous redirect to login
-    if (!user && !isPublic) {
-        return <Navigate to="/login" replace state={{ from: location }} />;
+    if (user.requires_password_change) {
+        return <Navigate to="/force-password-change" replace />;
     }
 
-    // 2. Authenticated users hitting auth pages -> Redirect to their respective home dashboard
-    if (user && (location.pathname === '/login' || location.pathname === '/register')) {
-        if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-        if (isAdmin(user)) return <Navigate to="/" replace />;
-        return <Navigate to="/employee/dashboard" replace />;
+    if (requireBiometrics && !user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
+        return <Navigate to="/biometric-setup" replace />;
     }
 
-    // 3. Forced setup gates
-    if (user) {
-        if (user.requires_password_change && location.pathname !== '/force-password-change') {
-            return <Navigate to="/force-password-change" replace />;
-        }
-        if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user) && location.pathname !== '/biometric-setup') {
-            return <Navigate to="/biometric-setup" replace />;
-        }
-
-        // 4. Root "/" role-based redirection to prevent dashboard flashing
-        if (location.pathname === '/') {
-            if (isSecurity(user)) {
-                return <Navigate to="/scanner" replace />;
-            }
-            if (!isAdmin(user)) {
-                return <Navigate to="/employee/dashboard" replace />;
-            }
-        }
-
-        // 5. Admin route protection
-        if (location.pathname.startsWith('/admin') && !isAdmin(user)) {
-            return <Navigate to={isSecurity(user) ? '/scanner' : '/employee/dashboard'} replace />;
-        }
-
-        // 6. Restrict gate scanner to authorized personnel (security & admin)
-        if (location.pathname === '/scanner' && !isAdmin(user) && !isSecurity(user)) {
+    if (allowedRoles) {
+        const role = getRole(user);
+        const hasRole = allowedRoles.some(r => r.toLowerCase() === role);
+        if (!hasRole) {
+            if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+            if (isAdmin(user)) return <Navigate to="/" replace />;
             return <Navigate to="/employee/dashboard" replace />;
         }
     }
 
     return children;
+};
+
+// Route Guard: Public-Only Routes (Redirects already authenticated users)
+const PublicOnlyRoute = ({ children }) => {
+    const user = getUser();
+    if (user) {
+        if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
+        if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+        if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+        if (isAdmin(user)) return <Navigate to="/" replace />;
+        return <Navigate to="/employee/dashboard" replace />;
+    }
+    return children;
+};
+
+// Root Router: Dispatches user to their respective dashboard
+const RootRoute = () => {
+    const user = getUser();
+    if (!user) return <Navigate to="/login" replace />;
+    if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
+    if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+    if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+    if (isAdmin(user)) return <MainLayout><Dashboard /></MainLayout>;
+    return <Navigate to="/employee/dashboard" replace />;
 };
 
 const getPageTitle = (pathname) => {
@@ -1274,57 +1276,59 @@ function App() {
           },
         }} 
       />
-      <AuthGuard>
-        <Routes>
-          {/* Auth */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          
-          {/* Force Setup Routes */}
-          <Route path="/force-password-change" element={<ForcePasswordChange />} />
-          <Route path="/biometric-setup" element={<BiometricSetup />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
+      <Routes>
+        {/* Public / Auth */}
+        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+        <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+        <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
+        <Route path="/reset-password" element={<PublicOnlyRoute><ResetPassword /></PublicOnlyRoute>} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        
+        {/* Force Setup Routes */}
+        <Route path="/force-password-change" element={<ForcePasswordChange />} />
+        <Route path="/biometric-setup" element={<ProtectedRoute><BiometricSetup /></ProtectedRoute>} />
 
-          {/* Global/Shared */}
-          <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
-          <Route path="/scanner" element={<Suspense fallback={<div className="h-screen w-screen bg-black" />}><Scanner /></Suspense>} />
+        {/* Global/Shared */}
+        <Route path="/" element={<RootRoute />} />
+        <Route path="/scanner" element={
+          <ProtectedRoute allowedRoles={['security', 'guard', 'security_guard', 'admin', 'superadmin', 'hr']}>
+            <Suspense fallback={<div className="h-screen w-screen bg-black" />}><Scanner /></Suspense>
+          </ProtectedRoute>
+        } />
 
-          {/* Admin - Employees */}
-          <Route path="/admin/employees" element={<MainLayout><EmployeeIndex /></MainLayout>} />
-          <Route path="/admin/employees/create" element={<MainLayout><EmployeeCreate /></MainLayout>} />
-          <Route path="/admin/employees/:id/edit" element={<MainLayout><EmployeeEdit /></MainLayout>} />
-          <Route path="/admin/employees/:id" element={<MainLayout><EmployeeShow /></MainLayout>} />
-          <Route path="/admin/employees/:id/qr" element={<EmployeeQrPrint />} />
+        {/* Admin - Employees */}
+        <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeIndex /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeCreate /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeEdit /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeShow /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/employees/:id/qr" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeQrPrint /></ProtectedRoute>} />
 
-          {/* Admin - Attendance */}
-          <Route path="/admin/attendance" element={<MainLayout><AttendanceIndex /></MainLayout>} />
-          <Route path="/admin/attendance/calendar" element={<MainLayout><AttendanceCalendar /></MainLayout>} />
+        {/* Admin - Attendance */}
+        <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceIndex /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceCalendar /></MainLayout></ProtectedRoute>} />
 
-          {/* Admin - Payroll */}
-          <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
-          <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
-          <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
+        {/* Admin - Payroll */}
+        <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollIndex /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollCreate /></MainLayout></ProtectedRoute>} />
+        <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollShow /></MainLayout></ProtectedRoute>} />
 
-          {/* Admin - Audit Logs */}
-          <Route path="/admin/audit-logs" element={<MainLayout><AuditLogsIndex /></MainLayout>} />
+        {/* Admin - Audit Logs */}
+        <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AuditLogsIndex /></MainLayout></ProtectedRoute>} />
 
-          {/* Admin - Leaves */}
-          <Route path="/admin/leaves" element={<MainLayout><LeavesIndex /></MainLayout>} />
+        {/* Admin - Leaves */}
+        <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><LeavesIndex /></MainLayout></ProtectedRoute>} />
 
-          {/* Admin - Shifts */}
-          <Route path="/admin/shifts" element={<MainLayout><ShiftsIndex /></MainLayout>} />
+        {/* Admin - Shifts */}
+        <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><ShiftsIndex /></MainLayout></ProtectedRoute>} />
 
-          {/* Admin - Disciplinary */}
-          <Route path="/admin/disciplinary" element={<MainLayout><DisciplinaryIndex /></MainLayout>} />
+        {/* Admin - Disciplinary */}
+        <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><DisciplinaryIndex /></MainLayout></ProtectedRoute>} />
 
-          {/* Employee */}
-          <Route path="/employee/dashboard" element={<MainLayout><EmployeeDashboard /></MainLayout>} />
-          <Route path="/employee/qr" element={<MainLayout><MyQr /></MainLayout>} />
-          <Route path="/employee/scanner" element={<MainLayout><EmployeeScanner /></MainLayout>} />
-        </Routes>
-      </AuthGuard>
+        {/* Employee */}
+        <Route path="/employee/dashboard" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeDashboard /></MainLayout></ProtectedRoute>} />
+        <Route path="/employee/qr" element={<ProtectedRoute requireBiometrics><MainLayout><MyQr /></MainLayout></ProtectedRoute>} />
+        <Route path="/employee/scanner" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeScanner /></MainLayout></ProtectedRoute>} />
+      </Routes>
     </Router>
   );
 }
