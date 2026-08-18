@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import QRCode from 'react-qr-code';
+import QRCode from '../../components/QRCode';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 

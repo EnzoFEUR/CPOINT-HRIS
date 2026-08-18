@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import QRCode from 'react-qr-code';
+import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

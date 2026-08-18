@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import QRCode from 'react-qr-code';
+import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
