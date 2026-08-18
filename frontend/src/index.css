@@ -12,6 +12,10 @@ html {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
   touch-action: manipulation;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  -webkit-overscroll-behavior: none;
+  height: 100%;
 }
 
 body {
@@ -22,7 +26,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   min-height: 100vh;
+  min-height: -webkit-fill-available;
   padding-bottom: var(--sab);
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  -webkit-overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  overscroll-behavior-y: none;
 }
 
 /* --- Mobile Touch & Smooth Scrolling Utilities --- */

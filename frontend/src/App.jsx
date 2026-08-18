@@ -590,7 +590,7 @@ function MainLayout({ children }) {
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           
           {/* Header */}
-          <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/85 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300">
+          <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300 touch-none select-none overscroll-none">
             <div className="flex items-center gap-3">
               <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-black text-xs shadow-sm">
                 CP
