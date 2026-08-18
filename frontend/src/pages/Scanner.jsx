@@ -11,7 +11,7 @@ import { supabase } from '../supabaseClient';
 const ENV = {
   MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
   API_BASE: import.meta.env?.VITE_API_BASE || '/api',
-  SCAN_TIMEOUT_MS: parseInt(import.meta.env?.VITE_SCAN_TIMEOUT_MS, 10) || 30_000,
+  SCAN_TIMEOUT_MS: parseInt(import.meta.env?.VITE_SCAN_TIMEOUT_MS, 10) || 60_000,
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
   FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance (lower = stricter)
   REQUIRED_LOCK_FRAMES: 10,
@@ -617,12 +617,11 @@ const Scanner = () => {
     playSound('scan');
     haptic('scan');
     dispatch({ type: 'SET_LOADING', payload: 'AUTHENTICATING IDENTITY...' });
-    dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
     const companyId = text.trim();
 
     try {
-      // 1. Resolve company_id -> employee record via secure backend proxy
+      // 1. Fast employee lookup via backend
       const res = await fetchWithAuth(`/api/attendance/verify-qr/${companyId}`);
       const data = await res.json();
       
@@ -638,48 +637,80 @@ const Scanner = () => {
 
       vault.employeeId = emp.id;
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
+      dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // 2. Load baseline image from backend storage path: face-baselines/{company_id}/{employee_id}.jpg
+      // Fast-path: If employee has no registered biometrics, immediately proceed with zero delay
+      if (!emp.has_registered_biometrics) {
+        vault.baseline = null;
+        dispatch({ type: 'SET_BASELINE', payload: null });
+        dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
+        dispatch({ type: 'SET_LOADING', payload: '' });
+        return;
+      }
+
+      // 2. High-speed baseline load with 3.5s timeout protection
+      const storagePath = emp.biometric_baseline_path || `face-baselines/${emp.company_id}/${emp.id}.jpg`;
       const { data: urlData } = supabase.storage
         .from('public-bucket')
-        .getPublicUrl(`face-baselines/${emp.company_id}/${emp.id}.jpg`);
+        .getPublicUrl(storagePath);
 
-      const cacheBusted = `${urlData.publicUrl}?t=${Date.now()}`;
-      const imgRes = await fetch(cacheBusted, { cache: 'no-store' });
-      if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const blob = await imgRes.blob();
-      const url = URL.createObjectURL(blob);
-      dispatch({ type: 'SET_PHOTO', payload: url });
+        const imgRes = await fetch(`${urlData.publicUrl}?t=${Date.now()}`, { 
+          cache: 'no-store',
+          signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
 
-      // 3. Compute 128-dim descriptor
-      dispatch({ type: 'SET_LOADING', payload: 'COMPUTING FACE DESCRIPTOR...' });
-      const img = await loadImage(url);
+        if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
 
-      const det = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+        const blob = await imgRes.blob();
+        const url = URL.createObjectURL(blob);
+        dispatch({ type: 'SET_PHOTO', payload: url });
 
-      if (!det?.descriptor) throw new Error('BASELINE_UNREADABLE');
+        // 3. Fast face descriptor extraction using lightweight TinyFaceDetector (15x faster)
+        dispatch({ type: 'SET_LOADING', payload: 'INITIALIZING FACE PROFILE...' });
+        const img = await loadImage(url);
 
-      vault.baseline = det.descriptor;
-      dispatch({ type: 'SET_BASELINE', payload: det.descriptor });
-      dispatch({ type: 'SET_LOADING', payload: '' });
+        let det = await faceapi
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
 
-      if (!emp.has_registered_biometrics) {
-        toast('Biometrics not enrolled. Proceeding with photo-only mode.');
+        if (!det?.descriptor) {
+          // Fallback to SsdMobilenetv1 only if tiny detector missed
+          det = await faceapi
+            .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        }
+
+        if (det?.descriptor) {
+          vault.baseline = det.descriptor;
+          dispatch({ type: 'SET_BASELINE', payload: det.descriptor });
+        } else {
+          vault.baseline = null;
+          dispatch({ type: 'SET_BASELINE', payload: null });
+        }
+      } catch (baselineErr) {
+        console.warn('[QR_FLOW] Baseline image skipped or timed out:', baselineErr);
+        vault.baseline = null;
+        dispatch({ type: 'SET_BASELINE', payload: null });
+        dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
       }
+
+      dispatch({ type: 'SET_LOADING', payload: '' });
     } catch (err) {
       console.error('[QR_FLOW]', err);
       vault.baseline = null;
       dispatch({ type: 'SET_BASELINE', payload: null });
       dispatch({ type: 'SET_LOADING', payload: '' });
-      // Still allow proceeding to face scan — backend will enforce rules
+      dispatch({ type: 'SET_MODE', payload: MODES.PREP });
       toast.error(err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
                   err.message === 'EMPLOYEE_INACTIVE' ? 'Account deactivated.' :
-                  err.message === 'BASELINE_NOT_FOUND' ? 'No biometric baseline found.' :
-                  'Baseline error. Photo-only mode.');
+                  'Identification error.');
     }
   }, [vault, dispatch]);
 

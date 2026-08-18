@@ -422,7 +422,7 @@ router.get(
     
     const { data: employee, error } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, is_active')
+      .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active')
       .eq(isUUID ? 'id' : 'company_id', company_id)
       .single();
 
