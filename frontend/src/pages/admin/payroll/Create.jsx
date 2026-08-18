@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
+import { fetchWithAuth } from '../../../utils/api';
 
-const ProcessPayroll = () => {
+const PayrollCreate = () => {
     const [employees, setEmployees] = useState([]);
     const [formData, setFormData] = useState({
         employee_id: '',
@@ -18,13 +19,13 @@ const ProcessPayroll = () => {
     const [isCalculating, setIsCalculating] = useState(false);
 
     useEffect(() => {
-        // Fetch employees
-        fetch('http://localhost:5000/api/employees')
+        // Fetch active employees
+        fetchWithAuth('/api/employees')
             .then(res => res.json())
             .then(result => setEmployees(result.data || []))
             .catch(err => console.error(err));
 
-        // Inject custom Flatpickr CSS
+        // Inject custom Flatpickr styling
         const style = document.createElement('style');
         style.innerHTML = `
             .flatpickr-calendar {
@@ -50,7 +51,7 @@ const ProcessPayroll = () => {
             if (formData.employee_id && formData.period_start && formData.period_end) {
                 setIsCalculating(true);
                 try {
-                    const res = await fetch(`http://localhost:5000/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`);
+                    const res = await fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`);
                     const logs = await res.json();
                     
                     const dole_divisor = 21.75;
@@ -121,7 +122,7 @@ const ProcessPayroll = () => {
             const user = JSON.parse(localStorage.getItem('user'));
             const payload = { ...formData, admin_id: user?.id };
             
-            const response = await fetch('http://localhost:5000/api/payroll', {
+            const response = await fetchWithAuth('/api/payroll', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -159,8 +160,8 @@ const ProcessPayroll = () => {
                         <i className="ti ti-file-invoice"></i>
                     </div>
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-800">Process PH Payroll</h2>
-                        <p className="text-slate-400 text-sm font-medium uppercase tracking-tight">Standard Automated Computation</p>
+                        <h2 className="text-2xl font-bold text-slate-800">Payroll Calculator</h2>
+                        <p className="text-slate-400 text-sm font-medium uppercase tracking-tight">Automated DOLE Wage & Deductions Calculation</p>
                     </div>
                 </div>
 
@@ -342,4 +343,4 @@ const ProcessPayroll = () => {
     );
 };
 
-export default ProcessPayroll;
+export default PayrollCreate;

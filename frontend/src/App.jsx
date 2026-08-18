@@ -57,7 +57,6 @@ import VerifyEmail from './pages/VerifyEmail';
 // Core Flow Pages
 import Dashboard from './pages/Dashboard';
 import Scanner from './pages/Scanner';
-import ProcessPayroll from './pages/admin/ProcessPayroll';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 
 // Admin / Attendance
@@ -73,6 +72,7 @@ import EmployeeQrPrint from './pages/admin/employees/QrPrint';
 
 // Admin / Payroll
 import PayrollIndex from './pages/admin/payroll/Index';
+import PayrollCreate from './pages/admin/payroll/Create';
 import PayrollShow from './pages/admin/payroll/Show';
 
 // Admin / Audit Logs
@@ -97,8 +97,8 @@ const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
   
   // Payroll Routes
-  if (pathname === '/admin/payroll') return 'Payroll Engine';
-  if (pathname === '/admin/payroll/process') return 'Process Payroll';
+  if (pathname === '/admin/payroll') return 'Payroll Ledger';
+  if (pathname === '/admin/payroll/process') return 'Payroll Calculator';
   if (pathname.startsWith('/admin/payroll/')) return 'Payslip Details';
 
   // Employee Routes
@@ -286,7 +286,8 @@ function MainLayout({ children }) {
   const searchIndex = [
     { label: 'Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
-    { label: 'Payroll Processing', route: '/admin/payroll', icon: 'ti-wallet' },
+    { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
+    { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
     { label: 'Leave Approvals', route: '/admin/leaves', icon: 'ti-plane-departure' },
     { label: 'Audit Trail', route: '/admin/audit-logs', icon: 'ti-history' },
     { label: 'Attendance Daily Logs', route: '/admin/attendance', icon: 'ti-list-details' },
@@ -487,7 +488,7 @@ function MainLayout({ children }) {
               {[
                 { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
                 { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Engine' },
-                { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll' },
+                { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
                 { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
                 { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
                 { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
@@ -764,7 +765,7 @@ function App() {
 
         {/* Admin - Payroll */}
         <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
-        <Route path="/admin/payroll/process" element={<MainLayout><ProcessPayroll /></MainLayout>} />
+        <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
         <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
 
         {/* Admin - Audit Logs */}

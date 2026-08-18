@@ -91,8 +91,8 @@ export default function PayrollIndex() {
                                 </div>
                                 <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-md border border-emerald-500/30">Financial Center</span>
                             </div>
-                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Payroll Engine</h1>
-                            <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Generate, audit, and distribute digital payslips to your entire workforce.</p>
+                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Payroll Ledger</h1>
+                            <p className="text-emerald-100/70 font-medium mt-2 text-lg max-w-xl">Review, audit, and distribute digital payslips to your entire workforce.</p>
                         </div>
                         
                         {/* Action button */}
@@ -102,7 +102,7 @@ export default function PayrollIndex() {
                                 <div className="w-10 h-10 bg-white/20 rounded-md flex items-center justify-center backdrop-blur-md">
                                     <i className="ti ti-plus text-xl text-white font-bold" />
                                 </div>
-                                <span className="text-white font-black text-lg tracking-wide relative z-10">Run Payroll</span>
+                                <span className="text-white font-black text-lg tracking-wide relative z-10">Compute Payroll</span>
                             </Link>
                         </motion.div>
                     </div>
