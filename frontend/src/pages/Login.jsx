@@ -67,21 +67,81 @@ export default function Login() {
         setStep(3);
     };
 
-    const handleOtpChange = (index, value) => {
-        if (!/^[0-9]*$/.test(value)) return;
+    const handleOtpChange = (index, e) => {
+        const rawValue = e.target.value;
+
+        // 1. Handle multi-character inputs (e.g. mobile OS SMS autofill or copy-paste)
+        if (rawValue.length > 1) {
+            const digits = rawValue.replace(/\D/g, '').slice(0, 6).split('');
+            if (digits.length > 0) {
+                const newOtp = [...otpCode];
+                digits.forEach((d, i) => {
+                    if (index + i < 6) newOtp[index + i] = d;
+                });
+                setOtpCode(newOtp);
+                const nextIndex = Math.min(index + digits.length, 5);
+                const nextElem = document.getElementById(`otp-${nextIndex}`);
+                if (nextElem) {
+                    nextElem.focus();
+                    nextElem.select();
+                }
+                return;
+            }
+        }
+
+        // 2. Handle single character or deletion
+        const char = rawValue.slice(-1);
+        if (char && !/^[0-9]$/.test(char)) return;
+
         const newOtp = [...otpCode];
-        newOtp[index] = value;
+        newOtp[index] = char;
         setOtpCode(newOtp);
 
-        // Auto-focus next input
-        if (value && index < 5) {
-            document.getElementById(`otp-${index + 1}`).focus();
+        // Auto-focus next input if digit entered
+        if (char && index < 5) {
+            const nextElem = document.getElementById(`otp-${index + 1}`);
+            if (nextElem) {
+                nextElem.focus();
+                nextElem.select();
+            }
         }
     };
 
     const handleOtpKeyDown = (index, e) => {
-        if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
-            document.getElementById(`otp-${index - 1}`).focus();
+        if (e.key === 'Backspace') {
+            if (!otpCode[index] && index > 0) {
+                const newOtp = [...otpCode];
+                newOtp[index - 1] = '';
+                setOtpCode(newOtp);
+                const prevElem = document.getElementById(`otp-${index - 1}`);
+                if (prevElem) {
+                    prevElem.focus();
+                    prevElem.select();
+                }
+            }
+        } else if (e.key === 'ArrowLeft' && index > 0) {
+            document.getElementById(`otp-${index - 1}`)?.focus();
+        } else if (e.key === 'ArrowRight' && index < 5) {
+            document.getElementById(`otp-${index + 1}`)?.focus();
+        }
+    };
+
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!pastedData) return;
+
+        const digits = pastedData.split('');
+        const newOtp = ['', '', '', '', '', ''];
+        digits.forEach((d, i) => {
+            if (i < 6) newOtp[i] = d;
+        });
+        setOtpCode(newOtp);
+        const focusIdx = Math.min(digits.length - 1, 5);
+        const target = document.getElementById(`otp-${focusIdx}`);
+        if (target) {
+            target.focus();
+            target.select();
         }
     };
 
@@ -238,21 +298,43 @@ export default function Login() {
                         <p className="text-slate-500 text-xs sm:text-sm mt-1 mb-6 sm:mb-8">Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.</p>
 
                         <form onSubmit={verifyOtp}>
-                            <div className="flex justify-center gap-1.5 sm:gap-2 mb-5 sm:mb-6">
+                            <div className="flex justify-center gap-1.5 sm:gap-2 mb-4">
                                 {otpCode.map((digit, idx) => (
                                     <input 
                                         key={idx}
                                         id={`otp-${idx}`}
                                         type="text"
-                                        maxLength={1}
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        autoComplete={idx === 0 ? "one-time-code" : "off"}
                                         value={digit}
-                                        onChange={(e) => handleOtpChange(idx, e.target.value)}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => handleOtpChange(idx, e)}
                                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                                        onPaste={handleOtpPaste}
                                         className="w-10 h-12 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-black text-slate-800 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-xs sm:shadow-sm"
                                         autoFocus={idx === 0}
                                     />
                                 ))}
                             </div>
+
+                            {generatedOtp && (
+                                <div className="mb-4">
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            const digits = generatedOtp.split('');
+                                            setOtpCode(digits);
+                                            document.getElementById('otp-5')?.focus();
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-bold rounded-lg border border-amber-200 transition-all tap-active"
+                                    >
+                                        <i className="ti ti-bulb text-amber-500" />
+                                        <span>Test OTP: <strong className="font-mono">{generatedOtp}</strong> (Tap to Autofill)</span>
+                                    </button>
+                                </div>
+                            )}
+
                             {error && <p className="text-red-500 text-xs mb-4 font-bold">{error}</p>}
                             
                             <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3.5 sm:py-4 rounded-xl sm:rounded-2xl shadow-lg hover:bg-black tap-active transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
@@ -261,7 +343,7 @@ export default function Login() {
                         </form>
                         
                         <p className="mt-5 sm:mt-6 text-xs font-bold text-slate-500">
-                            Didn't receive a code? <button onClick={() => sendOtp(otpMethod)} className="text-blue-600 hover:underline">Resend</button>
+                            Didn't receive a code? <button onClick={() => sendOtp(otpMethod)} className="text-blue-600 hover:underline font-bold">Resend</button>
                         </p>
                     </div>
                 )}
