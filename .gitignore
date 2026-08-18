@@ -1,12 +1,22 @@
+# Dependencies
 node_modules/
 backend/node_modules/
 frontend/node_modules/
+
+# Environment Variables & Secrets (Ignored from Git)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+*.env
+backend/.env*
+frontend/.env*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Build Output
 dist/
 build/
-.DS_Store
 
+# System Files
+.DS_Store
+Thumbs.db
