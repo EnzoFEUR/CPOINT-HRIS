@@ -54,11 +54,13 @@ const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
 import './index.css';
 
 const RouteLoadingFallback = () => (
-  <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
-    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 animate-pulse">
-      <i className="ti ti-loader-2 text-2xl animate-spin" />
+  <div className="w-full h-full min-h-[300px] relative flex items-center justify-center">
+    {/* Sleek Top Progress Bar */}
+    <div className="fixed top-0 left-0 right-0 z-[9999] h-[2.5px] bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-600 shadow-[0_0_12px_rgba(59,130,246,0.6)] animate-pulse" />
+    <div className="flex items-center gap-2.5 px-4 py-2 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full shadow-lg text-slate-300 text-xs font-medium">
+      <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+      <span>Loading...</span>
     </div>
-    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Loading Module...</p>
   </div>
 );
 

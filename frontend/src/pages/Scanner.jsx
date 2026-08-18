@@ -1386,18 +1386,48 @@ const Scanner = () => {
       )}
 
       {/* ═══════════════════════════════════════════════════════
-          LOADING OVERLAY
+          INITIAL SYSTEM BOOT LOADER (Only runs on initial cold boot)
           ═══════════════════════════════════════════════════════ */}
       <AnimatePresence>
-        {state.loadingMsg && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 backdrop-blur-3xl">
+        {state.mode === MODES.BOOT && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-3xl select-none"
+          >
             <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center mb-6">
               <div className="absolute inset-0 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin" style={{ animationDuration: '1.4s' }} />
               <div className="absolute inset-2 border-l-2 border-r-2 border-white/20 rounded-full animate-spin" style={{ animationDuration: '2s', animationDirection: 'reverse' }} />
-              <span className="text-3xl sm:text-4xl text-blue-400 drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-pulse"><i className="ti ti-brain"></i></span>
+              <span className="text-3xl sm:text-4xl text-blue-400 drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-pulse">
+                <i className="ti ti-brain" />
+              </span>
             </div>
-            <h2 className="text-base sm:text-xl font-black tracking-[0.25em] uppercase mb-1 px-4 text-center">{state.loadingMsg}</h2>
-            <p className="text-[10px] sm:text-xs text-blue-400/50 font-mono tracking-widest uppercase animate-pulse">Please stand by...</p>
+            <h2 className="text-base sm:text-xl font-black tracking-[0.25em] uppercase mb-1 px-4 text-center">
+              {state.loadingMsg || 'INITIALIZING BIOMETRIC ENGINE...'}
+            </h2>
+            <p className="text-[10px] sm:text-xs text-blue-400/50 font-mono tracking-widest uppercase animate-pulse">
+              Starting Secure Terminal...
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════
+          NON-BLOCKING RUNTIME STATUS PILL (Zero Screen Flicker)
+          ═══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {state.mode !== MODES.BOOT && state.loadingMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="absolute top-20 left-1/2 -translate-x-1/2 z-[80] px-5 py-2.5 bg-slate-900/90 backdrop-blur-xl border border-blue-500/30 rounded-full shadow-[0_0_25px_rgba(59,130,246,0.25)] flex items-center gap-3 text-white text-xs font-black tracking-widest uppercase pointer-events-none"
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping shrink-0" />
+            <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
           </motion.div>
         )}
       </AnimatePresence>
