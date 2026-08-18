@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
 import * as faceapi from 'face-api.js';
+import { fetchWithAuth } from '../../utils/api';
 
 const Scanner = () => {
     const navigate = useNavigate();
@@ -27,133 +28,64 @@ const Scanner = () => {
 
     const REQUIRED_LOCK_FRAMES = 15; // Approx 1.5 seconds at 10fps
 
-    // 1. Load AI Models on mount
-    useEffect(() => {
-        const loadModels = async () => {
-            const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
-            try {
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                ]);
-                setModelsLoaded(true);
-            } catch (err) {
-                console.error("Failed to load Face AI Models:", err);
-            }
-        };
-        loadModels();
+    // ── 1. Helpers & Feedback ──
+    const showFeedback = useCallback((type, title, message) => {
+        setFeedback({ show: true, type, title, message });
     }, []);
 
-    // 2. Global Styles
-    useEffect(() => {
-        const style = document.createElement('style');
-        style.innerHTML = `
-            .ios-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-            .ios-btn:active { transform: scale(0.96); }
-            
-            @keyframes scan-laser {
-                0% { top: 0; opacity: 0; }
-                10% { opacity: 1; }
-                90% { opacity: 1; }
-                100% { top: 100%; opacity: 0; }
-            }
-            .laser-line {
-                animation: scan-laser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-                background: linear-gradient(to right, transparent, #3b82f6, transparent);
-            }
-    
-            #reader button { display: none !important; }
-            #reader video { object-fit: cover; border-radius: 1.5rem; width: 100%; height: 100%; }
-        `;
-        document.head.appendChild(style);
-        return () => document.head.removeChild(style);
-    }, []);
-
-    // Cleanup
-    useEffect(() => {
-        return () => {
-            stopScanner();
-        };
-    }, []);
-
-    const startScanner = async () => {
-        setIsScanning(true);
-        setAiStatus("Waiting for ID Scan...");
-
-        // Pre-request camera permission to trigger browser prompt
-        try {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { ideal: "environment" } },
-                    audio: false
-                });
-                stream.getTracks().forEach(t => t.stop());
-            }
-        } catch (permErr) {
-            console.warn('[Scanner] Camera permission request error:', permErr);
-            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-                showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
-                setIsScanning(false);
-                return;
-            }
-        }
-
-        try {
-            html5QrCodeRef.current = new Html5Qrcode("reader");
-            const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
-            
-            try {
-                await html5QrCodeRef.current.start(
-                    { facingMode: { ideal: "environment" } }, 
-                    config, 
-                    (decodedText) => onScanSuccess(decodedText)
-                );
-            } catch (camErr) {
-                console.warn('[Scanner] Fallback to user facing camera:', camErr);
-                await html5QrCodeRef.current.start(
-                    { facingMode: "user" }, 
-                    config, 
-                    (decodedText) => onScanSuccess(decodedText)
-                );
-            }
-
-            const videoElement = document.querySelector('#reader video');
-            if (videoElement) {
-                videoElement.setAttribute('playsinline', 'true');
-                videoElement.setAttribute('webkit-playsinline', 'true');
-                videoRef.current = videoElement;
-            }
-        } catch (err) {
-            console.error(err);
-            showFeedback('error', 'Camera Error', 'Could not access camera. Check device permissions.');
-            setIsScanning(false);
-        }
-    };
-
-    const stopScanner = () => {
+    const resetState = useCallback(() => {
         if (detectionInterval.current) clearInterval(detectionInterval.current);
-        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-            html5QrCodeRef.current.stop().then(() => {
-                html5QrCodeRef.current.clear();
-                resetState();
-                setIsScanning(false);
-            }).catch(err => console.error(err));
-        } else {
-            resetState();
-            setIsScanning(false);
-        }
-    };
-
-    const onScanSuccess = (decodedText) => {
-        if (isProcessingRef.current) return;
+        isProcessingRef.current = false;
+        setScannedData(null);
+        setFaceLockedIn(false);
+        setLockProgress(0);
+        lockFrames.current = 0;
+        setAiStatus("Waiting for ID Scan...");
+        setFeedback({ show: false, type: '', title: '', message: '' });
         
-        // 1. QR Scanned! Start Face Detection Mode
-        isProcessingRef.current = true;
-        setScannedData(decodedText);
-        setAiStatus("Detecting Face...");
-        startFaceDetection();
-    };
+        if (canvasRef.current) {
+            const ctx = canvasRef.current.getContext('2d');
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+    }, []);
 
-    const startFaceDetection = () => {
+    // ── 2. Capture & Submit ──
+    const captureAndSubmit = useCallback(() => {
+        let imageBase64 = null;
+        if (videoRef.current) {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoRef.current.videoWidth;
+            canvas.height = videoRef.current.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+            imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+        }
+
+        fetchWithAuth("/api/attendance/scan", {
+            method: "POST",
+            body: JSON.stringify({ 
+                employee_id: scannedData ? scannedData.trim() : '',
+                image_data: imageBase64 
+            }) 
+        })
+        .then(response => response.json())
+        .then(data => {
+            showFeedback(
+                data.status === 'success' ? 'success' : 'error', 
+                data.status === 'success' ? 'Verified!' : 'Error',
+                data.message
+            );
+            
+            setTimeout(() => { resetState(); }, 3000);
+        })
+        .catch(error => {
+            showFeedback('error', 'Failed', 'Connection Error');
+            setTimeout(() => { resetState(); }, 3000);
+        });
+    }, [scannedData, showFeedback, resetState]);
+
+    // ── 3. Face Detection ──
+    const startFaceDetection = useCallback(() => {
         if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
         
         const video = videoRef.current;
@@ -216,62 +148,133 @@ const Scanner = () => {
                 setAiStatus("No Face Detected");
             }
         }, 100); // 10 fps
-    };
+    }, [modelsLoaded, captureAndSubmit]);
 
-    const captureAndSubmit = () => {
-        let imageBase64 = null;
-        if (videoRef.current) {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoRef.current.videoWidth;
-            canvas.height = videoRef.current.videoHeight;
-            const context = canvas.getContext('2d');
-            context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-            imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
-        }
-
-        fetch("http://localhost:5000/api/attendance/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                employee_id: scannedData ? scannedData.trim() : '',
-                image_data: imageBase64 
-            }) 
-        })
-        .then(response => response.json())
-        .then(data => {
-            showFeedback(
-                data.status === 'success' ? 'success' : 'error', 
-                data.status === 'success' ? 'Verified!' : 'Error',
-                data.message
-            );
-            
-            setTimeout(() => { resetState(); }, 3000);
-        })
-        .catch(error => {
-            showFeedback('error', 'Failed', 'Connection Error');
-            setTimeout(() => { resetState(); }, 3000);
-        });
-    };
-
-    const showFeedback = (type, title, message) => {
-        setFeedback({ show: true, type, title, message });
-    };
-
-    const resetState = () => {
-        if (detectionInterval.current) clearInterval(detectionInterval.current);
-        isProcessingRef.current = false;
-        setScannedData(null);
-        setFaceLockedIn(false);
-        setLockProgress(0);
-        lockFrames.current = 0;
-        setAiStatus("Waiting for ID Scan...");
-        setFeedback({ show: false, type: '', title: '', message: '' });
+    // ── 4. QR Success ──
+    const onScanSuccess = useCallback((decodedText) => {
+        if (isProcessingRef.current) return;
         
-        if (canvasRef.current) {
-            const ctx = canvasRef.current.getContext('2d');
-            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        // 1. QR Scanned! Start Face Detection Mode
+        isProcessingRef.current = true;
+        setScannedData(decodedText);
+        setAiStatus("Detecting Face...");
+        startFaceDetection();
+    }, [startFaceDetection]);
+
+    // ── 5. Scanner Controls ──
+    const stopScanner = useCallback(() => {
+        if (detectionInterval.current) clearInterval(detectionInterval.current);
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+            html5QrCodeRef.current.stop().then(() => {
+                html5QrCodeRef.current.clear();
+                resetState();
+                setIsScanning(false);
+            }).catch(err => console.error(err));
+        } else {
+            resetState();
+            setIsScanning(false);
         }
-    };
+    }, [resetState]);
+
+    const startScanner = useCallback(async () => {
+        setIsScanning(true);
+        setAiStatus("Waiting for ID Scan...");
+
+        // Pre-request camera permission to trigger browser prompt
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: "environment" } },
+                    audio: false
+                });
+                stream.getTracks().forEach(t => t.stop());
+            }
+        } catch (permErr) {
+            console.warn('[Scanner] Camera permission request error:', permErr);
+            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+                showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
+                setIsScanning(false);
+                return;
+            }
+        }
+
+        try {
+            html5QrCodeRef.current = new Html5Qrcode("reader");
+            const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            
+            try {
+                await html5QrCodeRef.current.start(
+                    { facingMode: { ideal: "environment" } }, 
+                    config, 
+                    (decodedText) => onScanSuccess(decodedText)
+                );
+            } catch (camErr) {
+                console.warn('[Scanner] Fallback to user facing camera:', camErr);
+                await html5QrCodeRef.current.start(
+                    { facingMode: "user" }, 
+                    config, 
+                    (decodedText) => onScanSuccess(decodedText)
+                );
+            }
+
+            const videoElement = document.querySelector('#reader video');
+            if (videoElement) {
+                videoElement.setAttribute('playsinline', 'true');
+                videoElement.setAttribute('webkit-playsinline', 'true');
+                videoRef.current = videoElement;
+            }
+        } catch (err) {
+            console.error(err);
+            showFeedback('error', 'Camera Error', 'Could not access camera. Check device permissions.');
+            setIsScanning(false);
+        }
+    }, [onScanSuccess, showFeedback]);
+
+    // ── 6. Lifecycle & Effects ──
+    useEffect(() => {
+        const loadModels = async () => {
+            const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                ]);
+                setModelsLoaded(true);
+            } catch (err) {
+                console.error("Failed to load Face AI Models:", err);
+            }
+        };
+        loadModels();
+    }, []);
+
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .ios-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+            .ios-btn:active { transform: scale(0.96); }
+            
+            @keyframes scan-laser {
+                0% { top: 0; opacity: 0; }
+                10% { opacity: 1; }
+                90% { opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+            .laser-line {
+                animation: scan-laser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                background: linear-gradient(to right, transparent, #3b82f6, transparent);
+            }
+    
+            #reader button { display: none !important; }
+            #reader video { object-fit: cover; border-radius: 1.5rem; width: 100%; height: 100%; }
+        `;
+        document.head.appendChild(style);
+        return () => document.head.removeChild(style);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            stopScanner();
+        };
+    }, [stopScanner]);
 
     const handleLogout = (e) => {
         e.preventDefault();
@@ -299,110 +302,121 @@ const Scanner = () => {
                 
                 {/* STATE 1: IDLE */}
                 {!isScanning && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 transition-opacity duration-300">
-                        <div className="h-24 w-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                            <i className="ti ti-camera text-4xl text-slate-300"></i>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
+                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner">
+                            <i className="ti ti-camera"></i>
                         </div>
-
-                        <button onClick={startScanner} disabled={!modelsLoaded}
-                                className={`ios-btn w-full py-4 ${modelsLoaded ? 'bg-slate-900 shadow-xl hover:shadow-2xl hover:-translate-y-1' : 'bg-slate-300'} text-white font-bold text-lg rounded-2xl flex items-center justify-center gap-3`}>
-                            <i className={`ti ${modelsLoaded ? 'ti-player-play-filled' : 'ti-loader animate-spin'}`}></i>
-                            {modelsLoaded ? 'Start Terminal' : 'Loading AI...'}
+                        <div className="space-y-1">
+                            <h3 className="text-xl font-bold text-slate-800">Scanner Ready</h3>
+                            <p className="text-slate-400 text-sm max-w-[200px] mx-auto">Activate the camera to begin checking in employees.</p>
+                        </div>
+                        <button 
+                            onClick={startScanner}
+                            disabled={!modelsLoaded}
+                            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 ios-btn flex items-center justify-center gap-2"
+                        >
+                            <i className="ti ti-power text-xl"></i>
+                            Launch Camera
                         </button>
-                        <p className="text-xs text-slate-400 mt-4 font-medium">Biometric ID Scanner</p>
                     </div>
                 )}
 
-                {/* STATE 2: ACTIVE SCANNER & AI */}
-                {isScanning && (
-                    <div className="absolute inset-0 bg-black transition-opacity duration-300">
-                        
-                        {/* Camera Viewport */}
-                        <div id="reader" className="absolute inset-0 w-full h-full"></div>
-                        
-                        {/* AI Canvas Overlay */}
-                        <canvas ref={canvasRef} className="absolute inset-0 z-10 w-full h-full object-cover pointer-events-none"></canvas>
+                {/* STATE 2: SCANNING & CAMERA VIEW */}
+                <div className={`absolute inset-0 bg-black flex flex-col items-center justify-between p-6 ${isScanning ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                    
+                    {/* TOP BAR OVERLAY */}
+                    <div className="w-full flex items-center justify-between z-20 text-white">
+                        <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> Live
+                        </span>
+                        <button 
+                            onClick={stopScanner} 
+                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/30 ios-btn"
+                        >
+                            <i className="ti ti-x"></i>
+                        </button>
+                    </div>
 
-                        {/* UI Overlay */}
-                        {!feedback.show && (
-                            <div className="absolute inset-0 z-20 flex flex-col justify-between p-6 pointer-events-none">
-                                {/* Top Status Bar */}
-                                <div className="flex justify-between items-center bg-black/60 backdrop-blur-md rounded-2xl p-3 border border-white/10 shadow-lg">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">AI Status</span>
-                                        <span className={`text-sm font-bold ${scannedData ? 'text-blue-400' : 'text-white'}`}>
-                                            {aiStatus}
-                                        </span>
-                                    </div>
-                                    {scannedData && (
-                                        <div className="h-10 w-10 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center">
-                                            <i className="ti ti-user-scan text-blue-400 text-xl"></i>
-                                        </div>
-                                    )}
-                                </div>
+                    {/* QR SCANNER ELEMENT */}
+                    <div className="absolute inset-0 z-0">
+                        <div id="reader" className="w-full h-full"></div>
+                        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
+                    </div>
 
-                                {/* Target Box (QR Phase) */}
-                                {!scannedData && (
-                                    <div className="relative w-64 h-64 mx-auto border border-white/30 rounded-3xl mt-4">
-                                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-3xl"></div>
-                                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-3xl"></div>
-                                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-3xl"></div>
-                                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-3xl"></div>
-                                        <div className="absolute left-0 w-full h-0.5 laser-line top-1/2"></div>
-                                    </div>
-                                )}
-
-                                {/* Progress Bar (Face Lock Phase) */}
-                                {scannedData && (
-                                    <div className="w-full mt-auto mb-4">
-                                        <div className="h-2 w-full bg-black/50 rounded-full overflow-hidden border border-white/10 backdrop-blur-md">
-                                            <div className={`h-full transition-all duration-100 ease-out ${faceLockedIn ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                                 style={{ width: `${lockProgress}%` }}></div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Stop Button */}
-                                <div className="pointer-events-auto text-center mt-auto">
-                                    <button onClick={stopScanner} 
-                                            className="ios-btn bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold px-6 py-3 rounded-xl hover:bg-white/20 transition-colors flex items-center justify-center gap-2 mx-auto shadow-lg shadow-black/50">
-                                        <i className="ti ti-player-stop-filled text-red-400"></i>
-                                        Abort
-                                    </button>
-                                </div>
+                    {/* TARGET LOCK OVERLAY (When Face Detection is Active) */}
+                    {scannedData && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+                            <div className="relative w-64 h-64 border-2 border-dashed border-white/40 rounded-full flex items-center justify-center">
+                                {/* Circular progress ring */}
+                                <svg className="absolute inset-0 w-full h-full -rotate-90">
+                                    <circle
+                                        cx="128"
+                                        cy="128"
+                                        r="120"
+                                        className="stroke-current text-white/10"
+                                        strokeWidth="8"
+                                        fill="transparent"
+                                    />
+                                    <circle
+                                        cx="128"
+                                        cy="128"
+                                        r="120"
+                                        className="stroke-current text-blue-500 transition-all duration-100 ease-linear"
+                                        strokeWidth="8"
+                                        strokeDasharray={2 * Math.PI * 120}
+                                        strokeDashoffset={(2 * Math.PI * 120) * (1 - lockProgress / 100)}
+                                        strokeLinecap="round"
+                                        fill="transparent"
+                                    />
+                                </svg>
+                                <i className={`ti ti-user text-6xl transition-colors duration-300 ${faceLockedIn ? 'text-green-400' : 'text-white/40'}`}></i>
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {/* Result Feedback Overlay */}
-                        {feedback.show && (
-                            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-md transition-opacity duration-200">
-                                <div className={`text-center transform transition-transform duration-300 ${feedback.show ? 'scale-100' : 'scale-90'}`}>
-                                    {feedback.type === 'success' && (
-                                        <div className="h-24 w-24 mx-auto rounded-full bg-green-500 text-white flex items-center justify-center text-5xl mb-4 shadow-[0_0_40px_rgba(34,197,94,0.4)]">
-                                            <i className="ti ti-check"></i>
-                                        </div>
-                                    )}
-                                    {feedback.type === 'error' && (
-                                        <div className="h-24 w-24 mx-auto rounded-full bg-red-500 text-white flex items-center justify-center text-5xl mb-4 shadow-[0_0_40px_rgba(239,68,68,0.4)]">
-                                            <i className="ti ti-x"></i>
-                                        </div>
-                                    )}
-                                    <h3 className="text-3xl font-black text-white mb-2">{feedback.title}</h3>
-                                    <p className="text-slate-300 text-base font-medium bg-black/50 px-4 py-2 rounded-lg border border-white/10 inline-block">{feedback.message}</p>
-                                </div>
-                            </div>
+                    {/* BOTTOM STATUS CARD OVERLAY */}
+                    <div className="w-full z-20 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex items-center justify-between text-white">
+                        <div className="space-y-0.5">
+                            <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">AI Subsystem</p>
+                            <p className="text-sm font-bold flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${faceLockedIn ? 'bg-green-400' : 'bg-blue-400 animate-pulse'}`}></span>
+                                {aiStatus}
+                            </p>
+                        </div>
+                        {lockProgress > 0 && !faceLockedIn && (
+                            <span className="text-lg font-mono font-extrabold text-blue-400">
+                                {Math.round(lockProgress)}%
+                            </span>
                         )}
+                    </div>
+                </div>
+
+                {/* STATE 3: FEEDBACK MODAL (Success/Error) */}
+                {feedback.show && (
+                    <div className="absolute inset-0 z-30 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4 animate-fade-in">
+                        <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl shadow-lg ${
+                            feedback.type === 'success' 
+                                ? 'bg-green-100 text-green-600 shadow-green-500/20' 
+                                : 'bg-red-100 text-red-600 shadow-red-500/20'
+                        }`}>
+                            <i className={`ti ${feedback.type === 'success' ? 'ti-check' : 'ti-alert-triangle'}`}></i>
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="text-2xl font-black text-slate-800 tracking-tight">{feedback.title}</h3>
+                            <p className="text-slate-500 text-sm font-medium">{feedback.message}</p>
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* FOOTER */}
-            <div className="text-center mt-10">
-                <form onSubmit={handleLogout}>
-                    <button type="submit" className="ios-btn text-red-400 hover:text-red-500 font-bold text-sm bg-red-50 hover:bg-red-100 px-6 py-3 rounded-xl transition-colors">
-                        End Shift (Sign Out)
-                    </button>
-                </form>
+            {/* FOOTER CONTROLS */}
+            <div className="mt-8 text-center">
+                <button 
+                    onClick={handleLogout}
+                    className="text-slate-400 hover:text-slate-600 font-semibold text-sm transition-colors"
+                >
+                    &larr; Exit Terminal Mode
+                </button>
             </div>
         </div>
     );

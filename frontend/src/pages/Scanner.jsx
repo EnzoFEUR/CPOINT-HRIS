@@ -268,239 +268,7 @@ const Scanner = () => {
     return { color: 'blue', ring: '#3b82f6', pill: 'bg-blue-500/25 text-blue-200 border-blue-500/40' };
   }, [state.mode, state.feedback.type, state.matchScore, state.scanProgress]);
 
-  // ── Boot Effect: Models + Clock + CSS + Online + Wake Lock ──
-  useEffect(() => {
-    let mounted = true;
-    let wakeLock = null;
-
-    // Load models
-    (async () => {
-      try {
-        await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.tinyFaceDetector.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(ENV.MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(ENV.MODEL_URL),
-        ]);
-        if (mounted) {
-          dispatch({ type: 'SET_MODELS_LOADED' });
-          dispatch({ type: 'SET_MODE', payload: MODES.QR });
-        }
-      } catch (err) {
-        console.error('[BOOT]', err);
-        toast.error('Neural net failed to load. Check network.');
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Failed to load AI models. Refresh to retry.', code: 'MODEL_LOAD_ERROR' } });
-      }
-    })();
-
-    // Clock
-    const tick = setInterval(() => {
-      dispatch({ type: 'SET_CLOCK', payload: new Date().toLocaleTimeString('en-US', { hour12: false }) });
-    }, 1000);
-
-    // Online status
-    const onOnline = () => dispatch({ type: 'SET_ONLINE', payload: true });
-    const onOffline = () => dispatch({ type: 'SET_ONLINE', payload: false });
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-
-    // CSS injection
-    const style = document.createElement('style');
-    style.id = 'scanner-css';
-    style.textContent = `
-      #qr-reader video { object-fit:contain!important; width:100vw!important; height:100dvh!important; }
-      #qr-reader { width:100vw; height:100dvh; overflow:hidden; }
-      #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
-      #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
-    `;
-    document.head.appendChild(style);
-
-    // Wake lock (keep screen on)
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').then(lock => { wakeLock = lock; }).catch(() => {});
-    }
-
-    return () => {
-      mounted = false;
-      clearInterval(tick);
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-      document.getElementById('scanner-css')?.remove();
-      wakeLock?.release().catch(() => {});
-    };
-  }, []);
-
-  // ── Mode Lifecycle ──
-  useEffect(() => {
-    if (state.mode === MODES.QR && state.modelsLoaded) startQr();
-    if (state.mode !== MODES.QR) stopQr();
-    if (state.mode === MODES.FACE) startFaceCamera();
-    // if (state.mode !== MODES.FACE) stopFaceCamera(); // DISABLED: Aggressively kills fetch requests
-
-    // Session safety timer
-    clearTimeout(sessionTimerRef.current);
-    if (state.mode === MODES.PREP || state.mode === MODES.FACE) {
-      sessionTimerRef.current = setTimeout(() => {
-        toast.error('Session timed out. Returning to scanner.');
-        handleReset();
-      }, ENV.SCAN_TIMEOUT_MS);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.mode, state.modelsLoaded]);
-
-  // ── QR Scanner ──
-  const startQr = useCallback(async () => {
-    if (qrRef.current) return;
-    dispatch({ type: 'SET_LOADING', payload: '' });
-
-    // Step 1: Explicitly request camera permission to trigger browser prompt on mobile
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const testStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
-        });
-        testStream.getTracks().forEach(t => t.stop());
-      }
-    } catch (permErr) {
-      console.warn('[Scanner] Camera permission request:', permErr);
-      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-        toast.error('Camera permission required. Please allow camera access.');
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera permission denied. Please allow camera access in your browser settings.', code: 'CAMERA_PERMISSION_DENIED' } });
-        return;
-      }
-    }
-
-    try {
-      qrRef.current = new Html5Qrcode('qr-reader');
-      const isPortrait = window.innerHeight > window.innerWidth;
-      
-      // Try back camera first
-      try {
-        await qrRef.current.start(
-          { facingMode: { ideal: 'environment' } },
-          { 
-            fps: 15, 
-            disableFlip: false,
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
-            },
-            videoConstraints: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: isPortrait ? 720 : 1280 },
-              height: { ideal: isPortrait ? 1280 : 720 }
-            }
-          },
-          onQrSuccess,
-          () => {} // ignore decode failures
-        );
-      } catch (backCamErr) {
-        console.warn('[Scanner] Back camera unavailable, falling back to any camera:', backCamErr);
-        await qrRef.current.start(
-          { facingMode: 'user' },
-          { 
-            fps: 15, 
-            disableFlip: false,
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
-          },
-          onQrSuccess,
-          () => {}
-        );
-      }
-    } catch (err) {
-      console.error('[Scanner] Failed to start QR scanner:', err);
-      toast.error('Camera unavailable. Check permissions.');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera unavailable. Please grant camera permission and refresh.', code: 'CAMERA_ERROR' } });
-    }
-  }, [onQrSuccess]);
-
-  const stopQr = useCallback(() => {
-    if (!qrRef.current) return;
-    try {
-      qrRef.current.stop().then(() => {
-        qrRef.current?.clear();
-        qrRef.current = null;
-      }).catch(() => {});
-    } catch {
-      qrRef.current?.clear();
-      qrRef.current = null;
-    }
-  }, []);
-
-  // ── QR Success → Fetch Employee & Baseline ──
-  const onQrSuccess = useCallback(async (text) => {
-    if (vault.processing) return;
-    vault.processing = true;
-    playSound('scan');
-    haptic('scan');
-    dispatch({ type: 'SET_LOADING', payload: 'AUTHENTICATING IDENTITY...' });
-    dispatch({ type: 'SET_MODE', payload: MODES.PREP });
-
-    const companyId = text.trim();
-
-    try {
-      // 1. Resolve company_id -> employee record via secure backend proxy
-      const res = await fetchWithAuth(`/api/attendance/verify-qr/${companyId}`);
-      const data = await res.json();
-      
-      if (!res.ok || data.status !== 'success') {
-        throw new Error('EMPLOYEE_NOT_FOUND');
-      }
-      
-      const emp = data.data;
-
-      if (!emp.is_active) {
-        throw new Error('EMPLOYEE_INACTIVE');
-      }
-
-      vault.employeeId = emp.id;
-      dispatch({ type: 'SET_EMPLOYEE', payload: emp });
-
-      // 2. Load baseline image from backend storage path: face-baselines/{company_id}/{employee_id}.jpg
-      const { data: urlData } = supabase.storage
-        .from('public-bucket')
-        .getPublicUrl(`face-baselines/${emp.company_id}/${emp.id}.jpg`);
-
-      const cacheBusted = `${urlData.publicUrl}?t=${Date.now()}`;
-      const imgRes = await fetch(cacheBusted, { cache: 'no-store' });
-      if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
-
-      const blob = await imgRes.blob();
-      const url = URL.createObjectURL(blob);
-      dispatch({ type: 'SET_PHOTO', payload: url });
-
-      // 3. Compute 128-dim descriptor
-      dispatch({ type: 'SET_LOADING', payload: 'COMPUTING FACE DESCRIPTOR...' });
-      const img = await loadImage(url);
-
-      const det = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!det?.descriptor) throw new Error('BASELINE_UNREADABLE');
-
-      vault.baseline = det.descriptor;
-      dispatch({ type: 'SET_BASELINE', payload: det.descriptor });
-      dispatch({ type: 'SET_LOADING', payload: '' });
-
-      if (!emp.has_registered_biometrics) {
-        toast('Biometrics not enrolled. Proceeding with photo-only mode.');
-      }
-    } catch (err) {
-      console.error('[QR_FLOW]', err);
-      vault.baseline = null;
-      dispatch({ type: 'SET_BASELINE', payload: null });
-      dispatch({ type: 'SET_LOADING', payload: '' });
-      // Still allow proceeding to face scan — backend will enforce rules
-      toast.error(err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
-                  err.message === 'EMPLOYEE_INACTIVE' ? 'Account deactivated.' :
-                  err.message === 'BASELINE_NOT_FOUND' ? 'No biometric baseline found.' :
-                  'Baseline error. Photo-only mode.');
-    }
-  }, [vault]);
-
+  // ── 1. Pure Image Loader ──
   const loadImage = (src) => new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -509,46 +277,22 @@ const Scanner = () => {
     img.src = src;
   });
 
-  // ── Face Camera ──
-  const startFaceCamera = useCallback(async () => {
-    dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
-    try {
-      const isPortrait = window.innerHeight > window.innerWidth;
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: 'user' }, 
-            width: { ideal: isPortrait ? 720 : 1280 }, 
-            height: { ideal: isPortrait ? 1280 : 720 } 
-          },
-          audio: false
-        });
-      } catch (camErr) {
-        console.warn('[FaceCam] Fallback to generic user camera:', camErr);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false
-        });
-      }
+  // ── 2. UI Status & Throttled Dispatch ──
+  const updateStatus = useCallback((text) => {
+    if (updateStatus.lastText === text) return;
+    updateStatus.lastText = text;
+    dispatch({ type: 'SET_DEBUG_INFO', payload: { statusText: text } });
+  }, [dispatch]);
 
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.setAttribute('webkit-playsinline', 'true');
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
-          dispatch({ type: 'SET_LOADING', payload: '' });
-          runDetectionLoop();
-        };
-      }
-    } catch {
-      toast.error('Camera access denied');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Front camera access denied. Enable permissions.', code: 'CAMERA_DENIED' } });
-    }
-  }, []);
+  const throttledDispatch = useCallback((updates) => {
+    const now = Date.now();
+    if (now - vault.lastUiUpdate < 80) return; // ~12fps UI updates
+    vault.lastUiUpdate = now;
+    if ('scanProgress' in updates) dispatch({ type: 'SET_PROGRESS', payload: updates.scanProgress });
+    if ('matchScore' in updates) dispatch({ type: 'SET_MATCH', payload: updates.matchScore });
+  }, [vault, dispatch]);
 
+  // ── 3. Camera Stop Controls ──
   const stopFaceCamera = useCallback(() => {
     if (detectionRef.current) {
       clearInterval(detectionRef.current);
@@ -564,7 +308,132 @@ const Scanner = () => {
     }
   }, []);
 
-  // ── Face Detection Loop ──
+  const stopQr = useCallback(() => {
+    if (!qrRef.current) return;
+    try {
+      qrRef.current.stop().then(() => {
+        qrRef.current?.clear();
+        qrRef.current = null;
+      }).catch(() => {});
+    } catch {
+      qrRef.current?.clear();
+      qrRef.current = null;
+    }
+  }, []);
+
+  // ── 4. Session Reset ──
+  const handleReset = useCallback(() => {
+    stopFaceCamera();
+    vault.processing = false;
+    vault.submitLock = false;
+    vault.lockFrames = 0;
+    vault.blinkCount = 0;
+    vault.blinkFrames = 0;
+    vault.earHistory = [];
+    vault.matchScore = null;
+    vault.employeeId = null;
+    vault.baseline = null;
+    dispatch({ type: 'RESET' });
+    dispatch({ type: 'SET_MODE', payload: MODES.QR });
+  }, [vault, stopFaceCamera, dispatch]);
+
+  // ── 5. Capture & Submit to Backend ──
+  const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
+    if (vault.submitLock) return;
+    vault.submitLock = true;
+    dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
+    dispatch({ type: 'SET_LOADING', payload: 'TRANSMITTING TO SERVER...' });
+
+    // Capture frame
+    let img64 = null;
+    if (videoRef.current && videoRef.current.videoWidth) {
+      const c = document.createElement('canvas');
+      c.width = videoRef.current.videoWidth;
+      c.height = videoRef.current.videoHeight;
+      c.getContext('2d').drawImage(videoRef.current, 0, 0);
+      const raw = c.toDataURL('image/jpeg', 0.85);
+      img64 = await compressImage(raw, { maxWidth: 640, maxHeight: 640, quality: 0.75 });
+    }
+
+    const eid = vault.employeeId;
+    if (!eid || !isValidUUID(eid)) {
+      dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'SYSTEM ERROR', message: 'Invalid employee session. Scan again.', code: 'INVALID_SESSION' } });
+      playSound('error'); haptic('error');
+      setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
+      return;
+    }
+
+    // Build liveness payload for backend audit
+    const livenessPayload = {
+      method: 'ear_blink',
+      blink_count: blinkCount,
+      ear_min: Math.min(...earHistory, 0.5),
+      ear_max: Math.max(...earHistory, 0),
+      ear_avg: earHistory.reduce((a, b) => a + b, 0) / (earHistory.length || 1),
+      confidence: blinkCount >= ENV.REQUIRED_BLINKS ? 0.95 : 0.0,
+      client_timestamp: new Date().toISOString(),
+    };
+
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const res = await fetchWithAuth(`${ENV.API_BASE}/attendance/scan`, {
+        method: 'POST',
+        signal: abortControllerRef.current.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: eid,
+          image_data: img64,
+          face_match_score: finalScore ?? vault.matchScore ?? 0,
+          liveness_data: livenessPayload,
+        }),
+      });
+
+      let data;
+      try { data = await res.json(); } catch { data = { status: 'error', message: 'Invalid server response' }; }
+
+      if (!res.ok) {
+        // Backend returns structured errors: { status, code, message, requestId }
+        const errCode = data.code || `HTTP_${res.status}`;
+        const reqId = data.requestId || 'unknown';
+        let friendly = data.message || 'Verification failed.';
+
+        // Map HTTP status codes to user-friendly messages
+        if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
+        else if (res.status === 403) friendly = `SECURITY ALERT: ${friendly}`;
+        else if (res.status === 503) friendly = 'Biometric AI engine offline. Contact IT.';
+        else if (res.status === 409) friendly = 'Attendance already recorded today.';
+        else if (res.status === 404) friendly = 'Employee record not found.';
+
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'ACCESS DENIED', message: friendly, requestId: reqId, code: errCode, image: img64 } });
+        playSound('error'); haptic('error');
+      } else if (data.status === 'success') {
+        const isOut = data.code === 'TIME_OUT' || data.message?.toUpperCase().includes('OUT');
+        dispatch({ type: 'SET_FEEDBACK', payload: {
+          type: 'success',
+          title: isOut ? 'CLOCKED OUT' : 'CLOCKED IN',
+          message: data.message || 'Attendance recorded.',
+          code: data.code,
+          image: img64
+        }});
+        playSound('success'); haptic('success');
+      } else {
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'UNKNOWN RESPONSE', message: data.message || 'Unexpected server state.', image: img64 } });
+        playSound('error'); haptic('error');
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'CANCELLED', message: 'Scan was interrupted.', image: img64 } });
+      } else {
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'OFFLINE', message: 'Cannot reach attendance server. Check network.', image: img64 } });
+      }
+      playSound('error'); haptic('error');
+    }
+
+    setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
+  }, [vault, handleReset, dispatch]);
+
+  // ── 6. Face Detection Loop ──
   const runDetectionLoop = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -696,136 +565,265 @@ const Scanner = () => {
         drawFaceMesh(ctx, det.landmarks, box, 'scanning');
       }
     }, ENV.DETECTION_INTERVAL_MS);
-  }, [vault, dispatch]);
+  }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
-  // Throttle UI updates to avoid React re-render thrashing
-  const throttledDispatch = useCallback((updates) => {
-    const now = Date.now();
-    if (now - vault.lastUiUpdate < 80) return; // ~12fps UI updates
-    vault.lastUiUpdate = now;
-    if ('scanProgress' in updates) dispatch({ type: 'SET_PROGRESS', payload: updates.scanProgress });
-    if ('matchScore' in updates) dispatch({ type: 'SET_MATCH', payload: updates.matchScore });
-  }, [vault, dispatch]);
+  // ── 7. Face Camera Starter ──
+  const startFaceCamera = useCallback(async () => {
+    dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
+    try {
+      const isPortrait = window.innerHeight > window.innerWidth;
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { ideal: 'user' }, 
+            width: { ideal: isPortrait ? 720 : 1280 }, 
+            height: { ideal: isPortrait ? 1280 : 720 } 
+          },
+          audio: false
+        });
+      } catch (camErr) {
+        console.warn('[FaceCam] Fallback to generic user camera:', camErr);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      }
 
-  const updateStatus = useCallback((text) => {
-    // Only dispatch if status actually changed (reduce re-renders)
-    // We use a ref for last status text
-    if (updateStatus.lastText === text) return;
-    updateStatus.lastText = text;
-    dispatch({ type: 'SET_DEBUG_INFO', payload: { statusText: text } });
-  }, [dispatch]);
-
-  // ── Capture & Submit ──
-  const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
-    if (vault.submitLock) return;
-    vault.submitLock = true;
-    dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
-    dispatch({ type: 'SET_LOADING', payload: 'TRANSMITTING TO SERVER...' });
-
-    // Capture frame
-    let img64 = null;
-    if (videoRef.current && videoRef.current.videoWidth) {
-      const c = document.createElement('canvas');
-      c.width = videoRef.current.videoWidth;
-      c.height = videoRef.current.videoHeight;
-      c.getContext('2d').drawImage(videoRef.current, 0, 0);
-      const raw = c.toDataURL('image/jpeg', 0.85);
-      img64 = await compressImage(raw, { maxWidth: 640, maxHeight: 640, quality: 0.75 });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('webkit-playsinline', 'true');
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
+          dispatch({ type: 'SET_LOADING', payload: '' });
+          runDetectionLoop();
+        };
+      }
+    } catch {
+      toast.error('Camera access denied');
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Front camera access denied. Enable permissions.', code: 'CAMERA_DENIED' } });
     }
+  }, [runDetectionLoop, dispatch]);
 
-    const eid = vault.employeeId;
-    if (!eid || !isValidUUID(eid)) {
-      dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'SYSTEM ERROR', message: 'Invalid employee session. Scan again.', code: 'INVALID_SESSION' } });
-      playSound('error'); haptic('error');
-      setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
-      return;
-    }
+  // ── 8. QR Success Handler ──
+  const onQrSuccess = useCallback(async (text) => {
+    if (vault.processing) return;
+    vault.processing = true;
+    playSound('scan');
+    haptic('scan');
+    dispatch({ type: 'SET_LOADING', payload: 'AUTHENTICATING IDENTITY...' });
+    dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-    // Build liveness payload for backend audit
-    const livenessPayload = {
-      method: 'ear_blink',
-      blink_count: blinkCount,
-      ear_min: Math.min(...earHistory, 0.5),
-      ear_max: Math.max(...earHistory, 0),
-      ear_avg: earHistory.reduce((a, b) => a + b, 0) / (earHistory.length || 1),
-      confidence: blinkCount >= ENV.REQUIRED_BLINKS ? 0.95 : 0.0,
-      client_timestamp: new Date().toISOString(),
-    };
-
-    abortControllerRef.current = new AbortController();
+    const companyId = text.trim();
 
     try {
-      const res = await fetchWithAuth(`${ENV.API_BASE}/attendance/scan`, {
-        method: 'POST',
-        signal: abortControllerRef.current.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: eid,
-          image_data: img64,
-          face_match_score: finalScore ?? vault.matchScore ?? 0,
-          liveness_data: livenessPayload,
-        }),
-      });
+      // 1. Resolve company_id -> employee record via secure backend proxy
+      const res = await fetchWithAuth(`/api/attendance/verify-qr/${companyId}`);
+      const data = await res.json();
+      
+      if (!res.ok || data.status !== 'success') {
+        throw new Error('EMPLOYEE_NOT_FOUND');
+      }
+      
+      const emp = data.data;
 
-      let data;
-      try { data = await res.json(); } catch { data = { status: 'error', message: 'Invalid server response' }; }
+      if (!emp.is_active) {
+        throw new Error('EMPLOYEE_INACTIVE');
+      }
 
-      if (!res.ok) {
-        // Backend returns structured errors: { status, code, message, requestId }
-        const errCode = data.code || `HTTP_${res.status}`;
-        const reqId = data.requestId || 'unknown';
-        let friendly = data.message || 'Verification failed.';
+      vault.employeeId = emp.id;
+      dispatch({ type: 'SET_EMPLOYEE', payload: emp });
 
-        // Map HTTP status codes to user-friendly messages
-        if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
-        else if (res.status === 403) friendly = `SECURITY ALERT: ${friendly}`;
-        else if (res.status === 503) friendly = 'Biometric AI engine offline. Contact IT.';
-        else if (res.status === 409) friendly = 'Attendance already recorded today.';
-        else if (res.status === 404) friendly = 'Employee record not found.';
+      // 2. Load baseline image from backend storage path: face-baselines/{company_id}/{employee_id}.jpg
+      const { data: urlData } = supabase.storage
+        .from('public-bucket')
+        .getPublicUrl(`face-baselines/${emp.company_id}/${emp.id}.jpg`);
 
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'ACCESS DENIED', message: friendly, requestId: reqId, code: errCode, image: img64 } });
-        playSound('error'); haptic('error');
-      } else if (data.status === 'success') {
-        const isOut = data.code === 'TIME_OUT' || data.message?.toUpperCase().includes('OUT');
-        dispatch({ type: 'SET_FEEDBACK', payload: {
-          type: 'success',
-          title: isOut ? 'CLOCKED OUT' : 'CLOCKED IN',
-          message: data.message || 'Attendance recorded.',
-          code: data.code,
-          image: img64
-        }});
-        playSound('success'); haptic('success');
-      } else {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'UNKNOWN RESPONSE', message: data.message || 'Unexpected server state.', image: img64 } });
-        playSound('error'); haptic('error');
+      const cacheBusted = `${urlData.publicUrl}?t=${Date.now()}`;
+      const imgRes = await fetch(cacheBusted, { cache: 'no-store' });
+      if (!imgRes.ok) throw new Error('BASELINE_NOT_FOUND');
+
+      const blob = await imgRes.blob();
+      const url = URL.createObjectURL(blob);
+      dispatch({ type: 'SET_PHOTO', payload: url });
+
+      // 3. Compute 128-dim descriptor
+      dispatch({ type: 'SET_LOADING', payload: 'COMPUTING FACE DESCRIPTOR...' });
+      const img = await loadImage(url);
+
+      const det = await faceapi
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!det?.descriptor) throw new Error('BASELINE_UNREADABLE');
+
+      vault.baseline = det.descriptor;
+      dispatch({ type: 'SET_BASELINE', payload: det.descriptor });
+      dispatch({ type: 'SET_LOADING', payload: '' });
+
+      if (!emp.has_registered_biometrics) {
+        toast('Biometrics not enrolled. Proceeding with photo-only mode.');
       }
     } catch (err) {
-      if (err.name === 'AbortError') {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'CANCELLED', message: 'Scan was interrupted.', image: img64 } });
-      } else {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'OFFLINE', message: 'Cannot reach attendance server. Check network.', image: img64 } });
+      console.error('[QR_FLOW]', err);
+      vault.baseline = null;
+      dispatch({ type: 'SET_BASELINE', payload: null });
+      dispatch({ type: 'SET_LOADING', payload: '' });
+      // Still allow proceeding to face scan — backend will enforce rules
+      toast.error(err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
+                  err.message === 'EMPLOYEE_INACTIVE' ? 'Account deactivated.' :
+                  err.message === 'BASELINE_NOT_FOUND' ? 'No biometric baseline found.' :
+                  'Baseline error. Photo-only mode.');
+    }
+  }, [vault, dispatch]);
+
+  // ── 9. QR Scanner Starter ──
+  const startQr = useCallback(async () => {
+    if (qrRef.current) return;
+    dispatch({ type: 'SET_LOADING', payload: '' });
+
+    // Step 1: Explicitly request camera permission to trigger browser prompt on mobile
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const testStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        testStream.getTracks().forEach(t => t.stop());
       }
-      playSound('error'); haptic('error');
+    } catch (permErr) {
+      console.warn('[Scanner] Camera permission request:', permErr);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        toast.error('Camera permission required. Please allow camera access.');
+        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera permission denied. Please allow camera access in your browser settings.', code: 'CAMERA_PERMISSION_DENIED' } });
+        return;
+      }
     }
 
-    setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
-  }, [vault]);
+    try {
+      qrRef.current = new Html5Qrcode('qr-reader');
+      const isPortrait = window.innerHeight > window.innerWidth;
+      
+      // Try back camera first
+      try {
+        await qrRef.current.start(
+          { facingMode: { ideal: 'environment' } },
+          { 
+            fps: 15, 
+            disableFlip: false,
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            },
+            videoConstraints: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: isPortrait ? 720 : 1280 },
+              height: { ideal: isPortrait ? 1280 : 720 }
+            }
+          },
+          onQrSuccess,
+          () => {} // ignore decode failures
+        );
+      } catch (backCamErr) {
+        console.warn('[Scanner] Back camera unavailable, falling back to any camera:', backCamErr);
+        await qrRef.current.start(
+          { facingMode: 'user' },
+          { 
+            fps: 15, 
+            disableFlip: false,
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+          },
+          onQrSuccess,
+          () => {}
+        );
+      }
+    } catch (err) {
+      console.error('[Scanner] Failed to start QR scanner:', err);
+      toast.error('Camera unavailable. Check permissions.');
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera unavailable. Please grant camera permission and refresh.', code: 'CAMERA_ERROR' } });
+    }
+  }, [onQrSuccess, dispatch]);
 
-  // ── Reset ──
-  const handleReset = useCallback(() => {
-    stopFaceCamera();
-    vault.processing = false;
-    vault.submitLock = false;
-    vault.lockFrames = 0;
-    vault.blinkCount = 0;
-    vault.blinkFrames = 0;
-    vault.earHistory = [];
-    vault.matchScore = null;
-    vault.employeeId = null;
-    vault.baseline = null;
-    dispatch({ type: 'RESET' });
-    dispatch({ type: 'SET_MODE', payload: MODES.QR });
-  }, [vault, stopFaceCamera, dispatch]);
+  // ── 10. Mode Lifecycle ──
+  useEffect(() => {
+    if (state.mode === MODES.QR && state.modelsLoaded) startQr();
+    if (state.mode !== MODES.QR) stopQr();
+    if (state.mode === MODES.FACE) startFaceCamera();
+
+    // Session safety timer
+    clearTimeout(sessionTimerRef.current);
+    if (state.mode === MODES.PREP || state.mode === MODES.FACE) {
+      sessionTimerRef.current = setTimeout(() => {
+        toast.error('Session timed out. Returning to scanner.');
+        handleReset();
+      }, ENV.SCAN_TIMEOUT_MS);
+    }
+  }, [state.mode, state.modelsLoaded, startQr, stopQr, startFaceCamera, handleReset]);
+
+  // ── 11. Boot Effect: Models + Clock + CSS + Online + Wake Lock ──
+  useEffect(() => {
+    let mounted = true;
+    let wakeLock = null;
+
+    // Load models
+    (async () => {
+      try {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(ENV.MODEL_URL),
+          faceapi.nets.tinyFaceDetector.loadFromUri(ENV.MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(ENV.MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(ENV.MODEL_URL),
+        ]);
+        if (mounted) {
+          dispatch({ type: 'SET_MODELS_LOADED' });
+          dispatch({ type: 'SET_MODE', payload: MODES.QR });
+        }
+      } catch (err) {
+        console.error('[BOOT]', err);
+        toast.error('Neural net failed to load. Check network.');
+        dispatch({ type: 'SET_ERROR', payload: { message: 'Failed to load AI models. Refresh to retry.', code: 'MODEL_LOAD_ERROR' } });
+      }
+    })();
+
+    // Clock
+    const tick = setInterval(() => {
+      dispatch({ type: 'SET_CLOCK', payload: new Date().toLocaleTimeString('en-US', { hour12: false }) });
+    }, 1000);
+
+    // Online status
+    const onOnline = () => dispatch({ type: 'SET_ONLINE', payload: true });
+    const onOffline = () => dispatch({ type: 'SET_ONLINE', payload: false });
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    // CSS injection
+    const style = document.createElement('style');
+    style.id = 'scanner-css';
+    style.textContent = `
+      #qr-reader video { object-fit:contain!important; width:100vw!important; height:100dvh!important; }
+      #qr-reader { width:100vw; height:100dvh; overflow:hidden; }
+      #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
+      #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
+    `;
+    document.head.appendChild(style);
+
+    // Wake lock (keep screen on)
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(lock => { wakeLock = lock; }).catch(() => {});
+    }
+
+    return () => {
+      mounted = false;
+      clearInterval(tick);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      document.getElementById('scanner-css')?.remove();
+      wakeLock?.release().catch(() => {});
+    };
+  }, []);
 
   // ── Debug Mode Trigger (hold top-left 3s) ──
   const handleDebugTouchStart = () => {
