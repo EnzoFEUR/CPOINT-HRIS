@@ -34,10 +34,7 @@ const POSE = Object.freeze({
 
 const PHASE_LIST = Object.values(POSE);
 
-/* =============================================================================
-   3D HEAD POSE ESTIMATION (Distance-Invariant)
-   Normalizes all spatial measurements by Inter-Ocular Distance (IOD)
-   ============================================================================= */
+// 3D head pose estimation normalized by inter-ocular distance
 const estimateHeadPose = (landmarks) => {
   const p = landmarks.positions;
   const leftEyeOuter  = p[36];
@@ -76,9 +73,7 @@ const estimateHeadPose = (landmarks) => {
   return { yaw, pitch, roll, iod, scale: iod, symmetry };
 };
 
-/* =============================================================================
-   IMAGE QUALITY FORENSICS
-   ============================================================================= */
+// Image quality forensics
 const analyzeQuality = (canvas, box) => {
   // BUG FIX: The original code sampled the 'canvas' which is just a transparent overlay.
   // This resulted in 0 brightness (pitch black) and always triggered "TOO DARK".
@@ -94,9 +89,7 @@ const analyzeQuality = (canvas, box) => {
   };
 };
 
-/* =============================================================================
-   EYE ASPECT RATIO (Anti-Spoofing)
-   ============================================================================= */
+// Eye aspect ratio (anti-spoofing)
 const getEAR = (landmarks) => {
   const p = landmarks?.positions;
   if (!p || p.length < 68) return 1.0;
@@ -109,9 +102,7 @@ const getEAR = (landmarks) => {
   return (calc(36, 37, 38, 39, 40, 41) + calc(42, 43, 44, 45, 46, 47)) / 2.0;
 };
 
-/* =============================================================================
-   AUDIO & HAPTIC FEEDBACK
-   ============================================================================= */
+// AUDIO & HAPTIC FEEDBACK
 const playSound = (type) => {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -158,9 +149,7 @@ const haptic = (type) => {
   else if (type === 'error') navigator.vibrate([100, 50, 100]);
 };
 
-/* =============================================================================
-   CANVAS MESH RENDERER
-   ============================================================================= */
+// Canvas mesh renderer
 const drawMesh = (ctx, landmarks, box, color, isLocked, pose = null) => {
   const pts = landmarks.positions;
   const r = isLocked ? 2.8 : 1.6;
@@ -230,9 +219,7 @@ const drawMesh = (ctx, landmarks, box, color, isLocked, pose = null) => {
   ctx.stroke();
 };
 
-/* =============================================================================
-   STATE MACHINE
-   ============================================================================= */
+// State machine
 const MODES = Object.freeze({
   BOOT: 'boot', READY: 'ready', CALIBRATING: 'calibrating', ENROLLING: 'enrolling',
   VALIDATING: 'validating', UPLOADING: 'uploading', SUCCESS: 'success', ERROR: 'error',
@@ -285,9 +272,7 @@ function reducer(state, action) {
   }
 }
 
-/* =============================================================================
-   MAIN COMPONENT
-   ============================================================================= */
+// Main component
 export default function BiometricSetup() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const navigate = useNavigate();
@@ -401,7 +386,7 @@ export default function BiometricSetup() {
     };
   }, []);
 
-  // ── Session Safety Timer ──
+  // Session Safety Timer
   useEffect(() => {
     clearTimeout(sessionTimerRef.current);
     if (state.mode === MODES.CALIBRATING || state.mode === MODES.ENROLLING) {
@@ -412,7 +397,7 @@ export default function BiometricSetup() {
     }
   }, [state.mode]);
 
-  // ── Start Enrollment ──
+  // Start Enrollment
   const startEnrollment = useCallback(() => {
     dispatch({ type: 'SET_MODE', payload: MODES.CALIBRATING });
     dispatch({ type: 'SET_STATUS', payload: 'Calibrating neutral pose — hold still...' });
@@ -431,7 +416,7 @@ export default function BiometricSetup() {
     startLoop();
   }, [vault]);
 
-  // ── Detection Loop ──
+  // Detection Loop
   const startLoop = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -473,7 +458,7 @@ export default function BiometricSetup() {
       const lm = det.landmarks;
       const score = det.detection.score;
 
-      // ── Quality Analysis ──
+      // Quality Analysis
       const quality = analyzeQuality(canvas, box);
       const pose = estimateHeadPose(lm);
 
@@ -481,7 +466,7 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_QUALITY', payload: quality });
       dispatch({ type: 'SET_POSE', payload: pose });
 
-      // ── Hard Quality Gates ──
+      // Hard Quality Gates
       if (score < ENV.FACE_CONFIDENCE_MIN) {
         // vault.holdCount = Math.max(0, vault.holdCount - 1);
         dispatch({ type: 'SET_STATUS', payload: 'FACE TOO SMALL OR UNCLEAR' });
@@ -528,7 +513,7 @@ export default function BiometricSetup() {
       const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
       dispatch({ type: 'SET_LIVENESS', blinkCount: vault.blinkCount, livenessOk });
 
-      // ── Calibration Phase ──
+      // Calibration Phase
       if (!vault.baseline) {
         drawMesh(ctx, lm, box, '#3b82f6', false, pose);
         vault.calibrationSamples.push(pose);
@@ -544,7 +529,7 @@ export default function BiometricSetup() {
         return;
       }
 
-      // ── Phase Matching ──
+      // Phase Matching
       const phaseIdx = vault.phaseIdx;
       const target = PHASE_LIST[phaseIdx];
       const dy = pose.yaw - vault.baseline.yaw;
@@ -572,7 +557,7 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_STATUS', payload: `${target.instruction} — HOLD...` });
 
         if (vault.holdCount >= ENV.HOLD_FRAMES) {
-          // ── Capture Phase ──
+          // Capture Phase
           const img = await snapFrame();
           if (!img) return;
 
@@ -614,7 +599,7 @@ export default function BiometricSetup() {
     }, ENV.DETECTION_INTERVAL_MS);
   }, [state.currentPhaseIdx, state.overallProgress, vault]);
 
-  // ── Frame Capture ──
+  // Frame Capture
   const snapFrame = async () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return null;
@@ -740,7 +725,7 @@ export default function BiometricSetup() {
     }
   }, [state.captured, user, vault, navigate]);
 
-  // ── Trigger Validation ──
+  // Trigger Validation
   useEffect(() => {
     if (state.mode === MODES.VALIDATING) {
       const timer = setTimeout(() => validateAndSubmit(), 300);
@@ -748,7 +733,7 @@ export default function BiometricSetup() {
     }
   }, [state.mode, validateAndSubmit]);
 
-  // ── Reset ──
+  // Reset
   const handleReset = useCallback(() => {
     if (loopRef.current) clearInterval(loopRef.current);
     vault.processing = false;
@@ -760,7 +745,7 @@ export default function BiometricSetup() {
     dispatch({ type: 'RESET' });
   }, [vault, dispatch]);
 
-  // ── Logout ──
+  // Logout
   const handleLogout = useCallback(async () => {
     if (loopRef.current) clearInterval(loopRef.current);
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
@@ -769,11 +754,11 @@ export default function BiometricSetup() {
     navigate('/login');
   }, [navigate]);
 
-  // ── Debug Corner ──
+  // Debug Corner
   const debugStart = () => { debugHoldRef.current = setTimeout(() => dispatch({ type: 'TOGGLE_DEBUG' }), 3000); };
   const debugEnd = () => clearTimeout(debugHoldRef.current);
 
-  // ── Derived UI ──
+  // Derived UI
   const activePhase = state.currentPhaseIdx >= 0 ? PHASE_LIST[state.currentPhaseIdx] : null;
   const activeColor = activePhase?.color || '#3b82f6';
   const doneCount = state.captured.length;

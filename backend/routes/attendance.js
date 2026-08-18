@@ -36,9 +36,7 @@ const CONFIG = Object.freeze({
   },
 });
 
-/* =============================================================================
-   STRUCTURED LOGGER & AUDIT TRAIL
-   ============================================================================= */
+// STRUCTURED LOGGER & AUDIT TRAIL
 const generateRequestId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
 const logger = {
@@ -63,9 +61,7 @@ const auditLog = async (reqId, { employee_id, action, details, severity = 'info'
   }
 };
 
-/* =============================================================================
-   CUSTOM ERROR CLASSES
-   ============================================================================= */
+// Custom error classes
 class AppError extends Error {
   constructor(message, statusCode = 500, code = 'INTERNAL_ERROR') {
     super(message);
@@ -90,9 +86,7 @@ class ConflictError extends AppError {
   constructor(message) { super(message, 409, 'CONFLICT'); }
 }
 
-/* =============================================================================
-   IN-MEMORY RATE LIMITER (Replace with Redis in production)
-   ============================================================================= */
+// In-memory rate limiter (replace with redis in production)
 const rateLimitStore = new Map();
 const rateLimiter = ({ windowMs, maxRequests, keyPrefix }) => {
   return (req, res, next) => {
@@ -118,26 +112,20 @@ const rateLimiter = ({ windowMs, maxRequests, keyPrefix }) => {
   };
 };
 
-/* =============================================================================
-   REQUEST CONTEXT MIDDLEWARE
-   ============================================================================= */
+// Request context middleware
 router.use((req, res, next) => {
   req.reqId = req.headers['x-request-id'] || generateRequestId();
   res.setHeader('X-Request-Id', req.reqId);
   next();
 });
 
-/* =============================================================================
-   VALIDATION HELPERS
-   ============================================================================= */
+// Validation helpers
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 const isValidISODate = (str) => /^\d{4}-\d{2}-\d{2}$/.test(str) && !isNaN(Date.parse(str));
 const isValidBase64Image = (str) => typeof str === 'string' && /^data:image\/(jpeg|jpg|png|webp);base64,/.test(str);
 const sanitizeString = (str) => (typeof str === 'string' ? str.trim().slice(0, 500) : str);
 
-/* =============================================================================
-   TIMEZONE-AWARE DATE HELPERS
-   ============================================================================= */
+// Timezone-aware date helpers
 const getTodayString = () => {
   return new Date().toLocaleDateString('en-CA', { timeZone: CONFIG.ATTENDANCE.TIMEZONE });
 };
@@ -149,9 +137,7 @@ const getGracePeriodDeadline = () => {
   return deadline;
 };
 
-/* =============================================================================
-   SERVICE: AI LIVENESS DETECTION (Circuit Breaker Pattern)
-   ============================================================================= */
+// SERVICE: AI LIVENESS DETECTION (Circuit Breaker Pattern)
 let aiCircuitState = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
 let aiCircuitOpensAt = 0;
 const AI_CIRCUIT_TIMEOUT = 60_000;
@@ -247,9 +233,7 @@ Reply with ONLY valid JSON: {"is_real_person": true/false, "confidence": 0.0-1.0
   );
 };
 
-/* =============================================================================
-   SERVICE: IMAGE STORAGE
-   ============================================================================= */
+// SERVICE: IMAGE STORAGE
 const uploadImage = async (reqId, base64Str, type, identifier) => {
   if (!base64Str) return null;
   if (!isValidBase64Image(base64Str)) {
@@ -276,9 +260,7 @@ const uploadImage = async (reqId, base64Str, type, identifier) => {
   }
 };
 
-/* =============================================================================
-   SERVICE: DISCIPLINARY & SECURITY ALERTS
-   ============================================================================= */
+// SERVICE: DISCIPLINARY & SECURITY ALERTS
 const logSecurityViolation = async (reqId, employee_id, type, description, ip_address) => {
   const payload = {
     employee_id,
@@ -318,9 +300,7 @@ const logSecurityViolation = async (reqId, employee_id, type, description, ip_ad
   }
 };
 
-/* =============================================================================
-   ERROR HANDLER WRAPPER
-   ============================================================================= */
+// Error handler wrapper
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
@@ -341,9 +321,7 @@ const sendError = (res, err, reqId) => {
   });
 };
 
-/* =============================================================================
-   1. GET /api/attendance (Admin View)
-   ============================================================================= */
+// 1. GET /api/attendance (Admin View)
 router.get(
   '/',
   checkAdminOrOwnership,
@@ -407,9 +385,7 @@ router.get(
   })
 );
 
-/* =============================================================================
-   1.5 GET /api/attendance/verify-qr/:company_id
-   ============================================================================= */
+// 1.5 GET /api/attendance/verify-qr/:company_id
 router.get(
   '/verify-qr/:company_id',
   asyncHandler(async (req, res) => {
@@ -434,9 +410,7 @@ router.get(
   })
 );
 
-/* =============================================================================
-   2. POST /api/attendance/scan
-   ============================================================================= */
+// 2. POST /api/attendance/scan
 router.post(
   '/scan',
   rateLimiter({
@@ -448,7 +422,7 @@ router.post(
     const { reqId } = req;
     const { employee_id, image_data, face_match_score } = req.body;
 
-    // ── Validation ──
+    // Validation
     if (!employee_id || !isValidUUID(employee_id)) {
       throw new ValidationError('Valid employee_id (UUID) is required.');
     }
@@ -462,7 +436,7 @@ router.post(
       }
     }
 
-    // ── Fetch Employee (with row-level locking intent via single()) ──
+    // Fetch Employee (with row-level locking intent via single())
     const { data: employee, error: empErr } = await supabase
       .from('employees')
       .select('id, first_name, last_name, company_id, has_registered_biometrics, is_active, requires_password_change')
@@ -479,7 +453,7 @@ router.post(
       throw new AuthorizationError('Employee account is deactivated. Contact HR.');
     }
 
-    // ── Biometric Enforcement ──
+    // Biometric Enforcement
     if (employee.has_registered_biometrics) {
       if (face_match_score === undefined || face_match_score === null) {
         await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing face match score.', req.ip);
@@ -515,7 +489,7 @@ router.post(
       throw new ConflictError('You have already completed your attendance for today.');
     }
 
-    // ── AI Liveness Verification ──
+    // AI Liveness Verification
     let livenessPassed = false;
     let livenessConfidence = null;
     let livenessReason = 'Not performed';
@@ -550,12 +524,12 @@ router.post(
       }
     }
 
-    // ── Execute Clock-In or Clock-Out ──
+    // Execute Clock-In or Clock-Out
     const now = new Date();
     const photoPath = await uploadImage(reqId, image_data, existing ? 'out' : 'in', employee.company_id || employee_id);
 
     if (!existing) {
-      // ═══ TIME IN ═══
+      // TIME IN
       const callTime = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.ATTENDANCE.TIMEZONE }));
       callTime.setHours(CONFIG.ATTENDANCE.CALL_TIME_HOUR, CONFIG.ATTENDANCE.CALL_TIME_MINUTE, 0, 0);
       const graceDeadline = new Date(callTime.getTime() + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES * 60_000);
@@ -599,7 +573,7 @@ router.post(
         data: { employee_id, date: todayStr, status, time_in: now.toISOString() },
       });
     } else {
-      // ═══ TIME OUT ═══
+      // TIME OUT
       const { error: updateErr } = await supabase
         .from('attendances')
         .update({
@@ -633,9 +607,7 @@ router.post(
   })
 );
 
-/* =============================================================================
-   3. GET /api/attendance/calendar
-   ============================================================================= */
+// 3. GET /api/attendance/calendar
 router.get(
   '/calendar',
   checkAdminOrOwnership,
@@ -679,9 +651,7 @@ router.get(
   })
 );
 
-/* =============================================================================
-   4. POST /api/attendance/register-baseline
-   ============================================================================= */
+// 4. POST /api/attendance/register-baseline
 router.post(
   '/register-baseline',
   rateLimiter({
@@ -693,7 +663,7 @@ router.post(
     const { reqId } = req;
     const { employee_id, company_id, image_base64 } = req.body;
 
-    // ── Validation ──
+    // Validation
     if (!employee_id || !isValidUUID(employee_id)) {
       throw new ValidationError('Valid employee_id (UUID) is required.');
     }
@@ -704,7 +674,7 @@ router.post(
       throw new ValidationError('Valid image_base64 (data URI) is required.');
     }
 
-    // ── Verify Employee ──
+    // Verify Employee
     const { data: employee, error: empErr } = await supabase
       .from('employees')
       .select('id, company_id, is_active')
@@ -718,7 +688,7 @@ router.post(
       throw new AuthorizationError('Company ID mismatch. Enrollment denied.');
     }
 
-    // ── AI Liveness (Inline) ──
+    // AI Liveness (Inline)
     const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, "");
 
     let livenessResult;
@@ -737,7 +707,7 @@ router.post(
       throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${livenessResult.reason} [Confidence: ${Math.round(livenessResult.confidence * 100)}%]`);
     }
 
-    // ── Store Baseline ──
+    // Store Baseline
     const buffer = Buffer.from(base64Data, 'base64');
     const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${company_id}/${employee_id}.jpg`;
 
@@ -751,7 +721,7 @@ router.post(
 
     if (uploadErr) throw new AppError(`Storage error: ${uploadErr.message}`, 500, 'STORAGE_ERROR');
 
-    // ── Update Database ──
+    // Update Database
     const { error: dbErr } = await supabase
       .from('employees')
       .update({
@@ -792,9 +762,7 @@ router.post(
   })
 );
 
-/* =============================================================================
-   5. POST /api/attendance/password-changed
-   ============================================================================= */
+// 5. POST /api/attendance/password-changed
 router.post(
   '/password-changed',
   asyncHandler(async (req, res) => {
@@ -820,9 +788,7 @@ router.post(
   })
 );
 
-/* =============================================================================
-   GLOBAL ERROR HANDLER FOR THIS ROUTER
-   ============================================================================= */
+// Global error handler for this router
 router.use((err, req, res, next) => {
   sendError(res, err, req.reqId);
 });

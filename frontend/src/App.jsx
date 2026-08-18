@@ -820,12 +820,8 @@ function MainLayout({ children }) {
             </AnimatePresence>
           </main>
 
-          {/* ═══════════════════════════════════════════════════════
-              MODERN MOBILE FLOATING DOCK (Island Style)
-              ═══════════════════════════════════════════════════════ */}
-          {/* ═══════════════════════════════════════════════════════
-              MODERN DYNAMIC MOBILE FLOATING DOCK (Multi-Resolution Fluid Island)
-              ═══════════════════════════════════════════════════════ */}
+          {/* Modern mobile floating dock (island style) */}
+          {/* Modern dynamic mobile floating dock (multi-resolution fluid island) */}
           <div className="lg:hidden fixed bottom-2.5 sm:bottom-4 inset-x-0 z-40 flex justify-center px-2 sm:px-4 pointer-events-none pb-[max(0.35rem,env(safe-area-inset-bottom))]">
             <nav className="pointer-events-auto w-full max-w-[460px] bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl p-1 sm:p-1.5 flex items-center justify-between gap-0.5 sm:gap-1 shadow-slate-950/50 ring-1 ring-white/10">
               {user.role === 'admin' ? (
@@ -936,9 +932,7 @@ function MainLayout({ children }) {
             </nav>
           </div>
 
-          {/* ═══════════════════════════════════════════════════════
-              MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL (With Drag Gestures)
-              ═══════════════════════════════════════════════════════ */}
+          {/* MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL (With Drag Gestures) */}
           <AnimatePresence>
             {sidebarOpen && (
               <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">

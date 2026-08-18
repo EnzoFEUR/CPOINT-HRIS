@@ -25,14 +25,10 @@ const ENV = {
   REQUIRED_BLINKS: 1,
 };
 
-/* =============================================================================
-   VALIDATION UTILITIES
-   ============================================================================= */
+// Validation utilities
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-/* =============================================================================
-   EYE ASPECT RATIO (EAR) — Anti-Spoofing
-   ============================================================================= */
+// Eye aspect ratio (ear) — anti-spoofing
 const getEAR = (landmarks) => {
   const pts = landmarks?.positions;
   if (!pts || pts.length < 68) return 1.0; // Eyes open by default if landmarks invalid
@@ -48,9 +44,7 @@ const getEAR = (landmarks) => {
   return (calcEAR(36, 37, 38, 39, 40, 41) + calcEAR(42, 43, 44, 45, 46, 47)) / 2.0;
 };
 
-/* =============================================================================
-   AUDIO & HAPTIC FEEDBACK
-   ============================================================================= */
+// Audio and haptic feedback
 const playSound = (type) => {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -93,9 +87,7 @@ const haptic = (type) => {
   else navigator.vibrate(30);
 };
 
-/* =============================================================================
-   CANVAS RENDERER
-   ============================================================================= */
+// Canvas renderer
 const drawFaceMesh = (ctx, landmarks, box, state) => {
   const pts = landmarks.positions;
   const palette = {
@@ -142,9 +134,7 @@ const drawFaceMesh = (ctx, landmarks, box, state) => {
   ctx.stroke();
 };
 
-/* =============================================================================
-   STATE MACHINE
-   ============================================================================= */
+// State machine
 const MODES = Object.freeze({
   BOOT: 'boot', QR: 'qr', PREP: 'prep', FACE: 'face',
   PROCESSING: 'processing', FEEDBACK: 'feedback', ERROR: 'error', UNAUTHORIZED: 'unauthorized',
@@ -200,9 +190,7 @@ function reducer(state, action) {
   }
 }
 
-/* =============================================================================
-   MAIN COMPONENT
-   ============================================================================= */
+// Main component
 const Scanner = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [showPermHelp, setShowPermHelp] = useState(false);
@@ -220,7 +208,7 @@ const Scanner = () => {
     };
   });
 
-  // ── Auth Gate ──
+  // Auth Gate
   const user = useMemo(() => {
     try { 
       const raw = localStorage.getItem('user');
@@ -245,7 +233,7 @@ const Scanner = () => {
     );
   }
 
-  // ── Refs (Mutable Detection State) ──
+  // Refs (Mutable Detection State)
   const qrRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -269,7 +257,7 @@ const Scanner = () => {
     lastUiUpdate: 0,
   }).current;
 
-  // ── Derived Styles ──
+  // Derived Styles
   const statusMeta = useMemo(() => {
     if (state.mode === MODES.FEEDBACK) {
       return state.feedback.type === 'success'
@@ -283,7 +271,7 @@ const Scanner = () => {
     return { color: 'blue', ring: '#3b82f6', pill: 'bg-blue-500/25 text-blue-200 border-blue-500/40' };
   }, [state.mode, state.feedback.type, state.matchScore, state.scanProgress]);
 
-  // ── 1. Pure Image Loader ──
+  // Pure Image Loader
   const loadImage = (src) => new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -307,7 +295,7 @@ const Scanner = () => {
     if ('matchScore' in updates) dispatch({ type: 'SET_MATCH', payload: updates.matchScore });
   }, [vault, dispatch]);
 
-  // ── 3. Camera Stop Controls ──
+  // Camera Stop Controls
   const stopFaceCamera = useCallback(() => {
     if (detectionRef.current) {
       clearInterval(detectionRef.current);
@@ -336,7 +324,7 @@ const Scanner = () => {
     }
   }, []);
 
-  // ── 4. Session Reset ──
+  // Session Reset
   const handleReset = useCallback(() => {
     stopFaceCamera();
     vault.processing = false;
@@ -448,7 +436,7 @@ const Scanner = () => {
     setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
   }, [vault, handleReset, dispatch]);
 
-  // ── 6. Face Detection Loop ──
+  // Face Detection Loop
   const runDetectionLoop = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -562,7 +550,7 @@ const Scanner = () => {
 
       dispatch({ type: 'SET_LIVENESS', payload: { blinkCount: vault.blinkCount, status: 'PASSED', ear, passed: true } });
 
-      // ── Lock-in progression ──
+      // Lock-in progression
       vault.lockFrames += 1;
       const progress = Math.min((vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100, 100);
       throttledDispatch({ scanProgress: progress, matchScore: currentScore });
@@ -582,7 +570,7 @@ const Scanner = () => {
     }, ENV.DETECTION_INTERVAL_MS);
   }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
-  // ── 7. Face Camera Starter ──
+  // Face Camera Starter
   const startFaceCamera = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
@@ -625,7 +613,7 @@ const Scanner = () => {
     }
   }, [runDetectionLoop, dispatch]);
 
-  // ── 8. QR Success Handler ──
+  // QR Success Handler
   const onQrSuccess = useCallback(async (text) => {
     if (vault.processing) return;
     vault.processing = true;
@@ -815,7 +803,7 @@ const Scanner = () => {
     }
   }, [onQrSuccess, dispatch]);
 
-  // ── 10. Mode Lifecycle ──
+  // Mode Lifecycle
   useEffect(() => {
     if (state.mode === MODES.QR && state.modelsLoaded) {
       startQr(false);
@@ -930,7 +918,7 @@ const Scanner = () => {
     };
   }, []);
 
-  // ── Debug Mode Trigger (hold top-left 3s) ──
+  // Debug Mode Trigger (hold top-left 3s)
   const handleDebugTouchStart = () => {
     debugHoldTimerRef.current = setTimeout(() => {
       dispatch({ type: 'TOGGLE_DEBUG' });
@@ -939,7 +927,7 @@ const Scanner = () => {
   };
   const handleDebugTouchEnd = () => clearTimeout(debugHoldTimerRef.current);
 
-  // ── RENDER ──
+  // RENDER
   return (
     <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
 
@@ -953,9 +941,7 @@ const Scanner = () => {
         onTouchEnd={handleDebugTouchEnd}
       />
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: QR
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: QR */}
       <div className={`absolute inset-0 transition-opacity duration-500 ${state.mode === MODES.QR ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'}`}>
         <div id="qr-reader" className="w-full h-full" />
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center overflow-hidden px-4">
@@ -975,9 +961,7 @@ const Scanner = () => {
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: CAMERA PROMPT (Mobile User Gesture Activation)
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: CAMERA PROMPT (Mobile User Gesture Activation) */}
       <AnimatePresence>
         {state.mode === MODES.CAMERA_PROMPT && (
           <motion.div
@@ -1029,9 +1013,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          PERMISSION INSTRUCTIONS MODAL (iOS & Android)
-          ═══════════════════════════════════════════════════════ */}
+      {/* PERMISSION INSTRUCTIONS MODAL (iOS & Android) */}
       <AnimatePresence>
         {showPermHelp && (
           <motion.div
@@ -1141,9 +1123,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: PREP
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: PREP */}
       <AnimatePresence>
         {state.mode === MODES.PREP && (
           <motion.div
@@ -1190,9 +1170,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: FACE
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: FACE */}
       <AnimatePresence>
         {state.mode === MODES.FACE && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-20 bg-black overflow-hidden">
@@ -1247,9 +1225,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: FEEDBACK
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: FEEDBACK */}
       <AnimatePresence>
         {state.mode === MODES.FEEDBACK && state.feedback.title && (
           <motion.div
@@ -1304,9 +1280,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODE: ERROR
-          ═══════════════════════════════════════════════════════ */}
+      {/* MODE: ERROR */}
       <AnimatePresence>
         {state.mode === MODES.ERROR && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
@@ -1325,9 +1299,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          TOP HUD (Global)
-          ═══════════════════════════════════════════════════════ */}
+      {/* Top hud (global) */}
       {state.mode !== MODES.FEEDBACK && state.mode !== MODES.ERROR && (
         <div className="absolute top-0 inset-x-0 z-30 bg-gradient-to-b from-black/80 to-transparent pb-10 pointer-events-none">
           <div className="flex justify-between items-start px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
@@ -1354,9 +1326,7 @@ const Scanner = () => {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════
-          BOTTOM CONTROLS (QR Mode)
-          ═══════════════════════════════════════════════════════ */}
+      {/* Bottom controls (qr mode) */}
       {state.mode === MODES.QR && (
         <div className="absolute bottom-0 inset-x-0 z-30 pb-[max(env(safe-area-inset-bottom,16px),16px)] flex justify-center gap-3 px-4">
           <button
@@ -1385,9 +1355,7 @@ const Scanner = () => {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════
-          INITIAL SYSTEM BOOT LOADER (Only runs on initial cold boot)
-          ═══════════════════════════════════════════════════════ */}
+      {/* Initial system boot loader (only runs on initial cold boot) */}
       <AnimatePresence>
         {state.mode === MODES.BOOT && (
           <motion.div
@@ -1414,9 +1382,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          NON-BLOCKING RUNTIME STATUS PILL (Zero Screen Flicker)
-          ═══════════════════════════════════════════════════════ */}
+      {/* Non-blocking runtime status pill (zero screen flicker) */}
       <AnimatePresence>
         {state.mode !== MODES.BOOT && state.loadingMsg && (
           <motion.div
@@ -1432,9 +1398,7 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══════════════════════════════════════════════════════
-          DEBUG PANEL
-          ═══════════════════════════════════════════════════════ */}
+      {/* Debug panel */}
       <AnimatePresence>
         {state.debugMode && (
           <motion.div initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} className="absolute top-20 left-4 z-[55] bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 w-64 text-[10px] font-mono text-slate-300">

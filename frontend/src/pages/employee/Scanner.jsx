@@ -28,7 +28,7 @@ const Scanner = () => {
 
     const REQUIRED_LOCK_FRAMES = 15; // Approx 1.5 seconds at 10fps
 
-    // ── 1. Helpers & Feedback ──
+    // Helpers and feedback
     const showFeedback = useCallback((type, title, message) => {
         setFeedback({ show: true, type, title, message });
     }, []);
@@ -49,7 +49,7 @@ const Scanner = () => {
         }
     }, []);
 
-    // ── 2. Capture & Submit ──
+    // Capture and submit attendance
     const captureAndSubmit = useCallback(() => {
         let imageBase64 = null;
         if (videoRef.current) {
@@ -84,7 +84,7 @@ const Scanner = () => {
         });
     }, [scannedData, showFeedback, resetState]);
 
-    // ── 3. Face Detection ──
+    // Face Detection
     const startFaceDetection = useCallback(() => {
         if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
         
@@ -150,7 +150,7 @@ const Scanner = () => {
         }, 100); // 10 fps
     }, [modelsLoaded, captureAndSubmit]);
 
-    // ── 4. QR Success ──
+    // QR Success
     const onScanSuccess = useCallback((decodedText) => {
         if (isProcessingRef.current) return;
         
@@ -161,7 +161,7 @@ const Scanner = () => {
         startFaceDetection();
     }, [startFaceDetection]);
 
-    // ── 5. Scanner Controls ──
+    // Scanner Controls
     const stopScanner = useCallback(() => {
         if (detectionInterval.current) clearInterval(detectionInterval.current);
         if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
