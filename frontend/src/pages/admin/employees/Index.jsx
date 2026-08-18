@@ -221,30 +221,38 @@ export default function Index() {
                     </AnimatePresence>
                 </motion.div>
 
-                {/* Pagination */}
-                {Math.ceil(filteredEmployees.length / itemsPerPage) > 1 && (
-                    <div className="px-4 sm:px-8 py-4 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                            Showing <span className="text-slate-800">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800">{Math.min(currentPage * itemsPerPage, filteredEmployees.length)}</span> of <span className="text-slate-800">{filteredEmployees.length}</span>
-                        </span>
-                        <div className="flex gap-2 w-full sm:w-auto">
-                            <button 
-                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                disabled={currentPage === 1}
-                                className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
-                            >
-                                <i className="ti ti-chevron-left text-lg" /> Prev
-                            </button>
-                            <button 
-                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredEmployees.length / itemsPerPage)))}
-                                disabled={currentPage === Math.ceil(filteredEmployees.length / itemsPerPage)}
-                                className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
-                            >
-                                Next <i className="ti ti-chevron-right text-lg" />
-                            </button>
-                        </div>
+                {/* PAGINATION BAR */}
+                <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-white/80 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold shadow-xs">
+                    <div>
+                        {filteredEmployees.length > 0 ? (
+                            <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, filteredEmployees.length)}</span> of <span className="text-slate-800 font-black">{filteredEmployees.length}</span></span>
+                        ) : (
+                            <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                        )}
                     </div>
-                )}
+
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                        >
+                            <i className="ti ti-chevron-left text-sm" /> Prev
+                        </button>
+                        
+                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                            {currentPage} / {Math.ceil(filteredEmployees.length / itemsPerPage) || 1}
+                        </span>
+
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredEmployees.length / itemsPerPage) || 1))}
+                            disabled={currentPage >= (Math.ceil(filteredEmployees.length / itemsPerPage) || 1)}
+                            className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                        >
+                            Next <i className="ti ti-chevron-right text-sm" />
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );

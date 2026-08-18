@@ -14,7 +14,7 @@ export default function AuditLogsIndex() {
     const [isLoading, setIsLoading] = useState(true);
 
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 15;
+    const itemsPerPage = 10;
 
     useEffect(() => {
         const fetchLogs = async () => {
@@ -76,6 +76,8 @@ export default function AuditLogsIndex() {
         return (actionStr.includes(q) || targetTypeStr.includes(q) || detailsStr.includes(q));
     });
 
+    const totalItems = filteredLogs.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     const containerVariants = {
@@ -247,7 +249,7 @@ export default function AuditLogsIndex() {
                     </div>
 
                     {/* DESKTOP TABLE VIEW */}
-                    <div className="hidden md:block overflow-x-auto touch-scroll">
+                    <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
@@ -338,30 +340,38 @@ export default function AuditLogsIndex() {
                         </table>
                     </div>
 
-                    {/* Pagination */}
-                    {Math.ceil(filteredLogs.length / itemsPerPage) > 1 && (
-                        <div className="px-4 sm:px-8 py-4 sm:py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-                            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                Showing <span className="text-slate-800">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800">{Math.min(currentPage * itemsPerPage, filteredLogs.length)}</span> of <span className="text-slate-800">{filteredLogs.length}</span>
-                            </span>
-                            <div className="flex gap-2 w-full sm:w-auto">
-                                <button 
-                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                    disabled={currentPage === 1}
-                                    className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
-                                >
-                                    <i className="ti ti-chevron-left text-lg" /> Prev
-                                </button>
-                                <button 
-                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredLogs.length / itemsPerPage)))}
-                                    disabled={currentPage === Math.ceil(filteredLogs.length / itemsPerPage)}
-                                    className="flex-1 sm:flex-none justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50 tap-active transition-all shadow-xs sm:shadow-sm flex items-center gap-2"
-                                >
-                                    Next <i className="ti ti-chevron-right text-lg" />
-                                </button>
-                            </div>
+                    {/* PAGINATION BAR */}
+                    <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                        <div>
+                            {totalItems > 0 ? (
+                                <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                            ) : (
+                                <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                            )}
                         </div>
-                    )}
+
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-chevron-left text-sm" /> Prev
+                            </button>
+                            
+                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                                {currentPage} / {totalPages}
+                            </span>
+
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage >= totalPages}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                Next <i className="ti ti-chevron-right text-sm" />
+                            </button>
+                        </div>
+                    </div>
                 </motion.div>
             </div>
         </div>

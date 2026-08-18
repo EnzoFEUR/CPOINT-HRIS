@@ -16,6 +16,13 @@ export default function DisciplinaryIndex() {
     const [reason, setReason] = useState('');
 
     const [filterStatus, setFilterStatus] = useState('All');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    const handleFilterChange = (status) => {
+        setFilterStatus(status);
+        setCurrentPage(1);
+    };
 
     const fetchData = async () => {
         try {
@@ -94,6 +101,10 @@ export default function DisciplinaryIndex() {
         return r.status === filterStatus;
     });
 
+    const totalItems = filteredRecords.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    const paginatedRecords = filteredRecords.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
     const activeCount = records.filter(r => r.status === 'Active').length;
 
     const containerVariants = {
@@ -165,7 +176,7 @@ export default function DisciplinaryIndex() {
                         {['All', 'Active', 'Resolved'].map(status => (
                             <button
                                 key={status}
-                                onClick={() => setFilterStatus(status)}
+                                onClick={() => handleFilterChange(status)}
                                 className={`px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap tap-active transition-all ${
                                     filterStatus === status 
                                     ? 'bg-slate-900 text-white shadow-md' 
@@ -183,7 +194,7 @@ export default function DisciplinaryIndex() {
                     {/* MOBILE CARDS VIEW (Phones) */}
                     <div className="block md:hidden divide-y divide-slate-100">
                         <AnimatePresence>
-                            {filteredRecords.length > 0 ? filteredRecords.map((record) => (
+                            {paginatedRecords.length > 0 ? paginatedRecords.map((record) => (
                                 <motion.div 
                                     variants={rowVariants} 
                                     layout 
@@ -221,7 +232,7 @@ export default function DisciplinaryIndex() {
 
                                         {record.status === 'Active' ? (
                                             <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-red-50 text-red-600 border border-red-200 flex items-center gap-1 shrink-0 animate-pulse">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Active
+                                                Unresolved
                                             </span>
                                         ) : (
                                             <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1 shrink-0">
@@ -230,10 +241,10 @@ export default function DisciplinaryIndex() {
                                         )}
                                     </div>
 
-                                    {/* Infraction details */}
+                                    {/* Infraction Details */}
                                     <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="font-black text-slate-800">{record.type}</span>
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-black text-slate-800 text-xs">{record.type}</span>
                                             <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center gap-1 ${
                                                 record.severity === 'High' ? 'bg-red-50 text-red-600 border-red-200' :
                                                 record.severity === 'Medium' ? 'bg-orange-50 text-orange-600 border-orange-200' :
@@ -244,7 +255,7 @@ export default function DisciplinaryIndex() {
                                                     record.severity === 'Medium' ? 'bg-orange-500' :
                                                     'bg-amber-500'
                                                 }`} />
-                                                {record.severity} Severity
+                                                {record.severity}
                                             </span>
                                         </div>
                                         {record.reason && (
@@ -284,7 +295,7 @@ export default function DisciplinaryIndex() {
                     </div>
 
                     {/* DESKTOP TABLE VIEW */}
-                    <div className="hidden md:block overflow-x-auto touch-scroll">
+                    <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
@@ -297,7 +308,7 @@ export default function DisciplinaryIndex() {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 <AnimatePresence>
-                                    {filteredRecords.length > 0 ? filteredRecords.map((record) => (
+                                    {paginatedRecords.length > 0 ? paginatedRecords.map((record) => (
                                         <motion.tr variants={rowVariants} layout key={record.id} className="hover:bg-red-50/30 transition-colors group">
                                             
                                             <td className="px-6 py-4">
@@ -397,6 +408,39 @@ export default function DisciplinaryIndex() {
                                 </AnimatePresence>
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* PAGINATION BAR */}
+                    <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                        <div>
+                            {totalItems > 0 ? (
+                                <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                            ) : (
+                                <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-chevron-left text-sm" /> Prev
+                            </button>
+                            
+                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                                {currentPage} / {totalPages}
+                            </span>
+
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage >= totalPages}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                Next <i className="ti ti-chevron-right text-sm" />
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
             </div>

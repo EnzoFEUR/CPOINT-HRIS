@@ -14,6 +14,9 @@ export default function PayrollIndex() {
     const years = Array.from({ length: 3 }, (_, i) => currentYearNum - 2 + i);
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const itemsPerPage = 10;
+
     const handleFilterSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -23,6 +26,7 @@ export default function PayrollIndex() {
         if (month) params.set('month', month);
         if (year) params.set('year', year);
         setSearchParams(params);
+        setCurrentPage(1);
     };
 
     const fetchPayrolls = async () => {
@@ -50,6 +54,10 @@ export default function PayrollIndex() {
         const roleStr = (p.employees?.role || '').toLowerCase();
         return roleStr !== 'admin' && roleStr !== 'security';
     });
+
+    const totalItems = filteredPayrolls.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    const paginatedPayrolls = filteredPayrolls.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     // Animations
     const containerVariants = {
@@ -148,13 +156,14 @@ export default function PayrollIndex() {
                     {/* MOBILE CARDS VIEW (Phones) */}
                     <div className="block md:hidden divide-y divide-slate-100">
                         <AnimatePresence>
-                            {filteredPayrolls.length > 0 ? filteredPayrolls.map((payroll) => (
+                            {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => (
                                 <motion.div 
                                     variants={rowVariants} 
+                                    layout 
                                     key={`mobile-${payroll.id}`} 
-                                    className="p-4 space-y-3.5 hover:bg-emerald-50/20 transition-colors"
+                                    className="p-4 space-y-3 hover:bg-emerald-50/20 transition-colors"
                                 >
-                                    {/* Header: Employee + Period */}
+                                    {/* Header: Employee + Status */}
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-center gap-3 min-w-0">
                                             <div className="relative h-10 w-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-xs bg-emerald-50 flex items-center justify-center">
@@ -162,12 +171,12 @@ export default function PayrollIndex() {
                                                     <img 
                                                         src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`}
                                                         onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                                        alt=""
+                                                        alt={payroll.employees?.first_name || 'Employee'}
                                                         className="w-full h-full object-cover"
                                                     />
                                                 ) : null}
                                                 <div 
-                                                    className="w-full h-full rounded-xl bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-sm shadow-inner"
+                                                    className="w-full h-full rounded-xl bg-emerald-50 flex items-center justify-center font-black text-emerald-600 text-xs shadow-inner"
                                                     style={{ display: (payroll.employees?.company_id && payroll.employees?.id) ? 'none' : 'flex' }}
                                                 >
                                                     {(payroll.employees?.first_name || 'U').charAt(0)}{(payroll.employees?.last_name || 'S').charAt(0)}
@@ -234,7 +243,7 @@ export default function PayrollIndex() {
                     </div>
 
                     {/* DESKTOP TABLE VIEW */}
-                    <div className="hidden md:block overflow-x-auto touch-scroll">
+                    <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>
@@ -248,7 +257,7 @@ export default function PayrollIndex() {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 <AnimatePresence>
-                                    {filteredPayrolls.length > 0 ? filteredPayrolls.map((payroll) => (
+                                    {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => (
                                         <motion.tr variants={rowVariants} key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-4">
@@ -333,6 +342,39 @@ export default function PayrollIndex() {
                                 </AnimatePresence>
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* PAGINATION BAR */}
+                    <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                        <div>
+                            {totalItems > 0 ? (
+                                <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                            ) : (
+                                <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-chevron-left text-sm" /> Prev
+                            </button>
+                            
+                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                                {currentPage} / {totalPages}
+                            </span>
+
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage >= totalPages}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                Next <i className="ti ti-chevron-right text-sm" />
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
             </div>

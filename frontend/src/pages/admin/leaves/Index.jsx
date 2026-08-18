@@ -7,6 +7,13 @@ import { fetchWithAuth } from '../../../utils/api';
 export default function LeavesIndex() {
     const queryClient = useQueryClient();
     const [filterStatus, setFilterStatus] = useState('All');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    const handleFilterChange = (status) => {
+        setFilterStatus(status);
+        setCurrentPage(1);
+    };
 
     const fetchLeaves = async () => {
         const res = await fetchWithAuth('/api/leaves');
@@ -55,6 +62,10 @@ export default function LeavesIndex() {
         if (filterStatus === 'Pending') return l.status === 'New';
         return l.status === filterStatus;
     });
+
+    const totalItems = filteredLeaves.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    const paginatedLeaves = filteredLeaves.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -106,7 +117,7 @@ export default function LeavesIndex() {
                     {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
                         <button
                             key={status}
-                            onClick={() => setFilterStatus(status)}
+                            onClick={() => handleFilterChange(status)}
                             className={`px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-bold tap-active transition-all whitespace-nowrap ${
                                 filterStatus === status 
                                 ? 'bg-slate-900 text-white shadow-xs' 
@@ -119,13 +130,13 @@ export default function LeavesIndex() {
                 </div>
             </motion.div>
 
-            {/* TABLE CONTAINER            {/* Leave table & Mobile Cards */}
+            {/* TABLE CONTAINER */}
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
                 
                 {/* MOBILE CARDS VIEW (Phones) */}
                 <div className="block md:hidden divide-y divide-slate-100">
                     <AnimatePresence>
-                        {filteredLeaves.length > 0 ? filteredLeaves.map((leave) => {
+                        {paginatedLeaves.length > 0 ? paginatedLeaves.map((leave) => {
                             const daysCount = Math.ceil((new Date(leave.end_date) - new Date(leave.start_date)) / (1000 * 60 * 60 * 24)) + 1;
 
                             return (
@@ -233,7 +244,7 @@ export default function LeavesIndex() {
                 </div>
 
                 {/* DESKTOP TABLE VIEW */}
-                <div className="hidden md:block overflow-x-auto touch-scroll">
+                <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                             <tr>
@@ -246,7 +257,7 @@ export default function LeavesIndex() {
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             <AnimatePresence>
-                                {filteredLeaves.length > 0 ? filteredLeaves.map((leave) => {
+                                {paginatedLeaves.length > 0 ? paginatedLeaves.map((leave) => {
                                     const daysCount = Math.ceil((new Date(leave.end_date) - new Date(leave.start_date)) / (1000 * 60 * 60 * 24)) + 1;
                                     
                                     return (
@@ -363,6 +374,39 @@ export default function LeavesIndex() {
                             </AnimatePresence>
                         </tbody>
                     </table>
+                </div>
+
+                {/* PAGINATION BAR */}
+                <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                    <div>
+                        {totalItems > 0 ? (
+                            <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                        ) : (
+                            <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                        >
+                            <i className="ti ti-chevron-left text-sm" /> Prev
+                        </button>
+                        
+                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                            {currentPage} / {totalPages}
+                        </span>
+
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage >= totalPages}
+                            className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                        >
+                            Next <i className="ti ti-chevron-right text-sm" />
+                        </button>
+                    </div>
                 </div>
             </motion.div>
             
