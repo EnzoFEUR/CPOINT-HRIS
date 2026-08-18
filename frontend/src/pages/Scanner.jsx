@@ -10,7 +10,7 @@ import { supabase } from '../supabaseClient';
 // Scanner configuration
 const ENV = {
   MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
-  API_BASE: import.meta.env?.VITE_API_BASE || 'http://localhost:5000/api',
+  API_BASE: import.meta.env?.VITE_API_BASE || '/api',
   SCAN_TIMEOUT_MS: parseInt(import.meta.env?.VITE_SCAN_TIMEOUT_MS, 10) || 30_000,
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
   FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance (lower = stricter)
@@ -396,7 +396,7 @@ const Scanner = () => {
 
     try {
       // 1. Resolve company_id -> employee record via secure backend proxy
-      const res = await fetch(`${ENV.API_BASE}/attendance/verify-qr/${companyId}`);
+      const res = await fetchWithAuth(`/api/attendance/verify-qr/${companyId}`);
       const data = await res.json();
       
       if (!res.ok || data.status !== 'success') {

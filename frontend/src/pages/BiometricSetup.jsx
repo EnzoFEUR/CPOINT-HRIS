@@ -10,7 +10,7 @@ import { compressImage } from '../utils/imageCompress';
 // Biometric scanner config
 const ENV = {
   MODEL_URL: import.meta.env?.VITE_MODEL_URL || 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/',
-  API_BASE: import.meta.env?.VITE_API_BASE || 'http://localhost:5000/api',
+  API_BASE: import.meta.env?.VITE_API_BASE || '/api',
   ENROLL_TIMEOUT_MS: parseInt(import.meta.env?.VITE_ENROLL_TIMEOUT_MS, 10) || 120_000,
   HOLD_FRAMES: 10,               // ~1.3s hold per phase at 130ms interval
   CALIBRATION_FRAMES: 15,
@@ -338,28 +338,48 @@ export default function BiometricSetup() {
         dispatch({ type: 'SET_MODELS_LOADED' });
         dispatch({ type: 'SET_STATUS', payload: 'Requesting optical sensor...' });
 
+        let stream;
         const isPortrait = window.innerHeight > window.innerWidth;
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: 'user', 
-            width: { ideal: isPortrait ? 720 : 1280 }, 
-            height: { ideal: isPortrait ? 1280 : 720 } 
-          }
-        });
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              facingMode: { ideal: 'user' }, 
+              width: { ideal: isPortrait ? 720 : 1280 }, 
+              height: { ideal: isPortrait ? 1280 : 720 } 
+            },
+            audio: false
+          });
+        } catch (camErr) {
+          console.warn('[BOOT] Retrying with generic camera constraints:', camErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+          });
+        }
+
         if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
 
         streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
+          videoRef.current.setAttribute('webkit-playsinline', 'true');
+          videoRef.current.play().catch(e => console.warn('[Video] autoplay:', e));
+        }
         dispatch({ type: 'SET_CAMERA_READY' });
         dispatch({ type: 'SET_MODE', payload: MODES.READY });
-        dispatch({ type: 'SET_STATUS', payload: 'Press Start Enrollment when ready' });
+        dispatch({ type: 'SET_STATUS', payload: 'Press Start Registration when ready' });
 
         if ('wakeLock' in navigator) {
           navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {});
         }
       } catch (err) {
         console.error('[BOOT]', err);
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Camera or AI models unavailable.', code: 'BOOT_FAILURE' } });
+        const isPermissionDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+        const msg = isPermissionDenied 
+          ? 'Camera permission denied. Please allow camera access in your browser settings.'
+          : 'Camera or AI models unavailable.';
+        dispatch({ type: 'SET_ERROR', payload: { message: msg, code: 'BOOT_FAILURE' } });
       }
     };
 
