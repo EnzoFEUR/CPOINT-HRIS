@@ -8,7 +8,7 @@ export default function DisciplinaryIndex() {
     const [employees, setEmployees] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    
+
     // Form State
     const [employeeId, setEmployeeId] = useState('');
     const [type, setType] = useState('Warning');
@@ -23,10 +23,10 @@ export default function DisciplinaryIndex() {
                 fetchWithAuth('/api/disciplinary'),
                 fetchWithAuth('/api/employees')
             ]);
-            
+
             const recData = await recRes.json();
             const empData = await empRes.json();
-            
+
             setRecords(Array.isArray(recData) ? recData : (recData?.data || []));
             if (empData.success && Array.isArray(empData.data)) {
                 setEmployees(empData.data);
@@ -50,7 +50,7 @@ export default function DisciplinaryIndex() {
         try {
             const user = JSON.parse(localStorage.getItem('user'));
             const payload = { employee_id: employeeId, type, severity, reason, admin_id: user?.id };
-            
+
             const res = await fetchWithAuth('/api/disciplinary', {
                 method: 'POST',
                 body: JSON.stringify(payload)
@@ -100,7 +100,7 @@ export default function DisciplinaryIndex() {
         hidden: { opacity: 0 },
         visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
     };
-    
+
     const rowVariants = {
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
@@ -117,17 +117,13 @@ export default function DisciplinaryIndex() {
 
     return (
         <div className="max-w-7xl mx-auto pb-16 font-sans">
-            
-            
-            
-            
+
+
+
+
 
             <div className="space-y-8">
-                
-                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    
-                    
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
@@ -139,9 +135,8 @@ export default function DisciplinaryIndex() {
                             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Disciplinary Logs</h1>
                             <p className="text-rose-100/70 font-medium mt-2 text-lg max-w-xl">Track violations, issue warnings, and maintain facility security records.</p>
                         </div>
-                        
+
                         <div className="flex items-center gap-4">
-                            {/* Summary Widget */}
                             <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg flex items-center gap-4 hidden sm:flex">
                                 <div className="text-right">
                                     <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Active Cases</p>
@@ -151,8 +146,7 @@ export default function DisciplinaryIndex() {
                                     <i className={`ti ti-alert-triangle text-2xl ${activeCount > 0 ? 'animate-pulse' : ''}`} />
                                 </div>
                             </div>
-                            
-                            {/* Action button */}
+
                             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                                 <button onClick={() => setShowModal(true)} className="relative flex items-center gap-3 px-8 py-5 bg-rose-500 rounded-lg shadow-sm overflow-hidden group/btn">
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
@@ -166,18 +160,16 @@ export default function DisciplinaryIndex() {
                     </div>
                 </motion.div>
 
-                {/* 2. FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
                     <div className="flex gap-1">
                         {['All', 'Active', 'Resolved'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-6 py-3 rounded-md text-sm font-bold transition-all ${
-                                    filterStatus === status 
-                                    ? 'bg-slate-900 text-white shadow-md' 
-                                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                                }`}
+                                className={`px-6 py-3 rounded-md text-sm font-bold transition-all ${filterStatus === status
+                                        ? 'bg-slate-900 text-white shadow-md'
+                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                                    }`}
                             >
                                 {status}
                             </button>
@@ -185,7 +177,6 @@ export default function DisciplinaryIndex() {
                     </div>
                 </motion.div>
 
-                {/* 3. DATA TABLE */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
@@ -202,11 +193,24 @@ export default function DisciplinaryIndex() {
                                 <AnimatePresence>
                                     {filteredRecords.length > 0 ? filteredRecords.map((record) => (
                                         <motion.tr variants={rowVariants} layout key={record.id} className="hover:bg-red-50/30 transition-colors group">
-                                            
+
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 rounded-lg bg-red-50 flex items-center justify-center font-black text-red-600 text-lg shadow-inner border border-red-100 shrink-0">
-                                                        {record.employee_name.charAt(0)}
+                                                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-red-50 flex items-center justify-center">
+                                                        {record.company_id && record.employee_id ? (
+                                                            <img
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${record.company_id}/${record.employee_id}.jpg`}
+                                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                                alt={record.employee_name}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : null}
+                                                        <div
+                                                            className="w-full h-full rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-base shadow-inner"
+                                                            style={{ display: (record.company_id && record.employee_id) ? 'none' : 'flex' }}
+                                                        >
+                                                            {record.employee_name ? record.employee_name.charAt(0) : '?'}
+                                                        </div>
                                                     </div>
                                                     <div>
                                                         <p className="text-base font-black text-slate-800 group-hover:text-red-600 transition-colors">
@@ -230,16 +234,14 @@ export default function DisciplinaryIndex() {
                                             </td>
 
                                             <td className="px-8 py-5 text-center">
-                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center gap-2 mx-auto ${
-                                                    record.severity === 'High' ? 'bg-red-50 text-red-600 border-red-200' :
-                                                    record.severity === 'Medium' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                                                    'bg-amber-50 text-amber-600 border-amber-200'
-                                                }`}>
-                                                    <span className={`w-2 h-2 rounded-full ${
-                                                        record.severity === 'High' ? 'bg-red-500' :
-                                                        record.severity === 'Medium' ? 'bg-orange-500' :
-                                                        'bg-amber-500'
-                                                    }`} />
+                                                <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center gap-2 mx-auto ${record.severity === 'High' ? 'bg-red-50 text-red-600 border-red-200' :
+                                                        record.severity === 'Medium' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                                                            'bg-amber-50 text-amber-600 border-amber-200'
+                                                    }`}>
+                                                    <span className={`w-2 h-2 rounded-full ${record.severity === 'High' ? 'bg-red-500' :
+                                                            record.severity === 'Medium' ? 'bg-orange-500' :
+                                                                'bg-amber-500'
+                                                        }`} />
                                                     {record.severity}
                                                 </span>
                                             </td>
@@ -258,8 +260,8 @@ export default function DisciplinaryIndex() {
 
                                             <td className="px-8 py-5 text-right">
                                                 {record.status === 'Active' ? (
-                                                    <button 
-                                                        onClick={() => handleResolve(record.id)} 
+                                                    <button
+                                                        onClick={() => handleResolve(record.id)}
                                                         className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 font-bold text-xs uppercase tracking-widest rounded-md hover:bg-emerald-500 hover:text-white transition-all border border-slate-200 hover:border-emerald-500 shadow-sm opacity-100 lg:opacity-50 group-hover:opacity-100 focus:opacity-100 active:scale-95"
                                                     >
                                                         <i className="ti ti-check text-lg" /> Resolve
@@ -295,12 +297,12 @@ export default function DisciplinaryIndex() {
             <AnimatePresence>
                 {showModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <motion.div 
+                        <motion.div
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
                             onClick={() => setShowModal(false)}
                         />
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.9, y: 20, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.9, y: 20, opacity: 0 }}
@@ -322,7 +324,7 @@ export default function DisciplinaryIndex() {
                             <form onSubmit={handleSubmit} className="space-y-5">
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Employee</label>
-                                    <select 
+                                    <select
                                         required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
                                         className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                     >
@@ -332,11 +334,11 @@ export default function DisciplinaryIndex() {
                                         ))}
                                     </select>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Type</label>
-                                        <select 
+                                        <select
                                             value={type} onChange={(e) => setType(e.target.value)}
                                             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                         >
@@ -348,7 +350,7 @@ export default function DisciplinaryIndex() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Severity</label>
-                                        <select 
+                                        <select
                                             value={severity} onChange={(e) => setSeverity(e.target.value)}
                                             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all appearance-none"
                                         >
@@ -358,10 +360,10 @@ export default function DisciplinaryIndex() {
                                         </select>
                                     </div>
                                 </div>
-                                
+
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Detailed Reason</label>
-                                    <textarea 
+                                    <textarea
                                         required rows="3" value={reason} onChange={(e) => setReason(e.target.value)}
                                         className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all resize-none placeholder:font-medium placeholder:text-slate-400"
                                         placeholder="Describe the incident..."

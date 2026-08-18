@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
@@ -22,6 +24,8 @@ const formatReadableDate = (dateStr) => {
 };
 
 const PayrollCreate = () => {
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [employees, setEmployees] = useState([]);
     const [formData, setFormData] = useState({
         employee_id: '',
@@ -38,16 +42,20 @@ const PayrollCreate = () => {
     const [isCalculating, setIsCalculating] = useState(false);
 
     useEffect(() => {
-        // Fetch active employees
         fetchWithAuth('/api/employees')
             .then(res => res.json())
             .then(result => {
                 const list = Array.isArray(result) ? result : (result.data || []);
-                setEmployees(list);
+                // Admin and security accounts aren't paid through this
+                // payroll flow, so they shouldn't appear in the picker.
+                const payableList = list.filter(e => {
+                    const roleStr = (e.role || '').toLowerCase();
+                    return roleStr !== 'admin' && roleStr !== 'security';
+                });
+                setEmployees(payableList);
             })
-            .catch(err => console.error(err));
+            .catch(err => console.error('Failed to load employees:', err));
 
-        // Inject modern, readable Flatpickr theme
         const style = document.createElement('style');
         style.id = 'custom-payroll-flatpickr-style';
         style.innerHTML = `
@@ -135,7 +143,6 @@ const PayrollCreate = () => {
         };
     }, []);
 
-    // Set default to current 1st or 2nd half on mount
     useEffect(() => {
         applyCutoffPreset('current_1st');
     }, []);
@@ -152,10 +159,10 @@ const PayrollCreate = () => {
             end = new Date(year, month, 15);
         } else if (presetKey === 'current_2nd') {
             start = new Date(year, month, 16);
-            end = new Date(year, month + 1, 0); // Last day of current month
+            end = new Date(year, month + 1, 0);
         } else if (presetKey === 'prev_2nd') {
             start = new Date(year, month - 1, 16);
-            end = new Date(year, month, 0); // Last day of previous month
+            end = new Date(year, month, 0);
         } else if (presetKey === 'full_month') {
             start = new Date(year, month, 1);
             end = new Date(year, month + 1, 0);
@@ -170,7 +177,6 @@ const PayrollCreate = () => {
         }
     };
 
-    // Calculate days between start and end
     const periodDaysCount = useMemo(() => {
         if (!formData.period_start || !formData.period_end) return 0;
         const s = new Date(formData.period_start + 'T00:00:00');
@@ -190,54 +196,59 @@ const PayrollCreate = () => {
                 setIsCalculating(true);
                 try {
                     const res = await fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`);
-                    const responseData = await res.json();
+                    const rawLogs = await res.json();
 
-                    const logs = responseData.data ? responseData.data : responseData;
+                    // FIX: /api/attendance can return either a raw array or a
+                    // wrapped { data: [...] } object (same as /api/employees
+                    // above). The old code only handled the raw-array case,
+                    // so a wrapped response silently produced an empty list
+                    // and days_worked/overtime_hours stayed at 0.
+                    const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
 
-                    const dole_divisor = 21.75;
-                    const grace_period = 15;
+                    const doleDivisor = 21.75;
+                    const gracePeriodMins = 15;
 
                     const salary = selectedEmployee ? parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) : 0;
-
-                    const dailyRate = salary / dole_divisor;
+                    const dailyRate = salary / doleDivisor;
                     const hourlyRate = dailyRate / 8;
                     const perMinuteRate = hourlyRate / 60;
 
-                    let days_worked = 0;
+                    let daysWorked = 0;
                     let totalOvertime = 0;
                     let adjustments = 0;
 
-                    const completedLogs = Array.isArray(logs) ? logs.filter(l => l.time_out) : [];
-                    days_worked = completedLogs.length;
+                    const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out) : [];
+                    daysWorked = completedLogs.length;
 
                     completedLogs.forEach(log => {
                         const timeIn = new Date(log.time_in);
                         const timeOut = new Date(log.time_out);
+                        const scheduleStart = new Date((log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : '')) + 'T08:00:00');
 
-                        const scheduleStart = new Date(log.date + 'T08:00:00');
-
-                        if (timeIn > scheduleStart) {
+                        if (!isNaN(timeIn.getTime()) && timeIn > scheduleStart) {
                             const minutes = Math.floor((timeIn - scheduleStart) / 60000);
-                            if (minutes > grace_period) {
+                            if (minutes > gracePeriodMins) {
                                 adjustments += (minutes * perMinuteRate);
                             }
                         }
 
-                        const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
-                        if (hoursWorked > 9) {
-                            totalOvertime += (hoursWorked - 9);
+                        if (!isNaN(timeIn.getTime()) && !isNaN(timeOut.getTime())) {
+                            const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+                            if (hoursWorked > 9) {
+                                totalOvertime += (hoursWorked - 9);
+                            }
                         }
                     });
 
                     setFormData(prev => ({
                         ...prev,
-                        days_worked: days_worked,
+                        days_worked: daysWorked,
                         overtime_hours: parseFloat(totalOvertime.toFixed(2)),
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : ''
                     }));
 
                 } catch (err) {
-                    console.error("Calculation error:", err);
+                    console.error('Calculation error:', err);
                 } finally {
                     setIsCalculating(false);
                 }
@@ -269,20 +280,40 @@ const PayrollCreate = () => {
             const data = await response.json();
             if (!response.ok || data.error) {
                 setError(data.error || 'Failed to compute payroll');
+                setIsSubmitting(false);
             } else {
                 setSuccess('Payroll Computed & Saved to Ledger!');
-                // Reset form to defaults
-                setFormData(prev => ({
-                    ...prev,
-                    employee_id: '',
-                    days_worked: 0,
-                    overtime_hours: 0,
-                    late_deductions: ''
-                }));
+
+                const newRecord = data.data || data.payroll || data;
+
+                // If the response includes enough shape to render a row
+                // (an id and the linked employee), prepend it to every
+                // cached payroll list immediately — the new payslip shows
+                // up on PayrollIndex before the network refetch even
+                // finishes. If the response shape is unfamiliar, skip the
+                // optimistic prepend and fall back to a plain invalidate.
+                if (newRecord && newRecord.id && newRecord.employees) {
+                    queryClient.setQueriesData({ queryKey: ['adminPayrolls'] }, (old) => {
+                        if (!Array.isArray(old)) return old;
+                        return [newRecord, ...old];
+                    });
+                }
+
+                // Kick off the background refetch right away rather than
+                // waiting for the navigation delay below — by the time the
+                // list renders, it's either already correct (optimistic
+                // prepend) or the refetch has had a head start.
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
+
+                // Still give the user a moment to see the success message
+                // before navigating — this delay no longer blocks the data
+                // from being ready.
+                setTimeout(() => {
+                    navigate('/admin/payroll');
+                }, 900);
             }
         } catch (err) {
             setError('Connection error. Please check your network.');
-        } finally {
             setIsSubmitting(false);
         }
     };
@@ -291,7 +322,6 @@ const PayrollCreate = () => {
         <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
             <div className="bg-white p-6 sm:p-10 rounded-[2rem] shadow-sm border border-slate-100">
 
-                {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
                     <div className="h-14 w-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-500/20">
                         <i className="ti ti-calculator"></i>
@@ -302,7 +332,6 @@ const PayrollCreate = () => {
                     </div>
                 </div>
 
-                {/* Alerts */}
                 {error && (
                     <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
                         <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-xl"></i>
@@ -324,8 +353,6 @@ const PayrollCreate = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
-
-                    {/* SECTION 1: EMPLOYEE SELECTION */}
                     <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs">
@@ -354,7 +381,6 @@ const PayrollCreate = () => {
                             })}
                         </select>
 
-                        {/* Selected Employee Quick Rate Breakdown */}
                         {selectedEmployee && (
                             <motion.div
                                 initial={{ opacity: 0, y: 10 }}
@@ -389,7 +415,6 @@ const PayrollCreate = () => {
                         )}
                     </div>
 
-                    {/* SECTION 2: HUMAN-FRIENDLY PAYROLL PERIOD & CALENDAR */}
                     <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100 space-y-5">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
@@ -402,7 +427,6 @@ const PayrollCreate = () => {
                                 </div>
                             </div>
 
-                            {/* Preset Buttons */}
                             <div className="flex flex-wrap gap-1.5 pt-1 sm:pt-0">
                                 <button
                                     type="button"
@@ -428,10 +452,7 @@ const PayrollCreate = () => {
                             </div>
                         </div>
 
-                        {/* Visual Date Picker Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                            {/* Start Date Card */}
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -461,7 +482,6 @@ const PayrollCreate = () => {
                                 />
                             </div>
 
-                            {/* End Date Card */}
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -492,7 +512,6 @@ const PayrollCreate = () => {
                             </div>
                         </div>
 
-                        {/* Period Summary Indicator */}
                         {periodDaysCount > 0 && (
                             <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 px-4 py-2.5 rounded-xl text-xs text-blue-900 font-medium">
                                 <div className="flex items-center gap-2">
@@ -508,7 +527,6 @@ const PayrollCreate = () => {
                         )}
                     </div>
 
-                    {/* SECTION 3: ATTENDANCE & COMPUTED DATA */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -560,7 +578,6 @@ const PayrollCreate = () => {
                         </div>
                     </div>
 
-                    {/* SECTION 4: ADJUSTMENTS & DEDUCTIONS */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold shadow-xs">
@@ -594,7 +611,6 @@ const PayrollCreate = () => {
                         </div>
                     </div>
 
-                    {/* DOLE Note Banner */}
                     <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-3">
                         <i className="ti ti-shield-check text-blue-600 text-xl mt-0.5"></i>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -602,7 +618,6 @@ const PayrollCreate = () => {
                         </p>
                     </div>
 
-                    {/* SUBMIT BUTTON */}
                     <div className="pt-4">
                         <button
                             type="submit"

@@ -231,8 +231,9 @@ const getNotificationAvatar = (notif) => {
   let initials = 'CP';
   let avatarSrc = notif.sender_avatar || null;
 
-  if (!avatarSrc && notif.company_id && notif.sender_id) {
-    avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${notif.sender_id}.jpg`;
+  if (!avatarSrc && notif.company_id && (notif.sender_id || notif.target)) {
+    const id = notif.sender_id || notif.target;
+    avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${id}.jpg`;
   }
 
   if (notif.sender_name) {
@@ -287,9 +288,11 @@ function MainLayout({ children }) {
   const searchIndex = [
     { label: 'Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
+    { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
     { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
     { label: 'Leave Approvals', route: '/admin/leaves', icon: 'ti-plane-departure' },
+    { label: 'Disciplinary & Notices', route: '/admin/disciplinary', icon: 'ti-alert-triangle' },
     { label: 'Audit Trail', route: '/admin/audit-logs', icon: 'ti-history' },
     { label: 'Attendance Daily Logs', route: '/admin/attendance', icon: 'ti-list-details' },
     { label: 'My Profile', route: '/profile', icon: 'ti-user-circle' },

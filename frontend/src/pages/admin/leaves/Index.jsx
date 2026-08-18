@@ -83,11 +83,7 @@ export default function LeavesIndex() {
             
 
             <div className="space-y-8">
-                
-                {/* Page header */}
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    
-                    
                     <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
                             <div className="flex items-center gap-3 mb-4">
@@ -100,7 +96,6 @@ export default function LeavesIndex() {
                             <p className="text-purple-100/70 font-medium mt-2 text-lg max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
                         </div>
                         
-                        {/* Summary Widget */}
                         <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
                             <div className="text-right">
                                 <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
@@ -113,7 +108,6 @@ export default function LeavesIndex() {
                     </div>
                 </motion.div>
 
-                {/* 2. FILTER BAR */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
                     <div className="flex gap-1">
                         {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
@@ -132,7 +126,6 @@ export default function LeavesIndex() {
                     </div>
                 </motion.div>
 
-                {/* 3. DATA TABLE */}
                 <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
                     <div className="overflow-x-auto overflow-y-hidden">
                         <table className="w-full text-left border-collapse">
@@ -155,8 +148,21 @@ export default function LeavesIndex() {
                                                 
                                                 <td className="px-8 py-5">
                                                     <div className="flex items-center gap-4">
-                                                        <div className="h-12 w-12 rounded-lg bg-purple-50 flex items-center justify-center font-black text-purple-600 text-lg shadow-inner border border-purple-100 shrink-0">
-                                                            {leave.employees?.first_name ? leave.employees.first_name.charAt(0) : '?'}
+                                                        <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-purple-50 flex items-center justify-center">
+                                                            {leave.employees?.company_id && leave.employees?.id ? (
+                                                                <img 
+                                                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${leave.employees.company_id}/${leave.employees.id}.jpg`}
+                                                                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                                    alt={leave.employees.first_name}
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                            ) : null}
+                                                            <div 
+                                                                className="w-full h-full rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 font-black text-base shadow-inner"
+                                                                style={{ display: (leave.employees?.company_id && leave.employees?.id) ? 'none' : 'flex' }}
+                                                            >
+                                                                {leave.employees?.first_name ? leave.employees.first_name.charAt(0) : '?'}
+                                                            </div>
                                                         </div>
                                                         <div>
                                                             <p className="text-base font-black text-slate-800 group-hover:text-purple-600 transition-colors">

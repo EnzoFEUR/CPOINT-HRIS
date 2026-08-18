@@ -40,12 +40,26 @@ router.post('/assign', async (req, res) => {
             
         if (error) throw error;
 
-        // Send notification to employee
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+        const avatarUrl = emp?.company_id && emp?.id 
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+            : null;
+
         await createNotification({
             target: employee_id,
-            title: 'Shift Assignment Updated',
-            text: `Your shift has been updated to: ${shift}`,
-            type: 'system'
+            title: `Shift Schedule: ${shift}`,
+            text: `Shift schedule for ${empName} updated to ${shift}.`,
+            type: 'shift',
+            sender_id: emp?.id,
+            company_id: emp?.company_id,
+            sender_name: empName,
+            sender_avatar: avatarUrl
         });
 
         // Optional Audit Logging

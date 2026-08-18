@@ -33,8 +33,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
         data.monthly_salary = parseFloat(data.monthly_salary);
 
         setIsSubmitting(true);
-        
-        // Artificial delay for smooth UX
         await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
@@ -45,7 +43,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
             const result = await res.json();
             
             if (result.success) {
-                // Instantly inject the new employee into the local cache
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? [result.data, ...oldData] : [result.data];
                 });
@@ -69,9 +66,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 pb-16 font-sans relative">
-            
-            
-            {/* TOP NAVIGATION */}
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                 <Link to="/admin/employees" className="px-5 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm border border-slate-200 flex items-center gap-2">
                     <i className="ti ti-arrow-left text-lg" /> Back to Directory

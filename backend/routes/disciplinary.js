@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
     try {
-        let query = supabase.from('disciplinary_logs').select('*, employees:employee_id(first_name, last_name, department)').order('created_at', { ascending: false });
+        let query = supabase.from('disciplinary_logs').select('*, employees:employee_id(id, company_id, first_name, last_name, department)').order('created_at', { ascending: false });
 
         if (req.query.employee_id) {
             query = query.eq('employee_id', req.query.employee_id);
@@ -19,7 +19,9 @@ router.get('/', async (req, res) => {
         const enrichedRecords = records.map(record => ({
             ...record,
             employee_name: record.employees ? `${record.employees.first_name} ${record.employees.last_name}` : 'Unknown',
-            department: record.employees?.department || 'Unknown'
+            department: record.employees?.department || 'Unknown',
+            company_id: record.employees?.company_id || null,
+            employee_id: record.employees?.id || record.employee_id
         }));
 
         res.json(enrichedRecords);
@@ -49,12 +51,26 @@ router.post('/', async (req, res) => {
 
         if (error) throw error;
 
-        // Send notification to employee
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Personnel';
+        const avatarUrl = emp?.company_id && emp?.id 
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+            : null;
+
         await createNotification({
             target: employee_id,
-            title: 'New HR Notice',
-            text: `You have a new disciplinary notice: ${type}`,
-            type: 'system'
+            title: `Disciplinary Notice: ${type}`,
+            text: `Notice issued for ${empName}: ${severity} severity (${reason}).`,
+            type: 'disciplinary',
+            sender_id: emp?.id,
+            company_id: emp?.company_id,
+            sender_name: empName,
+            sender_avatar: avatarUrl
         });
 
         if (req.user && req.user.role === 'admin') {
