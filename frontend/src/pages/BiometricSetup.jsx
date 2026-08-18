@@ -1,6 +1,6 @@
 import React, { useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -763,7 +763,11 @@ export default function BiometricSetup() {
   const activeColor = activePhase?.color || '#3b82f6';
   const doneCount = state.captured.length;
 
-  if (!user) return null;
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: '/biometric-setup' }} />;
+  }
+
+  const displayName = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Authorized Staff';
 
   return (
     <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center p-4 relative overflow-hidden font-sans select-none">
@@ -786,7 +790,7 @@ export default function BiometricSetup() {
           </div>
           <h2 className="text-3xl font-black text-white tracking-tight">Biometric Registration</h2>
           <p className="text-slate-500 mt-1.5 text-sm">
-            Identity: <span className="font-bold text-slate-300">{user.name}</span>
+            Identity: <span className="font-bold text-slate-300">{displayName}</span>
             {user.company_id && <span className="ml-2 text-slate-600 font-mono text-xs">{user.company_id}</span>}
           </p>
         </motion.div>
