@@ -92,6 +92,44 @@ import EmployeeScanner from './pages/employee/Scanner';
 
 import './index.css';
 
+const getPageTitle = (pathname) => {
+  if (pathname === '/') return 'Dashboard';
+  
+  // Payroll Routes
+  if (pathname === '/admin/payroll') return 'Payroll Engine';
+  if (pathname === '/admin/payroll/process') return 'Process Payroll';
+  if (pathname.startsWith('/admin/payroll/')) return 'Payslip Details';
+
+  // Employee Routes
+  if (pathname === '/admin/employees') return 'Employee Directory';
+  if (pathname === '/admin/employees/create') return 'Add New Employee';
+  if (pathname.startsWith('/admin/employees/') && pathname.endsWith('/edit')) return 'Edit Employee';
+  if (pathname.startsWith('/admin/employees/') && pathname.endsWith('/qr')) return 'Employee QR Pass';
+  if (pathname.startsWith('/admin/employees/')) return 'Employee Profile';
+
+  // Attendance Routes
+  if (pathname === '/admin/attendance') return 'Attendance Logs';
+  if (pathname === '/admin/attendance/calendar') return 'Attendance Calendar';
+
+  // Other Admin Routes
+  if (pathname === '/admin/leaves') return 'Leave Requests';
+  if (pathname === '/admin/shifts') return 'Shift Schedules';
+  if (pathname === '/admin/disciplinary') return 'Disciplinary Records';
+  if (pathname === '/admin/audit-logs') return 'Audit Trail';
+
+  // Employee Routes
+  if (pathname === '/employee/dashboard') return 'Employee Portal';
+  if (pathname === '/employee/qr') return 'My Digital QR';
+  if (pathname === '/employee/scanner') return 'Self Scanner';
+  if (pathname === '/profile') return 'My Profile';
+
+  const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(segment)) {
+    return 'Details';
+  }
+  return segment.replace(/-/g, ' ');
+};
+
 function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
@@ -317,7 +355,7 @@ function MainLayout({ children }) {
               </button>
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight capitalize">
-                  {location.pathname === '/' ? 'Dashboard' : location.pathname.split('/').pop().replace('-', ' ')}
+                  {getPageTitle(location.pathname)}
                 </h2>
                 <p className="text-xs text-slate-400 font-medium hidden sm:block mt-0.5">{currentDate}</p>
               </div>
