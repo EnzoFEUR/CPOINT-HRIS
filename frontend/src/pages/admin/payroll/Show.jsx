@@ -29,11 +29,11 @@ export default function PayrollShow() {
             try {
                 const res = await fetchWithAuth(`/api/payroll/${id}`);
                 const result = await res.json();
-                
+
                 if (!res.ok || result.error) {
                     throw new Error(result.message || result.error || 'Failed to load payslip.');
                 }
-                
+
                 setPayroll(result.data || result);
             } catch (err) {
                 console.error('[PAYROLL_SHOW] Load Error:', err);
@@ -56,7 +56,7 @@ export default function PayrollShow() {
 
         try {
             const user = JSON.parse(localStorage.getItem('user'));
-            const res = await fetchWithAuth(`/api/payroll/${id}`, { 
+            const res = await fetchWithAuth(`/api/payroll/${id}`, {
                 method: 'DELETE',
                 body: JSON.stringify({ admin_id: user?.id })
             });
@@ -102,6 +102,9 @@ export default function PayrollShow() {
         );
     }
 
+    // Pre-calculate Gross Earnings to compute percentages
+    const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0);
+
     // Logic to split the remarks string into itemized deductions
     const deductionItems = payroll.remarks ? payroll.remarks.split(', ') : [];
     let hasItemizedDeductions = false;
@@ -111,11 +114,28 @@ export default function PayrollShow() {
         const parts = item.split(': ');
         if (parts.length === 2 && !isNaN(Number(parts[1].replace(/,/g, '')))) {
             hasItemizedDeductions = true;
+            const deductionName = parts[0].trim();
+            const deductionAmount = Number(parts[1].replace(/,/g, ''));
+
+            // Calculate percentage for ALL deductions if gross earnings exist
+            let percentageDisplay = null;
+            if (grossEarnings > 0) {
+                const percentage = ((deductionAmount / grossEarnings) * 100).toFixed(2);
+                percentageDisplay = (
+                    <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md ml-2 tracking-wide uppercase">
+                        {percentage}%
+                    </span>
+                );
+            }
+
             itemizedDeductionsElements.push(
                 <div key={index} className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600 font-medium">{parts[0].trim()}</span>
+                    <span className="text-sm text-slate-600 font-medium flex items-center">
+                        {deductionName}
+                        {percentageDisplay}
+                    </span>
                     <span className="text-sm font-mono font-medium text-red-600">
-                        -₱{Number(parts[1].replace(/,/g, '')).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        -₱{deductionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                 </div>
             );
@@ -147,7 +167,7 @@ export default function PayrollShow() {
 
             {/* Payslip Document */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none">
-                
+
                 {/* Header */}
                 <div className="bg-slate-50 border-b border-slate-100 p-8 text-center print:bg-transparent print:border-b-2 print:border-slate-800">
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">C-Point</h1>
@@ -181,7 +201,7 @@ export default function PayrollShow() {
 
                     {/* Financial Breakdown */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-8">
-                        
+
                         {/* Earnings Column */}
                         <div>
                             <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Earnings</h3>
@@ -197,7 +217,7 @@ export default function PayrollShow() {
                             </div>
                             <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
                                 <span className="text-sm font-bold text-slate-800">Gross Earnings</span>
-                                <span className="text-base font-mono font-bold text-slate-800">₱{Number(payroll.basic_pay + payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-base font-mono font-bold text-slate-800">₱{grossEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         </div>
 
@@ -205,7 +225,7 @@ export default function PayrollShow() {
                         <div>
                             <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Deductions</h3>
                             <div className="space-y-3">
-                                
+
                                 {hasItemizedDeductions ? itemizedDeductionsElements : (
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-slate-600 font-medium">Total Deductions</span>
@@ -253,12 +273,12 @@ export default function PayrollShow() {
             <AnimatePresence>
                 {isDeleteModalOpen && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div 
+                        <motion.div
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
                             onClick={() => setIsDeleteModalOpen(false)}
                         />
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.9, y: 20, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.9, y: 20, opacity: 0 }}
@@ -268,7 +288,7 @@ export default function PayrollShow() {
                             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
                                 <i className="ti ti-alert-triangle text-4xl text-red-500 animate-pulse" />
                             </div>
-                            
+
                             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
                             <p className="text-sm text-slate-500 mb-6 leading-relaxed">
                                 You are about to permanently delete this payroll record. This cannot be undone.
@@ -278,8 +298,8 @@ export default function PayrollShow() {
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
                                     Type <span className="text-red-500 select-all">DELETE</span> to confirm
                                 </label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     value={deleteConfirmText}
                                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                                     placeholder="Type DELETE here..."
@@ -288,14 +308,14 @@ export default function PayrollShow() {
                             </div>
 
                             <div className="flex gap-3">
-                                <button 
-                                    onClick={() => setIsDeleteModalOpen(false)} 
+                                <button
+                                    onClick={() => setIsDeleteModalOpen(false)}
                                     className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    onClick={confirmDelete} 
+                                <button
+                                    onClick={confirmDelete}
                                     disabled={deleteConfirmText !== 'DELETE'}
                                     className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95"
                                 >

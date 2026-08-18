@@ -29,13 +29,14 @@ const PayrollCreate = () => {
         const style = document.createElement('style');
         style.innerHTML = `
             .flatpickr-calendar {
-                background: rgba(255, 255, 255, 0.95);
-                backdrop-filter: blur(10px);
+                background: rgba(255, 255, 255, 0.95) !important;
+                backdrop-filter: blur(10px) !important;
                 border-radius: 1.5rem !important;
                 border: 1px solid rgba(0, 0, 0, 0.05) !important;
                 box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-                padding: 10px;
                 font-family: inherit;
+                padding: 10px !important;
+                box-sizing: content-box !important; /* FIX: Restores default box-model so Tailwind doesn't clip the calendar */
             }
             .flatpickr-day.selected { background: #2563eb !important; border-color: #2563eb !important; border-radius: 10px !important; }
             .flatpickr-day:hover { background: #eff6ff !important; border-radius: 10px !important; }
@@ -52,14 +53,16 @@ const PayrollCreate = () => {
                 setIsCalculating(true);
                 try {
                     const res = await fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`);
-                    const logs = await res.json();
-                    
+                    const responseData = await res.json();
+
+                    const logs = responseData.data ? responseData.data : responseData;
+
                     const dole_divisor = 21.75;
-                    const grace_period = 15; 
-                    
+                    const grace_period = 15;
+
                     const employee = employees.find(e => String(e.id) === String(formData.employee_id));
                     const salary = employee ? parseFloat(employee.salary || 0) : 0;
-                    
+
                     const dailyRate = salary / dole_divisor;
                     const hourlyRate = dailyRate / 8;
                     const perMinuteRate = hourlyRate / 60;
@@ -74,9 +77,9 @@ const PayrollCreate = () => {
                     completedLogs.forEach(log => {
                         const timeIn = new Date(log.time_in);
                         const timeOut = new Date(log.time_out);
-                        
+
                         const scheduleStart = new Date(log.date + 'T08:00:00');
-                        
+
                         if (timeIn > scheduleStart) {
                             const minutes = Math.floor((timeIn - scheduleStart) / 60000);
                             if (minutes > grace_period) {
@@ -121,7 +124,7 @@ const PayrollCreate = () => {
         try {
             const user = JSON.parse(localStorage.getItem('user'));
             const payload = { ...formData, admin_id: user?.id };
-            
+
             const response = await fetchWithAuth('/api/payroll', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -133,7 +136,6 @@ const PayrollCreate = () => {
                 setError(data.error || 'Failed to process payroll');
             } else {
                 setSuccess('Payroll Computed & Saved!');
-                // Reset form
                 setFormData({
                     employee_id: '',
                     period_start: '',
@@ -153,7 +155,7 @@ const PayrollCreate = () => {
     return (
         <div className="max-w-4xl mx-auto py-10 px-4">
             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                
+
                 {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
                     <div className="h-12 w-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-100">
@@ -165,7 +167,7 @@ const PayrollCreate = () => {
                     </div>
                 </div>
 
-                {/* --- ERROR ALERT BLOCK --- */}
+                {/* Alerts */}
                 {error && (
                     <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
                         <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-xl"></i>
@@ -176,7 +178,6 @@ const PayrollCreate = () => {
                     </div>
                 )}
 
-                {/* --- SUCCESS ALERT BLOCK --- */}
                 {success && (
                     <div className="mb-8 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-xl shadow-sm flex items-start gap-3">
                         <i className="ti ti-check text-green-500 mt-0.5 text-xl"></i>
@@ -188,21 +189,21 @@ const PayrollCreate = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
-                    {/* 1. Employee & Period Selection */}
+                    {/* Employee & Period Selection */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-2">Employee</label>
-                            <select 
-                                name="employee_id" 
+                            <select
+                                name="employee_id"
                                 value={formData.employee_id}
-                                onChange={handleInputChange} 
-                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer" 
+                                onChange={handleInputChange}
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
                                 required
-                            >                            
+                            >
                                 <option value="" disabled>Select an employee...</option>
                                 {employees.map((emp) => (
                                     <option key={emp.id} value={emp.id}>
-                                        {emp.first_name} {emp.last_name} (₱{parseFloat(emp.salary || 0).toLocaleString('en-US', {minimumFractionDigits: 2})})
+                                        {emp.first_name} {emp.last_name} (₱{parseFloat(emp.salary || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })})
                                     </option>
                                 ))}
                             </select>
@@ -211,36 +212,34 @@ const PayrollCreate = () => {
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-2">Payroll Period</label>
                             <div className="flex items-center gap-2">
-                                
                                 {/* Start Date */}
                                 <div className="w-full">
                                     <Flatpickr
                                         value={formData.period_start}
-                                        onChange={([date]) => setFormData({...formData, period_start: date.toISOString().split('T')[0]})}
+                                        onChange={(selectedDates, dateStr) => setFormData({ ...formData, period_start: dateStr })}
                                         options={{ dateFormat: "Y-m-d", altInput: true, altFormat: "F j, Y", disableMobile: true }}
                                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
                                         placeholder="Start Date"
                                     />
                                 </div>
-                                
+
                                 <span className="text-slate-300 font-bold">-</span>
-                                
+
                                 {/* End Date */}
                                 <div className="w-full">
                                     <Flatpickr
                                         value={formData.period_end}
-                                        onChange={([date]) => setFormData({...formData, period_end: date.toISOString().split('T')[0]})}
+                                        onChange={(selectedDates, dateStr) => setFormData({ ...formData, period_end: dateStr })}
                                         options={{ dateFormat: "Y-m-d", altInput: true, altFormat: "F j, Y", disableMobile: true }}
                                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
                                         placeholder="End Date"
                                     />
                                 </div>
-
                             </div>
                         </div>
                     </div>
 
-                    {/* 2. Attendance Data */}
+                    {/* Attendance Data */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -256,47 +255,32 @@ const PayrollCreate = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
                                 <label className="block text-xs font-bold text-blue-600 uppercase mb-2">Days Worked</label>
-                                <input 
-                                    type="number" 
-                                    step="0.5" 
-                                    name="days_worked" 
-                                    value={formData.days_worked} 
-                                    readOnly 
-                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl font-mono text-lg focus:ring-2 focus:ring-blue-400 outline-none transition-all" 
-                                    required 
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    name="days_worked"
+                                    value={formData.days_worked}
+                                    readOnly
+                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl font-mono text-lg focus:ring-2 focus:ring-blue-400 outline-none transition-all"
+                                    required
                                 />
                                 <p className="text-[10px] text-blue-400 mt-2 font-bold uppercase tracking-tighter">Auto-calculated</p>
                             </div>
                             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
                                 <label className="block text-xs font-bold text-blue-600 uppercase mb-2">Overtime Hours</label>
-                                <input 
-                                    type="number" 
-                                    step="0.5" 
-                                    name="overtime_hours" 
-                                    value={formData.overtime_hours} 
-                                    readOnly 
-                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl font-mono text-lg outline-none transition-all" 
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    name="overtime_hours"
+                                    value={formData.overtime_hours}
+                                    readOnly
+                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl font-mono text-lg outline-none transition-all"
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
-                        <div className="flex items-start gap-3">
-                            <i className="ti ti-info-circle text-blue-500 mt-0.5"></i>
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                                <strong>Automated Deductions Active:</strong> Income Tax (TRAIN Law), SSS, PhilHealth, and Pag-IBIG contributions will be automatically calculated by the system.
-                            </p>
-                        </div>
-                        <div className="flex items-start gap-3 mt-1">
-                            <i className="ti ti-scale text-blue-500 mt-0.5"></i>
-                            <p className="text-[11px] text-slate-500 leading-relaxed">
-                                <strong>Compliance Note:</strong> Daily rates are calculated using the DOLE standard EEMR factor (21.75 days/month). A 15-minute grace period is applied to all time-in logs.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* 3. Adjustments */}
+                    {/* Adjustments */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="font-bold text-red-600 flex items-center gap-2">
@@ -309,14 +293,14 @@ const PayrollCreate = () => {
                                 <label className="block text-xs font-bold text-red-500 uppercase">Late / Absences (₱)</label>
                                 <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider bg-white px-2 py-1 rounded-md border border-red-100">HR Override Allowed</span>
                             </div>
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                name="late_deductions" 
+                            <input
+                                type="number"
+                                step="0.01"
+                                name="late_deductions"
                                 value={formData.late_deductions}
-                                onChange={handleInputChange} 
-                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-4 focus:ring-red-100 transition-all outline-none" 
-                                placeholder="0.00" 
+                                onChange={handleInputChange}
+                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-4 focus:ring-red-100 transition-all outline-none"
+                                placeholder="0.00"
                             />
                             <p className="text-[10px] text-red-400 mt-2">This amount is auto-calculated but can be manually adjusted before generating the payslip.</p>
                         </div>
@@ -324,8 +308,8 @@ const PayrollCreate = () => {
 
                     {/* Submit Button */}
                     <div className="pt-6">
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             disabled={isSubmitting}
                             className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-bold rounded-2xl shadow-xl shadow-slate-100 transition-all duration-300 transform hover:-translate-y-1 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:-translate-y-0 disabled:hover:bg-slate-900"
                         >

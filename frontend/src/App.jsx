@@ -6,43 +6,43 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
 
 const AuthGuard = ({ children }) => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    
-    useEffect(() => {
-        const user = JSON.parse(localStorage.getItem('user'));
-        const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
-        
-        if (!user) {
-            if (!publicRoutes.includes(location.pathname)) {
-                navigate('/login');
-            }
-            return;
-        }
+  const navigate = useNavigate();
+  const location = useLocation();
 
-        if (user.requires_password_change) {
-            if (location.pathname !== '/force-password-change') {
-                navigate('/force-password-change');
-            }
-            return;
-        } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
-            if (location.pathname !== '/biometric-setup') {
-                navigate('/biometric-setup');
-            }
-            return;
-        }
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user'));
+    const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/scanner'];
 
-        // Role-based root routing to prevent Dashboard flashing
-        if (location.pathname === '/') {
-            if (user.role === 'security') {
-                navigate('/scanner', { replace: true });
-            } else if (user.role !== 'admin') {
-                navigate('/employee/dashboard', { replace: true });
-            }
-        }
-    }, [navigate, location.pathname]);
+    if (!user) {
+      if (!publicRoutes.includes(location.pathname)) {
+        navigate('/login');
+      }
+      return;
+    }
 
-    return children;
+    if (user.requires_password_change) {
+      if (location.pathname !== '/force-password-change') {
+        navigate('/force-password-change');
+      }
+      return;
+    } else if (!user.has_registered_biometrics && user.role !== 'security' && user.role !== 'admin') {
+      if (location.pathname !== '/biometric-setup') {
+        navigate('/biometric-setup');
+      }
+      return;
+    }
+
+    // Role-based root routing to prevent Dashboard flashing
+    if (location.pathname === '/') {
+      if (user.role === 'security') {
+        navigate('/scanner', { replace: true });
+      } else if (user.role !== 'admin') {
+        navigate('/employee/dashboard', { replace: true });
+      }
+    }
+  }, [navigate, location.pathname]);
+
+  return children;
 };
 
 // Auth Pages
@@ -74,6 +74,7 @@ import EmployeeQrPrint from './pages/admin/employees/QrPrint';
 import PayrollIndex from './pages/admin/payroll/Index';
 import PayrollCreate from './pages/admin/payroll/Create';
 import PayrollShow from './pages/admin/payroll/Show';
+import StatutorySettings from './pages/admin/payroll/StatutorySettings';
 
 // Admin / Audit Logs
 import AuditLogsIndex from './pages/admin/audit-logs/Index';
@@ -95,7 +96,7 @@ import './index.css';
 
 const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
-  
+
   // Payroll Routes
   if (pathname === '/admin/payroll') return 'Payroll Ledger';
   if (pathname === '/admin/payroll/process') return 'Payroll Calculator';
@@ -140,7 +141,7 @@ const playNotificationChime = () => {
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
-    
+
     const now = ctx.currentTime;
     // Note 1: D5 (587.33 Hz)
     const osc1 = ctx.createOscillator();
@@ -258,7 +259,7 @@ function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   // Current user from localStorage
   const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { name: 'Admin User', role: 'admin' });
 
@@ -277,7 +278,7 @@ function MainLayout({ children }) {
       fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`)
         .then(res => res.json())
         .then(data => {
-            if (Array.isArray(data)) setNotifications(data);
+          if (Array.isArray(data)) setNotifications(data);
         })
         .catch(console.error);
     }
@@ -334,51 +335,51 @@ function MainLayout({ children }) {
         const notif = payload.payload;
         // Check if notif is for me
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
-            playNotificationChime();
-            const visuals = getNotificationVisuals(notif.type);
-            const avatar = getNotificationAvatar(notif);
-            
-            toast.custom((t) => (
-              <div 
-                onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
-                className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
-              >
-                <div className="relative h-11 w-11 shrink-0">
-                  {avatar.avatarSrc ? (
-                    <img 
-                      src={avatar.avatarSrc} 
-                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                      alt={notif.sender_name || 'Sender'}
-                      className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
-                    />
-                  ) : null}
-                  <div 
-                    className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
-                    style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                  >
-                    {avatar.initials}
-                  </div>
-                  <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
-                    <i className={`ti ${visuals.icon}`} />
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
-                      {visuals.label}
-                    </span>
-                    <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
-                  </div>
-                  <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
-                </div>
-              </div>
-            ), { duration: 6000 });
+          playNotificationChime();
+          const visuals = getNotificationVisuals(notif.type);
+          const avatar = getNotificationAvatar(notif);
 
-            setNotifications(prev => [notif, ...prev]);
-            
-            if (window.location.pathname.includes('/employee/dashboard')) {
-                window.dispatchEvent(new Event('refresh_dashboard'));
-            }
+          toast.custom((t) => (
+            <div
+              onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
+              className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
+            >
+              <div className="relative h-11 w-11 shrink-0">
+                {avatar.avatarSrc ? (
+                  <img
+                    src={avatar.avatarSrc}
+                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                    alt={notif.sender_name || 'Sender'}
+                    className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
+                  />
+                ) : null}
+                <div
+                  className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
+                  style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
+                >
+                  {avatar.initials}
+                </div>
+                <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
+                  <i className={`ti ${visuals.icon}`} />
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
+                    {visuals.label}
+                  </span>
+                  <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
+                </div>
+                <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
+              </div>
+            </div>
+          ), { duration: 6000 });
+
+          setNotifications(prev => [notif, ...prev]);
+
+          if (window.location.pathname.includes('/employee/dashboard')) {
+            window.dispatchEvent(new Event('refresh_dashboard'));
+          }
         }
       })
       .subscribe();
@@ -389,13 +390,13 @@ function MainLayout({ children }) {
   }, [user]);
 
   const markAllRead = async () => {
-      setNotifications(prev => prev.map(n => ({...n, read: true})));
-      try {
-          await fetchWithAuth('/api/notifications/read-all', {
-              method: 'PUT',
-              body: JSON.stringify({ user_id: user.id, role: user.role })
-          });
-      } catch (err) { console.error(err); }
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await fetchWithAuth('/api/notifications/read-all', {
+        method: 'PUT',
+        body: JSON.stringify({ user_id: user.id, role: user.role })
+      });
+    } catch (err) { console.error(err); }
   };
 
   const [currentDate, setCurrentDate] = useState(() => new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -414,17 +415,17 @@ function MainLayout({ children }) {
 
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
-      
+
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden animate-fade-in"
         ></div>
       )}
 
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`fixed inset-y-4 left-4 z-50 w-72 rounded-[2rem] glass-sidebar text-slate-300 flex flex-col shadow-2xl shadow-slate-900/20 transition-transform duration-500 bg-slate-900 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-[150%]'}`}
         style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
       >
@@ -445,7 +446,7 @@ function MainLayout({ children }) {
         {/* Navigation */}
         <nav className="flex-1 mt-6 px-4 space-y-1.5 overflow-y-auto pb-6 custom-scrollbar">
           <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
-          
+
           <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl group ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
             <i className="ti ti-smart-home text-xl group-hover:scale-110 transition-transform duration-300"></i>
             <span className="ml-3 font-medium tracking-wide">Dashboard</span>
@@ -459,7 +460,7 @@ function MainLayout({ children }) {
             <>
               {/* Attendance submenu */}
               <div className="space-y-1">
-                <button 
+                <button
                   onClick={() => setAttendanceDropdownOpen(!attendanceDropdownOpen)}
                   className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl group transition-all duration-300 ${isAttendanceActive ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}
                 >
@@ -531,7 +532,7 @@ function MainLayout({ children }) {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen w-full transition-all duration-500 ease-in-out lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
-          
+
           {/* Header */}
           <header className="flex items-center justify-between px-6 py-4 mt-4 mx-4 lg:mx-8 sticky top-4 z-30 bg-white/70 backdrop-blur-xl shadow-sm border border-slate-200/60 rounded-2xl transition-all duration-300">
             <div className="flex items-center gap-4">
@@ -547,19 +548,19 @@ function MainLayout({ children }) {
             </div>
 
             <div className="flex items-center gap-3 sm:gap-4 relative">
-              
+
               {/* Search */}
               <div className="relative hidden md:block">
                 <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
                   onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
-                  placeholder="Search everywhere..." 
-                  className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80" 
+                  placeholder="Search everywhere..."
+                  className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80"
                 />
-                
+
                 {/* Search results */}
                 {showSearch && searchQuery && (
                   <div className="absolute top-full right-0 mt-2 w-full bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
@@ -583,7 +584,7 @@ function MainLayout({ children }) {
               </div>
 
               {/* Notifications */}
-              <button 
+              <button
                 onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
                 className={`relative p-2.5 transition-all rounded-xl active:scale-95 shadow-sm border border-slate-200/50 ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 bg-slate-100'}`}
               >
@@ -605,8 +606,8 @@ function MainLayout({ children }) {
                         </span>
                       )}
                     </div>
-                    <button 
-                      onClick={markAllRead} 
+                    <button
+                      onClick={markAllRead}
                       className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider"
                     >
                       Mark all read
@@ -617,22 +618,22 @@ function MainLayout({ children }) {
                       const visuals = getNotificationVisuals(notif.type);
                       const avatar = getNotificationAvatar(notif);
                       return (
-                        <div 
-                          key={notif.id} 
+                        <div
+                          key={notif.id}
                           onClick={() => handleNotificationClick(notif)}
                           className={`p-3.5 hover:bg-slate-50/80 transition-all flex items-start gap-3.5 cursor-pointer group relative ${!notif.read ? 'bg-blue-50/25' : ''}`}
                         >
                           {/* Employee Avatar with corner category badge */}
                           <div className="relative h-10 w-10 shrink-0 group-hover:scale-105 transition-transform">
                             {avatar.avatarSrc ? (
-                              <img 
-                                src={avatar.avatarSrc} 
+                              <img
+                                src={avatar.avatarSrc}
                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                                 alt={notif.sender_name || 'Profile'}
                                 className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-200"
                               />
                             ) : null}
-                            <div 
+                            <div
                               className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner border ${visuals.bg}`}
                               style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
                             >
@@ -649,7 +650,7 @@ function MainLayout({ children }) {
                                 {visuals.label}
                               </span>
                               <span className="text-[10px] text-slate-400 font-medium font-mono">
-                                {new Date(notif.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                             <p className="text-xs text-slate-800 font-bold mt-1 group-hover:text-blue-600 transition-colors truncate">
@@ -706,8 +707,8 @@ import { Toaster } from 'react-hot-toast';
 function App() {
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
+      <Toaster
+        position="top-center"
         toastOptions={{
           style: {
             borderRadius: '9999px',
@@ -733,57 +734,57 @@ function App() {
               secondary: '#7f1d1d',
             },
           },
-        }} 
+        }}
       />
       <AuthGuard>
         <Routes>
           {/* Auth */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        
-        {/* Force Setup Routes */}
-        <Route path="/force-password-change" element={<ForcePasswordChange />} />
-        <Route path="/biometric-setup" element={<BiometricSetup />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Global/Shared */}
-        <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
-        <Route path="/scanner" element={<Scanner />} />
+          {/* Force Setup Routes */}
+          <Route path="/force-password-change" element={<ForcePasswordChange />} />
+          <Route path="/biometric-setup" element={<BiometricSetup />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
 
-        {/* Admin - Employees */}
-        <Route path="/admin/employees" element={<MainLayout><EmployeeIndex /></MainLayout>} />
-        <Route path="/admin/employees/create" element={<MainLayout><EmployeeCreate /></MainLayout>} />
-        <Route path="/admin/employees/:id/edit" element={<MainLayout><EmployeeEdit /></MainLayout>} />
-        <Route path="/admin/employees/:id" element={<MainLayout><EmployeeShow /></MainLayout>} />
-        <Route path="/admin/employees/:id/qr" element={<EmployeeQrPrint />} />
+          {/* Global/Shared */}
+          <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
+          <Route path="/scanner" element={<Scanner />} />
 
-        {/* Admin - Attendance */}
-        <Route path="/admin/attendance" element={<MainLayout><AttendanceIndex /></MainLayout>} />
-        <Route path="/admin/attendance/calendar" element={<MainLayout><AttendanceCalendar /></MainLayout>} />
+          {/* Admin - Employees */}
+          <Route path="/admin/employees" element={<MainLayout><EmployeeIndex /></MainLayout>} />
+          <Route path="/admin/employees/create" element={<MainLayout><EmployeeCreate /></MainLayout>} />
+          <Route path="/admin/employees/:id/edit" element={<MainLayout><EmployeeEdit /></MainLayout>} />
+          <Route path="/admin/employees/:id" element={<MainLayout><EmployeeShow /></MainLayout>} />
+          <Route path="/admin/employees/:id/qr" element={<EmployeeQrPrint />} />
 
-        {/* Admin - Payroll */}
-        <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
-        <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
-        <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
+          {/* Admin - Attendance */}
+          <Route path="/admin/attendance" element={<MainLayout><AttendanceIndex /></MainLayout>} />
+          <Route path="/admin/attendance/calendar" element={<MainLayout><AttendanceCalendar /></MainLayout>} />
 
-        {/* Admin - Audit Logs */}
-        <Route path="/admin/audit-logs" element={<MainLayout><AuditLogsIndex /></MainLayout>} />
+          {/* Admin - Payroll */}
+          <Route path="/admin/payroll" element={<MainLayout><PayrollIndex /></MainLayout>} />
+          <Route path="/admin/payroll/process" element={<MainLayout><PayrollCreate /></MainLayout>} />
+          <Route path="/admin/payroll/:id" element={<MainLayout><PayrollShow /></MainLayout>} />
 
-        {/* Admin - Leaves */}
-        <Route path="/admin/leaves" element={<MainLayout><LeavesIndex /></MainLayout>} />
+          {/* Admin - Audit Logs */}
+          <Route path="/admin/audit-logs" element={<MainLayout><AuditLogsIndex /></MainLayout>} />
 
-        {/* Admin - Shifts */}
-        <Route path="/admin/shifts" element={<MainLayout><ShiftsIndex /></MainLayout>} />
+          {/* Admin - Leaves */}
+          <Route path="/admin/leaves" element={<MainLayout><LeavesIndex /></MainLayout>} />
 
-        {/* Admin - Disciplinary */}
-        <Route path="/admin/disciplinary" element={<MainLayout><DisciplinaryIndex /></MainLayout>} />
+          {/* Admin - Shifts */}
+          <Route path="/admin/shifts" element={<MainLayout><ShiftsIndex /></MainLayout>} />
 
-        {/* Employee */}
-        <Route path="/employee/dashboard" element={<MainLayout><EmployeeDashboard /></MainLayout>} />
-        <Route path="/employee/qr" element={<MainLayout><MyQr /></MainLayout>} />
-        <Route path="/employee/scanner" element={<MainLayout><EmployeeScanner /></MainLayout>} />
+          {/* Admin - Disciplinary */}
+          <Route path="/admin/disciplinary" element={<MainLayout><DisciplinaryIndex /></MainLayout>} />
+
+          {/* Employee */}
+          <Route path="/employee/dashboard" element={<MainLayout><EmployeeDashboard /></MainLayout>} />
+          <Route path="/employee/qr" element={<MainLayout><MyQr /></MainLayout>} />
+          <Route path="/employee/scanner" element={<MainLayout><EmployeeScanner /></MainLayout>} />
         </Routes>
       </AuthGuard>
     </Router>
