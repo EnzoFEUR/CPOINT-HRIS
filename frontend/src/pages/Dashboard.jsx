@@ -68,70 +68,70 @@ export default function Dashboard() {
         >
             
             {/* Page header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                 <div>
-                    <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">HRIS Analytics</h2>
+                    <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">HRIS Analytics</h2>
                 </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50 transition-colors">
+                <div className="flex gap-2">
+                    <button className="flex items-center gap-2 bg-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200 shadow-xs hover:bg-slate-50 tap-active transition-colors">
                         <i className="ti ti-download text-slate-500"></i>
-                        <span className="text-sm font-bold text-slate-700">Export Report</span>
+                        <span className="text-xs sm:text-sm font-bold text-slate-700">Export</span>
                     </button>
                 </div>
             </div>
 
-            {/* KPI cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <i className="ti ti-users text-6xl text-blue-600"></i>
+            {/* KPI cards (2 columns on mobile, 4 columns on desktop) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+                        <i className="ti ti-users text-4xl sm:text-6xl text-blue-600"></i>
                     </div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Total Workforce</p>
-                    <h3 className="text-4xl font-black text-slate-800">{totalStaff}</h3>
-                    <div className="mt-4 flex items-center gap-2 text-xs font-bold text-emerald-500">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Total Staff</p>
+                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{totalStaff}</h3>
+                    <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-emerald-500">
                         <i className="ti ti-trending-up"></i>
-                        <span>Active Employees</span>
+                        <span>Active</span>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <i className="ti ti-user-check text-6xl text-emerald-600"></i>
+                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+                        <i className="ti ti-user-check text-4xl sm:text-6xl text-emerald-600"></i>
                     </div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Today's Attendance</p>
-                    <h3 className="text-4xl font-black text-slate-800">{presentPercentage}%</h3>
-                    <div className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500">
-                        <span>{presentTodayCount} of {totalStaff} clocked in</span>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Present Rate</p>
+                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{presentPercentage}%</h3>
+                    <div className="mt-2 sm:mt-4 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-500 truncate">
+                        <span>{presentTodayCount} in today</span>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <i className="ti ti-clock-exclamation text-6xl text-orange-600"></i>
+                <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden xs:block">
+                        <i className="ti ti-clock-exclamation text-4xl sm:text-6xl text-orange-600"></i>
                     </div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Late Arrivals</p>
-                    <h3 className="text-4xl font-black text-slate-800">{lateTodayCount}</h3>
-                    <div className="mt-4 flex items-center gap-2 text-xs font-bold text-orange-500">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Late Arrivals</p>
+                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{lateTodayCount}</h3>
+                    <div className="mt-2 sm:mt-4 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-orange-500">
                         <i className="ti ti-alert-triangle"></i>
-                        <span>Action Required</span>
+                        <span>Check logs</span>
                     </div>
                 </div>
 
-                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-[2rem] shadow-lg shadow-blue-600/20 text-white hover:-translate-y-1 transition-all relative overflow-hidden group block cursor-pointer">
-                    <div className="absolute right-0 top-0 p-6 opacity-20 group-hover:scale-110 transition-transform duration-500">
-                        <i className="ti ti-plane-departure text-6xl text-white"></i>
+                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-md shadow-blue-600/20 text-white tap-active transition-all relative overflow-hidden group block cursor-pointer">
+                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden xs:block">
+                        <i className="ti ti-plane-departure text-4xl sm:text-6xl text-white"></i>
                     </div>
-                    <p className="text-xs font-bold text-blue-200 uppercase tracking-wider mb-2">Pending Leaves</p>
-                    <h3 className="text-4xl font-black text-white">{pendingLeavesCount}</h3>
-                    <div className="mt-4 flex items-center justify-between text-xs font-bold text-white">
-                        <span>Awaiting Approval</span>
+                    <p className="text-[10px] sm:text-xs font-bold text-blue-200 uppercase tracking-wider mb-1 sm:mb-2">Leaves</p>
+                    <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight">{pendingLeavesCount}</h3>
+                    <div className="mt-2 sm:mt-4 flex items-center justify-between text-[11px] sm:text-xs font-bold text-white">
+                        <span>Pending</span>
                         <span>Review &rarr;</span>
                     </div>
                 </Link>
             </div>
 
             {/* Metrics grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
                 
                 {/* Weekly Trend Chart (2/3 width) */}
                 <div className="xl:col-span-2 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">

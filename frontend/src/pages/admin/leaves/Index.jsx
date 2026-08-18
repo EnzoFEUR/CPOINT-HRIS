@@ -82,41 +82,37 @@ export default function LeavesIndex() {
             
             
 
-            <div className="space-y-8">
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div className="space-y-6 sm:space-y-8">
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 rounded-2xl sm:rounded-md p-6 sm:p-10 overflow-hidden shadow-xl shadow-purple-950/10">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-plane-departure text-2xl text-purple-400" />
-                                </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-purple-500/20 text-purple-300 rounded-md border border-purple-500/30">Time Off Management</span>
-                            </div>
-                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Leave Engine</h1>
-                            <p className="text-purple-100/70 font-medium mt-2 text-lg max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
+                            <span className="text-purple-400 font-bold uppercase tracking-widest text-xs">Time Off Management</span>
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mt-1">Leave Engine</h1>
+                            <p className="text-purple-100/70 font-medium mt-1 sm:mt-2 text-sm sm:text-lg max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
                         </div>
                         
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
-                            <div className="text-right">
-                                <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
-                                <p className="text-3xl font-black text-white">{pendingCount}</p>
+                        <div className="flex items-center justify-between sm:justify-start gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-4 sm:p-5 rounded-xl sm:rounded-lg shrink-0">
+                            <div className="text-left sm:text-right">
+                                <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
+                                <p className="text-2xl sm:text-3xl font-black text-white">{pendingCount}</p>
                             </div>
-                            <div className="h-14 w-14 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 border border-purple-500/50">
-                                <i className={`ti ti-bell text-2xl ${pendingCount > 0 ? 'animate-[ringing_2s_ease-in-out_infinite]' : ''}`} />
+                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 border border-purple-500/50">
+                                <i className={`ti ti-bell text-xl sm:text-2xl ${pendingCount > 0 ? 'animate-[ringing_2s_ease-in-out_infinite]' : ''}`} />
                             </div>
                         </div>
                     </div>
                 </motion.div>
 
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 rounded-lg shadow-sm border border-slate-100 w-max">
-                    <div className="flex gap-1">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-1.5 sm:p-2 rounded-xl sm:rounded-lg shadow-xs border border-slate-100 overflow-x-auto touch-scroll no-scrollbar w-full sm:w-max">
+                    <div className="flex gap-1 min-w-max">
                         {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-6 py-3 rounded-md text-sm font-bold transition-all ${
+                                className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-bold tap-active transition-all whitespace-nowrap ${
                                     filterStatus === status 
-                                    ? 'bg-slate-900 text-white shadow-md' 
+                                    ? 'bg-slate-900 text-white shadow-sm' 
                                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                                 }`}
                             >
@@ -126,8 +122,8 @@ export default function LeavesIndex() {
                     </div>
                 </motion.div>
 
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-md shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="overflow-x-auto overflow-y-hidden">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl sm:rounded-md shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="overflow-x-auto overflow-y-hidden touch-scroll">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                                 <tr>

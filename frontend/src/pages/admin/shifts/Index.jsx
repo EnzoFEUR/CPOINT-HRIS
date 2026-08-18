@@ -123,52 +123,48 @@ export default function ShiftsIndex() {
 
             <div className="space-y-8">
                 
-                {/* Page header */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-md p-8 md:p-12 shadow-sm group">
-                    
-                    
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl sm:rounded-md p-6 sm:p-10 shadow-sm group">
                     <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-calendar-time text-2xl text-blue-400" />
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="h-10 w-10 sm:h-12 sm:w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
+                                    <i className="ti ti-calendar-time text-xl sm:text-2xl text-blue-400" />
                                 </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Workforce Control</span>
+                                <span className="px-3 sm:px-4 py-1 text-[11px] sm:text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Workforce Control</span>
                             </div>
-                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">Shift Deployment</h1>
-                            <p className="text-blue-100/70 font-medium mt-2 text-lg max-w-xl">Assign operating schedules and manage 24/7 coverage for all facility staff in real-time.</p>
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">Shift Deployment</h1>
+                            <p className="text-blue-100/70 font-medium mt-1 sm:mt-2 text-sm sm:text-lg max-w-xl">Assign operating schedules and manage 24/7 coverage for all facility staff in real-time.</p>
                         </div>
                         
-                        {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-lg">
-                            <div className="text-right">
-                                <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Total Staff</p>
-                                <p className="text-3xl font-black text-white">{employees.length}</p>
+                        <div className="flex items-center justify-between sm:justify-start gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-4 sm:p-5 rounded-xl sm:rounded-lg shrink-0">
+                            <div className="text-left sm:text-right">
+                                <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Total Staff</p>
+                                <p className="text-2xl sm:text-3xl font-black text-white">{employees.length}</p>
                             </div>
-                            <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center text-white border border-white/30">
-                                <i className="ti ti-users text-2xl" />
+                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-white/20 flex items-center justify-center text-white border border-white/30">
+                                <i className="ti ti-users text-xl sm:text-2xl" />
                             </div>
                         </div>
                     </div>
                 </motion.div>
 
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-4 bg-white p-3 rounded-lg shadow-sm border border-slate-100">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-3 sm:gap-4 bg-white p-2 sm:p-3 rounded-2xl sm:rounded-lg shadow-xs sm:shadow-sm border border-slate-100">
                     <div className="relative flex-1">
-                        <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
+                        <i className="ti ti-search absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
                         <input 
                             type="text" 
                             placeholder="Search employees by name..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-11 sm:pl-12 pr-4 sm:pr-6 py-3 sm:py-4 bg-slate-50 border-none rounded-xl sm:rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-sm sm:text-base text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
                         />
                     </div>
-                    <div className="relative min-w-[200px]">
-                        <i className="ti ti-building absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg z-10" />
+                    <div className="relative min-w-full md:min-w-[200px]">
+                        <i className="ti ti-building absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 text-lg z-10" />
                         <select 
                             value={filterDept}
                             onChange={(e) => setFilterDept(e.target.value)}
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-slate-700 transition-all appearance-none cursor-pointer"
+                            className="w-full pl-11 sm:pl-12 pr-6 py-3 sm:py-4 bg-slate-50 border-none rounded-xl sm:rounded-lg outline-none focus:ring-4 focus:ring-blue-500/10 font-bold text-sm sm:text-base text-slate-700 transition-all appearance-none cursor-pointer"
                         >
                             {departments.map(dept => <option key={dept} value={dept}>{dept} Dept</option>)}
                         </select>
@@ -176,7 +172,7 @@ export default function ShiftsIndex() {
                     </div>
                 </motion.div>
 
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
                     <AnimatePresence>
                         {filteredEmployees.map(employee => {
                             const activeShift = SHIFT_TYPES.find(s => s.id === employee.shift) || SHIFT_TYPES[3];

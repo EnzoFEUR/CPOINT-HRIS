@@ -536,22 +536,35 @@ function MainLayout({ children }) {
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           
           {/* Header */}
-          <header className="flex items-center justify-between px-6 py-4 mt-4 mx-4 lg:mx-8 sticky top-4 z-30 bg-white/70 backdrop-blur-xl shadow-sm border border-slate-200/60 rounded-2xl transition-all duration-300">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 text-slate-500 hover:text-slate-800 lg:hidden transition-transform active:scale-95 bg-slate-100/50 rounded-xl">
+          <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 sticky top-0 sm:top-4 z-30 bg-white/85 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <button 
+                onClick={() => setSidebarOpen(true)} 
+                className="p-2 -ml-1 text-slate-600 hover:text-slate-900 lg:hidden tap-active bg-slate-100/80 rounded-xl flex items-center justify-center h-10 w-10 shrink-0"
+                aria-label="Open Navigation Menu"
+              >
                 <i className="ti ti-menu-2 text-2xl"></i>
               </button>
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight capitalize">
+                <h2 className="text-lg sm:text-2xl font-black text-slate-800 tracking-tight capitalize leading-tight">
                   {getPageTitle(location.pathname)}
                 </h2>
-                <p className="text-xs text-slate-400 font-medium hidden sm:block mt-0.5">{currentDate}</p>
+                <p className="text-[11px] text-slate-400 font-medium hidden sm:block mt-0.5">{currentDate}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 sm:gap-4 relative">
+            <div className="flex items-center gap-2 sm:gap-4 relative">
               
-              {/* Search */}
+              {/* Mobile Quick Search Button */}
+              <button 
+                onClick={() => setShowSearch(!showSearch)} 
+                className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-10 w-10 flex items-center justify-center"
+                aria-label="Search"
+              >
+                <i className="ti ti-search text-xl"></i>
+              </button>
+
+              {/* Desktop Search */}
               <div className="relative hidden md:block">
                 <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input 
@@ -560,35 +573,51 @@ function MainLayout({ children }) {
                   onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
                   onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
                   placeholder="Search everywhere..." 
-                  className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80" 
+                  className="pl-9 pr-4 py-2 bg-slate-100/90 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 w-64 transition-all focus:w-80 font-medium text-slate-700" 
                 />
-                
-                {/* Search results */}
-                {showSearch && searchQuery && (
-                  <div className="absolute top-full right-0 mt-2 w-full bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
-                    <div className="p-2 border-b border-slate-100 bg-slate-50">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2">Quick Results</p>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {filteredSearch.length > 0 ? filteredSearch.map(item => (
-                        <Link key={item.route} to={item.route} onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors cursor-pointer group">
-                          <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                            <i className={`ti ${item.icon}`}></i>
-                          </div>
-                          <span className="text-sm font-bold text-slate-700">{item.label}</span>
-                        </Link>
-                      )) : (
-                        <div className="p-4 text-center text-xs text-slate-500 font-bold">No results found for "{searchQuery}"</div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Notifications */}
+              {/* Search dropdown (Desktop & Mobile Modal) */}
+              {showSearch && (
+                <div className="fixed inset-x-4 top-16 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-80 bg-white/95 backdrop-blur-2xl border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
+                  <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
+                    <button onClick={() => setShowSearch(false)} className="md:hidden text-slate-400 hover:text-slate-700 p-1">
+                      <i className="ti ti-x text-lg"></i>
+                    </button>
+                  </div>
+                  <div className="p-2 md:hidden">
+                    <input 
+                      type="text" 
+                      autoFocus
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Type a page or tool..."
+                      className="w-full px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-medium text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {filteredSearch.length > 0 ? filteredSearch.map(item => (
+                      <Link key={item.route} to={item.route} onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="flex items-center gap-3 p-3 hover:bg-blue-50/50 transition-colors cursor-pointer group">
+                        <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                          <i className={`ti ${item.icon}`}></i>
+                        </div>
+                        <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                      </Link>
+                    )) : (
+                      <div className="p-4 text-center text-xs text-slate-500 font-bold">
+                        {searchQuery ? `No results found for "${searchQuery}"` : 'Type above to search...'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Notifications Bell */}
               <button 
                 onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
-                className={`relative p-2.5 transition-all rounded-xl active:scale-95 shadow-sm border border-slate-200/50 ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 bg-slate-100'}`}
+                className={`relative p-2.5 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-10 w-10 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
+                aria-label="View Notifications"
               >
                 <i className="ti ti-bell text-xl"></i>
                 {notifications.some(n => !n.read) && (
@@ -598,7 +627,7 @@ function MainLayout({ children }) {
 
               {/* Notification panel */}
               {showNotifications && (
-                <div className="absolute top-full right-0 mt-3 w-88 sm:w-96 bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
+                <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-3 sm:w-96 bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
                   <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
@@ -615,7 +644,7 @@ function MainLayout({ children }) {
                       Mark all read
                     </button>
                   </div>
-                  <div className="max-h-84 overflow-y-auto divide-y divide-slate-100">
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 touch-scroll">
                     {notifications.length > 0 ? notifications.map(notif => {
                       const visuals = getNotificationVisuals(notif.type);
                       const avatar = getNotificationAvatar(notif);
@@ -625,7 +654,6 @@ function MainLayout({ children }) {
                           onClick={() => handleNotificationClick(notif)}
                           className={`p-3.5 hover:bg-slate-50/80 transition-all flex items-start gap-3.5 cursor-pointer group relative ${!notif.read ? 'bg-blue-50/25' : ''}`}
                         >
-                          {/* Employee Avatar with corner category badge */}
                           <div className="relative h-10 w-10 shrink-0 group-hover:scale-105 transition-transform">
                             {avatar.avatarSrc ? (
                               <img 
@@ -684,20 +712,120 @@ function MainLayout({ children }) {
             </div>
           </header>
 
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 mt-2 w-full relative">
+          {/* Page Main Content */}
+          <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
-                initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                initial={{ opacity: 0, scale: 0.99, y: 6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98, y: -10 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30, mass: 0.5 }}
+                exit={{ opacity: 0, scale: 0.99, y: -6 }}
+                transition={{ type: "spring", stiffness: 450, damping: 30 }}
                 className="w-full h-full"
               >
                 {children}
               </motion.div>
             </AnimatePresence>
           </main>
+
+          {/* Modern Mobile Bottom Navigation Bar (Glassmorphic) */}
+          <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 glass-bottom-nav px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] shadow-lg flex items-center justify-around">
+            {user.role === 'admin' ? (
+              <>
+                <Link 
+                  to="/" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/' ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname === '/' ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-smart-home text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Home</span>
+                </Link>
+
+                <Link 
+                  to="/admin/employees" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/employees') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/employees') ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-users-group text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Staff</span>
+                </Link>
+
+                <Link 
+                  to="/admin/attendance" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/attendance') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/attendance') ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-clock-check text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Logs</span>
+                </Link>
+
+                <Link 
+                  to="/admin/leaves" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname.startsWith('/admin/leaves') ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname.startsWith('/admin/leaves') ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-plane-departure text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Leaves</span>
+                </Link>
+
+                <button 
+                  onClick={() => setSidebarOpen(true)}
+                  className="flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active text-slate-400 hover:text-slate-800"
+                >
+                  <div className="p-1 rounded-lg">
+                    <i className="ti ti-category text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">More</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <Link 
+                  to="/employee/dashboard" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/employee/dashboard' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname === '/employee/dashboard' ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-smart-home text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Portal</span>
+                </Link>
+
+                <Link 
+                  to="/employee/qr" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/employee/qr' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname === '/employee/qr' ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-qrcode text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">My Pass</span>
+                </Link>
+
+                <Link 
+                  to="/profile" 
+                  className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active transition-all ${location.pathname === '/profile' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}
+                >
+                  <div className={`p-1 rounded-lg ${location.pathname === '/profile' ? 'bg-blue-50' : ''}`}>
+                    <i className="ti ti-user text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Profile</span>
+                </Link>
+
+                <button 
+                  onClick={() => setSidebarOpen(true)}
+                  className="flex flex-col items-center justify-center py-1 px-3 rounded-xl tap-active text-slate-400 hover:text-slate-800"
+                >
+                  <div className="p-1 rounded-lg">
+                    <i className="ti ti-category text-2xl" />
+                  </div>
+                  <span className="text-[10px] tracking-tight mt-0.5">Menu</span>
+                </button>
+              </>
+            )}
+          </nav>
         </div>
       </div>
     </div>
