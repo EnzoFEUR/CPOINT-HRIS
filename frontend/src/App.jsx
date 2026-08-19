@@ -377,16 +377,47 @@ function MainLayout({ children }) {
     setShowInstallGuide(true);
   };
 
-  // Fetch initial notifications
+  // Fetch initial notifications with direct Supabase resilient fallback
   useEffect(() => {
-    if (user?.id) {
-      fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setNotifications(data);
-        })
-        .catch(console.error);
-    }
+    if (!user?.id) return;
+    let isCancelled = false;
+
+    const loadNotifications = async () => {
+      try {
+        const res = await fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && !isCancelled) {
+            setNotifications(data);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[NOTIFICATIONS] API fetch fallback to direct Supabase query:', err);
+      }
+
+      // Direct Supabase Fallback (100% resilient)
+      try {
+        let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
+        if (user.role === 'admin') {
+          query = query.or(`target.eq.admin,target.eq.${user.id}`);
+        } else {
+          query = query.eq('target', user.id);
+        }
+        const { data } = await query;
+        if (Array.isArray(data) && !isCancelled) {
+          setNotifications(data);
+        }
+      } catch (dbErr) {
+        console.error('[NOTIFICATIONS] Direct DB query error:', dbErr);
+      }
+    };
+
+    loadNotifications();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   const searchIndex = isAdmin(user) ? [

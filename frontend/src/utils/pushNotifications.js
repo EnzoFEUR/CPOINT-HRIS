@@ -98,8 +98,14 @@ export const subscribeUserToPush = async (userId) => {
             })
         });
 
-        const data = await res.json();
-        if (data.success) {
+        let data = {};
+        try {
+            data = await res.json();
+        } catch {
+            data = { error: 'Server response unavailable' };
+        }
+
+        if (res.ok && data.success) {
             toast.success('Phone lock-screen notifications enabled!', { duration: 4000 });
             return { success: true, subscription };
         } else {
@@ -122,13 +128,21 @@ export const sendTestPush = async (userId) => {
             method: 'POST',
             body: JSON.stringify({ user_id: userId })
         });
-        const data = await res.json();
-        if (data.success) {
+        
+        let data = {};
+        try {
+            data = await res.json();
+        } catch {
+            data = { error: 'Server response unavailable' };
+        }
+
+        if (res.ok && data.success) {
             toast.success('Test notification sent! Check your phone.');
+            return data;
         } else {
             toast.error(data.error || 'Failed to send test push.');
+            return { success: false, error: data.error };
         }
-        return data;
     } catch (err) {
         toast.error('Network Error: ' + err.message);
         return { success: false, error: err.message };
