@@ -363,7 +363,7 @@ router.get(
     
     let query = supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department');
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department');
 
     if (isUUID) {
       query = query.eq('id', target);
@@ -377,7 +377,7 @@ router.get(
     if (!employee) {
       const { data: fallbackEmp } = await supabase
         .from('employees')
-        .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department')
+        .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department')
         .or(`company_id.ilike.${target},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${target}`)
         .maybeSingle();
 
