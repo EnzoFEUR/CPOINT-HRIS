@@ -96,43 +96,36 @@ export default function PayrollIndex() {
         <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
             
             {/* HERO HEADER */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 rounded-2xl p-5 sm:p-8 lg:p-10 overflow-hidden shadow-xs sm:shadow-sm">
-                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
                     <div>
-                        <span className="text-emerald-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs">Financial Center</span>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight mt-1">Payroll Ledger</h1>
-                        <p className="text-emerald-100/70 font-medium mt-1 text-xs sm:text-sm max-w-xl">Review, audit, and distribute DOLE-compliant digital payslips to your entire workforce.</p>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <i className="ti ti-cash text-2xl text-emerald-400" />
+                            </div>
+                            <span className="px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-md border border-emerald-500/30">Financial Center</span>
+                        </div>
+                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Payroll Ledger</h1>
+                        <p className="text-sm sm:text-base text-white/70 mt-1 max-w-xl">Review, audit, and distribute DOLE-compliant digital payslips to your entire workforce.</p>
                     </div>
 
-                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                        <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-4 rounded-xl shrink-0">
-                            <div className="text-left sm:text-right">
-                                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Total Disbursed</p>
-                                <p className="text-xl sm:text-2xl font-black text-white font-mono">₱{totalNetDisbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                            </div>
-                            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-emerald-500/30 flex items-center justify-center text-emerald-300 border border-emerald-500/50">
-                                <i className="ti ti-cash text-lg sm:text-xl" />
-                            </div>
-                        </div>
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <Link 
+                            to="/admin/payroll/statutory-settings" 
+                            className="px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 border border-slate-700 shadow-md tap-active"
+                        >
+                            <i className="ti ti-adjustments-horizontal text-lg text-emerald-400" />
+                            <span>Statutory Settings</span>
+                        </Link>
 
-                        <div className="flex items-center gap-2">
-                            <Link 
-                                to="/admin/payroll/statutory-settings" 
-                                className="px-3.5 sm:px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 border border-white/10 tap-active"
-                            >
-                                <i className="ti ti-adjustments-horizontal text-base" />
-                                <span>Statutory</span>
-                            </Link>
-
-                            <Link 
-                                to="/admin/payroll/process" 
-                                className="px-4 sm:px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-xl font-black text-xs sm:text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 tap-active"
-                            >
-                                <i className="ti ti-calculator text-base" />
-                                <span>Compute</span>
-                            </Link>
-                        </div>
+                        <Link 
+                            to="/admin/payroll/process" 
+                            className="px-5 sm:px-6 py-3 sm:py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl font-black text-xs sm:text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2 tap-active border border-emerald-400"
+                        >
+                            <i className="ti ti-calculator text-lg" />
+                            <span>Compute Payroll</span>
+                        </Link>
                     </div>
                 </div>
             </motion.div>

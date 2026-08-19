@@ -90,13 +90,17 @@ export default function LeavesIndex() {
         <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
             
             {/* HERO HEADER */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 overflow-hidden shadow-xs sm:shadow-sm">
-                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
                     <div>
-                        <span className="text-purple-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs">Time Off Management</span>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight mt-1">Leave Engine</h1>
-                        <p className="text-purple-100/70 font-medium mt-1 text-xs sm:text-sm max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
+                                <i className="ti ti-plane-departure text-2xl text-purple-400" />
+                            </div>
+                            <span className="px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-purple-500/20 text-purple-300 rounded-md border border-purple-500/30">Time Off Management</span>
+                        </div>
+                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Leave Engine</h1>
+                        <p className="text-sm sm:text-base text-white/70 mt-1 max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
                     </div>
                     
                     <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-4 rounded-xl shrink-0">
@@ -215,15 +219,15 @@ export default function LeavesIndex() {
                                         <div className="flex items-center gap-2 pt-1">
                                             <button 
                                                 onClick={() => handleStatusChange(leave.id, 'Approved')} 
-                                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 tap-active"
+                                                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 tap-active transition-all"
                                             >
-                                                <i className="ti ti-check text-sm font-bold" /> Approve
+                                                <i className="ti ti-check text-base font-bold" /> Approve
                                             </button>
                                             <button 
                                                 onClick={() => handleStatusChange(leave.id, 'Rejected')} 
-                                                className="flex-1 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 tap-active"
+                                                className="flex-1 py-3 bg-white hover:bg-rose-50 active:scale-95 text-rose-600 border border-rose-200 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 tap-active transition-all"
                                             >
-                                                <i className="ti ti-x text-sm font-bold" /> Reject
+                                                <i className="ti ti-x text-base font-bold" /> Reject
                                             </button>
                                         </div>
                                     ) : (
@@ -335,15 +339,15 @@ export default function LeavesIndex() {
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button 
                                                             onClick={() => handleStatusChange(leave.id, 'Approved')} 
-                                                            className="h-9 w-9 flex items-center justify-center bg-white border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-500 hover:text-white transition-all shadow-xs tap-active" 
-                                                            title="Approve"
+                                                            className="h-9 w-9 flex items-center justify-center bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-xl hover:bg-emerald-600 hover:text-white active:scale-90 transition-all shadow-xs tap-active" 
+                                                            title="Approve Request"
                                                         >
                                                             <i className="ti ti-check text-base font-bold" />
                                                         </button>
                                                         <button 
                                                             onClick={() => handleStatusChange(leave.id, 'Rejected')} 
-                                                            className="h-9 w-9 flex items-center justify-center bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-xs tap-active" 
-                                                            title="Reject"
+                                                            className="h-9 w-9 flex items-center justify-center bg-rose-50 border border-rose-300 text-rose-700 rounded-xl hover:bg-rose-600 hover:text-white active:scale-90 transition-all shadow-xs tap-active" 
+                                                            title="Reject Request"
                                                         >
                                                             <i className="ti ti-x text-base font-bold" />
                                                         </button>
