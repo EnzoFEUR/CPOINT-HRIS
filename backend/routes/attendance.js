@@ -342,23 +342,60 @@ router.get(
   '/verify-qr/:company_id',
   asyncHandler(async (req, res) => {
     const { reqId } = req;
-    const { company_id } = req.params;
+    let { company_id } = req.params;
 
-    // Use service role to securely fetch the employee without triggering RLS blocks
-    // Smart check: Some QR codes contain the UUID instead of the CP-XXXX ID.
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(company_id);
-    
-    const { data: employee, error } = await supabase
-      .from('employees')
-      .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active')
-      .eq(isUUID ? 'id' : 'company_id', company_id)
-      .single();
-
-    if (error || !employee) {
-      throw new NotFoundError('Employee not found.');
+    if (!company_id) {
+      throw new ValidationError('Company ID or UUID is required.');
     }
 
-    res.json({ status: 'success', data: employee });
+    // Sanitize and decode QR text
+    let target = decodeURIComponent(company_id).trim();
+
+    // Parse JSON QR codes if applicable (e.g. {"id":"...", "company_id":"..."})
+    if (target.startsWith('{') && target.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(target);
+        target = parsed.company_id || parsed.id || parsed.employee_id || target;
+      } catch (_) {}
+    }
+
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target);
+    
+    let query = supabase
+      .from('employees')
+      .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department');
+
+    if (isUUID) {
+      query = query.eq('id', target);
+    } else {
+      query = query.ilike('company_id', target);
+    }
+
+    let { data: employee, error } = await query.maybeSingle();
+
+    // Fallback: If not found by primary field, search other identifiers
+    if (!employee) {
+      const { data: fallbackEmp } = await supabase
+        .from('employees')
+        .select('id, first_name, last_name, company_id, avatar_url, has_registered_biometrics, biometric_baseline_path, is_active, job_title, department')
+        .or(`company_id.ilike.${target},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${target}`)
+        .maybeSingle();
+
+      employee = fallbackEmp;
+    }
+
+    if (!employee) {
+      logger.warn(reqId, 'Employee not found for QR scan', { query: target });
+      throw new NotFoundError(`Employee not found for QR value: ${target}`);
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        ...employee,
+        name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Employee'
+      }
+    });
   })
 );
 

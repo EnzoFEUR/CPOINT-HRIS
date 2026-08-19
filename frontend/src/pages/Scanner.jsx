@@ -1123,7 +1123,7 @@ const Scanner = () => {
                 </div>
               )}
               <h2 className="text-xl sm:text-2xl font-black text-white text-center tracking-tight mb-1">
-                {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : 'Unknown Employee'}
+                {state.employee ? (state.employee.name || `${state.employee.first_name || ''} ${state.employee.last_name || ''}`.trim() || 'Employee') : 'Unknown Employee'}
               </h2>
               <p className="text-slate-400 text-center text-xs sm:text-sm mb-2 leading-relaxed">
                 {state.employee?.company_id || 'NO ID'}
