@@ -44,9 +44,9 @@ export const getNotificationPermission = () => {
 /**
  * Request notification permission and register device subscription
  */
-export const subscribeUserToPush = async (userId) => {
+export const subscribeUserToPush = async (userId, silent = false) => {
     if (!isPushSupported()) {
-        toast.error('Push notifications are not supported on this browser.');
+        if (!silent) toast.error('Push notifications are not supported on this browser.');
         return { success: false, error: 'Unsupported' };
     }
 
@@ -54,14 +54,14 @@ export const subscribeUserToPush = async (userId) => {
         // 1. Request OS Permission
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-            toast.error('Notification permission denied by user.');
+            if (!silent) toast.error('Notification permission denied by user.');
             return { success: false, error: 'Permission denied' };
         }
 
         // 2. Wait for Service Worker registration
         const registration = await navigator.serviceWorker.ready;
         if (!registration.pushManager) {
-            toast.error('PushManager not available on this Service Worker.');
+            if (!silent) toast.error('PushManager not available on this Service Worker.');
             return { success: false, error: 'PushManager unavailable' };
         }
 
@@ -106,15 +106,15 @@ export const subscribeUserToPush = async (userId) => {
         }
 
         if (res.ok && data.success) {
-            toast.success('Phone lock-screen notifications enabled!', { duration: 4000 });
+            if (!silent) toast.success('Phone lock-screen notifications enabled!', { duration: 4000 });
             return { success: true, subscription };
         } else {
-            toast.error(data.error || 'Failed to register subscription.');
+            if (!silent) toast.error(data.error || 'Failed to register subscription.');
             return { success: false, error: data.error };
         }
     } catch (err) {
         console.error('[PUSH_REGISTER] Error:', err);
-        toast.error('Failed to enable push notifications: ' + err.message);
+        if (!silent) toast.error('Failed to enable push notifications: ' + err.message);
         return { success: false, error: err.message };
     }
 };
@@ -124,6 +124,9 @@ export const subscribeUserToPush = async (userId) => {
  */
 export const sendTestPush = async (userId) => {
     try {
+        // Ensure this device is registered with the backend
+        await subscribeUserToPush(userId, true);
+
         const res = await fetchWithAuth('/api/push/test', {
             method: 'POST',
             body: JSON.stringify({ user_id: userId })
@@ -137,6 +140,21 @@ export const sendTestPush = async (userId) => {
         }
 
         if (res.ok && data.success) {
+            // Also trigger immediate local service worker notification for instant visual verification
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                await reg.showNotification('C-Point HRIS', {
+                    body: 'Native phone lock-screen alert received.',
+                    icon: '/icon-192.png',
+                    badge: '/badge-72.png',
+                    vibrate: [200, 100, 200],
+                    tag: 'test-push',
+                    renotify: true
+                });
+            } catch (swErr) {
+                console.warn('[SW_NOTIF] Direct notification note:', swErr);
+            }
+
             toast.success('Test notification sent! Check your phone.');
             return data;
         } else {
