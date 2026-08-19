@@ -42,33 +42,98 @@ const EmployeeDashboard = () => {
     }, [storedUser]);
 
     const fetchDashboardData = async (userId) => {
-        const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
-        const result = await res.json();
-        return result || { attendanceData: [], payrollData: [], shiftData: [], discData: [], leaveData: [] };
+        try {
+            const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json && (json.attendanceData !== undefined || json.leaveData !== undefined)) {
+                    return json;
+                }
+            }
+        } catch (err) {
+            console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
+        }
+
+        // Resilient parallel fallback directly to individual routes
+        const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.allSettled([
+            fetchWithAuth(`/api/attendance?employee_id=${userId}`),
+            fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
+            fetchWithAuth(`/api/shifts?employee_id=${userId}`),
+            fetchWithAuth(`/api/disciplinary?employee_id=${userId}`),
+            fetchWithAuth(`/api/leaves?employee_id=${userId}`)
+        ]);
+
+        const attendanceData = attRes.status === 'fulfilled' && attRes.value.ok ? await attRes.value.json() : [];
+        const payrollData = payRes.status === 'fulfilled' && payRes.value.ok ? await payRes.value.json() : [];
+        const shiftData = shiftRes.status === 'fulfilled' && shiftRes.value.ok ? await shiftRes.value.json() : [];
+        const discData = discRes.status === 'fulfilled' && discRes.value.ok ? await discRes.value.json() : [];
+        const leaveData = leaveRes.status === 'fulfilled' && leaveRes.value.ok ? await leaveRes.value.json() : [];
+
+        return { attendanceData, payrollData, shiftData, discData, leaveData };
     };
 
     const { data, isLoading } = useQuery({
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
         enabled: !!user.id && user.role !== 'security',
-        staleTime: 1000 * 60 * 5, // 5 minutes fresh in memory (instant 0ms tab switching)
-        gcTime: 1000 * 60 * 15,    // 15 minutes garbage collection
-        refetchOnWindowFocus: false // Don't interrupt animations on tab focus
+        staleTime: 0,               // Always live & real-time
+        refetchOnWindowFocus: true  // Auto-sync when returning to tab
     });
 
-    // Derived State from React Query cache
-    const recentLogs = data?.attendanceData && Array.isArray(data.attendanceData) ? data.attendanceData.slice(0, 5) : [];
-    const latestPayroll = data?.payrollData && data.payrollData.length > 0 ? data.payrollData[0] : null;
-    
-    const myData = data?.shiftData ? data.shiftData.find(emp => String(emp.id) === String(user.id)) : null;
-    const shift = myData?.shift || 'Unassigned';
+    // ⚡ Real-Time Supabase Live Sync (Instant UI updates on any database change)
+    useEffect(() => {
+        if (!user?.id) return;
 
-    const discData = data?.discData || [];
+        const channel = supabase
+            .channel(`employee-live-dashboard-${user.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .subscribe();
+
+        const handleRefresh = () => {
+            queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+        };
+        window.addEventListener('refresh_dashboard', handleRefresh);
+
+        return () => {
+            supabase.removeChannel(channel);
+            window.removeEventListener('refresh_dashboard', handleRefresh);
+        };
+    }, [user?.id, queryClient]);
+
+    // Derived State with safe unwrap for both direct arrays and { data: [...] } objects
+    const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
+    const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
+
+    const rawPayroll = data?.payrollData?.data || data?.payrollData || [];
+    const latestPayroll = Array.isArray(rawPayroll) && rawPayroll.length > 0 ? rawPayroll[0] : (rawPayroll?.id ? rawPayroll : null);
+    
+    const rawShifts = data?.shiftData?.data || data?.shiftData || [];
+    const myData = Array.isArray(rawShifts) 
+        ? rawShifts.find(emp => String(emp.id) === String(user.id)) 
+        : (rawShifts?.id === user.id ? rawShifts : null);
+    const shift = myData?.shift || user?.shift || 'Unassigned';
+
+    const rawDisc = data?.discData?.data || data?.discData || [];
+    const discData = Array.isArray(rawDisc) ? rawDisc : [];
     const infractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status === 'Active');
     const unresolvedInfractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status !== 'Resolved');
     
-    const myLeaves = data?.leaveData && Array.isArray(data.leaveData) ? data.leaveData.slice(0, 5) : [];
-
+    const rawLeaves = data?.leaveData?.data || data?.leaveData || [];
+    const myLeaves = Array.isArray(rawLeaves) ? rawLeaves.slice(0, 5) : [];
 
     const handleLeaveSubmit = async (e) => {
         e.preventDefault();
@@ -83,7 +148,8 @@ const EmployeeDashboard = () => {
                 toast.success('Leave request submitted to HR!');
                 setShowLeaveModal(false);
                 setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-                queryClient.invalidateQueries(['employeeDashboard', user.id]);
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                queryClient.refetchQueries({ queryKey: ['employeeDashboard', user.id] });
             } else {
                 toast.error(data.error || 'Failed to submit leave.');
             }
