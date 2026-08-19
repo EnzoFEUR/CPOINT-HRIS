@@ -80,14 +80,8 @@ const safeParseJson = (rawText, fallback = {}) => {
   }
 };
 
-// ════════════════════════════════════════════════════════════════════════════════
-// THE UNIVERSAL GEMINI BRAIN CORE
-// ════════════════════════════════════════════════════════════════════════════════
+// Core AI service interface
 export const Brain = {
-
-  // ──────────────────────────────────────────────────────────────────────────────
-  // 1. BIOMETRICS & VISION CORTEX (Gate Anti-Spoofing & Liveness)
-  // ──────────────────────────────────────────────────────────────────────────────
   Biometrics: {
     /**
      * Perform 7-point forensic liveness verification on a single camera frame
@@ -425,9 +419,6 @@ Evaluate turnover probability in strictly valid JSON:
     }
   },
 
-  // ──────────────────────────────────────────────────────────────────────────────
-  // 3. LABOR COMPLIANCE & HR ADVISOR CORTEX (DOLE & Policy Copilot)
-  // ──────────────────────────────────────────────────────────────────────────────
   Compliance: {
     /**
      * Answer HR policy & Philippine Labor Code questions
