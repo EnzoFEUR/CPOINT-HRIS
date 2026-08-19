@@ -3,6 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 
+const getPhotoUrl = (photoPath, employee) => {
+    if (!photoPath && !employee) return null;
+    if (photoPath && photoPath.startsWith('http')) return photoPath;
+    if (photoPath) return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+    if (employee?.company_id && employee?.id) {
+        return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id}/${employee.id}.jpg`;
+    }
+    return null;
+};
+
 const Index = () => {
     const fetchAttendance = async () => {
         const res = await fetchWithAuth('/api/attendance');
@@ -183,16 +193,22 @@ const Index = () => {
                                         <div className="flex items-center justify-between gap-2">
                                             <div>
                                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time In</p>
-                                                <span className="font-mono text-xs font-bold text-emerald-600">
-                                                    {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
+                                                {log.time_in ? (
+                                                    <span className="font-mono text-xs font-bold text-emerald-600">
+                                                        {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                                                        Absent
+                                                    </span>
+                                                )}
                                             </div>
-                                            {log.time_in_photo && (
+                                            {getPhotoUrl(log.time_in_photo, log.employees) && log.time_in && (
                                                 <button 
-                                                    onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In Proof')}
+                                                    onClick={() => openImageModal(getPhotoUrl(log.time_in_photo, log.employees), 'Time In Proof')}
                                                     className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active"
                                                 >
-                                                    <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                    <img src={getPhotoUrl(log.time_in_photo, log.employees)} className="w-full h-full object-cover" alt="Proof" />
                                                 </button>
                                             )}
                                         </div>
@@ -205,6 +221,10 @@ const Index = () => {
                                                     <span className="font-mono text-xs font-bold text-slate-700">
                                                         {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
+                                                ) : log.status === 'Absent' ? (
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        &mdash;
+                                                    </span>
                                                 ) : log.date === new Date().toISOString().split('T')[0] ? (
                                                     <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider animate-pulse">
                                                         Active
@@ -215,12 +235,12 @@ const Index = () => {
                                                     </span>
                                                 )}
                                             </div>
-                                            {log.time_out_photo && (
+                                            {getPhotoUrl(log.time_out_photo, log.employees) && log.time_out && (
                                                 <button 
-                                                    onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out Proof')}
+                                                    onClick={() => openImageModal(getPhotoUrl(log.time_out_photo, log.employees), 'Time Out Proof')}
                                                     className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active"
                                                 >
-                                                    <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                    <img src={getPhotoUrl(log.time_out_photo, log.employees)} className="w-full h-full object-cover" alt="Proof" />
                                                 </button>
                                             )}
                                         </div>
@@ -229,8 +249,9 @@ const Index = () => {
                                     {/* Card Footer: Status */}
                                     <div className="flex items-center justify-between pt-1">
                                         <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                                            log.status === 'Absent' ? 'bg-rose-50 text-rose-600 border-rose-200' :
                                             log.status.includes('Late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                            'bg-cyan-50 text-cyan-600 border-cyan-200'
+                                            'bg-emerald-50 text-emerald-600 border-emerald-200'
                                         }`}>
                                             {log.status}
                                         </span>
@@ -297,22 +318,26 @@ const Index = () => {
                                             {/* Time In Column */}
                                             <td className="px-6 py-4 text-center">
                                                 <div className="flex flex-col items-center gap-2">
-                                                    <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg text-sm border border-emerald-100">
-                                                        {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                    {log.time_in_photo ? (
+                                                    {log.time_in ? (
+                                                        <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg text-sm border border-emerald-100">
+                                                            {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-rose-50 text-rose-600 border border-rose-100 px-3 py-1 rounded-lg text-xs font-bold">
+                                                            Absent
+                                                        </span>
+                                                    )}
+                                                    {getPhotoUrl(log.time_in_photo, log.employees) && log.time_in ? (
                                                         <button 
-                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(getPhotoUrl(log.time_in_photo, log.employees), 'Time In'); }}
                                                             className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
                                                             </div>
-                                                            <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                            <img src={getPhotoUrl(log.time_in_photo, log.employees)} className="w-full h-full object-cover" alt="Proof" />
                                                         </button>
-                                                    ) : (
-                                                        <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Proof</span>
-                                                    )}
+                                                    ) : null}
                                                 </div>
                                             </td>
 
@@ -323,6 +348,8 @@ const Index = () => {
                                                         <span className="font-mono text-slate-600 font-bold bg-slate-100 px-3 py-1 rounded-lg text-sm border border-slate-200">
                                                             {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
+                                                    ) : log.status === 'Absent' ? (
+                                                        <span className="text-xs text-slate-300 font-mono font-bold">&mdash;</span>
                                                     ) : log.date === new Date().toISOString().split('T')[0] ? (
                                                         <span className="bg-amber-50 text-amber-600 border border-amber-100 px-3 py-1 rounded-lg text-sm font-bold animate-pulse">
                                                             Active
@@ -332,25 +359,26 @@ const Index = () => {
                                                             Missed Punch
                                                         </span>
                                                     )}
-                                                    {log.time_out_photo && (
+                                                    {getPhotoUrl(log.time_out_photo, log.employees) && log.time_out ? (
                                                         <button 
-                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(getPhotoUrl(log.time_out_photo, log.employees), 'Time Out'); }}
                                                             className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
                                                         >
                                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <i className="ti ti-maximize text-white" />
                                                             </div>
-                                                            <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                            <img src={getPhotoUrl(log.time_out_photo, log.employees)} className="w-full h-full object-cover" alt="Proof" />
                                                         </button>
-                                                    )}
+                                                    ) : null}
                                                 </div>
                                             </td>
 
                                             {/* Status Column */}
                                             <td className="px-6 py-4 text-center">
                                                 <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border ${
+                                                    log.status === 'Absent' ? 'bg-rose-50 text-rose-600 border-rose-200' :
                                                     log.status.includes('Late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                                    'bg-cyan-50 text-cyan-600 border-cyan-200'
+                                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
                                                 }`}>
                                                     {log.status}
                                                 </span>
