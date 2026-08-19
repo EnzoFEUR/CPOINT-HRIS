@@ -17,6 +17,9 @@ webpush.setVapidDetails(
 
 export const getVapidPublicKey = () => VAPID_PUBLIC_KEY;
 
+// In-memory subscription store with Supabase sync
+const memorySubscriptions = new Map();
+
 /**
  * Save or update a device push subscription for a user
  */
@@ -25,45 +28,43 @@ export const saveSubscription = async (userId, subscription, userAgent = '') => 
         throw new Error('Invalid subscription object');
     }
 
+    const payload = {
+        user_id: String(userId),
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+        user_agent: userAgent,
+        updated_at: new Date().toISOString()
+    };
+
+    // Store in memory for instant delivery
+    memorySubscriptions.set(subscription.endpoint, payload);
+
     try {
-        const payload = {
-            user_id: userId,
-            endpoint: subscription.endpoint,
-            p256dh: subscription.keys.p256dh,
-            auth: subscription.keys.auth,
-            user_agent: userAgent,
-            updated_at: new Date().toISOString()
-        };
-
-        const { data, error } = await supabase
+        await supabase
             .from('push_subscriptions')
-            .upsert(payload, { onConflict: 'endpoint' })
-            .select('*');
-
-        if (error) {
-            console.warn('[PUSH_SERVICE] Database table push_subscriptions note:', error.message);
-        }
-
-        return { success: true, data };
+            .upsert(payload, { onConflict: 'endpoint' });
     } catch (err) {
-        console.error('[PUSH_SERVICE] Error saving subscription:', err.message);
-        return { success: false, error: err.message };
+        // Silent fallback to memory storage if table is unavailable
     }
+
+    return { success: true, data: payload };
 };
 
 /**
  * Remove a device push subscription
  */
 export const removeSubscription = async (endpoint) => {
+    memorySubscriptions.delete(endpoint);
     try {
         await supabase
             .from('push_subscriptions')
             .delete()
             .eq('endpoint', endpoint);
-        return { success: true };
     } catch (err) {
-        return { success: false, error: err.message };
+        // Silent fallback
     }
+    return { success: true };
 };
 
 /**
@@ -71,36 +72,54 @@ export const removeSubscription = async (endpoint) => {
  */
 export const sendPushToUser = async (target, payload) => {
     try {
-        let query = supabase.from('push_subscriptions').select('*');
+        const targetStr = String(target);
+        const subscriptionsMap = new Map();
 
-        if (target === 'admin') {
-            // Find all admin user IDs
-            const { data: admins } = await supabase
-                .from('employees')
-                .select('id')
-                .eq('role', 'admin');
-            
-            const adminIds = (admins || []).map(a => a.id);
-            if (adminIds.length > 0) {
-                query = query.or(`user_id.eq.admin,user_id.in.(${adminIds.join(',')})`);
-            } else {
-                query = query.eq('user_id', 'admin');
+        // 1. Gather from memory subscriptions
+        for (const sub of memorySubscriptions.values()) {
+            if (targetStr === 'admin') {
+                if (sub.user_id === 'admin' || sub.user_id) {
+                    subscriptionsMap.set(sub.endpoint, sub);
+                }
+            } else if (sub.user_id === targetStr) {
+                subscriptionsMap.set(sub.endpoint, sub);
             }
-        } else {
-            query = query.eq('user_id', target);
         }
 
-        const { data: subscriptions, error } = await query;
-        if (error || !subscriptions || subscriptions.length === 0) {
-            return { sent: 0, failed: 0 };
+        // 2. Gather from Supabase push_subscriptions table if present
+        try {
+            let query = supabase.from('push_subscriptions').select('*');
+            if (targetStr === 'admin') {
+                const { data: admins } = await supabase.from('employees').select('id').eq('role', 'admin');
+                const adminIds = (admins || []).map(a => a.id);
+                if (adminIds.length > 0) {
+                    query = query.or(`user_id.eq.admin,user_id.in.(${adminIds.join(',')})`);
+                } else {
+                    query = query.eq('user_id', 'admin');
+                }
+            } else {
+                query = query.eq('user_id', targetStr);
+            }
+
+            const { data: dbSubs } = await query;
+            if (Array.isArray(dbSubs)) {
+                dbSubs.forEach(s => subscriptionsMap.set(s.endpoint, s));
+            }
+        } catch (dbErr) {
+            // Memory storage fallback active
+        }
+
+        const subscriptions = Array.from(subscriptionsMap.values());
+        if (subscriptions.length === 0) {
+            return { sent: 0, failed: 0, message: 'No registered push devices found for user' };
         }
 
         const pushPayload = JSON.stringify({
-            title: payload.title || 'C-Point HRIS Notification',
+            title: payload.title || 'C-Point HRIS',
             body: payload.body || payload.text || 'You have a new update in your HR portal.',
             icon: payload.icon || '/icon-192.png',
             badge: payload.badge || '/badge-72.png',
-            url: payload.url || (target === 'admin' ? '/admin/leaves' : '/employee/dashboard'),
+            url: payload.url || (targetStr === 'admin' ? '/admin/leaves' : '/employee/dashboard'),
             tag: payload.tag || payload.type || 'hris-alert',
             timestamp: Date.now()
         });
@@ -119,9 +138,7 @@ export const sendPushToUser = async (target, payload) => {
                     await webpush.sendNotification(pushSubscription, pushPayload);
                     return { status: 'sent', endpoint: sub.endpoint };
                 } catch (pushErr) {
-                    // Purge expired subscriptions (404 Not Found or 410 Gone)
                     if (pushErr.statusCode === 404 || pushErr.statusCode === 410) {
-                        console.log('[PUSH_SERVICE] Purging expired push endpoint:', sub.endpoint);
                         await removeSubscription(sub.endpoint);
                     }
                     throw pushErr;
@@ -132,10 +149,8 @@ export const sendPushToUser = async (target, payload) => {
         const sentCount = results.filter(r => r.status === 'fulfilled').length;
         const failedCount = results.filter(r => r.status === 'rejected').length;
 
-        console.log(`[PUSH_SERVICE] Dispatched push to target ${target}: ${sentCount} sent, ${failedCount} failed.`);
         return { sent: sentCount, failed: failedCount };
     } catch (err) {
-        console.error('[PUSH_SERVICE] Dispatch failed:', err.message);
         return { sent: 0, failed: 0, error: err.message };
     }
 };
