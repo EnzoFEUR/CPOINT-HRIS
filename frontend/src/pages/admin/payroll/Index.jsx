@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,28 +10,39 @@ export default function PayrollIndex() {
     const currentMonth = searchParams.get('month') || '';
     const currentYear = searchParams.get('year') || '';
 
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedDepartment, setSelectedDepartment] = useState('All');
     const [filterStatus, setFilterStatus] = useState('All');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
     const currentYearNum = new Date().getFullYear();
-    const years = Array.from({ length: 3 }, (_, i) => currentYearNum - 2 + i);
+    const years = Array.from({ length: 4 }, (_, i) => currentYearNum - 2 + i);
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
-    const handleFilterSubmit = (e) => {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        const month = formData.get('month');
-        const year = formData.get('year');
-        const params = new URLSearchParams();
+    const handleMonthChange = (e) => {
+        const month = e.target.value;
+        const params = new URLSearchParams(searchParams);
         if (month) params.set('month', month);
-        if (year) params.set('year', year);
+        else params.delete('month');
         setSearchParams(params);
         setCurrentPage(1);
     };
 
-    const handleFilterStatusChange = (status) => {
-        setFilterStatus(status);
+    const handleYearChange = (e) => {
+        const year = e.target.value;
+        const params = new URLSearchParams(searchParams);
+        if (year) params.set('year', year);
+        else params.delete('year');
+        setSearchParams(params);
+        setCurrentPage(1);
+    };
+
+    const handleClearFilters = () => {
+        setSearchQuery('');
+        setSelectedDepartment('All');
+        setFilterStatus('All');
+        setSearchParams(new URLSearchParams());
         setCurrentPage(1);
     };
 
@@ -54,20 +65,51 @@ export default function PayrollIndex() {
     const { data: payrolls = [], isLoading } = useQuery({
         queryKey: ['adminPayrolls', currentMonth, currentYear],
         queryFn: fetchPayrolls,
+        staleTime: 60_000,
+        gcTime: 300_000,
         refetchOnMount: 'always',
     });
 
-    const filteredPayrolls = payrolls.filter(p => {
-        const roleStr = (p.employees?.role || '').toLowerCase();
-        if (roleStr === 'admin' || roleStr === 'security') return false;
+    // Extract unique departments dynamically
+    const departments = useMemo(() => {
+        const depts = new Set();
+        payrolls.forEach(p => {
+            if (p.employees?.department) depts.add(p.employees.department);
+        });
+        return ['All', ...Array.from(depts)];
+    }, [payrolls]);
 
-        if (filterStatus === 'All') return true;
-        if (filterStatus === 'Completed') return p.status === 'Completed' || p.status === 'Paid';
-        if (filterStatus === 'Pending') return p.status === 'Pending' || p.status === 'Draft';
-        return p.status === filterStatus;
-    });
+    // Client-side instant filtering across all parameters
+    const filteredPayrolls = useMemo(() => {
+        return payrolls.filter(p => {
+            const roleStr = (p.employees?.role || '').toLowerCase();
+            if (roleStr === 'admin' || roleStr === 'security') return false;
 
-    const totalNetDisbursed = filteredPayrolls.reduce((sum, p) => sum + (Number(p.net_pay) || 0), 0);
+            // Status filter
+            if (filterStatus === 'Completed' && p.status !== 'Completed' && p.status !== 'Paid') return false;
+            if (filterStatus === 'Pending' && p.status !== 'Pending' && p.status !== 'Draft') return false;
+
+            // Department filter
+            if (selectedDepartment !== 'All' && p.employees?.department !== selectedDepartment) return false;
+
+            // Search query filter (Name, Company ID, Job Title)
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const fullName = `${p.employees?.first_name || ''} ${p.employees?.last_name || ''}`.toLowerCase();
+                const companyId = (p.employees?.company_id || '').toLowerCase();
+                const empId = (p.employee_id || '').toLowerCase();
+                const jobTitle = (p.employees?.job_title || '').toLowerCase();
+
+                if (!fullName.includes(q) && !companyId.includes(q) && !empId.includes(q) && !jobTitle.includes(q)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [payrolls, filterStatus, selectedDepartment, searchQuery]);
+
+    const isFiltered = Boolean(currentMonth || currentYear || searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'All');
 
     const totalItems = filteredPayrolls.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
@@ -130,79 +172,124 @@ export default function PayrollIndex() {
                 </div>
             </motion.div>
 
-            {/* CONTROLS: FILTER TABS & PERIOD SELECTOR */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                
-                {/* FILTER STATUS TABS */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-1 sm:p-1.5 rounded-xl shadow-xs border border-slate-100 overflow-x-auto touch-scroll no-scrollbar w-full sm:w-max">
-                    <div className="flex gap-1 min-w-max">
+            {/* DYNAMIC RESPONSIVE FILTER TOOLBAR */}
+            <motion.div 
+                initial={{ opacity: 0, y: 15 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-100 space-y-3"
+            >
+                {/* TOP ROW: SEARCH + STATUS TABS */}
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    
+                    {/* Live Instant Search Bar */}
+                    <div className="relative flex-1 min-w-[240px]">
+                        <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
+                        <input
+                            type="text"
+                            placeholder="Search employee name, company ID, or role..."
+                            value={searchQuery}
+                            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                            className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                title="Clear search"
+                            >
+                                <i className="ti ti-x text-sm font-bold" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Status Pill Tabs */}
+                    <div className="flex bg-slate-100/80 p-1 rounded-xl overflow-x-auto touch-scroll no-scrollbar shrink-0">
                         {['All', 'Completed', 'Pending'].map(status => (
                             <button
                                 key={status}
-                                onClick={() => handleFilterStatusChange(status)}
-                                className={`px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-bold tap-active transition-all whitespace-nowrap ${
+                                onClick={() => { setFilterStatus(status); setCurrentPage(1); }}
+                                className={`px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold tap-active transition-all whitespace-nowrap ${
                                     filterStatus === status 
-                                    ? 'bg-slate-900 text-white shadow-xs' 
-                                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                                    ? 'bg-white text-slate-900 shadow-xs' 
+                                    : 'text-slate-500 hover:text-slate-900'
                                 }`}
                             >
                                 {status}
                             </button>
                         ))}
                     </div>
-                </motion.div>
+                </div>
 
-                {/* MONTH / YEAR PICKER FORM */}
-                <motion.form 
-                    initial={{ opacity: 0, y: 20 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    onSubmit={handleFilterSubmit} 
-                    className="flex items-center gap-2 bg-white p-1.5 rounded-xl shadow-xs border border-slate-100 shrink-0"
-                >
-                    <div className="pl-3 pr-1 text-slate-400">
-                        <i className="ti ti-calendar-stats text-lg" />
+                {/* BOTTOM ROW: PERIOD DROPDOWNS + DEPARTMENT + RESET */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        
+                        {/* Month Selector */}
+                        <div className="relative min-w-[130px] flex-1 sm:flex-initial">
+                            <select 
+                                value={currentMonth} 
+                                onChange={handleMonthChange}
+                                className="w-full appearance-none bg-slate-50 border border-slate-200/80 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
+                            >
+                                <option value="">All Months</option>
+                                {months.map(m => {
+                                    const date = new Date(2000, m - 1, 1);
+                                    const monthName = date.toLocaleString('default', { month: 'short' });
+                                    return <option key={m} value={m.toString().padStart(2, '0')}>{monthName}</option>;
+                                })}
+                            </select>
+                            <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                        </div>
+
+                        {/* Year Selector */}
+                        <div className="relative min-w-[110px] flex-1 sm:flex-initial">
+                            <select 
+                                value={currentYear} 
+                                onChange={handleYearChange}
+                                className="w-full appearance-none bg-slate-50 border border-slate-200/80 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
+                            >
+                                <option value="">All Years</option>
+                                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                            <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                        </div>
+
+                        {/* Department Selector */}
+                        {departments.length > 2 && (
+                            <div className="relative min-w-[140px] flex-1 sm:flex-initial">
+                                <select 
+                                    value={selectedDepartment} 
+                                    onChange={(e) => { setSelectedDepartment(e.target.value); setCurrentPage(1); }}
+                                    className="w-full appearance-none bg-slate-50 border border-slate-200/80 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
+                                >
+                                    <option value="All">All Depts</option>
+                                    {departments.filter(d => d !== 'All').map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                                <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                            </div>
+                        )}
                     </div>
 
-                    <select 
-                        name="month" 
-                        defaultValue={currentMonth} 
-                        className="bg-slate-50 border border-slate-200/80 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                    >
-                        <option value="">All Months</option>
-                        {months.map(m => {
-                            const date = new Date(2000, m - 1, 1);
-                            const monthName = date.toLocaleString('default', { month: 'short' });
-                            return <option key={m} value={m.toString().padStart(2, '0')}>{monthName}</option>;
-                        })}
-                    </select>
+                    {/* Results Count & Clear Filter */}
+                    <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-[11px] font-bold text-slate-400">
+                            {totalItems} {totalItems === 1 ? 'record' : 'records'} found
+                        </span>
 
-                    <select 
-                        name="year" 
-                        defaultValue={currentYear} 
-                        className="bg-slate-50 border border-slate-200/80 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                    >
-                        <option value="">All Years</option>
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-
-                    <button 
-                        type="submit" 
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition-all tap-active"
-                    >
-                        Filter
-                    </button>
-
-                    {(currentMonth || currentYear) && (
-                        <Link 
-                            to="/admin/payroll" 
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors" 
-                            title="Clear Date Filters"
-                        >
-                            <i className="ti ti-x text-sm font-bold" />
-                        </Link>
-                    )}
-                </motion.form>
-            </div>
+                        {isFiltered && (
+                            <button
+                                onClick={handleClearFilters}
+                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 tap-active"
+                                title="Reset all filters"
+                            >
+                                <i className="ti ti-filter-off text-xs" /> Reset
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </motion.div>
 
             {/* TABLE CONTAINER */}
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
