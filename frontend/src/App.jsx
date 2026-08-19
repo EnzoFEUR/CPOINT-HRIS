@@ -54,6 +54,8 @@ import DisciplinaryIndex from './pages/admin/disciplinary/Index';
 import MyQr from './pages/employee/MyQr';
 import EmployeeScanner from './pages/employee/Scanner';
 
+import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
+
 import './index.css';
 
 const getRole = (user) => (user?.role || '').toLowerCase();
@@ -313,6 +315,7 @@ function MainLayout({ children }) {
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [browserType, setBrowserType] = useState('other'); // 'samsung', 'ios', 'chrome_android', 'desktop'
+  const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
 
   useEffect(() => {
     // Check if app is already running in standalone mode (PWA installed)
@@ -815,6 +818,44 @@ function MainLayout({ children }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Native Phone Lock-Screen Push Notifications Banner */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <i className="ti ti-device-mobile-message text-sm"></i>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
+                        <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
+                      </div>
+                    </div>
+
+                    {pushStatus === 'granted' ? (
+                      <button
+                        onClick={async () => {
+                          await sendTestPush(user.id);
+                        }}
+                        className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        title="Send a test notification to your phone"
+                      >
+                        <i className="ti ti-bell-ringing text-blue-600"></i>
+                        Test Buzz
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const res = await subscribeUserToPush(user.id);
+                          if (res.success) setPushStatus('granted');
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg shadow-sm shadow-blue-600/30 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <i className="ti ti-bell-plus"></i>
+                        Enable
+                      </button>
+                    )}
+                  </div>
+
                 </div>
               )}
             </div>

@@ -71,7 +71,7 @@ const MyQr = () => {
         className="w-full flex flex-col will-change-transform transform-gpu"
       >
 
-        {/* ── Employee Identity Header Row ── */}
+        {/* Employee identity header */}
         <motion.div variants={itemVariants} className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1 will-change-transform transform-gpu">
           <div className="flex items-center gap-3.5 min-w-0">
             {/* User Avatar */}
@@ -103,7 +103,7 @@ const MyQr = () => {
             </div>
           </div>
 
-          {/* Company ID Badge Pill */}
+          {/* Company ID badge */}
           <div className="shrink-0">
             <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 block shadow-2xs">
               {qrValue}
@@ -111,7 +111,7 @@ const MyQr = () => {
           </div>
         </motion.div>
 
-        {/* ── High-Contrast Large Optical QR Card ── */}
+        {/* QR Code card */}
         <motion.div variants={itemVariants} className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs will-change-transform transform-gpu">
           <QRCode
             value={qrValue}
@@ -122,7 +122,7 @@ const MyQr = () => {
           />
         </motion.div>
 
-        {/* ── Date & Real-Time Sync Footer ── */}
+        {/* Date and time footer */}
         <motion.div variants={itemVariants} className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2 will-change-transform transform-gpu">
           <span>{formattedDate}</span>
           <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">

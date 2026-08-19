@@ -1,5 +1,5 @@
 // C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
-const CACHE_NAME = 'cpoint-hris-v2.5.8';
+const CACHE_NAME = 'cpoint-hris-v2.6.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -126,4 +126,68 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+// 6. Native Web Push Event (OS Lock-Screen Notifications)
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'C-Point HRIS',
+    body: 'You have a new update in your HR portal.',
+    icon: '/icon-192.png',
+    badge: '/badge-72.png',
+    url: '/employee/dashboard',
+    tag: 'cpoint-notification'
+  };
+
+  if (event.data) {
+    try {
+      data = { ...data, ...event.data.json() };
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/badge-72.png',
+    vibrate: [200, 100, 200, 100, 200],
+    data: {
+      url: data.url || '/employee/dashboard',
+      timestamp: data.timestamp || Date.now()
+    },
+    actions: [
+      { action: 'open', title: 'Open Portal' }
+    ],
+    tag: data.tag || 'cpoint-notification',
+    renotify: true,
+    requireInteraction: false
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// 7. Notification Click Handler -> Focus or Open Window
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // If an HRIS tab/window is already open, focus it and navigate
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Otherwise open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
 });

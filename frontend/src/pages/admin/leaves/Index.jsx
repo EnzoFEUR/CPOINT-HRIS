@@ -30,7 +30,7 @@ export default function LeavesIndex() {
         refetchOnWindowFocus: true
     });
 
-    // ⚡ Real-Time Live Sync: Automatically updates leave table when any request is submitted/modified
+    // Real-time live sync for leave approvals table
     useEffect(() => {
         const channel = supabase
             .channel('admin-live-leaves')

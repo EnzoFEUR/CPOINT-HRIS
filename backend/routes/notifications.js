@@ -111,6 +111,19 @@ export const createNotification = async ({ target, title, text, type, sender_id,
         event: 'NEW_NOTIFICATION',
         payload: enrichedPayload
     });
+
+    // Dispatch push notification to user devices
+    import('../services/pushService.js')
+        .then(({ sendPushToUser }) => {
+            sendPushToUser(target, {
+                title,
+                body: text,
+                type: type || 'system',
+                url: target === 'admin' ? '/admin/leaves' : '/employee/dashboard'
+            }).catch(err => console.error('[PUSH_DISPATCH] Error:', err.message));
+        })
+        .catch(err => console.error('[PUSH_IMPORT] Error:', err.message));
+
     return enrichedPayload;
 };
 

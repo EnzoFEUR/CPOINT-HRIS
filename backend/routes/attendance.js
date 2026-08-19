@@ -476,7 +476,7 @@ router.post(
 
     const todayStr = getTodayString();
 
-    // ── Atomic Check: Existing Record ──
+    // Check for existing attendance record today
     const { data: existing, error: existErr } = await supabase
       .from('attendances')
       .select('id, time_in, time_out, date')

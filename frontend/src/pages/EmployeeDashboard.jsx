@@ -80,7 +80,7 @@ const EmployeeDashboard = () => {
         refetchOnWindowFocus: true  // Auto-sync when returning to tab
     });
 
-    // ⚡ Real-Time Supabase Live Sync (Instant UI updates on any database change)
+    // Real-time live sync for dashboard updates
     useEffect(() => {
         if (!user?.id) return;
 

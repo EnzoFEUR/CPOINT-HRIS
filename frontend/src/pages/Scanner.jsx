@@ -281,7 +281,7 @@ const Scanner = () => {
     img.src = src;
   });
 
-  // ── 2. UI Status & Throttled Dispatch ──
+  // UI status and throttled dispatch
   const updateStatus = useCallback((text) => {
     if (updateStatus.lastText === text) return;
     updateStatus.lastText = text;
@@ -339,7 +339,7 @@ const Scanner = () => {
     dispatch({ type: 'SET_MODE', payload: MODES.QR });
   }, [vault, stopFaceCamera, dispatch]);
 
-  // ── 5. Capture & Submit to Backend ──
+  // Capture frame and submit to backend
   const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
     if (vault.submitLock) return;
     vault.submitLock = true;
@@ -524,7 +524,7 @@ const Scanner = () => {
         return;
       }
 
-      // ── Liveness: Blink Detection ──
+      // Liveness blink detection
       const ear = getEAR(det.landmarks);
       vault.earHistory.push(ear);
       if (vault.earHistory.length > 50) vault.earHistory.shift();
@@ -695,7 +695,7 @@ const Scanner = () => {
     }
   }, [vault, dispatch]);
 
-  // ── 9. QR Scanner Starter (Dynamic Mobile / Desktop Camera Engine) ──
+  // QR scanner initialization
   const startQr = useCallback(async (isUserGesture = false) => {
     if (qrRef.current) return;
     dispatch({ type: 'SET_LOADING', payload: 'CONNECTING OPTICAL CAMERA...' });
@@ -803,7 +803,7 @@ const Scanner = () => {
     }
   }, [state.mode, state.modelsLoaded, startQr, stopQr, startFaceCamera, handleReset]);
 
-  // ── 11. Boot Effect: Models + Clock + Dynamic Viewport + CSS + Wake Lock ──
+  // Initialize models, clock, and viewport
   useEffect(() => {
     let mounted = true;
     let wakeLock = null;
