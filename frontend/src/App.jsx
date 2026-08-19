@@ -604,10 +604,26 @@ function MainLayout({ children }) {
               ))}
             </>
           ) : (
-            <Link to="/profile" className="flex items-center px-4 py-3.5 rounded-2xl text-slate-400 hover:text-white group">
-              <i className="ti ti-user-circle text-xl group-hover:scale-110 transition-transform duration-300"></i>
-              <span className="ml-3 font-medium tracking-wide">My Profile</span>
-            </Link>
+            <>
+              <Link 
+                to="/employee/qr" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                  location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-qrcode text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <span className="ml-3 font-medium tracking-wide">Show My ID</span>
+              </Link>
+              <Link 
+                to="/profile" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                  location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-user-circle text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <span className="ml-3 font-medium tracking-wide">My Profile</span>
+              </Link>
+            </>
           )}
 
         </nav>
