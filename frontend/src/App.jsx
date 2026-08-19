@@ -33,6 +33,7 @@ import EmployeeShow from './pages/admin/employees/Show';
 import EmployeeQrPrint from './pages/admin/employees/QrPrint';
 
 // Admin / Payroll
+import StatutorySettings from './pages/admin/payroll/StatutorySettings';
 import PayrollIndex from './pages/admin/payroll/Index';
 import PayrollCreate from './pages/admin/payroll/Create';
 import PayrollShow from './pages/admin/payroll/Show';
@@ -57,80 +58,81 @@ import './index.css';
 
 const getRole = (user) => (user?.role || '').toLowerCase();
 const isSecurity = (user) => {
-    const r = getRole(user);
-    return r === 'security' || r === 'guard' || r === 'security_guard';
+  const r = getRole(user);
+  return r === 'security' || r === 'guard' || r === 'security_guard';
 };
 const isAdmin = (user) => {
-    const r = getRole(user);
-    return r === 'admin' || r === 'superadmin' || r === 'hr';
+  const r = getRole(user);
+  return r === 'admin' || r === 'superadmin' || r === 'hr';
 };
 
 const getUser = () => {
-    try {
-        const raw = localStorage.getItem('user');
-        return (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
+  try {
+    const raw = localStorage.getItem('user');
+    return (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 };
 
 // Route Guard: Protected Routes
 const ProtectedRoute = ({ children, allowedRoles = null, requireBiometrics = false }) => {
-    const user = getUser();
+  const user = getUser();
 
-    if (!user) {
-        return <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.requires_password_change) {
+    return <Navigate to="/force-password-change" replace />;
+  }
+
+  if (requireBiometrics && !user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
+    return <Navigate to="/biometric-setup" replace />;
+  }
+
+  if (allowedRoles) {
+    const role = getRole(user);
+    const hasRole = allowedRoles.some(r => r.toLowerCase() === role);
+    if (!hasRole) {
+      if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+      if (isAdmin(user)) return <Navigate to="/" replace />;
+      return <Navigate to="/employee/dashboard" replace />;
     }
+  }
 
-    if (user.requires_password_change) {
-        return <Navigate to="/force-password-change" replace />;
-    }
-
-    if (requireBiometrics && !user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
-        return <Navigate to="/biometric-setup" replace />;
-    }
-
-    if (allowedRoles) {
-        const role = getRole(user);
-        const hasRole = allowedRoles.some(r => r.toLowerCase() === role);
-        if (!hasRole) {
-            if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-            if (isAdmin(user)) return <Navigate to="/" replace />;
-            return <Navigate to="/employee/dashboard" replace />;
-        }
-    }
-
-    return children;
+  return children;
 };
 
 // Route Guard: Public-Only Routes (Redirects already authenticated users)
 const PublicOnlyRoute = ({ children }) => {
-    const user = getUser();
-    if (user) {
-        if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-        if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
-        if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-        if (isAdmin(user)) return <Navigate to="/" replace />;
-        return <Navigate to="/employee/dashboard" replace />;
-    }
-    return children;
+  const user = getUser();
+  if (user) {
+    if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
+    if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+    if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+    if (isAdmin(user)) return <Navigate to="/" replace />;
+    return <Navigate to="/employee/dashboard" replace />;
+  }
+  return children;
 };
 
 // Root Router: Dispatches user to their respective dashboard
 const RootRoute = () => {
-    const user = getUser();
-    if (!user) return <Navigate to="/login" replace />;
-    if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-    if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
-    if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-    if (isAdmin(user)) return <MainLayout><Dashboard /></MainLayout>;
-    return <Navigate to="/employee/dashboard" replace />;
+  const user = getUser();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
+  if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+  if (isSecurity(user)) return <Navigate to="/scanner" replace />;
+  if (isAdmin(user)) return <MainLayout><Dashboard /></MainLayout>;
+  return <Navigate to="/employee/dashboard" replace />;
 };
 
 const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
-  
+
   // Payroll Routes
+  if (pathname === '/admin/payroll/statutory-settings') return 'Statutory Settings';
   if (pathname === '/admin/payroll') return 'Payroll Ledger';
   if (pathname === '/admin/payroll/process') return 'Payroll Calculator';
   if (pathname.startsWith('/admin/payroll/')) return 'Payslip Details';
@@ -174,7 +176,7 @@ const playNotificationChime = () => {
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
-    
+
     const now = ctx.currentTime;
     // Note 1: D5 (587.33 Hz)
     const osc1 = ctx.createOscillator();
@@ -293,7 +295,7 @@ function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   // Current user from localStorage
   const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { name: 'Admin User', role: 'admin' });
 
@@ -314,9 +316,9 @@ function MainLayout({ children }) {
 
   useEffect(() => {
     // Check if app is already running in standalone mode (PWA installed)
-    const isStandaloneMode = 
-      window.matchMedia('(display-mode: standalone)').matches || 
-      window.navigator.standalone === true || 
+    const isStandaloneMode =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true ||
       document.referrer.includes('android-app://');
     setIsStandalone(Boolean(isStandaloneMode));
 
@@ -378,7 +380,7 @@ function MainLayout({ children }) {
       fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`)
         .then(res => res.json())
         .then(data => {
-            if (Array.isArray(data)) setNotifications(data);
+          if (Array.isArray(data)) setNotifications(data);
         })
         .catch(console.error);
     }
@@ -390,6 +392,7 @@ function MainLayout({ children }) {
     { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
     { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
+    { label: 'Statutory Settings', route: '/admin/payroll/statutory-settings', icon: 'ti-adjustments-horizontal' },
     { label: 'Leave Approvals', route: '/admin/leaves', icon: 'ti-plane-departure' },
     { label: 'Disciplinary & Notices', route: '/admin/disciplinary', icon: 'ti-alert-triangle' },
     { label: 'Audit Trail', route: '/admin/audit-logs', icon: 'ti-history' },
@@ -446,51 +449,51 @@ function MainLayout({ children }) {
         const notif = payload.payload;
         // Check if notif is for me
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
-            playNotificationChime();
-            const visuals = getNotificationVisuals(notif.type);
-            const avatar = getNotificationAvatar(notif);
-            
-            toast.custom((t) => (
-              <div 
-                onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
-                className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
-              >
-                <div className="relative h-11 w-11 shrink-0">
-                  {avatar.avatarSrc ? (
-                    <img 
-                      src={avatar.avatarSrc} 
-                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                      alt={notif.sender_name || 'Sender'}
-                      className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
-                    />
-                  ) : null}
-                  <div 
-                    className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
-                    style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                  >
-                    {avatar.initials}
-                  </div>
-                  <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
-                    <i className={`ti ${visuals.icon}`} />
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
-                      {visuals.label}
-                    </span>
-                    <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
-                  </div>
-                  <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
-                </div>
-              </div>
-            ), { duration: 6000 });
+          playNotificationChime();
+          const visuals = getNotificationVisuals(notif.type);
+          const avatar = getNotificationAvatar(notif);
 
-            setNotifications(prev => [notif, ...prev]);
-            
-            if (window.location.pathname.includes('/employee/dashboard')) {
-                window.dispatchEvent(new Event('refresh_dashboard'));
-            }
+          toast.custom((t) => (
+            <div
+              onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
+              className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
+            >
+              <div className="relative h-11 w-11 shrink-0">
+                {avatar.avatarSrc ? (
+                  <img
+                    src={avatar.avatarSrc}
+                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                    alt={notif.sender_name || 'Sender'}
+                    className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
+                  />
+                ) : null}
+                <div
+                  className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
+                  style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
+                >
+                  {avatar.initials}
+                </div>
+                <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
+                  <i className={`ti ${visuals.icon}`} />
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
+                    {visuals.label}
+                  </span>
+                  <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
+                </div>
+                <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
+              </div>
+            </div>
+          ), { duration: 6000 });
+
+          setNotifications(prev => [notif, ...prev]);
+
+          if (window.location.pathname.includes('/employee/dashboard')) {
+            window.dispatchEvent(new Event('refresh_dashboard'));
+          }
         }
       })
       .subscribe();
@@ -501,13 +504,13 @@ function MainLayout({ children }) {
   }, [user]);
 
   const markAllRead = async () => {
-      setNotifications(prev => prev.map(n => ({...n, read: true})));
-      try {
-          await fetchWithAuth('/api/notifications/read-all', {
-              method: 'PUT',
-              body: JSON.stringify({ user_id: user.id, role: user.role })
-          });
-      } catch (err) { console.error(err); }
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await fetchWithAuth('/api/notifications/read-all', {
+        method: 'PUT',
+        body: JSON.stringify({ user_id: user.id, role: user.role })
+      });
+    } catch (err) { console.error(err); }
   };
 
   const [currentDate, setCurrentDate] = useState(() => new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -526,9 +529,9 @@ function MainLayout({ children }) {
 
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
-      
+
       {/* Desktop Sidebar (Only visible on PC / lg+ screens) */}
-      <aside 
+      <aside
         className="hidden lg:flex fixed inset-y-4 left-4 z-50 w-72 rounded-[2rem] glass-sidebar text-slate-300 flex-col shadow-2xl shadow-slate-900/20 bg-slate-900"
       >
         {/* Logo */}
@@ -545,7 +548,7 @@ function MainLayout({ children }) {
         {/* Navigation */}
         <nav className="flex-1 mt-6 px-4 space-y-1.5 overflow-y-auto pb-6 custom-scrollbar">
           <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
-          
+
           <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl group ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
             <i className="ti ti-smart-home text-xl group-hover:scale-110 transition-transform duration-300"></i>
             <span className="ml-3 font-medium tracking-wide">Dashboard</span>
@@ -559,7 +562,7 @@ function MainLayout({ children }) {
             <>
               {/* Attendance submenu */}
               <div className="space-y-1">
-                <button 
+                <button
                   onClick={() => setAttendanceDropdownOpen(!attendanceDropdownOpen)}
                   className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl group transition-all duration-300 ${isAttendanceActive ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}
                 >
@@ -631,7 +634,7 @@ function MainLayout({ children }) {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen w-full transition-all duration-500 ease-in-out lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
-          
+
           {/* Header */}
           <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300 touch-none select-none overscroll-none">
             <div className="flex items-center gap-3">
@@ -649,8 +652,8 @@ function MainLayout({ children }) {
             <div className="flex items-center gap-2 sm:gap-3 relative">
 
               {/* Mobile Quick Search Button */}
-              <button 
-                onClick={() => setShowSearch(!showSearch)} 
+              <button
+                onClick={() => setShowSearch(!showSearch)}
                 className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-9 w-9 flex items-center justify-center"
                 aria-label="Search"
               >
@@ -660,13 +663,13 @@ function MainLayout({ children }) {
               {/* Desktop Search */}
               <div className="relative hidden md:block">
                 <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
                   onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
-                  placeholder="Search everywhere..." 
-                  className="pl-8 pr-4 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700" 
+                  placeholder="Search everywhere..."
+                  className="pl-8 pr-4 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700"
                 />
               </div>
 
@@ -680,8 +683,8 @@ function MainLayout({ children }) {
                     </button>
                   </div>
                   <div className="p-2 md:hidden">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       autoFocus
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -707,7 +710,7 @@ function MainLayout({ children }) {
               )}
 
               {/* Notifications Bell */}
-              <button 
+              <button
                 onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
                 className={`relative p-2 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-9 w-9 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
                 aria-label="View Notifications"
@@ -730,8 +733,8 @@ function MainLayout({ children }) {
                         </span>
                       )}
                     </div>
-                    <button 
-                      onClick={markAllRead} 
+                    <button
+                      onClick={markAllRead}
                       className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider"
                     >
                       Mark all read
@@ -742,21 +745,21 @@ function MainLayout({ children }) {
                       const visuals = getNotificationVisuals(notif.type);
                       const avatar = getNotificationAvatar(notif);
                       return (
-                        <div 
+                        <div
                           key={notif.id}
                           onClick={() => handleNotificationClick(notif)}
                           className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
                         >
                           <div className="relative h-9 w-9 shrink-0">
                             {avatar.avatarSrc ? (
-                              <img 
-                                src={avatar.avatarSrc} 
+                              <img
+                                src={avatar.avatarSrc}
                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                                 alt=""
                                 className="w-full h-full object-cover rounded-xl border border-slate-200"
                               />
                             ) : null}
-                            <div 
+                            <div
                               className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner ${visuals.bg}`}
                               style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
                             >
@@ -829,17 +832,16 @@ function MainLayout({ children }) {
                     { to: '/admin/payroll', label: 'Payroll', icon: 'ti-wallet' },
                     { to: '/admin/leaves', label: 'Leaves', icon: 'ti-plane-departure' }
                   ].map(tab => {
-                    const isActive = tab.exact 
-                      ? location.pathname === tab.to 
+                    const isActive = tab.exact
+                      ? location.pathname === tab.to
                       : location.pathname.startsWith(tab.to);
 
                     return (
-                      <Link 
+                      <Link
                         key={tab.to}
-                        to={tab.to} 
-                        className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
-                          isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        to={tab.to}
+                        className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                          }`}
                         title={tab.label}
                       >
                         {isActive && (
@@ -858,11 +860,10 @@ function MainLayout({ children }) {
                   })}
 
                   {/* More Apps Trigger */}
-                  <button 
+                  <button
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
-                      sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     title="More Apps"
                   >
                     {sidebarOpen && (
@@ -886,17 +887,16 @@ function MainLayout({ children }) {
                     ...(isSecurity(user) ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
                     { to: '/profile', label: 'Profile', icon: 'ti-user' }
                   ].map(tab => {
-                    const isActive = tab.exact 
-                      ? location.pathname === tab.to 
+                    const isActive = tab.exact
+                      ? location.pathname === tab.to
                       : location.pathname.startsWith(tab.to);
 
                     return (
-                      <Link 
+                      <Link
                         key={tab.to}
-                        to={tab.to} 
-                        className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
-                          isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        to={tab.to}
+                        className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                          }`}
                       >
                         {isActive && (
                           <motion.div
@@ -913,7 +913,7 @@ function MainLayout({ children }) {
                     );
                   })}
 
-                  <button 
+                  <button
                     onClick={handleLogout}
                     className="relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-red-400 hover:text-red-300"
                   >
@@ -931,16 +931,16 @@ function MainLayout({ children }) {
           <AnimatePresence>
             {sidebarOpen && (
               <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">
-                <motion.div 
-                  initial={{ opacity: 0 }} 
-                  animate={{ opacity: 1 }} 
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="absolute inset-0 bg-slate-950/75 backdrop-blur-md"
                   onClick={() => setSidebarOpen(false)}
                 />
-                <motion.div 
-                  initial={{ y: "100%" }} 
-                  animate={{ y: 0 }} 
+                <motion.div
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
                   exit={{ y: "100%" }}
                   drag="y"
                   dragConstraints={{ top: 0, bottom: 0 }}
@@ -955,14 +955,14 @@ function MainLayout({ children }) {
                 >
                   {/* Drag Pill Handle */}
                   <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
-                  
+
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Center</p>
                     </div>
-                    <button 
-                      onClick={() => setSidebarOpen(false)} 
+                    <button
+                      onClick={() => setSidebarOpen(false)}
                       className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
                       aria-label="Close Sheet"
                     >
@@ -992,8 +992,22 @@ function MainLayout({ children }) {
                   )}
 
                   <div className="grid grid-cols-2 gap-2.5 mb-5">
-                    <Link 
-                      to="/admin/disciplinary" 
+                    <Link
+                      to="/admin/payroll/statutory-settings"
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+                        <i className="ti ti-adjustments-horizontal text-xl" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">Statutory Settings</p>
+                        <p className="text-[9px] text-slate-400 truncate">SSS, PhilHealth, Pag-IBIG rates</p>
+                      </div>
+                    </Link>
+
+                    <Link
+                      to="/admin/disciplinary"
                       onClick={() => setSidebarOpen(false)}
                       className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
                     >
@@ -1006,8 +1020,8 @@ function MainLayout({ children }) {
                       </div>
                     </Link>
 
-                    <Link 
-                      to="/admin/audit-logs" 
+                    <Link
+                      to="/admin/audit-logs"
                       onClick={() => setSidebarOpen(false)}
                       className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
                     >
@@ -1020,8 +1034,8 @@ function MainLayout({ children }) {
                       </div>
                     </Link>
 
-                    <Link 
-                      to="/admin/attendance/calendar" 
+                    <Link
+                      to="/admin/attendance/calendar"
                       onClick={() => setSidebarOpen(false)}
                       className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
                     >
@@ -1035,8 +1049,8 @@ function MainLayout({ children }) {
                     </Link>
 
                     {(isAdmin(user) || isSecurity(user)) && (
-                      <Link 
-                        to="/scanner" 
+                      <Link
+                        to="/scanner"
                         onClick={() => setSidebarOpen(false)}
                         className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
                       >
@@ -1052,14 +1066,14 @@ function MainLayout({ children }) {
                   </div>
 
                   <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
-                    <Link 
-                      to="/profile" 
+                    <Link
+                      to="/profile"
                       onClick={() => setSidebarOpen(false)}
                       className="flex-1 py-3 px-4 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-center text-slate-300 tap-active"
                     >
                       My Profile
                     </Link>
-                    <button 
+                    <button
                       onClick={handleLogout}
                       className="flex-1 py-3 px-4 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl text-xs font-bold text-center tap-active flex items-center justify-center gap-1.5"
                     >
@@ -1075,14 +1089,14 @@ function MainLayout({ children }) {
           <AnimatePresence>
             {showInstallGuide && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
                   onClick={() => setShowInstallGuide(false)}
                 />
-                <motion.div 
+                <motion.div
                   initial={{ scale: 0.95, opacity: 0, y: 20 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -1098,8 +1112,8 @@ function MainLayout({ children }) {
                         <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Fast Fullscreen App</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setShowInstallGuide(false)} 
+                    <button
+                      onClick={() => setShowInstallGuide(false)}
                       className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
                       aria-label="Close modal"
                     >
@@ -1228,7 +1242,7 @@ function MainLayout({ children }) {
                     )}
                   </div>
 
-                  <button 
+                  <button
                     onClick={() => setShowInstallGuide(false)}
                     className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl tap-active transition-all"
                   >
@@ -1247,8 +1261,8 @@ function MainLayout({ children }) {
 function App() {
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
+      <Toaster
+        position="top-center"
         toastOptions={{
           style: {
             borderRadius: '9999px',
@@ -1274,7 +1288,7 @@ function App() {
               secondary: '#7f1d1d',
             },
           },
-        }} 
+        }}
       />
       <Routes>
         {/* Public / Auth */}
@@ -1283,7 +1297,7 @@ function App() {
         <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
         <Route path="/reset-password" element={<PublicOnlyRoute><ResetPassword /></PublicOnlyRoute>} />
         <Route path="/verify-email" element={<VerifyEmail />} />
-        
+
         {/* Force Setup Routes */}
         <Route path="/force-password-change" element={<ForcePasswordChange />} />
         <Route path="/biometric-setup" element={<ProtectedRoute><BiometricSetup /></ProtectedRoute>} />
@@ -1308,6 +1322,7 @@ function App() {
         <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceCalendar /></MainLayout></ProtectedRoute>} />
 
         {/* Admin - Payroll */}
+        <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><StatutorySettings /></MainLayout></ProtectedRoute>} />
         <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollIndex /></MainLayout></ProtectedRoute>} />
         <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollCreate /></MainLayout></ProtectedRoute>} />
         <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollShow /></MainLayout></ProtectedRoute>} />
