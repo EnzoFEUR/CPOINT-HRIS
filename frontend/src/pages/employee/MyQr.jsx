@@ -2,6 +2,29 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import QRCode from '../../components/QRCode';
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { 
+    opacity: 1, 
+    transition: { 
+      staggerChildren: 0.05 
+    } 
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      type: 'spring', 
+      stiffness: 400, 
+      damping: 30 
+    } 
+  }
+};
+
 const MyQr = () => {
   const [user] = useState(() => {
     try {
@@ -13,31 +36,9 @@ const MyQr = () => {
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Strict viewport scroll lock and instant scroll-to-top on mount
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-
-    const originalBodyOverflow = document.body.style.overflow;
-    const originalBodyTouchAction = document.body.style.touchAction;
-    const originalHtmlOverflow = document.documentElement.style.overflow;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-    document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.overscrollBehavior = 'none';
-
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-
-    return () => {
-      clearInterval(timer);
-      document.body.style.overflow = originalBodyOverflow;
-      document.body.style.touchAction = originalBodyTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll;
-      document.documentElement.style.overflow = originalHtmlOverflow;
-      document.documentElement.style.overscrollBehavior = '';
-    };
+    return () => clearInterval(timer);
   }, []);
 
   const qrValue = user.company_id || (user.id ? String(user.id) : 'CP-EMPLOYEE');
@@ -62,17 +63,16 @@ const MyQr = () => {
   });
 
   return (
-    <div className="w-full max-w-sm sm:max-w-md mx-auto h-full flex flex-col justify-start select-none touch-none overscroll-none overflow-hidden font-sans px-2 sm:px-4 pt-3 sm:pt-4">
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full flex flex-col"
+    <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-3 sm:pt-4">
+      <motion.div 
+        variants={containerVariants} 
+        initial="hidden" 
+        animate="visible" 
+        className="w-full flex flex-col will-change-transform transform-gpu"
       >
 
         {/* ── Employee Identity Header Row ── */}
-        <div className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1">
+        <motion.div variants={itemVariants} className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1 will-change-transform transform-gpu">
           <div className="flex items-center gap-3.5 min-w-0">
             {/* User Avatar */}
             <div className="relative w-12 h-12 rounded-full bg-slate-900 text-white font-bold text-base flex items-center justify-center overflow-hidden ring-2 ring-white shadow-xs shrink-0">
@@ -109,10 +109,10 @@ const MyQr = () => {
               {qrValue}
             </span>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── High-Contrast Large Optical QR Card ── */}
-        <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">
+        <motion.div variants={itemVariants} className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs will-change-transform transform-gpu">
           <QRCode
             value={qrValue}
             size={260}
@@ -120,15 +120,15 @@ const MyQr = () => {
             bgColor="#ffffff"
             className="rounded-xl"
           />
-        </div>
+        </motion.div>
 
         {/* ── Date & Real-Time Sync Footer ── */}
-        <div className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2">
+        <motion.div variants={itemVariants} className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2 will-change-transform transform-gpu">
           <span>{formattedDate}</span>
           <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
-        </div>
+        </motion.div>
 
       </motion.div>
     </div>

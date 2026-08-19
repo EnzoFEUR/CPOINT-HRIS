@@ -365,12 +365,13 @@ router.get(
 
     logger.info(reqId, 'Attendance list fetched', { count: data?.length, total: count, filters: { employee_id, start_date, end_date } });
 
-    await auditLog(reqId, {
+    // Non-blocking asynchronous audit log (does not delay client response)
+    auditLog(reqId, {
       employee_id: req.user?.id,
       action: 'ATTENDANCE_LIST_VIEW',
       details: { filters: { employee_id, start_date, end_date }, results: count },
       ip_address: req.ip,
-    });
+    }).catch(err => logger.error(reqId, 'Background audit log failed', { error: err.message }));
 
     res.json({
       status: 'success',

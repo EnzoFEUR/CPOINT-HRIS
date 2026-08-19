@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
@@ -124,7 +124,7 @@ const RootRoute = () => {
   if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
   if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
   if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-  if (isAdmin(user)) return <MainLayout><Dashboard /></MainLayout>;
+  if (isAdmin(user)) return <Dashboard />;
   return <Navigate to="/employee/dashboard" replace />;
 };
 
@@ -819,24 +819,9 @@ function MainLayout({ children }) {
             </div>
           </header>
 
-          {/* Page Main Content */}
-          <main className={`flex-1 p-3.5 sm:p-6 lg:p-8 w-full relative ${
-            location.pathname === '/employee/qr'
-              ? 'pb-20 lg:pb-8 overflow-hidden flex flex-col justify-center'
-              : 'mt-1 sm:mt-2 pb-28 lg:pb-8'
-          }`}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12, ease: "easeOut" }}
-                className="w-full h-full"
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
+          {/* Page Main Content — instant swap, persistent shell (eliminates flash/blank gap) */}
+          <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
+            {children || <Outlet />}
           </main>
 
           {/* Modern mobile floating dock (island style) */}
@@ -1366,47 +1351,51 @@ function App() {
         <Route path="/force-password-change" element={<ForcePasswordChange />} />
         <Route path="/biometric-setup" element={<ProtectedRoute><BiometricSetup /></ProtectedRoute>} />
 
-        {/* Global/Shared */}
-        <Route path="/" element={<RootRoute />} />
+        {/* Standalone Fullscreen Views */}
         <Route path="/scanner" element={
           <ProtectedRoute allowedRoles={['security', 'guard', 'security_guard', 'admin', 'superadmin', 'hr']}>
             <Suspense fallback={<div className="h-screen w-screen bg-black" />}><Scanner /></Suspense>
           </ProtectedRoute>
         } />
-
-        {/* Admin - Employees */}
-        <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeCreate /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeEdit /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeShow /></MainLayout></ProtectedRoute>} />
         <Route path="/admin/employees/:id/qr" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeQrPrint /></ProtectedRoute>} />
 
-        {/* Admin - Attendance */}
-        <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceCalendar /></MainLayout></ProtectedRoute>} />
+        {/* Authenticated Persistent Shell (Sidebar, Header, and Floating Dock NEVER unmount or flash) */}
+        <Route element={<ProtectedRoute requireBiometrics><MainLayout /></ProtectedRoute>}>
+          <Route path="/" element={<RootRoute />} />
 
-        {/* Admin - Payroll */}
-        <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><StatutorySettings /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollCreate /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollShow /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Employees */}
+          <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
+          <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
+          <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
+          <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
 
-        {/* Admin - Audit Logs */}
-        <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AuditLogsIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Attendance */}
+          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
+          <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
 
-        {/* Admin - Leaves */}
-        <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><LeavesIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Payroll */}
+          <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
+          <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
+          <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
+          <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
 
-        {/* Admin - Shifts */}
-        <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><ShiftsIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Audit Logs */}
+          <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AuditLogsIndex /></ProtectedRoute>} />
 
-        {/* Admin - Disciplinary */}
-        <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><DisciplinaryIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Leaves */}
+          <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
 
-        {/* Employee */}
-        <Route path="/employee/dashboard" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeDashboard /></MainLayout></ProtectedRoute>} />
-        <Route path="/employee/qr" element={<ProtectedRoute requireBiometrics><MainLayout><MyQr /></MainLayout></ProtectedRoute>} />
-        <Route path="/employee/scanner" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeScanner /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Shifts */}
+          <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ShiftsIndex /></ProtectedRoute>} />
+
+          {/* Admin - Disciplinary */}
+          <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
+
+          {/* Employee Flow */}
+          <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
+          <Route path="/employee/qr" element={<MyQr />} />
+          <Route path="/employee/scanner" element={<EmployeeScanner />} />
+        </Route>
       </Routes>
     </Router>
   );

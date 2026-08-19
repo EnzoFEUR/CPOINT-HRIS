@@ -20,17 +20,26 @@ router.get('/', async (req, res) => {
         const { data: notifications, error } = await query;
         if (error) throw error;
 
-        // Fetch employees to enrich notifications with avatars
-        const { data: employees } = await supabase
-            .from('employees')
-            .select('id, company_id, first_name, last_name');
+        // Only fetch specific employees related to these notifications (targeted query, no full-table scan)
+        const relevantEmpIds = Array.from(new Set(
+            (notifications || [])
+                .map(n => n.sender_id || (n.target !== 'admin' ? n.target : null))
+                .filter(Boolean)
+        ));
 
-        const empMap = new Map();
-        (employees || []).forEach(emp => {
-            empMap.set(emp.id, emp);
-            const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
-            empMap.set(fullName, emp);
-        });
+        let empMap = new Map();
+        if (relevantEmpIds.length > 0) {
+            const { data: employees } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name')
+                .in('id', relevantEmpIds);
+
+            (employees || []).forEach(emp => {
+                empMap.set(emp.id, emp);
+                const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+                empMap.set(fullName, emp);
+            });
+        }
 
         const enriched = (notifications || []).map(notif => {
             let matchedEmp = null;

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import QRCodeLib from 'qrcode';
 
+// Module-level memoization cache for instant, zero-flicker synchronous renders
+const qrCache = new Map();
+
 export default function QRCode({ 
   value = '', 
   size = 180, 
@@ -8,12 +11,18 @@ export default function QRCode({
   bgColor = '#ffffff', 
   className = '' 
 }) {
-  const [dataUrl, setDataUrl] = useState('');
+  const cacheKey = `${value}_${size}_${fgColor}_${bgColor}`;
+  const [dataUrl, setDataUrl] = useState(() => qrCache.get(cacheKey) || '');
 
   useEffect(() => {
     let isMounted = true;
     if (!value) {
       setDataUrl('');
+      return;
+    }
+
+    if (qrCache.has(cacheKey)) {
+      setDataUrl(qrCache.get(cacheKey));
       return;
     }
 
@@ -27,6 +36,7 @@ export default function QRCode({
       errorCorrectionLevel: 'M'
     })
       .then(url => {
+        qrCache.set(cacheKey, url);
         if (isMounted) setDataUrl(url);
       })
       .catch(err => {
@@ -36,27 +46,27 @@ export default function QRCode({
     return () => {
       isMounted = false;
     };
-  }, [value, size, fgColor, bgColor]);
-
-  if (!dataUrl) {
-    return (
-      <div 
-        style={{ width: `${size}px`, height: `${size}px` }} 
-        className={`flex items-center justify-center bg-slate-50 text-slate-300 rounded-xl ${className}`}
-      >
-        <i className="ti ti-qrcode text-3xl animate-pulse" />
-      </div>
-    );
-  }
+  }, [value, size, fgColor, bgColor, cacheKey]);
 
   return (
-    <img 
-      src={dataUrl} 
-      alt={`QR Code for ${value}`} 
-      width={size} 
-      height={size} 
-      className={`inline-block select-none ${className}`} 
-      style={{ width: `${size}px`, height: `${size}px`, maxWidth: '100%' }}
-    />
+    <div 
+      style={{ width: `${size}px`, height: `${size}px` }} 
+      className={`inline-flex items-center justify-center relative select-none ${className}`}
+    >
+      {dataUrl ? (
+        <img 
+          src={dataUrl} 
+          alt={`QR Code for ${value}`} 
+          width={size} 
+          height={size} 
+          className="w-full h-full object-contain select-none will-change-transform" 
+          style={{ width: `${size}px`, height: `${size}px` }}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300 rounded-xl">
+          <i className="ti ti-qrcode text-3xl animate-pulse" />
+        </div>
+      )}
+    </div>
   );
 }

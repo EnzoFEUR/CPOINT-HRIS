@@ -42,25 +42,18 @@ const EmployeeDashboard = () => {
     }, [storedUser]);
 
     const fetchDashboardData = async (userId) => {
-        const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
-            fetchWithAuth(`/api/attendance?employee_id=${userId}`),
-            fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
-            fetchWithAuth(`/api/shifts?employee_id=${userId}`),
-            fetchWithAuth(`/api/disciplinary?employee_id=${userId}`),
-            fetchWithAuth(`/api/leaves?employee_id=${userId}`)
-        ]);
-
-        const [attendanceData, payrollData, shiftData, discData, leaveData] = await Promise.all([
-            attRes.json(), payRes.json(), shiftRes.json(), discRes.json(), leaveRes.json()
-        ]);
-
-        return { attendanceData, payrollData, shiftData, discData, leaveData };
+        const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
+        const result = await res.json();
+        return result || { attendanceData: [], payrollData: [], shiftData: [], discData: [], leaveData: [] };
     };
 
     const { data, isLoading } = useQuery({
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
-        enabled: !!user.id && user.role !== 'security'
+        enabled: !!user.id && user.role !== 'security',
+        staleTime: 1000 * 60 * 5, // 5 minutes fresh in memory (instant 0ms tab switching)
+        gcTime: 1000 * 60 * 15,    // 15 minutes garbage collection
+        refetchOnWindowFocus: false // Don't interrupt animations on tab focus
     });
 
     // Derived State from React Query cache
@@ -108,7 +101,7 @@ const EmployeeDashboard = () => {
             ));
             toast.success('All memos acknowledged.');
             setShowInfractionsModal(false);
-            fetchDashboardData(user.id);
+            queryClient.invalidateQueries(['employeeDashboard', user.id]);
         } catch (err) {
             toast.error('Failed to acknowledge memos.');
         }
@@ -135,24 +128,33 @@ const EmployeeDashboard = () => {
     
     const sDetails = shiftDetails[shift] || shiftDetails['Unassigned'];
 
-    // Animation variants
+    // Animation variants - Exact enterprise spring motion consistent with Admin modules
     const containerVariants = {
         hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+        visible: { 
+            opacity: 1, 
+            transition: { 
+                staggerChildren: 0.05 
+            } 
+        }
     };
     
     const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+        hidden: { opacity: 0, y: 10 },
+        visible: { 
+            opacity: 1, 
+            y: 0, 
+            transition: { 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 30 
+            } 
+        }
     };
 
     return (
         <div className="max-w-5xl mx-auto pb-6 font-sans">
             
-            
-            <div className="fixed top-0 left-0 w-full h-[40vh] bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none -z-10" />
-            <div className="fixed top-[-10%] right-[-5%] w-[50vw] h-[50vw] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none -z-10" />
-
             {/* Alerts */}
             <AnimatePresence>
                 {infractions.length > 0 && (

@@ -11,6 +11,10 @@ router.get('/', cacheResponse(20), async (req, res) => {
         if (req.query.employee_id) {
             query = query.eq('employee_id', req.query.employee_id);
         }
+        if (req.query.limit) {
+            const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+            query = query.limit(limitNum);
+        }
         const { data, error } = await query;
         if (error) throw error;
         res.json(data);
