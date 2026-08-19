@@ -492,9 +492,10 @@ function MainLayout({ children }) {
 
           setNotifications(prev => [notif, ...prev]);
 
-          if (window.location.pathname.includes('/employee/dashboard')) {
-            window.dispatchEvent(new Event('refresh_dashboard'));
-          }
+          // Broadcast global refresh events for immediate UI table sync
+          window.dispatchEvent(new Event('refresh_dashboard'));
+          window.dispatchEvent(new Event('refresh_leaves'));
+          window.dispatchEvent(new Event('refresh_attendance'));
         }
       })
       .subscribe();

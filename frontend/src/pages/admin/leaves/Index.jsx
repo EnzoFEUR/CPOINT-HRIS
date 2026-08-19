@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 
 export default function LeavesIndex() {
     const queryClient = useQueryClient();
@@ -24,8 +25,32 @@ export default function LeavesIndex() {
 
     const { data: leaves = [], isLoading } = useQuery({
         queryKey: ['adminLeaves'],
-        queryFn: fetchLeaves
+        queryFn: fetchLeaves,
+        staleTime: 0,
+        refetchOnWindowFocus: true
     });
+
+    // ⚡ Real-Time Live Sync: Automatically updates leave table when any request is submitted/modified
+    useEffect(() => {
+        const channel = supabase
+            .channel('admin-live-leaves')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+                queryClient.refetchQueries({ queryKey: ['adminLeaves'] });
+            })
+            .subscribe();
+
+        const handleRefresh = () => {
+            queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+            queryClient.refetchQueries({ queryKey: ['adminLeaves'] });
+        };
+        window.addEventListener('refresh_leaves', handleRefresh);
+
+        return () => {
+            supabase.removeChannel(channel);
+            window.removeEventListener('refresh_leaves', handleRefresh);
+        };
+    }, [queryClient]);
 
     const handleStatusChange = async (id, status) => {
         // Optimistic UI Update
