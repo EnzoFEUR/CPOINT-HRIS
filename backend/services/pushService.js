@@ -4,16 +4,18 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPJ9MCFzg2K4kELE60QBJGUQDbzaZ16-ereDk-pQbBx6n_69RQ58MqOEfTYs2tLDCrEWcDGSdbjtZXEqfmwvRIk';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'eHDF9N3R_s2rR_TZl_3yeYlFy28Of_tFv3ycSZhB-G0';
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@cpointhris.com';
 
-// Configure Web Push with VAPID credentials
-webpush.setVapidDetails(
-    VAPID_SUBJECT,
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY
-);
+// Configure Web Push with VAPID credentials if available
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+        VAPID_SUBJECT,
+        VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY
+    );
+}
 
 export const getVapidPublicKey = () => VAPID_PUBLIC_KEY;
 

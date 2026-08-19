@@ -1,7 +1,7 @@
 import { fetchWithAuth } from './api';
 import toast from 'react-hot-toast';
 
-const DEFAULT_VAPID_PUBLIC_KEY = 'BPJ9MCFzg2K4kELE60QBJGUQDbzaZ16-ereDk-pQbBx6n_69RQ58MqOEfTYs2tLDCrEWcDGSdbjtZXEqfmwvRIk';
+const DEFAULT_VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
 /**
  * Convert base64 url string to Uint8Array for PushManager
