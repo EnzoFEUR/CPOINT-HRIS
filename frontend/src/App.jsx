@@ -413,6 +413,7 @@ function MainLayout({ children }) {
 
   useEffect(() => {
     setSidebarOpen(false); // close on route change
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [location.pathname]);
 
   const handleNotificationClick = async (notif) => {
@@ -803,7 +804,11 @@ function MainLayout({ children }) {
           </header>
 
           {/* Page Main Content */}
-          <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
+          <main className={`flex-1 p-3.5 sm:p-6 lg:p-8 w-full relative ${
+            location.pathname === '/employee/qr'
+              ? 'pb-20 lg:pb-8 overflow-hidden flex flex-col justify-center'
+              : 'mt-1 sm:mt-2 pb-28 lg:pb-8'
+          }`}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}

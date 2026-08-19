@@ -13,9 +13,31 @@ const MyQr = () => {
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // Strict viewport scroll lock and instant scroll-to-top on mount
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyTouchAction = document.body.style.touchAction;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    document.body.style.overscrollBehavior = 'none';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehavior = 'none';
+
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+
+    return () => {
+      clearInterval(timer);
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.touchAction = originalBodyTouchAction;
+      document.body.style.overscrollBehavior = originalOverscroll;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.documentElement.style.overscrollBehavior = '';
+    };
   }, []);
 
   const qrValue = user.company_id || (user.id ? String(user.id) : 'CP-EMPLOYEE');
@@ -40,17 +62,17 @@ const MyQr = () => {
   });
 
   return (
-    <div className="w-full max-w-sm mx-auto h-[calc(100dvh-5rem)] flex flex-col items-center justify-center select-none touch-none overflow-hidden font-sans px-4">
+    <div className="w-full max-w-sm mx-auto h-full max-h-[calc(100dvh-9rem)] sm:max-h-[calc(100dvh-6rem)] flex flex-col items-center justify-center select-none touch-none overscroll-none overflow-hidden font-sans px-2 sm:px-4">
 
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         className="w-full flex flex-col items-center"
       >
 
         {/* ── Employee Identity ── */}
-        <div className="flex items-center gap-3 mb-5 w-full">
+        <div className="flex items-center gap-3 mb-4 w-full">
           <div className="relative w-11 h-11 rounded-full bg-slate-800 text-white font-bold text-sm flex items-center justify-center overflow-hidden ring-2 ring-white shrink-0">
             {photoUrl ? (
               <img
@@ -72,7 +94,7 @@ const MyQr = () => {
               {employeeName}
             </h2>
             <p className="text-[11px] text-slate-500 font-medium truncate">
-              {jobTitle} · {department}
+              {jobTitle} &bull; {department}
             </p>
           </div>
           <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
@@ -81,17 +103,17 @@ const MyQr = () => {
         </div>
 
         {/* ── QR Code ── */}
-        <div className="w-full bg-white rounded-2xl p-5 flex flex-col items-center border border-slate-200/70 shadow-xs">
+        <div className="w-full bg-white rounded-2xl p-4 sm:p-5 flex flex-col items-center border border-slate-200/70 shadow-xs">
           <QRCode
             value={qrValue}
-            size={260}
+            size={240}
             fgColor="#0f172a"
             bgColor="#ffffff"
           />
         </div>
 
         {/* ── Timestamp ── */}
-        <div className="mt-4 flex items-center justify-between w-full text-[11px] text-slate-400 font-medium px-1">
+        <div className="mt-3.5 flex items-center justify-between w-full text-[11px] text-slate-400 font-medium px-1">
           <span>{formattedDate}</span>
           <span className="font-mono font-bold tabular-nums text-slate-600">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
