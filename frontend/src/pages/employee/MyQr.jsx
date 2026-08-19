@@ -44,7 +44,6 @@ const MyQr = () => {
   const employeeName = user.name || `${user.first_name || 'Employee'} ${user.last_name || ''}`.trim();
   const department = user.department || 'Operations';
   const jobTitle = user.job_title || user.role || 'Staff';
-  const shift = user.shift || 'Morning Shift (08:00 - 17:00)';
   const avatarLetter = (user.first_name || employeeName || 'E').charAt(0).toUpperCase();
 
   const photoUrl = useMemo(() => {
@@ -58,69 +57,65 @@ const MyQr = () => {
       : null;
   }, [user]);
 
-  return (
-    <div className="w-full max-w-sm mx-auto h-full max-h-[calc(100dvh-9rem)] sm:max-h-[calc(100dvh-6rem)] flex flex-col items-center justify-center select-none touch-none overscroll-none overflow-hidden font-sans p-1">
+  const formattedDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+  });
 
-      {/* Vertical ID Smart Badge Card */}
+  return (
+    <div className="w-full max-w-sm mx-auto h-full max-h-[calc(100dvh-8rem)] sm:max-h-[calc(100dvh-6rem)] flex flex-col items-center justify-center select-none touch-none overscroll-none overflow-hidden font-sans px-4">
+
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full max-w-[320px] sm:max-w-[340px] bg-white rounded-[1.75rem] border border-slate-200/90 shadow-xl shadow-slate-900/5 p-4 sm:p-5 flex flex-col items-center text-center relative overflow-hidden"
+        className="w-full flex flex-col items-center"
       >
-        {/* Top Lanyard Notch Detail */}
-        <div className="w-10 h-1 bg-slate-200 rounded-full mb-3" />
 
-        {/* Top Micro-Header */}
-        <div className="flex items-center justify-between w-full px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-          <span>Security Pass</span>
-          <span className="font-mono text-slate-600 font-bold">{qrValue}</span>
-        </div>
-
-        {/* Centered Employee Portrait Avatar */}
-        <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-900 text-white font-black text-lg flex items-center justify-center overflow-hidden ring-4 ring-slate-100 shadow-sm my-1">
-          {photoUrl ? (
-            <img
-              src={photoUrl}
-              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-              alt={employeeName}
-              className="w-full h-full object-cover"
-            />
-          ) : null}
-          <span
-            className="w-full h-full flex items-center justify-center"
-            style={{ display: photoUrl ? 'none' : 'flex' }}
-          >
-            {avatarLetter}
+        {/* ── Employee Identity ── */}
+        <div className="flex items-center gap-3 mb-4 w-full">
+          <div className="relative w-11 h-11 rounded-full bg-slate-800 text-white font-bold text-sm flex items-center justify-center overflow-hidden ring-2 ring-white shrink-0">
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                alt={employeeName}
+                className="w-full h-full object-cover"
+              />
+            ) : null}
+            <span
+              className="w-full h-full flex items-center justify-center"
+              style={{ display: photoUrl ? 'none' : 'flex' }}
+            >
+              {avatarLetter}
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-bold text-slate-900 truncate leading-tight">
+              {employeeName}
+            </h2>
+            <p className="text-[11px] text-slate-500 font-medium truncate">
+              {jobTitle} &middot; {department}
+            </p>
+          </div>
+          <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+            {qrValue}
           </span>
         </div>
 
-        {/* Personnel Name & Role */}
-        <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight mt-1.5 truncate max-w-full">
-          {employeeName}
-        </h2>
-        <p className="text-[11px] sm:text-xs text-slate-500 font-semibold truncate max-w-full mt-0.5">
-          {jobTitle} &bull; {department}
-        </p>
-
-        {/* Subtle Dashed Separator */}
-        <div className="w-full border-t border-dashed border-slate-200/90 my-3" />
-
-        {/* Optical QR Code */}
-        <div className="p-2 bg-slate-50/60 rounded-xl border border-slate-100 flex items-center justify-center">
+        {/* ── Full-Width QR Card ── */}
+        <div className="w-full bg-white rounded-2xl p-5 flex flex-col items-center border border-slate-200/70 shadow-xs">
           <QRCode
             value={qrValue}
-            size={200}
+            size={250}
             fgColor="#0f172a"
             bgColor="#ffffff"
-            className="rounded-lg"
           />
         </div>
 
-        {/* Badge Footer: Shift & Live Clock */}
-        <div className="mt-3.5 pt-2.5 border-t border-slate-100 w-full flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 font-medium px-1">
-          <span className="truncate max-w-[150px] text-left">{shift}</span>
-          <span className="font-mono font-bold tabular-nums text-slate-700 shrink-0 ml-2">
+        {/* ── Timestamp ── */}
+        <div className="mt-4 flex items-center justify-between w-full text-[11px] text-slate-400 font-medium px-1">
+          <span>{formattedDate}</span>
+          <span className="font-mono font-bold tabular-nums text-slate-600">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
