@@ -264,30 +264,70 @@ const getNotificationVisuals = (type) => {
   }
 };
 
-// Extract or generate employee profile picture / initials
-const getNotificationAvatar = (notif) => {
+// Extract or generate employee profile picture / initials with rich employee database matching
+const getNotificationAvatar = (notif, employeeMap) => {
   let initials = 'CP';
   let avatarSrc = notif.sender_avatar || null;
+
+  let matchedEmp = null;
+  if (employeeMap && employeeMap.size > 0) {
+    if (notif.sender_id && employeeMap.has(notif.sender_id)) {
+      matchedEmp = employeeMap.get(notif.sender_id);
+    } else if (notif.target && employeeMap.has(notif.target)) {
+      matchedEmp = employeeMap.get(notif.target);
+    } else {
+      // Match by full name in title or text
+      for (const [key, emp] of employeeMap.entries()) {
+        if (typeof key === 'string' && key.includes(' ')) {
+          if (
+            (notif.title && notif.title.toLowerCase().includes(key)) ||
+            (notif.text && notif.text.toLowerCase().includes(key))
+          ) {
+            matchedEmp = emp;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (matchedEmp) {
+    if (matchedEmp.biometric_baseline_path) {
+      avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
+        ? matchedEmp.biometric_baseline_path
+        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
+    } else if (matchedEmp.company_id && matchedEmp.id) {
+      avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
+    }
+
+    if (matchedEmp.first_name) {
+      const f = matchedEmp.first_name[0] || '';
+      const l = (matchedEmp.last_name && matchedEmp.last_name[0]) || '';
+      initials = (f + l).toUpperCase() || 'CP';
+    }
+  }
 
   if (!avatarSrc && notif.company_id && (notif.sender_id || notif.target)) {
     const id = notif.sender_id || notif.target;
     avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${id}.jpg`;
   }
 
-  if (notif.sender_name) {
-    const parts = notif.sender_name.trim().split(' ').filter(Boolean);
-    initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-  } else if (notif.title && notif.title.includes(':')) {
-    const namePart = notif.title.split(':')[1]?.trim() || '';
-    const parts = namePart.split(' ').filter(Boolean);
-    if (parts.length > 0) {
+  if (initials === 'CP') {
+    if (notif.sender_name) {
+      const parts = notif.sender_name.trim().split(' ').filter(Boolean);
       initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-    }
-  } else if (notif.text) {
-    const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
-    if (match) {
-      const parts = match[1].split(' ');
-      initials = (parts[0][0] + parts[1][0]).toUpperCase();
+    } else if (notif.title && notif.title.includes(':')) {
+      const namePart = notif.title.split(':')[1]?.trim() || '';
+      const parts = namePart.split(' ').filter(Boolean);
+      if (parts.length > 0) {
+        initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+      }
+    } else if (notif.text) {
+      const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
+      if (match) {
+        const parts = match[1].split(' ');
+        initials = (parts[0][0] + parts[1][0]).toUpperCase();
+      }
     }
   }
 
@@ -310,6 +350,27 @@ function MainLayout({ children }) {
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [employeeMap, setEmployeeMap] = useState(new Map());
+
+  // Load employee directory for instant avatar photo resolution
+  useEffect(() => {
+    supabase
+      .from('employees')
+      .select('id, company_id, first_name, last_name, biometric_baseline_path')
+      .then(({ data }) => {
+        if (Array.isArray(data)) {
+          const map = new Map();
+          data.forEach(emp => {
+            map.set(emp.id, emp);
+            if (emp.first_name && emp.last_name) {
+              const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+              map.set(fullName, emp);
+            }
+          });
+          setEmployeeMap(map);
+        }
+      });
+  }, []);
 
   // PWA Install State & Platform Detection
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -487,7 +548,7 @@ function MainLayout({ children }) {
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
           playNotificationChime();
           const visuals = getNotificationVisuals(notif.type);
-          const avatar = getNotificationAvatar(notif);
+          const avatar = getNotificationAvatar(notif, employeeMap);
 
           toast.custom((t) => (
             <div
@@ -796,7 +857,7 @@ function MainLayout({ children }) {
                   <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 touch-scroll">
                     {notifications.length > 0 ? notifications.map(notif => {
                       const visuals = getNotificationVisuals(notif.type);
-                      const avatar = getNotificationAvatar(notif);
+                      const avatar = getNotificationAvatar(notif, employeeMap);
                       return (
                         <div
                           key={notif.id}
