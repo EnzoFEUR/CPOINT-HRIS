@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,6 +118,14 @@ const EmployeeDashboard = () => {
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
     const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
+    const photoUrl = user?.biometric_baseline_path
+        ? (user.biometric_baseline_path.startsWith('http')
+            ? user.biometric_baseline_path
+            : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
+        : (user?.company_id && user?.id
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+            : null);
+
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
         'Swing': { time: '02:00 PM - 10:00 PM', color: 'text-orange-500', bg: 'bg-orange-500/10' },
@@ -181,9 +190,22 @@ const EmployeeDashboard = () => {
                         </p>
                     </div>
                     
-                    {/* User Avatar Circle */}
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-blue-500/30 border-4 border-white shrink-0">
-                        {getInitial(user.name)}
+                    {/* User Avatar Circle with Profile Picture */}
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-slate-950/20 border-4 border-white shrink-0 overflow-hidden">
+                        {photoUrl ? (
+                            <img
+                                src={photoUrl}
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                alt={user.name || 'Profile'}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : null}
+                        <span 
+                            className="w-full h-full flex items-center justify-center"
+                            style={{ display: photoUrl ? 'none' : 'flex' }}
+                        >
+                            {getInitial(user.name)}
+                        </span>
                     </div>
                 </motion.div>
 
@@ -191,10 +213,9 @@ const EmployeeDashboard = () => {
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
                     {/* Digital ID card */}
-                    <motion.div 
-                        whileTap={{ scale: 0.97 }}
-                        onClick={() => setShowQrModal(true)}
-                        className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xl shadow-slate-900/20 group tap-active"
+                    <Link 
+                        to="/employee/qr"
+                        className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xl shadow-slate-900/20 group tap-active block"
                     >
                         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/40 via-transparent to-transparent opacity-50" />
                         <div className="relative z-10 flex items-center justify-between">
@@ -209,7 +230,7 @@ const EmployeeDashboard = () => {
                                 <i className="ti ti-arrow-right text-lg sm:text-xl" />
                             </div>
                         </div>
-                    </motion.div>
+                    </Link>
 
                     {/* Payroll card */}
                     <motion.div 
