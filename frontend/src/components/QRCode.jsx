@@ -6,12 +6,14 @@ const qrCache = new Map();
 
 export default function QRCode({ 
   value = '', 
-  size = 180, 
-  fgColor = '#1e293b', 
+  size = 200, 
+  fgColor = '#0f172a', 
   bgColor = '#ffffff', 
+  level = 'H',
+  margin = 2,
   className = '' 
 }) {
-  const cacheKey = `${value}_${size}_${fgColor}_${bgColor}`;
+  const cacheKey = `${value}_${size}_${fgColor}_${bgColor}_${level}_${margin}`;
   const [dataUrl, setDataUrl] = useState(() => qrCache.get(cacheKey) || '');
 
   useEffect(() => {
@@ -27,13 +29,13 @@ export default function QRCode({
     }
 
     QRCodeLib.toDataURL(String(value), {
-      width: size,
-      margin: 1,
+      width: size * 2, // 2x retina supersampling for ultra-crisp optical edge detection
+      margin: margin,
       color: {
         dark: fgColor,
         light: bgColor,
       },
-      errorCorrectionLevel: 'M'
+      errorCorrectionLevel: level || 'H'
     })
       .then(url => {
         qrCache.set(cacheKey, url);
@@ -46,7 +48,7 @@ export default function QRCode({
     return () => {
       isMounted = false;
     };
-  }, [value, size, fgColor, bgColor, cacheKey]);
+  }, [value, size, fgColor, bgColor, level, margin, cacheKey]);
 
   return (
     <div 

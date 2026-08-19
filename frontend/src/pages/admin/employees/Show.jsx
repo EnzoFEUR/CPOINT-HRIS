@@ -329,36 +329,44 @@ export default function Show() {
                             exit={{ scale: 0.95, y: 40, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             id="qr-print-card"
-                            className="relative bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-10 text-center shadow-2xl w-full max-w-sm border border-slate-100 z-10"
+                            className="relative bg-white rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10"
                         >
-                            <div className="mb-6 sm:mb-8">
-                                <h1 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-widest">Company ID</h1>
-                                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Official Identification</p>
+                            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                                <div className="text-left">
+                                    <h1 className="text-lg sm:text-xl font-black text-slate-900 uppercase tracking-wider">C-Point Official ID</h1>
+                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Biometric Gate Pass</p>
+                                </div>
+                                <span className="px-3 py-1 bg-slate-900 text-white font-mono text-xs font-black rounded-lg">
+                                    {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS')}
+                                </span>
                             </div>
 
-                            <div className="flex justify-center mb-6 sm:mb-8">
-                                <div className="p-3 sm:p-4 border-4 border-slate-900 rounded-2xl bg-white flex items-center justify-center shadow-inner">
-                                    <QRCode value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} size={180} />
+                            <div className="flex justify-center mb-6">
+                                <div className="p-4 bg-white border-2 border-slate-200/80 rounded-2xl flex items-center justify-center shadow-sm">
+                                    <QRCode 
+                                        value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
+                                        size={240}
+                                        fgColor="#0f172a"
+                                        bgColor="#ffffff"
+                                        level="H"
+                                        margin={2}
+                                        className="rounded-lg"
+                                    />
                                 </div>
                             </div>
 
-                            <div className="mb-6 sm:mb-8">
-                                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight leading-tight truncate">{employee.name}</h2>
+                            <div className="mb-6">
+                                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight truncate">{employee.name}</h2>
                                 <p className="text-indigo-600 font-black uppercase text-xs sm:text-sm tracking-widest mt-1.5">{employee.job_title ?? 'STAFF'}</p>
-                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? employee.department + ' Dept.' : ''}</p>
-                            </div>
-
-                            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 mb-6 sm:mb-8">
-                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-0.5">Company ID</p>
-                                <p className="font-mono text-xl sm:text-2xl font-black text-slate-700">{employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}</p>
+                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? employee.department + ' Department' : 'Operations'}</p>
                             </div>
 
                             <div className="no-print flex gap-2.5 sm:gap-3">
-                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-3 sm:py-4 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition tap-active text-xs sm:text-sm">
-                                    Cancel
+                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-3 sm:py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition tap-active text-xs sm:text-sm">
+                                    Close
                                 </button>
-                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/30 transition tap-active text-xs sm:text-sm">
-                                    <i className="ti ti-printer text-base sm:text-lg" /> Print
+                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-3.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-indigo-600 shadow-xl shadow-slate-900/20 transition tap-active text-xs sm:text-sm">
+                                    <i className="ti ti-printer text-base sm:text-lg" /> Print Badge
                                 </button>
                             </div>
                         </motion.div>
