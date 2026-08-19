@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import QRCode from '../../components/QRCode';
 
@@ -13,7 +13,6 @@ const MyQr = () => {
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Live real-time clock for pass security verification
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -23,26 +22,36 @@ const MyQr = () => {
   const employeeName = user.name || `${user.first_name || 'Employee'} ${user.last_name || ''}`.trim();
   const department = user.department || 'Operations';
   const jobTitle = user.job_title || user.role || 'Staff';
-  const shift = user.shift || 'Morning Shift (08:00 - 17:00)';
   const avatarLetter = (user.first_name || employeeName || 'E').charAt(0).toUpperCase();
 
-  const photoUrl = user.company_id && user.id
-    ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-    : null;
+  const photoUrl = useMemo(() => {
+    if (user?.biometric_baseline_path) {
+      return user.biometric_baseline_path.startsWith('http')
+        ? user.biometric_baseline_path
+        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`;
+    }
+    return user?.company_id && user?.id
+      ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+      : null;
+  }, [user]);
+
+  const formattedDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+  });
 
   return (
-    <div className="w-full max-w-sm mx-auto h-[calc(100dvh-7.5rem)] flex items-center justify-center select-none touch-none overflow-hidden font-sans p-2">
-      
-      {/* Clean Minimalist & Open Display (Uncramped, No Heavy Outer Box) */}
+    <div className="w-full max-w-sm mx-auto h-[calc(100dvh-5rem)] flex flex-col items-center justify-center select-none touch-none overflow-hidden font-sans px-4">
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full flex flex-col items-center justify-center text-center"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+        className="w-full flex flex-col items-center"
       >
-        {/* Personnel Header: Clean, Breathable, Minimal */}
-        <div className="flex flex-col items-center mb-4 sm:mb-5">
-          <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 text-white font-black text-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md mb-2.5">
+
+        {/* ── Employee Identity ── */}
+        <div className="flex items-center gap-3 mb-5 w-full">
+          <div className="relative w-11 h-11 rounded-full bg-slate-800 text-white font-bold text-sm flex items-center justify-center overflow-hidden ring-2 ring-white shrink-0">
             {photoUrl ? (
               <img
                 src={photoUrl}
@@ -51,47 +60,45 @@ const MyQr = () => {
                 className="w-full h-full object-cover"
               />
             ) : null}
-            <span style={{ display: photoUrl ? 'none' : 'flex' }}>
+            <span
+              className="w-full h-full flex items-center justify-center"
+              style={{ display: photoUrl ? 'none' : 'flex' }}
+            >
               {avatarLetter}
             </span>
           </div>
-
-          <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight">
-            {employeeName}
-          </h2>
-          <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            {jobTitle} &bull; {department}
-          </p>
-
-          <span className="inline-block mt-2 font-mono text-xs font-black text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/80">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-bold text-slate-900 truncate leading-tight">
+              {employeeName}
+            </h2>
+            <p className="text-[11px] text-slate-500 font-medium truncate">
+              {jobTitle} · {department}
+            </p>
+          </div>
+          <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
             {qrValue}
           </span>
         </div>
 
-        {/* Large, Pure Optical QR Code */}
-        <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-center">
+        {/* ── QR Code ── */}
+        <div className="w-full bg-white rounded-2xl p-5 flex flex-col items-center border border-slate-200/70 shadow-xs">
           <QRCode
             value={qrValue}
-            size={240}
-            fgColor="#000000"
+            size={260}
+            fgColor="#0f172a"
             bgColor="#ffffff"
           />
         </div>
 
-        {/* Schedule & Real-Time Sync Footer */}
-        <div className="mt-4 sm:mt-5 flex items-center gap-3 text-xs text-slate-400 font-medium">
-          <span className="flex items-center gap-1.5 text-slate-500">
-            <i className="ti ti-clock-hour-4 text-slate-400" />
-            <span>{shift}</span>
-          </span>
-          <span>&bull;</span>
-          <span className="font-mono font-bold text-slate-700">
+        {/* ── Timestamp ── */}
+        <div className="mt-4 flex items-center justify-between w-full text-[11px] text-slate-400 font-medium px-1">
+          <span>{formattedDate}</span>
+          <span className="font-mono font-bold tabular-nums text-slate-600">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
 
       </motion.div>
-
     </div>
   );
 };
