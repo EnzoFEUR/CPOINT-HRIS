@@ -28,7 +28,7 @@ export default function QrPrint({ employee = {} }) {
                 <div className="flex justify-center mb-6">
                     <div className="p-2 border-4 border-slate-900 rounded-xl">
                         <QRCode 
-                            value={employee.company_id || String(employee.id)} 
+                            value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
                             size={250} 
                             level="H"
                             fgColor="#0f172a"
@@ -43,8 +43,8 @@ export default function QrPrint({ employee = {} }) {
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-8">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Employee ID</p>
-                    <p className="font-mono text-xl font-black text-slate-700">#{employee.id}</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Company ID</p>
+                    <p className="font-mono text-xl font-black text-slate-700">{employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}</p>
                 </div>
 
                 <div className="no-print space-y-3">

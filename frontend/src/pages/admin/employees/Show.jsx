@@ -171,7 +171,7 @@ export default function Show() {
 
                     <div className="relative z-10 text-center sm:text-left flex-1 min-w-0">
                         <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 bg-white/10 text-white font-bold text-[10px] sm:text-xs rounded-xl border border-white/20 uppercase tracking-widest mb-2 sm:mb-3 backdrop-blur-md">
-                            <i className="ti ti-id text-indigo-300" /> {employee.company_id || 'Employee'}
+                            <i className="ti ti-id text-indigo-300" /> {employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}
                         </div>
                         <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-2 sm:mb-3 truncate">{employee.name}</h1>
                         
@@ -338,7 +338,7 @@ export default function Show() {
 
                             <div className="flex justify-center mb-6 sm:mb-8">
                                 <div className="p-3 sm:p-4 border-4 border-slate-900 rounded-2xl bg-white flex items-center justify-center shadow-inner">
-                                    <QRCode value={employee.company_id || String(employee.id)} size={180} />
+                                    <QRCode value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} size={180} />
                                 </div>
                             </div>
 
@@ -350,7 +350,7 @@ export default function Show() {
 
                             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 mb-6 sm:mb-8">
                                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-0.5">Company ID</p>
-                                <p className="font-mono text-xl sm:text-2xl font-black text-slate-700">{employee.company_id || `#${String(employee.id).substring(0,8)}`}</p>
+                                <p className="font-mono text-xl sm:text-2xl font-black text-slate-700">{employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}</p>
                             </div>
 
                             <div className="no-print flex gap-2.5 sm:gap-3">
