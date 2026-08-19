@@ -55,6 +55,7 @@ import MyQr from './pages/employee/MyQr';
 import EmployeeScanner from './pages/employee/Scanner';
 
 import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import './index.css';
 
@@ -1470,6 +1471,7 @@ function App() {
           <Route path="/employee/scanner" element={<EmployeeScanner />} />
         </Route>
       </Routes>
+      <SpeedInsights />
     </Router>
   );
 }
