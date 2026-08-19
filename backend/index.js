@@ -32,6 +32,7 @@ import shiftRoutes from './routes/shifts.js';
 import disciplinaryRoutes from './routes/disciplinary.js';
 import notificationRoutes from './routes/notifications.js';
 import pushRoutes from './routes/push.js';
+import aiRoutes from './routes/ai.js';
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
 import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
@@ -55,6 +56,7 @@ app.use('/api/profile', verifyToken, profileRoutes);
 app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
+app.use('/api/ai', verifyToken, aiRoutes);
 
 // Root Status
 app.get('/', (req, res) => {
