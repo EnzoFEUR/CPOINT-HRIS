@@ -209,9 +209,13 @@ export default function PayrollIndex() {
                                 key={status}
                                 onClick={() => { setFilterStatus(status); setCurrentPage(1); }}
                                 className={`px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold tap-active transition-all whitespace-nowrap ${
-                                    filterStatus === status 
-                                    ? 'bg-white text-slate-900 shadow-xs' 
-                                    : 'text-slate-500 hover:text-slate-900'
+    filterStatus === status
+        ? (status === 'Completed'
+            ? 'bg-emerald-600 text-white shadow-xs'
+            : status === 'Pending'
+            ? 'bg-amber-500 text-white shadow-xs'
+            : 'bg-slate-900 text-white shadow-xs')
+        : 'text-slate-500 hover:text-slate-900'
                                 }`}
                             >
                                 {status}
