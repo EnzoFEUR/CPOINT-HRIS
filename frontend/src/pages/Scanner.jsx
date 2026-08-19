@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
+import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 
 // Scanner configuration
 const ENV = {
@@ -301,10 +302,8 @@ const Scanner = () => {
       clearInterval(detectionRef.current);
       detectionRef.current = null;
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
+    stopHardwareStream(streamRef.current);
+    streamRef.current = null;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -570,32 +569,11 @@ const Scanner = () => {
     }, ENV.DETECTION_INTERVAL_MS);
   }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
-  // Face Camera Starter
+  // Face Camera Starter with Hardware Sensor Controls
   const startFaceCamera = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
-      const isPortrait = window.innerHeight > window.innerWidth;
-      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
-
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: 'user' }, 
-            width: { ideal: isMobile && isPortrait ? 720 : 1280 }, 
-            height: { ideal: isMobile && isPortrait ? 1280 : 720 },
-            aspectRatio: { ideal: isMobile && isPortrait ? (window.innerWidth / (window.innerHeight || 1)) : 1.7777777778 }
-          },
-          audio: false
-        });
-      } catch (camErr) {
-        console.warn('[FaceCam] Fallback to generic user camera:', camErr);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false
-        });
-      }
-
+      const stream = await requestHardwareCamera({ facingMode: 'user', preferHighFps: true });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;

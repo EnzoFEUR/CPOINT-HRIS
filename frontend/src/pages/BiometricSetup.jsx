@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
+import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
 
 // Primary CDN with high reliability and fallback
 const MODEL_SOURCES = [
@@ -296,28 +297,9 @@ export default function BiometricSetup() {
     throw new Error('All model sources failed to load.');
   };
 
-  // Camera boot and permissions
+  // Camera boot with hardware ISP & focus controls
   const startCameraStream = useCallback(async () => {
-    const isPortrait = window.innerHeight > window.innerWidth;
-    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
-
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'user' },
-          width: { ideal: isMobile && isPortrait ? 720 : 1280 },
-          height: { ideal: isMobile && isPortrait ? 1280 : 720 },
-        },
-        audio: false
-      });
-    } catch {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false
-      });
-    }
-
+    const stream = await requestHardwareCamera({ facingMode: 'user', preferHighFps: true });
     streamRef.current = stream;
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
@@ -364,7 +346,7 @@ export default function BiometricSetup() {
     return () => {
       mounted = false;
       if (loopRef.current) clearInterval(loopRef.current);
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      stopHardwareStream(streamRef.current);
       if (abortRef.current) abortRef.current.abort();
       wakeLock?.release().catch(() => {});
     };
@@ -655,7 +637,7 @@ export default function BiometricSetup() {
 
   const handleLogout = useCallback(async () => {
     if (loopRef.current) clearInterval(loopRef.current);
-    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    stopHardwareStream(streamRef.current);
     try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* silent */ }
     localStorage.removeItem('user');
     navigate('/login');
