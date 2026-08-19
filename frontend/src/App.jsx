@@ -880,49 +880,95 @@ function MainLayout({ children }) {
                   </button>
                 </>
               ) : (
-                <>
-                  {[
-                    { to: '/employee/dashboard', label: 'Portal', icon: 'ti-smart-home', exact: true },
-                    { to: '/employee/qr', label: 'My Pass', icon: 'ti-qrcode' },
-                    ...(isSecurity(user) ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
-                    { to: '/profile', label: 'Profile', icon: 'ti-user' }
-                  ].map(tab => {
-                    const isActive = tab.exact
-                      ? location.pathname === tab.to
-                      : location.pathname.startsWith(tab.to);
+                <div className="flex items-center justify-around w-full relative">
+                  {/* Left: Portal / Home */}
+                  <Link
+                    to="/employee/dashboard"
+                    className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                      location.pathname === '/employee/dashboard' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {location.pathname === '/employee/dashboard' && (
+                      <motion.div
+                        layoutId="mobileEmpActiveDockPill"
+                        className="absolute inset-0 bg-white/10 rounded-xl sm:rounded-2xl border border-white/10"
+                        transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                      />
+                    )}
+                    <i className="ti ti-smart-home text-xl relative z-10" />
+                    <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
+                      Home
+                    </span>
+                  </Link>
 
-                    return (
-                      <Link
-                        key={tab.to}
-                        to={tab.to}
-                        className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                          }`}
+                  {/* Optional for Security: Scan */}
+                  {isSecurity(user) && (
+                    <Link
+                      to="/scanner"
+                      className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                        location.pathname === '/scanner' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {location.pathname === '/scanner' && (
+                        <motion.div
+                          layoutId="mobileEmpActiveDockPill"
+                          className="absolute inset-0 bg-white/10 rounded-xl sm:rounded-2xl border border-white/10"
+                          transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                        />
+                      )}
+                      <i className="ti ti-scan text-xl relative z-10" />
+                      <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
+                        Terminal
+                      </span>
+                    </Link>
+                  )}
+
+                  {/* RAISED / ELEVATED CENTER ACTION: QR CODE ID PASS */}
+                  <div className="relative flex-1 flex flex-col items-center justify-center -mt-6 sm:-mt-7 group">
+                    <Link
+                      to="/employee/qr"
+                      className="relative flex flex-col items-center justify-center tap-active"
+                      title="My Digital Pass"
+                    >
+                      {/* Ambient Glow Pulse */}
+                      <div className={`absolute inset-0 rounded-full blur-md transition-opacity duration-300 ${
+                        location.pathname === '/employee/qr' ? 'bg-blue-500/60 opacity-100 animate-pulse' : 'bg-blue-500/30 opacity-60 group-hover:opacity-100'
+                      }`} />
+
+                      {/* Elevated Circle FAB */}
+                      <motion.div
+                        whileTap={{ scale: 0.90 }}
+                        whileHover={{ scale: 1.05 }}
+                        className={`relative w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white ring-4 ring-slate-900 border-2 border-white/30 shadow-xl transition-all duration-300 ${
+                          location.pathname === '/employee/qr'
+                            ? 'bg-gradient-to-tr from-blue-500 via-indigo-600 to-cyan-400 shadow-blue-500/50'
+                            : 'bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 shadow-slate-950/60 group-hover:shadow-blue-500/40'
+                        }`}
                       >
-                        {isActive && (
-                          <motion.div
-                            layoutId="mobileEmpActiveDockPill"
-                            className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                          />
-                        )}
-                        <i className={`ti ${tab.icon} text-xl relative z-10 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
-                        <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
-                          {tab.label}
-                        </span>
-                      </Link>
-                    );
-                  })}
+                        <i className="ti ti-qrcode text-2xl sm:text-[26px] drop-shadow-md" />
+                      </motion.div>
 
+                      {/* Label underneath */}
+                      <span className={`text-[9px] sm:text-[10px] font-black tracking-wider uppercase mt-1 leading-none transition-colors ${
+                        location.pathname === '/employee/qr' ? 'text-cyan-300' : 'text-slate-300 group-hover:text-white'
+                      }`}>
+                        QR Pass
+                      </span>
+                    </Link>
+                  </div>
+
+                  {/* Right: Sign Out */}
                   <button
                     onClick={handleLogout}
-                    className="relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-red-400 hover:text-red-300"
+                    className="relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                    title="Sign Out"
                   >
                     <i className="ti ti-power text-xl relative z-10" />
-                    <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                    <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
                       Logout
                     </span>
                   </button>
-                </>
+                </div>
               )}
             </nav>
           </div>
