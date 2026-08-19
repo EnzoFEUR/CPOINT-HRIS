@@ -28,13 +28,15 @@ router.get('/', async (req, res) => {
         ));
 
         let empMap = new Map();
+        let employees = [];
         if (relevantEmpIds.length > 0) {
-            const { data: employees } = await supabase
+            const { data } = await supabase
                 .from('employees')
                 .select('id, company_id, first_name, last_name')
                 .in('id', relevantEmpIds);
 
-            (employees || []).forEach(emp => {
+            employees = data || [];
+            employees.forEach(emp => {
                 empMap.set(emp.id, emp);
                 const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
                 empMap.set(fullName, emp);
@@ -48,7 +50,7 @@ router.get('/', async (req, res) => {
             } else if (notif.target && empMap.has(notif.target)) {
                 matchedEmp = empMap.get(notif.target);
             } else {
-                for (const emp of (employees || [])) {
+                for (const emp of employees) {
                     const fullName = `${emp.first_name} ${emp.last_name}`;
                     if ((notif.title && notif.title.includes(fullName)) || (notif.text && notif.text.includes(fullName))) {
                         matchedEmp = emp;
