@@ -62,60 +62,70 @@ const MyQr = () => {
   });
 
   return (
-    <div className="w-full max-w-sm mx-auto h-full max-h-[calc(100dvh-8rem)] sm:max-h-[calc(100dvh-6rem)] flex flex-col items-center justify-center select-none touch-none overscroll-none overflow-hidden font-sans px-4">
+    <div className="w-full max-w-sm sm:max-w-md mx-auto h-full flex flex-col justify-start select-none touch-none overscroll-none overflow-hidden font-sans px-2 sm:px-4 pt-3 sm:pt-4">
 
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full flex flex-col items-center"
+        className="w-full flex flex-col"
       >
 
-        {/* ── Employee Identity ── */}
-        <div className="flex items-center gap-3 mb-4 w-full">
-          <div className="relative w-11 h-11 rounded-full bg-slate-800 text-white font-bold text-sm flex items-center justify-center overflow-hidden ring-2 ring-white shrink-0">
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                alt={employeeName}
-                className="w-full h-full object-cover"
-              />
-            ) : null}
-            <span
-              className="w-full h-full flex items-center justify-center"
-              style={{ display: photoUrl ? 'none' : 'flex' }}
-            >
-              {avatarLetter}
+        {/* ── Employee Identity Header Row ── */}
+        <div className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* User Avatar */}
+            <div className="relative w-12 h-12 rounded-full bg-slate-900 text-white font-bold text-base flex items-center justify-center overflow-hidden ring-2 ring-white shadow-xs shrink-0">
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                  alt={employeeName}
+                  className="w-full h-full object-cover"
+                />
+              ) : null}
+              <span
+                className="w-full h-full flex items-center justify-center"
+                style={{ display: photoUrl ? 'none' : 'flex' }}
+              >
+                {avatarLetter}
+              </span>
+            </div>
+
+            {/* Name & Job Title */}
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 truncate leading-tight">
+                {employeeName}
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
+                {jobTitle} &middot; {department}
+              </p>
+            </div>
+          </div>
+
+          {/* Company ID Badge Pill */}
+          <div className="shrink-0">
+            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 block shadow-2xs">
+              {qrValue}
             </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-bold text-slate-900 truncate leading-tight">
-              {employeeName}
-            </h2>
-            <p className="text-[11px] text-slate-500 font-medium truncate">
-              {jobTitle} &middot; {department}
-            </p>
-          </div>
-          <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
-            {qrValue}
-          </span>
         </div>
 
-        {/* ── Full-Width QR Card ── */}
-        <div className="w-full bg-white rounded-2xl p-5 flex flex-col items-center border border-slate-200/70 shadow-xs">
+        {/* ── High-Contrast Large Optical QR Card ── */}
+        <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">
           <QRCode
             value={qrValue}
-            size={250}
+            size={260}
             fgColor="#0f172a"
             bgColor="#ffffff"
+            className="rounded-xl"
           />
         </div>
 
-        {/* ── Timestamp ── */}
-        <div className="mt-4 flex items-center justify-between w-full text-[11px] text-slate-400 font-medium px-1">
+        {/* ── Date & Real-Time Sync Footer ── */}
+        <div className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2">
           <span>{formattedDate}</span>
-          <span className="font-mono font-bold tabular-nums text-slate-600">
+          <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
