@@ -23,6 +23,11 @@ const formatReadableDate = (dateStr) => {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const HOLIDAY_LABELS = {
+    regular: 'Regular Holiday',
+    special_non_working: 'Special Non-Working Day',
+};
+
 const PayrollCreate = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -40,6 +45,13 @@ const PayrollCreate = () => {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [isCalculating, setIsCalculating] = useState(false);
+
+    // Holiday pay preview — fetched from POST /api/payroll/preview, which
+    // runs the exact same payrollCalculations logic the backend uses on
+    // submit. Informational only: this component holds no calculation
+    // logic of its own, so the preview can never drift from what actually
+    // gets saved.
+    const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
 
     useEffect(() => {
         fetchWithAuth('/api/employees')
@@ -66,7 +78,8 @@ const PayrollCreate = () => {
                 box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
                 padding: 12px !important;
                 font-family: inherit !important;
-                width: 320px !important;
+                width: min(320px, calc(100vw - 2rem)) !important;
+                max-width: calc(100vw - 2rem) !important;
             }
             .flatpickr-months {
                 margin-bottom: 8px !important;
@@ -104,10 +117,11 @@ const PayrollCreate = () => {
                 border-radius: 0.75rem !important;
                 font-weight: 600 !important;
                 color: #1e293b !important;
-                height: 38px !important;
-                line-height: 38px !important;
+                height: 42px !important;
+                line-height: 42px !important;
                 margin: 2px 0 !important;
                 transition: all 0.15s ease !important;
+                touch-action: manipulation !important;
             }
             .flatpickr-day:hover {
                 background: #eff6ff !important;
@@ -195,8 +209,26 @@ const PayrollCreate = () => {
             if (formData.employee_id && formData.period_start && formData.period_end) {
                 setIsCalculating(true);
                 try {
-                    const res = await fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`);
-                    const rawLogs = await res.json();
+                    // Attendance drives the client-side days_worked/overtime
+                    // display; the holiday-pay figure is NOT computed here —
+                    // it's fetched from the backend's /preview endpoint below,
+                    // so this component never carries its own copy of the
+                    // DOLE holiday math to drift out of sync with what
+                    // actually gets saved on submit.
+                    const [attendanceRes, previewRes] = await Promise.all([
+                        fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`),
+                        fetchWithAuth('/api/payroll/preview', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                employee_id: formData.employee_id,
+                                period_start: formData.period_start,
+                                period_end: formData.period_end,
+                            }),
+                        }),
+                    ]);
+
+                    const rawLogs = await attendanceRes.json();
+                    const previewData = await previewRes.json().catch(() => ({ items: [], totalHolidayPay: 0 }));
 
                     // FIX: /api/attendance can return either a raw array or a
                     // wrapped { data: [...] } object (same as /api/employees
@@ -204,6 +236,12 @@ const PayrollCreate = () => {
                     // so a wrapped response silently produced an empty list
                     // and days_worked/overtime_hours stayed at 0.
                     const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
+
+                    setHolidayPreview(
+                        previewRes.ok && Array.isArray(previewData.items)
+                            ? previewData
+                            : { items: [], totalHolidayPay: 0 }
+                    );
 
                     const doleDivisor = 21.75;
                     const gracePeriodMins = 15;
@@ -249,6 +287,7 @@ const PayrollCreate = () => {
 
                 } catch (err) {
                     console.error('Calculation error:', err);
+                    setHolidayPreview({ items: [], totalHolidayPay: 0 });
                 } finally {
                     setIsCalculating(false);
                 }
@@ -319,16 +358,16 @@ const PayrollCreate = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
-            <div className="bg-white p-6 sm:p-10 rounded-[2rem] shadow-sm border border-slate-100">
+        <div className="max-w-4xl mx-auto py-6 sm:py-8 px-4 sm:px-6 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+            <div className="bg-white p-5 sm:p-10 rounded-3xl sm:rounded-[2rem] shadow-sm border border-slate-100">
 
-                <div className="flex items-center gap-4 mb-8">
-                    <div className="h-14 w-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-500/20">
+                <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
+                    <div className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shadow-blue-500/20">
                         <i className="ti ti-calculator"></i>
                     </div>
-                    <div>
-                        <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">Payroll Calculator</h2>
-                        <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider mt-0.5">Automated DOLE Wage & Deductions Computation</p>
+                    <div className="min-w-0">
+                        <h2 className="text-xl sm:text-3xl font-black text-slate-800 tracking-tight leading-tight">Payroll Calculator</h2>
+                        <p className="text-slate-400 text-[11px] sm:text-sm font-semibold uppercase tracking-wider mt-0.5 leading-snug">Automated DOLE Wage &amp; Deductions Computation</p>
                     </div>
                 </div>
 
@@ -354,23 +393,23 @@ const PayrollCreate = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-8">
                     <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                 <i className="ti ti-user"></i>
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
-                                <p className="text-[11px] text-slate-400 font-medium">Select an employee from your active workforce</p>
+                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Select an employee from your active workforce</p>
                             </div>
                         </div>
                         <select
                             name="employee_id"
                             value={formData.employee_id}
                             onChange={handleInputChange}
-                            className="w-full p-4 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-sm text-base"
+                            className="w-full p-4 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-sm text-base touch-manipulation"
                             required
                         >
-                            <option value="" disabled>Choose an employee to compute wages...</option>
+                            <option value="" disabled>Select an employee…</option>
                             {employees.map((emp) => {
                                 const salary = parseFloat(emp.salary || emp.monthly_salary || 0);
                                 return (
@@ -415,41 +454,44 @@ const PayrollCreate = () => {
                         )}
                     </div>
 
-                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100 space-y-5">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs">
-                                    <i className="ti ti-calendar-event"></i>
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium">Standard semi-monthly cutoff or custom date range</p>
-                                </div>
+                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+                                <i className="ti ti-calendar-event"></i>
                             </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
+                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Standard semi-monthly cutoff or custom date range</p>
+                            </div>
+                        </div>
 
-                            <div className="flex flex-wrap gap-1.5 pt-1 sm:pt-0">
-                                <button
-                                    type="button"
-                                    onClick={() => applyCutoffPreset('current_1st')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'current_1st' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                >
-                                    1st - 15th
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => applyCutoffPreset('current_2nd')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'current_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                >
-                                    16th - End
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => applyCutoffPreset('prev_2nd')}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activePreset === 'prev_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                >
-                                    Last Mo (16th-End)
-                                </button>
-                            </div>
+                        {/* Horizontal-scroll chip strip: each preset keeps its full label on
+                            one line no matter the screen width, and scrolls instead of
+                            wrapping or squeezing on narrow phones. */}
+                        <div
+                            className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => applyCutoffPreset('current_1st')}
+                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'current_1st' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                            >
+                                1st – 15th
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => applyCutoffPreset('current_2nd')}
+                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'current_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                            >
+                                16th – End
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => applyCutoffPreset('prev_2nd')}
+                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'prev_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                            >
+                                Last Month
+                            </button>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -477,7 +519,7 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm transition-colors"
+                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-base transition-colors touch-manipulation"
                                     placeholder="Click to pick start date"
                                 />
                             </div>
@@ -506,21 +548,21 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm transition-colors"
+                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-base transition-colors touch-manipulation"
                                     placeholder="Click to pick end date"
                                 />
                             </div>
                         </div>
 
                         {periodDaysCount > 0 && (
-                            <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 px-4 py-2.5 rounded-xl text-xs text-blue-900 font-medium">
-                                <div className="flex items-center gap-2">
-                                    <i className="ti ti-info-circle text-blue-600 text-base"></i>
+                            <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50/70 border border-blue-100 px-4 py-2.5 rounded-xl text-xs text-blue-900 font-medium">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <i className="ti ti-info-circle text-blue-600 text-base shrink-0"></i>
                                     <span>
-                                        Active Pay Window: <strong>{formatReadableDate(formData.period_start)}</strong> to <strong>{formatReadableDate(formData.period_end)}</strong>
+                                        {formatReadableDate(formData.period_start)} &rarr; {formatReadableDate(formData.period_end)}
                                     </span>
                                 </div>
-                                <span className="font-black bg-blue-600 text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-sm">
+                                <span className="shrink-0 font-black bg-blue-600 text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-sm">
                                     {periodDaysCount} Days
                                 </span>
                             </div>
@@ -528,19 +570,19 @@ const PayrollCreate = () => {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                     <i className="ti ti-clock-check"></i>
                                 </div>
-                                <div>
+                                <div className="min-w-0">
                                     <h3 className="text-sm font-bold text-slate-800 tracking-tight">Attendance & Rendered Hours</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium">Verified biometric time logs & overtime</p>
+                                    <p className="text-[11px] text-slate-400 font-medium leading-snug">Verified biometric time logs & overtime</p>
                                 </div>
                             </div>
                             {isCalculating && (
-                                <div className="text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 animate-pulse">
-                                    <i className="ti ti-loader animate-spin"></i> Calculating attendance...
+                                <div className="shrink-0 whitespace-nowrap text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 animate-pulse">
+                                    <i className="ti ti-loader animate-spin"></i> Calculating...
                                 </div>
                             )}
                         </div>
@@ -578,14 +620,58 @@ const PayrollCreate = () => {
                         </div>
                     </div>
 
+                    {holidayPreview.items.length > 0 && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="space-y-3"
+                        >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+                                        <i className="ti ti-confetti"></i>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h3 className="text-sm font-bold text-slate-800 tracking-tight">Holiday Pay (DOLE)</h3>
+                                        <p className="text-[11px] text-slate-400 font-medium leading-snug">Detected within this cutoff — recalculated authoritatively on save</p>
+                                    </div>
+                                </div>
+                                <span className="self-start sm:self-auto shrink-0 font-black bg-amber-500 text-white px-3 py-1 rounded-lg text-sm shadow-sm">
+                                    +₱{holidayPreview.totalHolidayPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </span>
+                            </div>
+
+                            <div className="bg-amber-50/60 border border-amber-100 rounded-2xl divide-y divide-amber-100/80 overflow-hidden">
+                                {holidayPreview.items.map((item) => (
+                                    <div key={item.date} className="flex items-center justify-between px-4 py-3 text-xs">
+                                        <div>
+                                            <p className="font-bold text-slate-800">
+                                                {formatReadableDate(item.date)} &middot; {item.holidayName}
+                                            </p>
+                                            <p className="text-slate-500 mt-0.5">
+                                                {HOLIDAY_LABELS[item.holidayType] || item.holidayType}
+                                                {item.isRestDay ? ' · Rest Day' : ''}
+                                                {' · '}
+                                                {item.worked ? `Worked (${item.multiplier * 100}%)` : (item.eligible ? 'Unworked (paid)' : 'Unworked (unpaid)')}
+                                            </p>
+                                        </div>
+                                        <span className={`font-mono font-bold ${item.pay > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                            ₱{item.pay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
+
                     <div className="space-y-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                 <i className="ti ti-adjustments"></i>
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-slate-800 tracking-tight">Adjustments & Manual Overrides</h3>
-                                <p className="text-[11px] text-slate-400 font-medium">Calculated tardiness deductions and allowable HR overrides</p>
+                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Calculated tardiness deductions and allowable HR overrides</p>
                             </div>
                         </div>
 
@@ -599,10 +685,11 @@ const PayrollCreate = () => {
                             <input
                                 type="number"
                                 step="0.01"
+                                inputMode="decimal"
                                 name="late_deductions"
                                 value={formData.late_deductions}
                                 onChange={handleInputChange}
-                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm"
+                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm touch-manipulation"
                                 placeholder="0.00"
                             />
                             <p className="text-[11px] text-slate-500">
@@ -614,7 +701,7 @@ const PayrollCreate = () => {
                     <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-3">
                         <i className="ti ti-shield-check text-blue-600 text-xl mt-0.5"></i>
                         <p className="text-xs text-slate-600 leading-relaxed">
-                            <strong>DOLE Compliance Engine:</strong> Government mandatory deductions (SSS, PhilHealth, Pag-IBIG, and TRAIN Law Withholding Tax) are automatically calculated and deducted upon generation.
+                            <strong>DOLE Compliance Engine:</strong> Government mandatory deductions (SSS, PhilHealth, Pag-IBIG, and TRAIN Law Withholding Tax) are automatically calculated and deducted upon generation. Holiday premiums shown above are included in gross pay before tax.
                         </p>
                     </div>
 
@@ -622,7 +709,7 @@ const PayrollCreate = () => {
                         <button
                             type="submit"
                             disabled={isSubmitting || !formData.employee_id}
-                            className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900"
+                            className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
                         >
                             {!isSubmitting ? (
                                 <>

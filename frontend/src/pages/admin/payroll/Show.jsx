@@ -8,6 +8,11 @@ import { fetchWithAuth } from '../../../utils/api';
 
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
+const HOLIDAY_LABELS = {
+    regular: 'Regular Holiday',
+    special_non_working: 'Special Non-Working Day',
+};
+
 export default function PayrollShow() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -102,8 +107,18 @@ export default function PayrollShow() {
         );
     }
 
-    // Pre-calculate Gross Earnings to compute percentages
-    const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0);
+    // Holiday pay: an itemized array saved by the payroll route
+    // (payroll.holiday_breakdown), each entry shaped like the output of
+    // computeHolidayPayForPeriod() in payrollCalculations.js. Only ever
+    // render this section when there's something to show — most cutoffs
+    // won't contain a holiday at all.
+    const holidayBreakdown = Array.isArray(payroll.holiday_breakdown) ? payroll.holiday_breakdown : [];
+    const holidayPay = Number(payroll.holiday_pay || 0);
+    const paidHolidayItems = holidayBreakdown.filter((h) => Number(h?.pay) > 0);
+    const hasHolidayPay = holidayPay > 0 && paidHolidayItems.length > 0;
+
+    // Pre-calculate Gross Earnings to compute percentages (now includes holiday pay)
+    const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0) + holidayPay;
 
     // Logic to split the remarks string into itemized deductions
     const deductionItems = payroll.remarks ? payroll.remarks.split(', ') : [];
@@ -143,22 +158,22 @@ export default function PayrollShow() {
     });
 
     return (
-        <div className="max-w-4xl mx-auto py-10 px-4">
+        <div className="max-w-4xl mx-auto py-10 px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
             {/* Top Actions */}
-            <div className="mb-6 flex justify-between items-center print:hidden">
-                <Link to="/admin/payroll" className="text-slate-500 hover:text-blue-600 font-bold transition flex items-center text-sm">
+            <div className="mb-6 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 print:hidden">
+                <Link to="/admin/payroll" className="text-slate-500 hover:text-blue-600 font-bold transition flex items-center text-sm touch-manipulation">
                     <i className="ti ti-arrow-left mr-2 text-lg"></i> Back to Payroll
                 </Link>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     {/* Print Button */}
-                    <button onClick={() => window.print()} className="px-5 py-2.5 bg-slate-800 text-white text-sm font-bold rounded-xl hover:bg-slate-900 transition flex items-center shadow-md">
+                    <button onClick={() => window.print()} className="min-h-[44px] px-5 py-2.5 bg-slate-800 text-white text-sm font-bold rounded-xl hover:bg-slate-900 active:scale-95 transition flex items-center justify-center shadow-md touch-manipulation">
                         <i className="ti ti-printer mr-2 text-lg"></i> Print Payslip
                     </button>
 
                     {/* Delete Button */}
                     <form onSubmit={handleDelete}>
-                        <button type="submit" className="px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition flex items-center shadow-md">
+                        <button type="submit" className="w-full min-h-[44px] px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 active:scale-95 transition flex items-center justify-center shadow-md touch-manipulation">
                             <i className="ti ti-trash mr-2 text-lg"></i> Delete Record
                         </button>
                     </form>
@@ -199,6 +214,47 @@ export default function PayrollShow() {
                         </div>
                     </div>
 
+                    {/* Holiday Pay Banner — only rendered when this payslip actually
+                        includes a holiday premium, so it never clutters an ordinary
+                        cutoff with an empty section. */}
+                    {hasHolidayPay && (
+                        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-5 print:border print:border-slate-800 print:bg-transparent">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <i className="ti ti-confetti text-amber-600 text-lg print:hidden" />
+                                    <h3 className="text-sm font-black text-amber-800 uppercase tracking-wider print:text-slate-800">
+                                        Holiday Pay Included This Period
+                                    </h3>
+                                </div>
+                                <span className="text-base font-black font-mono text-amber-700 print:text-slate-900">
+                                    +₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <div className="space-y-2">
+                                {paidHolidayItems.map((item, idx) => (
+                                    <div key={item.date || idx} className="flex items-center justify-between text-xs bg-white/70 print:bg-transparent rounded-lg px-3 py-2 border border-amber-100 print:border-slate-300">
+                                        <div>
+                                            <span className="font-bold text-slate-800">
+                                                {dayjs(item.date).format('MMM DD, YYYY')} &middot; {item.holidayName || HOLIDAY_LABELS[item.holidayType] || 'Holiday'}
+                                            </span>
+                                            <span className="block text-slate-500 mt-0.5">
+                                                {HOLIDAY_LABELS[item.holidayType] || item.holidayType}
+                                                {item.isRestDay ? ' · Rest Day' : ''}
+                                                {' · '}
+                                                {item.worked
+                                                    ? `Worked${item.multiplier ? ` (${(item.multiplier * 100).toFixed(0)}%)` : ''}`
+                                                    : 'Unworked (paid per DOLE eligibility)'}
+                                            </span>
+                                        </div>
+                                        <span className="font-mono font-bold text-emerald-600">
+                                            ₱{Number(item.pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Financial Breakdown */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-8">
 
@@ -214,6 +270,17 @@ export default function PayrollShow() {
                                     <span className="text-sm text-slate-600 font-medium">Overtime Pay</span>
                                     <span className="text-sm font-mono font-medium text-slate-800">₱{Number(payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
+                                {hasHolidayPay && (
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-slate-600 font-medium flex items-center gap-1.5">
+                                            Holiday Pay
+                                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
+                                                DOLE
+                                            </span>
+                                        </span>
+                                        <span className="text-sm font-mono font-medium text-slate-800">₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
                                 <span className="text-sm font-bold text-slate-800">Gross Earnings</span>
@@ -303,21 +370,24 @@ export default function PayrollShow() {
                                     value={deleteConfirmText}
                                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                                     placeholder="Type DELETE here..."
-                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 transition-all text-center"
+                                    autoCapitalize="characters"
+                                    autoCorrect="off"
+                                    autoComplete="off"
+                                    className="w-full px-4 py-3 min-h-[44px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 text-base transition-all text-center touch-manipulation"
                                 />
                             </div>
 
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setIsDeleteModalOpen(false)}
-                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95"
+                                    className="flex-1 min-h-[44px] py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 touch-manipulation"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={confirmDelete}
                                     disabled={deleteConfirmText !== 'DELETE'}
-                                    className="flex-1 py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95"
+                                    className="flex-1 min-h-[44px] py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 touch-manipulation"
                                 >
                                     Delete Forever
                                 </button>
