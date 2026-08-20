@@ -235,6 +235,7 @@ function reducer(state, action) {
 export default function BiometricSetup() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const navigate = useNavigate();
+  const [cameraFacing, setCameraFacing] = useState('user');
 
   const [deviceInfo, setDeviceInfo] = useState(() => {
     const isMobile = typeof navigator !== 'undefined' && (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024));
@@ -298,8 +299,12 @@ export default function BiometricSetup() {
   };
 
   // Camera boot with hardware ISP & focus controls
-  const startCameraStream = useCallback(async () => {
-    const stream = await requestHardwareCamera({ facingMode: 'user', preferHighFps: true });
+  const startCameraStream = useCallback(async (facing = cameraFacing) => {
+    if (streamRef.current) {
+      stopHardwareStream(streamRef.current);
+      streamRef.current = null;
+    }
+    const stream = await requestHardwareCamera({ facingMode: facing, preferHighFps: true });
     streamRef.current = stream;
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
@@ -308,7 +313,18 @@ export default function BiometricSetup() {
       videoRef.current.play().catch(e => console.warn('[Video] Play error:', e));
     }
     return stream;
-  }, []);
+  }, [cameraFacing]);
+
+  // Lens Switcher (Front ⟷ Rear)
+  const toggleCameraFacing = useCallback(async () => {
+    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    setCameraFacing(nextFacing);
+    await startCameraStream(nextFacing);
+    toast.success(nextFacing === 'user' ? 'Front Camera Active' : 'Rear Camera Active', {
+      id: 'bio-flip',
+      duration: 1500,
+    });
+  }, [cameraFacing, startCameraStream]);
 
   useEffect(() => {
     let mounted = true;
@@ -704,18 +720,31 @@ export default function BiometricSetup() {
       {/* Camera Viewport (Dynamic Fluid Height) */}
       <div className="relative z-10 w-full max-w-[380px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-black/80 border border-slate-800 my-auto flex items-center justify-center">
         
-        {/* Mirror Video Stream */}
+        {/* Dynamic Mirrored / Un-mirrored Video Stream */}
         <video 
           ref={videoRef} 
           autoPlay 
           playsInline 
           muted 
-          className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
+          className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`} 
         />
         <canvas 
           ref={canvasRef} 
-          className="absolute inset-0 w-full h-full object-cover scale-x-[-1] pointer-events-none z-10" 
+          className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-10 transition-transform duration-300 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`} 
         />
+
+        {/* Floating Flip Camera Toggle Button (Top Right Viewport) */}
+        <button
+          type="button"
+          onClick={toggleCameraFacing}
+          className="absolute top-3 right-3 z-30 px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white/90 hover:text-white backdrop-blur-xl border border-white/10 shadow-lg active:scale-95 transition-all flex items-center gap-1.5 text-xs font-bold tap-active"
+          title="Flip Camera (Front / Rear)"
+        >
+          <i className="ti ti-camera-rotate text-base text-blue-400" />
+          <span className="uppercase text-[10px] tracking-wider hidden sm:inline">
+            {cameraFacing === 'user' ? 'Front' : 'Rear'}
+          </span>
+        </button>
 
         {/* Ambient Vignette */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_45%,_rgba(0,0,0,0.6)_100%)] pointer-events-none z-10" />

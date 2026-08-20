@@ -234,6 +234,9 @@ const Scanner = () => {
     );
   }
 
+  // Camera Facing Lens State ('user' = Front Selfie, 'environment' = Back / Rear Guard Mode)
+  const [cameraFacing, setCameraFacing] = useState('user');
+
   // Refs (Mutable Detection State)
   const qrRef = useRef(null);
   const videoRef = useRef(null);
@@ -570,10 +573,14 @@ const Scanner = () => {
   }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
   // Face Camera Starter with Hardware Sensor Controls
-  const startFaceCamera = useCallback(async () => {
+  const startFaceCamera = useCallback(async (facing = cameraFacing) => {
     dispatch({ type: 'SET_LOADING', payload: 'STARTING OPTICAL SENSOR...' });
     try {
-      const stream = await requestHardwareCamera({ facingMode: 'user', preferHighFps: true });
+      if (streamRef.current) {
+        stopHardwareStream(streamRef.current);
+        streamRef.current = null;
+      }
+      const stream = await requestHardwareCamera({ facingMode: facing, preferHighFps: true });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -587,9 +594,26 @@ const Scanner = () => {
       }
     } catch {
       toast.error('Camera access denied');
-      dispatch({ type: 'SET_ERROR', payload: { message: 'Front camera access denied. Enable permissions.', code: 'CAMERA_DENIED' } });
+      dispatch({ type: 'SET_ERROR', payload: { message: 'Camera access denied. Enable permissions.', code: 'CAMERA_DENIED' } });
     }
-  }, [runDetectionLoop, dispatch]);
+  }, [cameraFacing, runDetectionLoop, dispatch]);
+
+  // Flip Camera Lens (Front ⟷ Rear)
+  const toggleCameraFacing = useCallback(async () => {
+    playSound('scan');
+    haptic('scan');
+    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    setCameraFacing(nextFacing);
+    if (detectionRef.current) {
+      clearInterval(detectionRef.current);
+      detectionRef.current = null;
+    }
+    toast.success(nextFacing === 'user' ? 'Front Camera Active' : 'Rear Camera Active', {
+      id: 'camera-flip',
+      duration: 1500,
+    });
+    await startFaceCamera(nextFacing);
+  }, [cameraFacing, startFaceCamera]);
 
   // QR Success Handler
   const onQrSuccess = useCallback(async (text) => {
@@ -1152,12 +1176,31 @@ const Scanner = () => {
       <AnimatePresence>
         {state.mode === MODES.FACE && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-20 bg-black overflow-hidden">
-            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover -scale-x-100" playsInline muted autoPlay />
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover -scale-x-100 pointer-events-none" />
+            <video 
+              ref={videoRef} 
+              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
+              playsInline 
+              muted 
+              autoPlay 
+            />
+            <canvas 
+              ref={canvasRef} 
+              className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
+            />
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_35%,_rgba(0,0,0,0.8)_100%)] pointer-events-none" />
 
-            {/* Status Pill */}
-            <div className="absolute top-[max(env(safe-area-inset-top,12px),12px)] inset-x-0 flex justify-center z-30 pt-3">
+            {/* Top Control Bar: Reset + Status Pill + Flip Camera Button */}
+            <div className="absolute top-[max(env(safe-area-inset-top,12px),12px)] inset-x-0 flex items-center justify-between px-4 sm:px-6 z-30 pt-3">
+              {/* Cancel / Reset */}
+              <button
+                onClick={handleReset}
+                className="p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white/80 hover:text-white backdrop-blur-xl border border-white/10 shadow-lg active:scale-95 transition-all flex items-center justify-center tap-active"
+                title="Cancel Scan"
+              >
+                <i className="ti ti-x text-lg" />
+              </button>
+
+              {/* Status Pill */}
               <span className={`px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-black tracking-[0.25em] uppercase backdrop-blur-xl border shadow-lg ${statusMeta.pill}`}>
                 {state.liveness.status === 'BLINK_TO_VERIFY' ? 'BLINK TO VERIFY' :
                  state.liveness.status === 'PASSED' && state.scanProgress < 100 ? 'LIVENESS CONFIRMED — HOLD STILL' :
@@ -1165,6 +1208,18 @@ const Scanner = () => {
                  state.matchScore !== null && state.matchScore < 50 ? 'IDENTITY MISMATCH' :
                  'SCANNING FACE...'}
               </span>
+
+              {/* Flip Camera Toggle Button */}
+              <button
+                onClick={toggleCameraFacing}
+                className="px-3 py-2 sm:px-3.5 sm:py-2 rounded-full bg-black/60 hover:bg-black/80 text-white/90 hover:text-white backdrop-blur-xl border border-white/10 shadow-lg active:scale-95 transition-all flex items-center gap-1.5 text-xs font-bold tap-active"
+                title="Flip Camera (Front / Rear)"
+              >
+                <i className="ti ti-camera-rotate text-base text-blue-400" />
+                <span className="uppercase text-[10px] tracking-wider hidden sm:inline">
+                  {cameraFacing === 'user' ? 'Front' : 'Rear'}
+                </span>
+              </button>
             </div>
 
             {/* Bottom HUD */}
