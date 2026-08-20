@@ -17,18 +17,27 @@ export default function Dashboard() {
         queryFn: fetchDashboardData
     });
 
-    // Real-Time WebSockets for the Live Activity Feed
+    // Real-Time WebSockets for the Live Activity Feed & Counters
     React.useEffect(() => {
         const subscription = supabase
             .channel('dashboard_live')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
-                console.log('Live Feed Update:', payload);
-                refetch(); // Instantly reload dashboard data
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                refetch();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                refetch();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+                refetch();
             })
             .subscribe();
 
+        const handleRefresh = () => refetch();
+        window.addEventListener('refresh_dashboard', handleRefresh);
+
         return () => {
             supabase.removeChannel(subscription);
+            window.removeEventListener('refresh_dashboard', handleRefresh);
         };
     }, [refetch]);
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,7 +42,20 @@ const EmployeeDashboard = () => {
     }, [storedUser]);
 
     const fetchDashboardData = async (userId) => {
-        const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.all([
+        try {
+            const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json && (json.attendanceData !== undefined || json.leaveData !== undefined)) {
+                    return json;
+                }
+            }
+        } catch (err) {
+            console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
+        }
+
+        // Resilient parallel fallback directly to individual routes
+        const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.allSettled([
             fetchWithAuth(`/api/attendance?employee_id=${userId}`),
             fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
             fetchWithAuth(`/api/shifts?employee_id=${userId}`),
@@ -49,9 +63,11 @@ const EmployeeDashboard = () => {
             fetchWithAuth(`/api/leaves?employee_id=${userId}`)
         ]);
 
-        const [attendanceData, payrollData, shiftData, discData, leaveData] = await Promise.all([
-            attRes.json(), payRes.json(), shiftRes.json(), discRes.json(), leaveRes.json()
-        ]);
+        const attendanceData = attRes.status === 'fulfilled' && attRes.value.ok ? await attRes.value.json() : [];
+        const payrollData = payRes.status === 'fulfilled' && payRes.value.ok ? await payRes.value.json() : [];
+        const shiftData = shiftRes.status === 'fulfilled' && shiftRes.value.ok ? await shiftRes.value.json() : [];
+        const discData = discRes.status === 'fulfilled' && discRes.value.ok ? await discRes.value.json() : [];
+        const leaveData = leaveRes.status === 'fulfilled' && leaveRes.value.ok ? await leaveRes.value.json() : [];
 
         return { attendanceData, payrollData, shiftData, discData, leaveData };
     };
@@ -59,22 +75,65 @@ const EmployeeDashboard = () => {
     const { data, isLoading } = useQuery({
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
-        enabled: !!user.id && user.role !== 'security'
+        enabled: !!user.id && user.role !== 'security',
+        staleTime: 0,               // Always live & real-time
+        refetchOnWindowFocus: true  // Auto-sync when returning to tab
     });
 
-    // Derived State from React Query cache
-    const recentLogs = data?.attendanceData && Array.isArray(data.attendanceData) ? data.attendanceData.slice(0, 5) : [];
-    const latestPayroll = data?.payrollData && data.payrollData.length > 0 ? data.payrollData[0] : null;
-    
-    const myData = data?.shiftData ? data.shiftData.find(emp => String(emp.id) === String(user.id)) : null;
-    const shift = myData?.shift || 'Unassigned';
+    // Real-time live sync for dashboard updates
+    useEffect(() => {
+        if (!user?.id) return;
 
-    const discData = data?.discData || [];
+        const channel = supabase
+            .channel(`employee-live-dashboard-${user.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .subscribe();
+
+        const handleRefresh = () => {
+            queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+        };
+        window.addEventListener('refresh_dashboard', handleRefresh);
+
+        return () => {
+            supabase.removeChannel(channel);
+            window.removeEventListener('refresh_dashboard', handleRefresh);
+        };
+    }, [user?.id, queryClient]);
+
+    // Derived State with safe unwrap for both direct arrays and { data: [...] } objects
+    const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
+    const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
+
+    const rawPayroll = data?.payrollData?.data || data?.payrollData || [];
+    const latestPayroll = Array.isArray(rawPayroll) && rawPayroll.length > 0 ? rawPayroll[0] : (rawPayroll?.id ? rawPayroll : null);
+    
+    const rawShifts = data?.shiftData?.data || data?.shiftData || [];
+    const myData = Array.isArray(rawShifts) 
+        ? rawShifts.find(emp => String(emp.id) === String(user.id)) 
+        : (rawShifts?.id === user.id ? rawShifts : null);
+    const shift = myData?.shift || user?.shift || 'Unassigned';
+
+    const rawDisc = data?.discData?.data || data?.discData || [];
+    const discData = Array.isArray(rawDisc) ? rawDisc : [];
     const infractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status === 'Active');
     const unresolvedInfractions = discData.filter(log => String(log.employee_id) === String(user.id) && log.status !== 'Resolved');
     
-    const myLeaves = data?.leaveData && Array.isArray(data.leaveData) ? data.leaveData.slice(0, 5) : [];
-
+    const rawLeaves = data?.leaveData?.data || data?.leaveData || [];
+    const myLeaves = Array.isArray(rawLeaves) ? rawLeaves.slice(0, 5) : [];
 
     const handleLeaveSubmit = async (e) => {
         e.preventDefault();
@@ -89,7 +148,8 @@ const EmployeeDashboard = () => {
                 toast.success('Leave request submitted to HR!');
                 setShowLeaveModal(false);
                 setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-                queryClient.invalidateQueries(['employeeDashboard', user.id]);
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                queryClient.refetchQueries({ queryKey: ['employeeDashboard', user.id] });
             } else {
                 toast.error(data.error || 'Failed to submit leave.');
             }
@@ -107,7 +167,7 @@ const EmployeeDashboard = () => {
             ));
             toast.success('All memos acknowledged.');
             setShowInfractionsModal(false);
-            fetchDashboardData(user.id);
+            queryClient.invalidateQueries(['employeeDashboard', user.id]);
         } catch (err) {
             toast.error('Failed to acknowledge memos.');
         }
@@ -116,6 +176,14 @@ const EmployeeDashboard = () => {
     const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
     const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    const photoUrl = user?.biometric_baseline_path
+        ? (user.biometric_baseline_path.startsWith('http')
+            ? user.biometric_baseline_path
+            : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
+        : (user?.company_id && user?.id
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+            : null);
 
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -126,24 +194,33 @@ const EmployeeDashboard = () => {
     
     const sDetails = shiftDetails[shift] || shiftDetails['Unassigned'];
 
-    // Animation variants
+    // Animation variants - Exact enterprise spring motion consistent with Admin modules
     const containerVariants = {
         hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+        visible: { 
+            opacity: 1, 
+            transition: { 
+                staggerChildren: 0.05 
+            } 
+        }
     };
     
     const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+        hidden: { opacity: 0, y: 10 },
+        visible: { 
+            opacity: 1, 
+            y: 0, 
+            transition: { 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 30 
+            } 
+        }
     };
 
     return (
         <div className="max-w-5xl mx-auto pb-6 font-sans">
             
-            
-            <div className="fixed top-0 left-0 w-full h-[40vh] bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none -z-10" />
-            <div className="fixed top-[-10%] right-[-5%] w-[50vw] h-[50vw] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none -z-10" />
-
             {/* Alerts */}
             <AnimatePresence>
                 {infractions.length > 0 && (
@@ -181,41 +258,33 @@ const EmployeeDashboard = () => {
                         </p>
                     </div>
                     
-                    {/* User Avatar Circle */}
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-blue-500/30 border-4 border-white shrink-0">
-                        {getInitial(user.name)}
+                    {/* User Avatar Circle with Profile Picture */}
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-slate-950/20 border-4 border-white shrink-0 overflow-hidden">
+                        {photoUrl ? (
+                            <img
+                                src={photoUrl}
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                alt={user.name || 'Profile'}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : null}
+                        <span 
+                            className="w-full h-full flex items-center justify-center"
+                            style={{ display: photoUrl ? 'none' : 'flex' }}
+                        >
+                            {getInitial(user.name)}
+                        </span>
                     </div>
                 </motion.div>
 
-                {/* Action cards */}
+                {/* Action cards: Option 1 - Latest Pay & Today's Shift */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
-                    {/* Digital ID card */}
-                    <motion.div 
-                        whileTap={{ scale: 0.97 }}
-                        onClick={() => setShowQrModal(true)}
-                        className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xl shadow-slate-900/20 group tap-active"
-                    >
-                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/40 via-transparent to-transparent opacity-50" />
-                        <div className="relative z-10 flex items-center justify-between">
-                            <div>
-                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center mb-4 sm:mb-6 text-white group-hover:bg-white/20 transition-colors">
-                                    <i className="ti ti-qrcode text-2xl sm:text-3xl" />
-                                </div>
-                                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">Show My ID</h2>
-                                <p className="text-slate-400 font-medium mt-1 text-sm">Tap to open your scanner pass</p>
-                            </div>
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm group-hover:bg-white group-hover:text-slate-900 transition-all shrink-0">
-                                <i className="ti ti-arrow-right text-lg sm:text-xl" />
-                            </div>
-                        </div>
-                    </motion.div>
-
                     {/* Payroll card */}
                     <motion.div 
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
-                        className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xl shadow-emerald-600/20 group tap-active"
+                        className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
@@ -227,7 +296,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
                             <div>
-                                <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">Latest Pay</p>
+                                <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">Latest Net Pay</p>
                                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
                                     ₱{latestPayroll ? parseFloat(latestPayroll.net_pay).toFixed(2) : '0.00'}
                                 </h2>
@@ -236,23 +305,34 @@ const EmployeeDashboard = () => {
                         </div>
                     </motion.div>
 
-                </motion.div>
-
-                {/* Secondary actions */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
-                    
-                    {/* Shift schedule */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-4 sm:gap-5">
-                        <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shrink-0 ${sDetails.bg} ${sDetails.color}`}>
-                            <i className={`ti ${sDetails.icon}`} />
+                    {/* Today's Shift Card */}
+                    <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group">
+                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/30 via-transparent to-transparent opacity-60" />
+                        <div className="relative z-10 flex justify-between items-start">
+                            <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-blue-400 mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors">
+                                <i className="ti ti-calendar-time text-2xl sm:text-3xl" />
+                            </div>
+                            <span className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full text-blue-300 font-bold text-[10px] sm:text-xs uppercase tracking-wider">
+                                Today's Schedule
+                            </span>
                         </div>
-                        <div>
-                            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-0.5 sm:mb-1">Today's Shift</p>
-                            <h3 className="text-lg sm:text-xl font-black text-slate-800">{shift}</h3>
-                            <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">{sDetails.time}</p>
+                        <div className="relative z-10">
+                            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">Assigned Shift</p>
+                            <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
+                                {shift}
+                            </h2>
+                            <p className="text-blue-300 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
+                                <i className="ti ti-clock text-blue-400" />
+                                {sDetails.time}
+                            </p>
                         </div>
                     </div>
 
+                </motion.div>
+
+                {/* Secondary actions: Request Leave & Overview */}
+                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                    
                     {/* Leave request */}
                     <motion.div 
                         whileTap={{ scale: 0.97 }}
@@ -260,15 +340,36 @@ const EmployeeDashboard = () => {
                         className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between cursor-pointer group hover:border-blue-200 transition-colors tap-active"
                     >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 text-2xl sm:text-3xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 text-2xl sm:text-3xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                 <i className="ti ti-plane-departure" />
                             </div>
                             <div>
-                                <h3 className="text-lg sm:text-xl font-black text-slate-800">Request Leave</h3>
-                                <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">Vacation or Sick days</p>
+                                <h3 className="text-base sm:text-lg font-black text-slate-800">Request Leave</h3>
+                                <p className="text-slate-500 text-xs font-medium mt-0.5">Vacation or Sick days</p>
                             </div>
                         </div>
+                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors shrink-0">
+                            <i className="ti ti-plus text-base" />
+                        </div>
                     </motion.div>
+
+                    {/* Leave overview */}
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-4 sm:gap-5">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
+                                <i className="ti ti-clipboard-check" />
+                            </div>
+                            <div>
+                                <h3 className="text-base sm:text-lg font-black text-slate-800">My Requests</h3>
+                                <p className="text-slate-500 text-xs font-medium mt-0.5">
+                                    {myLeaves.length} recent application(s)
+                                </p>
+                            </div>
+                        </div>
+                        <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                            {myLeaves.filter(l => l.status === 'Pending').length} Pending
+                        </span>
+                    </div>
                 </motion.div>
 
                 {/* HR records */}

@@ -225,6 +225,11 @@ router.get('/', cacheResponse(20), async (req, res) => {
             query = query.gte('period_start', `${year}-${monthStr}-01`);
         }
 
+        if (req.query.limit) {
+            const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+            query = query.limit(limitNum);
+        }
+
         const { data, error } = await query;
         if (error) throw error;
         res.json(data);

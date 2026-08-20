@@ -1,15 +1,20 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(20), async (req, res) => {
     try {
         let query = supabase.from('disciplinary_logs').select('*, employees:employee_id(id, company_id, first_name, last_name, department)').order('created_at', { ascending: false });
 
         if (req.query.employee_id) {
             query = query.eq('employee_id', req.query.employee_id);
+        }
+        if (req.query.limit) {
+            const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+            query = query.limit(limitNum);
         }
 
         const { data: records, error } = await query;
@@ -86,6 +91,8 @@ router.post('/', async (req, res) => {
             });
         }
 
+        invalidateCache(['/api/disciplinary', '/api/dashboard']);
+
         res.json({ success: true, message: 'Disciplinary log recorded successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -100,6 +107,7 @@ router.put('/:id/resolve', async (req, res) => {
             .eq('id', req.params.id);
             
         if (error) throw error;
+        invalidateCache(['/api/disciplinary', '/api/dashboard']);
         res.json({ success: true, message: 'Record marked as resolved.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -114,6 +122,7 @@ router.put('/:id/acknowledge', async (req, res) => {
             .eq('id', req.params.id);
             
         if (error) throw error;
+        invalidateCache(['/api/disciplinary', '/api/dashboard']);
         res.json({ success: true, message: 'Record acknowledged.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
