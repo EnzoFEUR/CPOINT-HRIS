@@ -669,58 +669,47 @@ export default function BiometricSetup() {
   const doneCount = state.captured.length;
 
   return (
-    <div className="h-[100dvh] w-screen bg-[#050508] text-white flex flex-col justify-between items-center p-3 sm:p-5 relative overflow-hidden font-sans select-none">
+    <div className="h-[100dvh] w-screen bg-slate-950 text-white flex flex-col justify-between items-center p-3 sm:p-5 relative overflow-hidden font-sans select-none">
       
-      {/* Background ambient lighting */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div 
-          className="absolute top-1/4 left-1/2 -translate-x-1/2 w-80 sm:w-[32rem] h-80 sm:h-[32rem] rounded-full blur-[120px] opacity-25 transition-colors duration-700" 
-          style={{ backgroundColor: activeColor }} 
-        />
-      </div>
-
       {/* Header bar */}
       <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-semibold text-slate-300 tracking-wider uppercase mb-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${state.isOnline ? 'bg-blue-400 shadow-[0_0_6px_#3b82f6]' : 'bg-red-500 animate-pulse'}`} />
-          {deviceInfo.isMobile ? '📱 Mobile Sensor' : '💻 Workstation Sensor'}
+        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
+          <span className={`w-1.5 h-1.5 rounded-full ${state.isOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+          {deviceInfo.isMobile ? 'Mobile Station' : 'Workstation'}
         </div>
-        <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">Biometric Registration</h1>
+        <h1 className="text-base sm:text-lg font-bold text-white">Biometric Registration</h1>
         <p className="text-slate-400 text-xs truncate max-w-full">
-          Employee: <span className="font-semibold text-slate-200">{displayName}</span>
+          Employee: <span className="font-medium text-slate-200">{displayName}</span>
         </p>
       </div>
 
       {/* 5-Phase Steps Indicator */}
-      <div className="w-full max-w-[380px] z-10 flex items-center justify-center gap-1 sm:gap-1.5 my-1 sm:my-2">
+      <div className="w-full max-w-[340px] z-10 flex items-center justify-center gap-2 my-1">
         {PHASE_LIST.map((ph, i) => {
           const isDone = i < doneCount;
           const isActive = i === state.currentPhaseIdx && state.mode !== MODES.SUCCESS;
           return (
-            <div key={ph.id} className="flex items-center gap-1 sm:gap-1.5">
-              <div className="relative">
-                <div 
-                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-bold transition-all duration-300 border ${
-                    isDone ? 'bg-emerald-500 border-emerald-400 text-white shadow-sm' :
-                    isActive ? 'text-white border-transparent scale-105' : 'bg-slate-900/80 text-slate-500 border-slate-800'
-                  }`}
-                  style={isActive && !isDone ? { backgroundColor: ph.color, boxShadow: `0 0 12px ${ph.color}50` } : {}}
-                >
-                  {isDone ? <i className="ti ti-check" /> : ph.label[0]}
-                </div>
+            <div key={ph.id} className="flex items-center gap-1.5">
+              <div 
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all border ${
+                  isDone ? 'bg-emerald-600 border-emerald-500 text-white' :
+                  isActive ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 text-slate-500 border-slate-800'
+                }`}
+              >
+                {isDone ? <i className="ti ti-check text-xs" /> : i + 1}
               </div>
               {i < PHASE_LIST.length - 1 && (
-                <div className={`w-2 sm:w-3 h-0.5 rounded-full transition-all ${isDone ? 'bg-emerald-500' : 'bg-slate-800'}`} />
+                <div className={`w-2 h-0.5 rounded-full ${isDone ? 'bg-emerald-500' : 'bg-slate-800'}`} />
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Camera Viewport (Dynamic Fluid Height) */}
-      <div className="relative z-10 w-full max-w-[380px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-black/80 border border-slate-800 my-auto flex items-center justify-center">
+      {/* Camera Viewport */}
+      <div className="relative z-10 w-full max-w-[360px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-800 my-auto flex items-center justify-center">
         
-        {/* Dynamic Mirrored / Un-mirrored Video Stream */}
+        {/* Mirrored / Normal Video Stream */}
         <video 
           ref={videoRef} 
           autoPlay 
@@ -733,49 +722,49 @@ export default function BiometricSetup() {
           className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-10 transition-transform duration-300 ${cameraFacing === 'user' ? 'scale-x-[-1]' : 'scale-x-100'}`} 
         />
 
-        {/* Floating Flip Camera Toggle Button (Top Right Viewport) */}
+        {/* Camera Flip Button */}
         <button
           type="button"
           onClick={toggleCameraFacing}
-          className="absolute top-3 right-3 z-30 px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white/90 hover:text-white backdrop-blur-xl border border-white/10 shadow-lg active:scale-95 transition-all flex items-center gap-1.5 text-xs font-bold tap-active"
+          className="absolute top-3 right-3 z-30 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 shadow-md active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
           title="Flip Camera (Front / Rear)"
         >
-          <i className="ti ti-camera-rotate text-base text-blue-400" />
-          <span className="uppercase text-[10px] tracking-wider hidden sm:inline">
+          <i className="ti ti-camera-rotate text-sm text-blue-400" />
+          <span className="text-[10px] hidden sm:inline capitalize">
             {cameraFacing === 'user' ? 'Front' : 'Rear'}
           </span>
         </button>
 
-        {/* Ambient Vignette */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_45%,_rgba(0,0,0,0.6)_100%)] pointer-events-none z-10" />
+        {/* Subtle Vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_50%,_rgba(0,0,0,0.5)_100%)] pointer-events-none z-10" />
 
         {/* Boot & Ready Overlays */}
         {(state.mode === MODES.BOOT || state.mode === MODES.READY) && (
-          <div className="absolute inset-0 z-20 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+          <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
             {state.mode === MODES.BOOT ? (
               <>
-                <div className="w-12 h-12 rounded-full border-2 border-blue-500/20 border-t-blue-500 animate-spin mb-3" />
-                <p className="font-semibold text-slate-200 text-xs sm:text-sm">{state.statusText}</p>
-                <p className="text-[10px] text-slate-500 mt-1 font-mono">Loading face neural model weights...</p>
+                <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+                <p className="font-medium text-slate-200 text-xs sm:text-sm">{state.statusText}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Loading facial recognition models...</p>
               </>
             ) : (
               <>
-                <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-2xl mb-3">
+                <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-2xl mb-3">
                   <i className="ti ti-face-id" />
                 </div>
-                <h2 className="text-base sm:text-lg font-bold text-white mb-1">5-Point Facial Baseline</h2>
-                <p className="text-slate-400 text-xs mb-4 max-w-[260px] leading-relaxed">
-                  Position your face in natural light. We will capture 5 angles to secure your gate access.
+                <h2 className="text-base font-bold text-white mb-1">Face Registration</h2>
+                <p className="text-slate-400 text-xs mb-5 max-w-[240px] leading-relaxed">
+                  Position your face clearly in natural light to complete 5 quick verification angles.
                 </p>
                 <button 
                   onClick={startEnrollment}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-blue-600/30"
+                  className="w-full max-w-[200px] py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-blue-600/20"
                 >
                   Start Registration
                 </button>
                 <button 
                   onClick={handleLogout} 
-                  className="mt-3 text-slate-500 hover:text-red-400 text-[11px] font-semibold transition-colors"
+                  className="mt-3 text-slate-400 hover:text-slate-200 text-xs transition-colors"
                 >
                   Cancel & Sign Out
                 </button>
@@ -787,23 +776,20 @@ export default function BiometricSetup() {
         {/* Live Active Scanning HUD */}
         {(state.mode === MODES.ENROLLING || state.mode === MODES.CALIBRATING) && (
           <>
-            {/* Direction Hint Arrow */}
+            {/* Direction Hint Badge */}
             {activePhase && state.mode === MODES.ENROLLING && (
               <motion.div 
                 key={activePhase.id} 
-                initial={{ opacity: 0, scale: 0.8 }} 
+                initial={{ opacity: 0, scale: 0.9 }} 
                 animate={{ opacity: 1, scale: 1 }}
                 className="absolute z-20 pointer-events-none" 
                 style={{
-                  top: activePhase.id === 3 ? '14%' : activePhase.id === 4 ? '80%' : '50%',
-                  left: activePhase.id === 1 ? '12%' : activePhase.id === 2 ? '88%' : '50%',
+                  top: activePhase.id === 3 ? '15%' : activePhase.id === 4 ? '78%' : '50%',
+                  left: activePhase.id === 1 ? '14%' : activePhase.id === 2 ? '86%' : '50%',
                   transform: 'translate(-50%, -50%)',
                 }}
               >
-                <div 
-                  className="w-10 h-10 rounded-xl flex items-center justify-center border-2 text-xl font-bold backdrop-blur-xs"
-                  style={{ backgroundColor: `${activePhase.color}20`, borderColor: `${activePhase.color}60`, color: activePhase.color }}
-                >
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-bold shadow-lg">
                   {activePhase.id === 0 ? '◉' : activePhase.id === 1 ? '←' : activePhase.id === 2 ? '→' : activePhase.id === 3 ? '↑' : '↓'}
                 </div>
               </motion.div>
@@ -811,16 +797,16 @@ export default function BiometricSetup() {
 
             {/* Circular Progress Ring */}
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-              <div className="w-36 h-36 sm:w-44 sm:h-44 relative">
+              <div className="w-36 h-36 sm:w-40 sm:h-40 relative">
                 <svg className="absolute inset-0 w-full h-full" viewBox="0 0 200 200">
-                  <circle cx="100" cy="100" r="94" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2" />
+                  <circle cx="100" cy="100" r="94" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
                   <circle 
                     cx="100" 
                     cy="100" 
                     r="94" 
                     fill="none"
-                    stroke={state.phaseProgress >= 100 ? '#22c55e' : activeColor}
-                    strokeWidth="3" 
+                    stroke={state.phaseProgress >= 100 ? '#22c55e' : '#3b82f6'}
+                    strokeWidth="4" 
                     strokeLinecap="round"
                     strokeDasharray={`${2 * Math.PI * 94}`}
                     strokeDashoffset={`${2 * Math.PI * 94 * (1 - state.overallProgress / 100)}`}
@@ -833,8 +819,8 @@ export default function BiometricSetup() {
 
             {/* Bottom Status Pill */}
             <div className="absolute bottom-3 inset-x-3 z-20 flex justify-center">
-              <div className="px-3.5 py-1.5 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl text-center shadow-lg">
-                <p className="text-xs font-semibold text-white tracking-tight">{state.statusText}</p>
+              <div className="px-3.5 py-1.5 bg-slate-900/90 border border-slate-800 rounded-full text-center shadow-lg">
+                <p className="text-xs font-medium text-white">{state.statusText}</p>
               </div>
             </div>
           </>
@@ -842,43 +828,43 @@ export default function BiometricSetup() {
 
         {/* Uploading State */}
         {state.mode === MODES.UPLOADING && (
-          <div className="absolute inset-0 z-20 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3" />
-            <h3 className="text-sm font-bold text-white">Encrypting Biometrics</h3>
-            <p className="text-slate-400 text-xs mt-1">Transmitting facial baseline to secure database...</p>
+          <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <h3 className="text-sm font-bold text-white">Saving Profile</h3>
+            <p className="text-slate-400 text-xs mt-0.5">Uploading facial baseline to secure database...</p>
           </div>
         )}
 
         {/* Success State */}
         {state.mode === MODES.SUCCESS && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }} 
+            initial={{ opacity: 0, scale: 0.95 }} 
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute inset-0 z-20 bg-emerald-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+            className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center"
           >
-            <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/40 mb-3">
+            <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg mb-3">
               <i className="ti ti-check" />
             </div>
-            <h3 className="text-base font-bold text-white">Enrollment Successful</h3>
-            <p className="text-emerald-200/80 text-xs mt-1">Redirecting to your workspace...</p>
+            <h3 className="text-base font-bold text-white">Registration Complete</h3>
+            <p className="text-slate-400 text-xs mt-0.5">Redirecting to your workspace...</p>
           </motion.div>
         )}
 
         {/* Error State */}
         {state.mode === MODES.ERROR && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }} 
+            initial={{ opacity: 0, scale: 0.95 }} 
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute inset-0 z-20 bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center p-5 text-center"
+            className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-5 text-center"
           >
-            <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center text-xl mb-2.5">
+            <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-lg mb-2">
               <i className="ti ti-alert-triangle" />
             </div>
-            <h3 className="text-sm font-bold text-white">Registration Interrupted</h3>
-            <p className="text-red-200 text-xs mt-1 max-w-[260px] leading-snug">{state.error?.message || 'Biometric scan could not be completed.'}</p>
+            <h3 className="text-sm font-bold text-white">Registration Incomplete</h3>
+            <p className="text-slate-400 text-xs mt-0.5 max-w-[240px] leading-snug">{state.error?.message || 'Biometric scan could not be completed.'}</p>
             <button 
               onClick={handleReset}
-              className="mt-4 px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-semibold text-xs transition-all shadow-md"
+              className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium text-xs transition-all"
             >
               Try Again
             </button>
@@ -887,9 +873,9 @@ export default function BiometricSetup() {
       </div>
 
       {/* Bottom Footer Details */}
-      <div className="w-full max-w-[380px] z-10 pb-1 text-center flex items-center justify-between px-2 text-[10px] text-slate-500">
-        <span>C-Point Optical AI</span>
-        <span>Secure Biometric Enclave</span>
+      <div className="w-full max-w-[360px] z-10 pb-1 text-center flex items-center justify-between px-2 text-[10px] text-slate-500">
+        <span>C-Point HRIS</span>
+        <span>Biometric Gate Pass</span>
       </div>
 
     </div>
