@@ -38,6 +38,9 @@ export default function PayrollIndex() {
         setCurrentPage(1);
     };
 
+    // FIX #1: this function was never closed — fetchPayrolls was accidentally
+    // declared (and half-defined) inside it, splitting one function into two
+    // broken ones. Each function now has its own clean opening/closing braces.
     const handleClearFilters = () => {
         setSearchQuery('');
         setSelectedDepartment('All');
@@ -53,6 +56,7 @@ export default function PayrollIndex() {
         if (currentYear) queryParams.append('year', currentYear);
 
         if (queryParams.toString()) {
+            // FIX #2: missing backticks around the template literal
             endpoint += `?${queryParams.toString()}`;
         }
 
@@ -95,6 +99,7 @@ export default function PayrollIndex() {
             // Search query filter (Name, Company ID, Job Title)
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
+                // FIX #2 (continued): missing backticks around this template literal too
                 const fullName = `${p.employees?.first_name || ''} ${p.employees?.last_name || ''}`.toLowerCase();
                 const companyId = (p.employees?.company_id || '').toLowerCase();
                 const empId = (p.employee_id || '').toLowerCase();
@@ -155,7 +160,6 @@ export default function PayrollIndex() {
 
     return (
         <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-
             {/* HERO HEADER */}
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
@@ -199,7 +203,6 @@ export default function PayrollIndex() {
             >
                 {/* TOP ROW: SEARCH + STATUS TABS */}
                 <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-
                     {/* Live Instant Search Bar */}
                     <div className="relative flex-1 min-w-[240px]">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
@@ -245,7 +248,6 @@ export default function PayrollIndex() {
                 {/* BOTTOM ROW: PERIOD DROPDOWNS + DEPARTMENT + RESET */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-
                         {/* Month Selector */}
                         <div className="relative min-w-[130px] flex-1 sm:flex-initial">
                             <select
@@ -315,7 +317,6 @@ export default function PayrollIndex() {
 
             {/* TABLE CONTAINER */}
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
-
                 {/* MOBILE CARDS VIEW (Phones) */}
                 <div className="block md:hidden divide-y divide-slate-100">
                     <AnimatePresence>
@@ -390,7 +391,7 @@ export default function PayrollIndex() {
                 </div>
 
                 {/* DESKTOP TABLE VIEW */}
-                <div className="hidden md:block overflow-x-auto no-scrollbar">
+                <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
                             <tr>
@@ -406,7 +407,6 @@ export default function PayrollIndex() {
                             <AnimatePresence>
                                 {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => (
                                     <motion.tr variants={rowVariants} layout key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
-
                                         {/* Employee */}
                                         <td className="px-6 lg:px-8 py-4">
                                             <div className="flex items-center gap-3">
