@@ -956,11 +956,6 @@ const Scanner = () => {
             <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white rounded-tr-xl" />
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white rounded-bl-xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white rounded-br-xl" />
-            <motion.div
-              animate={{ top: ['5%', '95%', '5%'] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute left-4 right-4 h-[2px] bg-blue-400/80 rounded-full"
-            />
           </div>
           <p className="absolute bottom-28 text-slate-400 font-mono text-xs tracking-wider uppercase">Align badge within corners</p>
         </div>
@@ -1330,10 +1325,6 @@ const Scanner = () => {
                 <h1 className="text-xs font-bold text-white tracking-wide">
                   {deviceInfo.isMobile ? 'Gate Kiosk' : 'Terminal Station'}
                 </h1>
-                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${state.isOnline ? (state.modelsLoaded ? 'bg-emerald-400' : 'bg-amber-400') : 'bg-red-500'}`} />
-                  {!state.isOnline ? 'Offline' : state.modelsLoaded ? 'Ready' : 'Starting...'}
-                </div>
               </div>
             </div>
             <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2.5 py-1 rounded-lg border border-white/10 tabular-nums pointer-events-auto">
