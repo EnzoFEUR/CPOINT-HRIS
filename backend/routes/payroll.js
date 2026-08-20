@@ -1,6 +1,10 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import {
+    computeHolidayPayForPeriod,
+    aggregate13thMonthPay,
+} from '../utils/payrollCalculations.js';
 
 const router = express.Router();
 
@@ -60,7 +64,150 @@ router.put('/statutory-settings', async (req, res) => {
 });
 
 // ==========================================
-// 2. PAYROLL COMPUTATION & LIST ROUTES
+// 2. HOLIDAYS
+// ==========================================
+
+// GET holiday list, optionally scoped to a date range: ?start=YYYY-MM-DD&end=YYYY-MM-DD
+router.get('/holidays', cacheResponse(60), async (req, res) => {
+    try {
+        let query = supabase.from('holidays').select('*').order('date', { ascending: true });
+        if (req.query.start) query = query.gte('date', req.query.start);
+        if (req.query.end) query = query.lte('date', req.query.end);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// CREATE a holiday (admin: proclamation additions/corrections)
+router.post('/holidays', async (req, res) => {
+    try {
+        const { date, name, type } = req.body;
+        if (!date || !name || !['regular', 'special_non_working'].includes(type)) {
+            return res.status(400).json({ error: 'date, name, and a valid type are required.' });
+        }
+
+        const { data, error } = await supabase
+            .from('holidays')
+            .insert({ date, name, type })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        invalidateCache(['/api/payroll/holidays']);
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE a holiday
+router.delete('/holidays/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ error: 'Invalid holiday ID format.' });
+        }
+
+        const { error } = await supabase.from('holidays').delete().eq('id', id);
+        if (error) throw error;
+
+        invalidateCache(['/api/payroll/holidays']);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// 3. 13TH MONTH PAY
+// ==========================================
+
+// GET 13th month pay aggregation for one employee: ?year=2026
+router.get('/13th-month/:employee_id', async (req, res) => {
+    try {
+        const { employee_id } = req.params;
+        const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+        const { data: records, error } = await supabase
+            .from('payrolls')
+            .select('basic_pay, period_start')
+            .eq('employee_id', employee_id)
+            .gte('period_start', `${year}-01-01`)
+            .lte('period_start', `${year}-12-31`);
+
+        if (error) throw error;
+
+        const result = aggregate13thMonthPay(records || []);
+        res.json({ employee_id, year, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// 4. HOLIDAY PAY PREVIEW (no write — for PayrollCreate's UI card)
+// ==========================================
+
+// POST so a full { employee_id, period_start, period_end } body can be
+// sent without URL-encoding concerns. This is the SINGLE source of truth
+// for holiday math — the frontend calls this instead of keeping its own
+// copy of payrollCalculations.js, so the number shown before submit can
+// never drift from what POST / actually saves.
+router.post('/preview', async (req, res) => {
+    try {
+        const { employee_id, period_start, period_end } = req.body;
+        if (!employee_id || !period_start || !period_end) {
+            return res.status(400).json({ error: 'employee_id, period_start, and period_end are required.' });
+        }
+
+        const { data: employee } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('id', employee_id)
+            .single();
+
+        if (!employee || !employee.salary) {
+            // Not an error — just nothing to preview yet (e.g. employee has
+            // no salary set). Return an empty, well-shaped result.
+            return res.json({ items: [], totalHolidayPay: 0 });
+        }
+
+        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+            supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
+            supabase
+                .from('attendance')
+                .select('*')
+                .eq('employee_id', employee_id)
+                .gte('date', period_start)
+                .lte('date', period_end),
+        ]);
+
+        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
+            ? employee.rest_days
+            : [0]; // default: Sunday only, until per-employee schedules exist
+
+        const preview = computeHolidayPayForPeriod({
+            periodStart: period_start,
+            periodEnd: period_end,
+            monthlySalary: employee.salary,
+            holidayList: holidayList || [],
+            attendanceLogs: attendanceLogs || [],
+            restDays,
+        });
+
+        res.json(preview);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// 5. PAYROLL COMPUTATION & LIST ROUTES
 // ==========================================
 
 // GET All Payrolls
@@ -133,13 +280,42 @@ router.post('/', async (req, res) => {
         const pagIbigEeRate = statutory?.pagibig_employee_rate ? parseFloat(statutory.pagibig_employee_rate) / 100 : 0.022;
         const pagIbigMaxCap = statutory?.pagibig_max_contribution ? parseFloat(statutory.pagibig_max_contribution) : 33;
 
+        // ------------------------------------------------------------
+        // Holiday pay: pull holidays + attendance for THIS period and
+        // let the calculation module do the DOLE math. This is computed
+        // server-side from source data rather than trusting client-sent
+        // numbers, since it directly affects taxable gross pay.
+        // ------------------------------------------------------------
+        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+            supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
+            supabase
+                .from('attendance')
+                .select('*')
+                .eq('employee_id', employee_id)
+                .gte('date', period_start)
+                .lte('date', period_end),
+        ]);
+
+        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
+            ? employee.rest_days
+            : [0]; // default: Sunday only, until per-employee schedules exist
+
+        const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
+            periodStart: period_start,
+            periodEnd: period_end,
+            monthlySalary: employee.salary,
+            holidayList: holidayList || [],
+            attendanceLogs: attendanceLogs || [],
+            restDays,
+        });
+
         // Calculate Earnings
         const monthlyRate = parseFloat(employee.salary);
         const dailyRate = monthlyRate / 21.75;
         const basicPay = monthlyRate / 2;
         const hourlyRate = dailyRate / 8;
         const overtimePay = (hourlyRate * 1.25) * parseFloat(overtime_hours || 0);
-        const grossPay = basicPay + overtimePay;
+        const grossPay = basicPay + overtimePay + totalHolidayPay;
 
         // 1. SSS: Cap Salary Base at Max Salary Credit, apply Employee Share %
         const sssSalaryBase = Math.min(monthlyRate, sssMaxMsc);
@@ -180,6 +356,9 @@ router.post('/', async (req, res) => {
         const remarks = `SSS: ${sss.toFixed(2)}, PhilHealth: ${philHealth.toFixed(2)}, Pag-IBIG: ${pagIbig.toFixed(2)}, Tax: ${tax.toFixed(2)}`;
 
         // Save Computed Payroll to Supabase
+        // NOTE: basic_pay stays flat salary-only (monthlyRate / 2) so that
+        // aggregate13thMonthPay() — which sums basic_pay across the year —
+        // never accidentally pulls in overtime or holiday premiums.
         const { error: insertError } = await supabase
             .from('payrolls')
             .insert({
@@ -188,6 +367,8 @@ router.post('/', async (req, res) => {
                 period_end,
                 basic_pay: basicPay,
                 overtime_pay: overtimePay,
+                holiday_pay: totalHolidayPay,
+                holiday_breakdown: holidayBreakdown,
                 deductions: totalDeductions,
                 remarks,
                 net_pay: netPay,
@@ -206,7 +387,7 @@ router.post('/', async (req, res) => {
                 subject_id: null,
                 event: 'created',
                 causer_id: req.body.admin_id,
-                properties: { basic_pay: basicPay, net_pay: netPay }
+                properties: { basic_pay: basicPay, net_pay: netPay, holiday_pay: totalHolidayPay }
             });
         }
 
@@ -224,7 +405,7 @@ router.post('/', async (req, res) => {
         }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
-        res.json({ success: true, message: 'Payroll Computed & Saved!' });
+        res.json({ success: true, message: 'Payroll Computed & Saved!', holiday_pay: totalHolidayPay, holiday_breakdown: holidayBreakdown });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
