@@ -1202,17 +1202,22 @@ const Scanner = () => {
                  'Verifying face...'}
               </span>
 
-              {/* Flip Camera Toggle Button */}
-              <button
-                onClick={toggleCameraFacing}
-                className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
-                title="Flip Camera (Front / Rear)"
-              >
-                <i className="ti ti-camera-rotate text-sm text-blue-400" />
-                <span className="text-[11px] hidden sm:inline capitalize">
-                  {cameraFacing === 'user' ? 'Front' : 'Rear'}
-                </span>
-              </button>
+              {/* Right Controls: Flip Camera + Live Clock */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleCameraFacing}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
+                  title="Flip Camera (Front / Rear)"
+                >
+                  <i className="ti ti-camera-rotate text-sm text-blue-400" />
+                  <span className="text-[11px] hidden sm:inline capitalize">
+                    {cameraFacing === 'user' ? 'Front' : 'Rear'}
+                  </span>
+                </button>
+                <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2.5 py-1 rounded-lg border border-white/10 tabular-nums hidden sm:block">
+                  {state.clockTime}
+                </div>
+              </div>
             </div>
 
             {/* Bottom HUD */}
@@ -1251,7 +1256,6 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* MODE: FEEDBACK */}
       {/* MODE: FEEDBACK */}
       <AnimatePresence>
         {state.mode === MODES.FEEDBACK && state.feedback.title && (
@@ -1313,8 +1317,8 @@ const Scanner = () => {
         )}
       </AnimatePresence>
 
-      {/* Top HUD (Global Header) */}
-      {state.mode !== MODES.FEEDBACK && state.mode !== MODES.ERROR && (
+      {/* Top HUD (QR Mode Header) */}
+      {state.mode === MODES.QR && (
         <div className="absolute top-0 inset-x-0 z-30 bg-gradient-to-b from-black/80 via-black/40 to-transparent pb-8 pointer-events-none">
           <div className="flex justify-between items-center px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
             <div className="flex items-center gap-2.5 pt-1">
