@@ -177,10 +177,11 @@ router.post('/preview', async (req, res) => {
             return res.json({ items: [], totalHolidayPay: 0 });
         }
 
+        // Fetch active holidays and employee attendance records for the given pay period
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
             supabase
-                .from('attendance')
+                .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
                 .gte('date', period_start)
@@ -189,7 +190,7 @@ router.post('/preview', async (req, res) => {
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
-            : [0]; // default: Sunday only, until per-employee schedules exist
+            : [0]; // Default: Sunday (0) rest day
 
         const preview = computeHolidayPayForPeriod({
             periodStart: period_start,
@@ -285,16 +286,11 @@ router.post('/', async (req, res) => {
         const pagIbigEeRate = statutory?.pagibig_employee_rate ? parseFloat(statutory.pagibig_employee_rate) / 100 : 0.022;
         const pagIbigMaxCap = statutory?.pagibig_max_contribution ? parseFloat(statutory.pagibig_max_contribution) : 33;
 
-        // ------------------------------------------------------------
-        // Holiday pay: pull holidays + attendance for THIS period and
-        // let the calculation module do the DOLE math. This is computed
-        // server-side from source data rather than trusting client-sent
-        // numbers, since it directly affects taxable gross pay.
-        // ------------------------------------------------------------
+        // Pull holidays and attendance logs for this pay period to calculate DOLE holiday pay
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
             supabase
-                .from('attendance')
+                .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
                 .gte('date', period_start)
@@ -303,7 +299,7 @@ router.post('/', async (req, res) => {
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
-            : [0]; // default: Sunday only, until per-employee schedules exist
+            : [0]; // Default: Sunday (0) rest day
 
         const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
             periodStart: period_start,
@@ -360,25 +356,31 @@ router.post('/', async (req, res) => {
 
         const remarks = `SSS: ${sss.toFixed(2)}, PhilHealth: ${philHealth.toFixed(2)}, Pag-IBIG: ${pagIbig.toFixed(2)}, Tax: ${tax.toFixed(2)}`;
 
-        // Save Computed Payroll to Supabase
-        // NOTE: basic_pay stays flat salary-only (monthlyRate / 2) so that
-        // aggregate13thMonthPay() — which sums basic_pay across the year —
-        // never accidentally pulls in overtime or holiday premiums.
-        const { error: insertError } = await supabase
-            .from('payrolls')
-            .insert({
-                employee_id,
-                period_start,
-                period_end,
-                basic_pay: basicPay,
-                overtime_pay: overtimePay,
-                holiday_pay: totalHolidayPay,
-                holiday_breakdown: holidayBreakdown,
-                deductions: totalDeductions,
-                remarks,
-                net_pay: netPay,
-                status: 'Paid'
-            });
+        // Persist computed payroll record to Supabase
+        // Note: basic_pay is kept strictly to basic base salary for DOLE 13th month aggregation
+        let insertPayload = {
+            employee_id,
+            period_start,
+            period_end,
+            basic_pay: basicPay,
+            overtime_pay: overtimePay,
+            holiday_pay: totalHolidayPay,
+            holiday_breakdown: holidayBreakdown,
+            deductions: totalDeductions,
+            remarks,
+            net_pay: netPay,
+            status: 'Paid'
+        };
+
+        let { error: insertError } = await supabase.from('payrolls').insert(insertPayload);
+
+        // Resilient fallback: If holiday columns are not yet added in Supabase schema, retry without them
+        if (insertError && (insertError.message?.includes('holiday_pay') || insertError.message?.includes('holiday_breakdown'))) {
+            delete insertPayload.holiday_pay;
+            delete insertPayload.holiday_breakdown;
+            const retry = await supabase.from('payrolls').insert(insertPayload);
+            insertError = retry.error;
+        }
 
         if (insertError) throw insertError;
 

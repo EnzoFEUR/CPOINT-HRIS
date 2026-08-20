@@ -195,11 +195,24 @@ export default function PayrollShow() {
                 <div className="p-8">
                     {/* Employee & Period Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100">
-                        <div>
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Employee Details</p>
-                            <p className="text-xl font-bold text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>
-                            <p className="text-sm text-slate-500 mt-1">Company ID: <span className="font-bold text-slate-700">{payroll.employees?.company_id || 'N/A'}</span></p>
-                            <p className="text-sm text-slate-500 mt-1">Role: <span className="capitalize">{payroll.employees?.role || 'Employee'}</span></p>
+                        <div className="flex items-center gap-4">
+                            <div className="relative h-14 w-14 rounded-2xl overflow-hidden shrink-0 border border-slate-200 shadow-xs bg-gradient-to-br from-emerald-50 to-slate-100 flex items-center justify-center font-black text-emerald-700 text-base">
+                                {payroll.employees?.company_id && payroll.employees?.id ? (
+                                    <img
+                                        src={payroll.employees?.avatar_url || `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`}
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : null}
+                                <span className="absolute">{(payroll.employees?.first_name?.[0] || 'E')}{(payroll.employees?.last_name?.[0] || '')}</span>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-0.5">Employee Details</p>
+                                <p className="text-xl font-black text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>
+                                <p className="text-sm text-slate-500 mt-0.5">Company ID: <span className="font-bold text-slate-700">{payroll.employees?.company_id || 'N/A'}</span></p>
+                                <p className="text-sm text-slate-500">Role: <span className="capitalize">{payroll.employees?.role || 'Employee'}</span> &bull; {payroll.employees?.department || 'General'}</p>
+                            </div>
                         </div>
                         <div className="md:text-right">
                             <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pay Period</p>
