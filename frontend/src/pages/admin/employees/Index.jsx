@@ -60,29 +60,26 @@ export default function Index() {
         }
     };
 
-    const handleDelete = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to remove ${name}?`)) return;
-
-        try {
-            const res = await fetchWithAuth(`/api/employees/${id}`, { method: 'DELETE' });
-            const result = await res.json();
-            if (result.success) {
-                toast.success('Employee record deleted');
-                setEmployees(prev => prev.filter(emp => emp.id !== id));
-            } else {
-                toast.error(result.error || 'Failed to delete record');
-            }
-        } catch (err) {
-            toast.error('Network error. Delete operation failed.');
-        }
-    };
-
     const filteredEmployees = employees.filter(emp => {
-        const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`;
+        const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim().toLowerCase();
+        const email = (emp.email || '').toLowerCase();
+        const role = (emp.role || emp.job_title || '').toLowerCase();
+
+        // Exclude Terminal Guard and System Administrator accounts
+        const isExcluded =
+            fullName.includes('terminal guard') ||
+            fullName.includes('system admin') ||
+            email === 'guard@c-point.com' ||
+            email === 'admin@c-point.com' ||
+            role.includes('super admin');
+
+        if (isExcluded) return false;
+
         const matchesSearch = `${fullName} ${emp.job_title || ''} ${emp.email || ''}`
             .toLowerCase()
             .includes(searchQuery.toLowerCase());
         const matchesDept = selectedDept === 'All' || emp.department === selectedDept;
+
         return matchesSearch && matchesDept;
     });
 
@@ -167,18 +164,14 @@ export default function Index() {
                             </div>
 
                             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                                <span className="text-slate-400 truncate max-w-[140px]">{employee.email}</span>
-                                <div className="flex items-center gap-1">
-                                    <Link to={`/admin/employees/${employee.id}`} className="p-2 text-slate-400 hover:text-indigo-600" title="View Profile">
-                                        <i className="ti ti-eye text-lg" />
-                                    </Link>
-                                    <Link to={`/admin/employees/${employee.id}/edit`} className="p-2 text-slate-400 hover:text-purple-600" title="Edit Profile">
-                                        <i className="ti ti-pencil text-lg" />
-                                    </Link>
-                                    <button onClick={() => handleDelete(employee.id, `${employee.first_name} ${employee.last_name}`)} className="p-2 text-slate-400 hover:text-rose-600" title="Delete Profile">
-                                        <i className="ti ti-trash text-lg" />
-                                    </button>
-                                </div>
+                                <span className="text-slate-400 font-medium truncate max-w-[150px]">{employee.email}</span>
+                                <Link
+                                    to={`/admin/employees/${employee.id}`}
+                                    className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-extrabold rounded-xl transition-colors flex items-center gap-1.5"
+                                >
+                                    <span>View</span>
+                                    <i className="ti ti-chevron-right text-xs" />
+                                </Link>
                             </div>
                         </div>
                     );
