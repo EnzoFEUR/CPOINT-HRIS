@@ -1,29 +1,28 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Enterprise Vite Build Configuration
 export default defineConfig({
   plugins: [react()],
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
   build: {
     target: 'esnext',
     cssCodeSplit: true,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 600,
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Normalize Windows and POSIX path separators
           const normalizedId = id.replace(/\\/g, '/');
           
-          // Shared Application Utilities & Infrastructure (Prevents circular imports from entry)
           if (
             normalizedId.includes('/src/utils/') || 
-            normalizedId.includes('/src/supabaseClient') || 
-            normalizedId.includes('/src/components/')
+            normalizedId.includes('/src/supabaseClient')
           ) {
             return 'app-shared';
           }
 
-          // Isolated Vendor Dependencies
           if (normalizedId.includes('node_modules')) {
             if (normalizedId.includes('face-api.js')) {
               return 'vendor-faceapi';
@@ -39,6 +38,12 @@ export default defineConfig({
             }
             if (normalizedId.includes('@tanstack/react-query')) {
               return 'vendor-query';
+            }
+            if (normalizedId.includes('flatpickr') || normalizedId.includes('sweetalert2')) {
+              return 'vendor-ui-heavy';
+            }
+            if (normalizedId.includes('lucide-react')) {
+              return 'vendor-icons';
             }
             return 'vendor-core';
           }

@@ -209,6 +209,7 @@ router.post('/preview', async (req, res) => {
             return res.json({ items: [], totalHolidayPay: 0 });
         }
 
+        // Fetch active holidays and employee attendance records for the given pay period
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
@@ -221,7 +222,7 @@ router.post('/preview', async (req, res) => {
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
-            : [0];
+            : [0]; // Default: Sunday (0) rest day
 
         const preview = computeHolidayPayForPeriod({
             periodStart: pStart,
@@ -327,6 +328,7 @@ router.post('/', async (req, res) => {
         const pagIbigEeRate = statutory?.pagibig_employee_rate ? toSafeNumber(statutory.pagibig_employee_rate) / 100 : 0.02;
         const pagIbigMaxCap = statutory?.pagibig_max_contribution ? toSafeNumber(statutory.pagibig_max_contribution) : 100;
 
+        // Pull holidays and attendance logs for this pay period to calculate DOLE holiday pay
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
@@ -337,31 +339,9 @@ router.post('/', async (req, res) => {
                 .lte('date', pEnd),
         ]);
 
-        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length ? employee.rest_days : [0];
-
-        // --- DEPARTMENT & RATE CALCULATIONS ---
-        const isFactory = (employee.department || '').toLowerCase() === 'factory';
-        const piecesCount = toSafeNumber(pieces_produced);
-        const ratePerPiece = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
-        const monthlyRate = toSafeNumber(employee.salary || employee.monthly_salary);
-        const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
-
-        const { hourlyRate } = deriveRates(effectiveMonthlySalary);
-
-        // Basic Pay logic
-        let basicPay = 0;
-        if (isFactory && ratePerPiece > 0) {
-            basicPay = round2(piecesCount * ratePerPiece);
-        } else if (monthlyRate > 0) {
-            basicPay = round2(monthlyRate / 2);
-        } else if (dailyRate > 0) {
-            basicPay = round2(dailyRate * 13);
-        } else {
-            basicPay = round2(effectiveMonthlySalary / 2);
-        }
-
-        const safeOtHours = toSafeNumber(overtime_hours);
-        const overtimePay = round2(hourlyRate * 1.25 * safeOtHours);
+        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
+            ? employee.rest_days
+            : [0]; // Default: Sunday (0) rest day
 
         // Compute Holiday Pay using Effective Monthly Salary Base
         const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
@@ -438,44 +418,51 @@ router.post('/', async (req, res) => {
             }
         }
 
-        tax = Math.min(tax, taxableIncome);
+        const totalDeductions = semiMonthlyContributions + tax + lateDed;
+        const netPay = grossPay - totalDeductions;
 
-        const totalDeductions = round2(semiMonthlyContributions + tax + lateDed);
-        const netPay = round2(grossPay - totalDeductions);
+        const remarks = `SSS: ${sss.toFixed(2)}, PhilHealth: ${philHealth.toFixed(2)}, Pag-IBIG: ${pagIbig.toFixed(2)}, Tax: ${tax.toFixed(2)}`;
 
-        const remarks = `SSS: ${sss.toFixed(2)}, PH: ${philHealth.toFixed(2)}, HDMF: ${pagIbig.toFixed(2)}, Tax: ${tax.toFixed(2)}${isFactory ? `, Pieces: ${piecesCount}` : ''}`;
-
+        // Persist computed payroll record to Supabase
+        // Note: basic_pay is kept strictly to basic base salary for DOLE 13th month aggregation
         let insertPayload = {
             employee_id,
-            period_start: pStart,
-            period_end: pEnd,
-            basic_pay: safeBasic,
-            overtime_pay: safeOt,
-            holiday_pay: safeHoliday,
-            maternity_salary_differential: safeMatDiff,
+            period_start,
+            period_end,
+            basic_pay: basicPay,
+            overtime_pay: overtimePay,
+            holiday_pay: totalHolidayPay,
             holiday_breakdown: holidayBreakdown,
-            late_deductions: lateDed,
-            pieces_produced: piecesCount,
             deductions: totalDeductions,
             remarks,
             net_pay: netPay,
-            status: 'Paid',
+            status: 'Paid'
         };
 
         let { error: insertError } = await supabase.from('payrolls').insert(insertPayload);
 
-        if (insertError) {
-            if (insertError.message?.includes('maternity_salary_differential')) {
-                delete insertPayload.maternity_salary_differential;
-            }
-            if (insertError.message?.includes('late_deductions')) {
-                delete insertPayload.late_deductions;
-            }
-            if (insertError.message?.includes('pieces_produced')) {
-                delete insertPayload.pieces_produced;
-            }
+        // Resilient fallback: If holiday columns are not yet added in Supabase schema, retry without them
+        if (insertError && (insertError.message?.includes('holiday_pay') || insertError.message?.includes('holiday_breakdown'))) {
+            delete insertPayload.holiday_pay;
+            delete insertPayload.holiday_breakdown;
             const retry = await supabase.from('payrolls').insert(insertPayload);
             insertError = retry.error;
+        }
+
+        if (insertError) throw insertError;
+
+        // Audit Log Entry
+        if (req.body.admin_id) {
+            const { createAuditLog } = await import('./auditLogs.js');
+            await createAuditLog({
+                log_name: 'payroll',
+                description: `Computed payroll for employee ID ${employee_id}`,
+                subject_type: 'App\\Models\\Payroll',
+                subject_id: null,
+                event: 'created',
+                causer_id: req.body.admin_id,
+                properties: { basic_pay: basicPay, net_pay: netPay, holiday_pay: totalHolidayPay }
+            });
         }
 
         if (insertError) throw insertError;

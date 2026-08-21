@@ -5,22 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 
-/** Safely converts any value to a finite number to avoid string concatenation bugs */
-const toSafeNumber = (val) => {
-    if (val === null || val === undefined || val === '') return 0;
-    const parsed = Number(val);
-    return isNaN(parsed) ? 0 : parsed;
-};
-
-/** Calculates full gross pay from ledger record components safely */
-const calculateGrossPay = (payroll) => {
-    const basic = toSafeNumber(payroll.basic_pay);
-    const ot = toSafeNumber(payroll.overtime_pay);
-    const holiday = toSafeNumber(payroll.holiday_pay);
-    const matDiff = toSafeNumber(payroll.maternity_salary_differential);
-    return basic + ot + holiday + matDiff;
-};
-
 /**
  * Enterprise Payroll Ledger & Financial Hub
  * Supports instant search, multi-parameter filtering, responsive card/table views, and DOLE audit summaries.
@@ -145,7 +129,7 @@ export default function PayrollIndex() {
         visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
     };
 
-    // Resilient Employee Avatar
+    // Resilient Employee Avatar: loads face baseline photo or gracefully renders stylized initials
     const EmployeeAvatar = ({ payroll, size = 'h-12 w-12' }) => {
         const [imgFailed, setImgFailed] = useState(false);
         const emp = payroll?.employees;
@@ -250,6 +234,26 @@ export default function PayrollIndex() {
                         )}
                     </div>
 
+                    {/* Status Pill Tabs */}
+                    <div className="flex bg-slate-100/80 p-1 rounded-xl overflow-x-auto touch-scroll no-scrollbar shrink-0">
+                        {['All', 'Completed', 'Pending'].map(status => (
+                            <button
+                                key={status}
+                                onClick={() => { setFilterStatus(status); setCurrentPage(1); }}
+                                className={`px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold tap-active transition-all whitespace-nowrap ${
+                                    filterStatus === status
+                                        ? (status === 'Completed'
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : status === 'Pending'
+                                                ? 'bg-amber-500 text-white shadow-xs'
+                                                : 'bg-slate-900 text-white shadow-xs')
+                                        : 'text-slate-500 hover:text-slate-900'
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">

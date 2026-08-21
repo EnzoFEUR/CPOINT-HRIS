@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
@@ -18,7 +18,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './pages/Dashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 
-// Heavy Scanner (Lazy Loaded)
+// Heavy Scanner (Lazy Loaded for gate terminal only)
 const Scanner = lazy(() => import('./pages/Scanner'));
 
 // Admin / Attendance
@@ -53,6 +53,9 @@ import DisciplinaryIndex from './pages/admin/disciplinary/Index';
 // Employee
 import MyQr from './pages/employee/MyQr';
 import EmployeeScanner from './pages/employee/Scanner';
+
+import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import './index.css';
 
@@ -124,7 +127,7 @@ const RootRoute = () => {
   if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
   if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
   if (isSecurity(user)) return <Navigate to="/scanner" replace />;
-  if (isAdmin(user)) return <MainLayout><Dashboard /></MainLayout>;
+  if (isAdmin(user)) return <Dashboard />;
   return <Navigate to="/employee/dashboard" replace />;
 };
 
@@ -261,30 +264,70 @@ const getNotificationVisuals = (type) => {
   }
 };
 
-// Extract or generate employee profile picture / initials
-const getNotificationAvatar = (notif) => {
+// Extract or generate employee profile picture / initials with rich employee database matching
+const getNotificationAvatar = (notif, employeeMap) => {
   let initials = 'CP';
   let avatarSrc = notif.sender_avatar || null;
+
+  let matchedEmp = null;
+  if (employeeMap && employeeMap.size > 0) {
+    if (notif.sender_id && employeeMap.has(notif.sender_id)) {
+      matchedEmp = employeeMap.get(notif.sender_id);
+    } else if (notif.target && employeeMap.has(notif.target)) {
+      matchedEmp = employeeMap.get(notif.target);
+    } else {
+      // Match by full name in title or text
+      for (const [key, emp] of employeeMap.entries()) {
+        if (typeof key === 'string' && key.includes(' ')) {
+          if (
+            (notif.title && notif.title.toLowerCase().includes(key)) ||
+            (notif.text && notif.text.toLowerCase().includes(key))
+          ) {
+            matchedEmp = emp;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (matchedEmp) {
+    if (matchedEmp.biometric_baseline_path) {
+      avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
+        ? matchedEmp.biometric_baseline_path
+        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
+    } else if (matchedEmp.company_id && matchedEmp.id) {
+      avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
+    }
+
+    if (matchedEmp.first_name) {
+      const f = matchedEmp.first_name[0] || '';
+      const l = (matchedEmp.last_name && matchedEmp.last_name[0]) || '';
+      initials = (f + l).toUpperCase() || 'CP';
+    }
+  }
 
   if (!avatarSrc && notif.company_id && (notif.sender_id || notif.target)) {
     const id = notif.sender_id || notif.target;
     avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${id}.jpg`;
   }
 
-  if (notif.sender_name) {
-    const parts = notif.sender_name.trim().split(' ').filter(Boolean);
-    initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-  } else if (notif.title && notif.title.includes(':')) {
-    const namePart = notif.title.split(':')[1]?.trim() || '';
-    const parts = namePart.split(' ').filter(Boolean);
-    if (parts.length > 0) {
+  if (initials === 'CP') {
+    if (notif.sender_name) {
+      const parts = notif.sender_name.trim().split(' ').filter(Boolean);
       initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-    }
-  } else if (notif.text) {
-    const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
-    if (match) {
-      const parts = match[1].split(' ');
-      initials = (parts[0][0] + parts[1][0]).toUpperCase();
+    } else if (notif.title && notif.title.includes(':')) {
+      const namePart = notif.title.split(':')[1]?.trim() || '';
+      const parts = namePart.split(' ').filter(Boolean);
+      if (parts.length > 0) {
+        initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+      }
+    } else if (notif.text) {
+      const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
+      if (match) {
+        const parts = match[1].split(' ');
+        initials = (parts[0][0] + parts[1][0]).toUpperCase();
+      }
     }
   }
 
@@ -307,12 +350,34 @@ function MainLayout({ children }) {
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [employeeMap, setEmployeeMap] = useState(new Map());
+
+  // Load employee directory for instant avatar photo resolution
+  useEffect(() => {
+    supabase
+      .from('employees')
+      .select('id, company_id, first_name, last_name, biometric_baseline_path')
+      .then(({ data }) => {
+        if (Array.isArray(data)) {
+          const map = new Map();
+          data.forEach(emp => {
+            map.set(emp.id, emp);
+            if (emp.first_name && emp.last_name) {
+              const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+              map.set(fullName, emp);
+            }
+          });
+          setEmployeeMap(map);
+        }
+      });
+  }, []);
 
   // PWA Install State & Platform Detection
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [browserType, setBrowserType] = useState('other'); // 'samsung', 'ios', 'chrome_android', 'desktop'
+  const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
 
   useEffect(() => {
     // Check if app is already running in standalone mode (PWA installed)
@@ -374,16 +439,47 @@ function MainLayout({ children }) {
     setShowInstallGuide(true);
   };
 
-  // Fetch initial notifications
+  // Fetch initial notifications with direct Supabase resilient fallback
   useEffect(() => {
-    if (user?.id) {
-      fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setNotifications(data);
-        })
-        .catch(console.error);
-    }
+    if (!user?.id) return;
+    let isCancelled = false;
+
+    const loadNotifications = async () => {
+      try {
+        const res = await fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && !isCancelled) {
+            setNotifications(data);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[NOTIFICATIONS] API fetch fallback to direct Supabase query:', err);
+      }
+
+      // Direct Supabase Fallback (100% resilient)
+      try {
+        let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
+        if (user.role === 'admin') {
+          query = query.or(`target.eq.admin,target.eq.${user.id}`);
+        } else {
+          query = query.eq('target', user.id);
+        }
+        const { data } = await query;
+        if (Array.isArray(data) && !isCancelled) {
+          setNotifications(data);
+        }
+      } catch (dbErr) {
+        console.error('[NOTIFICATIONS] Direct DB query error:', dbErr);
+      }
+    };
+
+    loadNotifications();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   const searchIndex = isAdmin(user) ? [
@@ -413,6 +509,7 @@ function MainLayout({ children }) {
 
   useEffect(() => {
     setSidebarOpen(false); // close on route change
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [location.pathname]);
 
   const handleNotificationClick = async (notif) => {
@@ -451,7 +548,7 @@ function MainLayout({ children }) {
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
           playNotificationChime();
           const visuals = getNotificationVisuals(notif.type);
-          const avatar = getNotificationAvatar(notif);
+          const avatar = getNotificationAvatar(notif, employeeMap);
 
           toast.custom((t) => (
             <div
@@ -491,9 +588,10 @@ function MainLayout({ children }) {
 
           setNotifications(prev => [notif, ...prev]);
 
-          if (window.location.pathname.includes('/employee/dashboard')) {
-            window.dispatchEvent(new Event('refresh_dashboard'));
-          }
+          // Broadcast global refresh events for immediate UI table sync
+          window.dispatchEvent(new Event('refresh_dashboard'));
+          window.dispatchEvent(new Event('refresh_leaves'));
+          window.dispatchEvent(new Event('refresh_attendance'));
         }
       })
       .subscribe();
@@ -603,10 +701,26 @@ function MainLayout({ children }) {
               ))}
             </>
           ) : (
-            <Link to="/profile" className="flex items-center px-4 py-3.5 rounded-2xl text-slate-400 hover:text-white group">
-              <i className="ti ti-user-circle text-xl group-hover:scale-110 transition-transform duration-300"></i>
-              <span className="ml-3 font-medium tracking-wide">My Profile</span>
-            </Link>
+            <>
+              <Link 
+                to="/employee/qr" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                  location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-qrcode text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <span className="ml-3 font-medium tracking-wide">Show My ID</span>
+              </Link>
+              <Link 
+                to="/profile" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                  location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-user-circle text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <span className="ml-3 font-medium tracking-wide">My Profile</span>
+              </Link>
+            </>
           )}
 
         </nav>
@@ -743,7 +857,7 @@ function MainLayout({ children }) {
                   <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 touch-scroll">
                     {notifications.length > 0 ? notifications.map(notif => {
                       const visuals = getNotificationVisuals(notif.type);
-                      const avatar = getNotificationAvatar(notif);
+                      const avatar = getNotificationAvatar(notif, employeeMap);
                       return (
                         <div
                           key={notif.id}
@@ -797,25 +911,52 @@ function MainLayout({ children }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Native Phone Lock-Screen Push Notifications Banner */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <i className="ti ti-device-mobile-message text-sm"></i>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
+                        <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
+                      </div>
+                    </div>
+
+                    {pushStatus === 'granted' ? (
+                      <button
+                        onClick={async () => {
+                          await sendTestPush(user.id);
+                        }}
+                        className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        title="Send a test notification to your phone"
+                      >
+                        <i className="ti ti-bell-ringing text-blue-600"></i>
+                        Test Buzz
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const res = await subscribeUserToPush(user.id);
+                          if (res.success) setPushStatus('granted');
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg shadow-sm shadow-blue-600/30 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <i className="ti ti-bell-plus"></i>
+                        Enable
+                      </button>
+                    )}
+                  </div>
+
                 </div>
               )}
             </div>
           </header>
 
-          {/* Page Main Content */}
+          {/* Page Main Content — instant swap, persistent shell (eliminates flash/blank gap) */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, scale: 0.99, y: 6 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.99, y: -6 }}
-                transition={{ type: "spring", stiffness: 450, damping: 30 }}
-                className="w-full h-full"
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
+            {children || <Outlet />}
           </main>
 
           {/* Modern mobile floating dock (island style) */}
@@ -880,49 +1021,92 @@ function MainLayout({ children }) {
                   </button>
                 </>
               ) : (
-                <>
-                  {[
-                    { to: '/employee/dashboard', label: 'Portal', icon: 'ti-smart-home', exact: true },
-                    { to: '/employee/qr', label: 'My Pass', icon: 'ti-qrcode' },
-                    ...(isSecurity(user) ? [{ to: '/scanner', label: 'Scan', icon: 'ti-scan' }] : []),
-                    { to: '/profile', label: 'Profile', icon: 'ti-user' }
-                  ].map(tab => {
-                    const isActive = tab.exact
-                      ? location.pathname === tab.to
-                      : location.pathname.startsWith(tab.to);
+                <div className="flex items-center justify-between w-full relative">
+                  {/* Left: Portal / Home */}
+                  <Link
+                    to="/employee/dashboard"
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                      location.pathname === '/employee/dashboard' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="Portal Home"
+                  >
+                    {location.pathname === '/employee/dashboard' && (
+                      <motion.div
+                        layoutId="mobileActiveDockPill"
+                        className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
+                        transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                      />
+                    )}
+                    <i className={`ti ti-smart-home text-lg sm:text-xl relative z-10 transition-transform duration-200 ${location.pathname === '/employee/dashboard' ? 'scale-110' : ''}`} />
+                    <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
+                      Home
+                    </span>
+                  </Link>
 
-                    return (
-                      <Link
-                        key={tab.to}
-                        to={tab.to}
-                        className={`relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                          }`}
+                  {/* Optional for Security: Terminal Scan */}
+                  {isSecurity(user) && (
+                    <Link
+                      to="/scanner"
+                      className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                        location.pathname === '/scanner' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Gate Scanner"
+                    >
+                      {location.pathname === '/scanner' && (
+                        <motion.div
+                          layoutId="mobileActiveDockPill"
+                          className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
+                          transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                        />
+                      )}
+                      <i className={`ti ti-scan text-lg sm:text-xl relative z-10 transition-transform duration-200 ${location.pathname === '/scanner' ? 'scale-110' : ''}`} />
+                      <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
+                        Terminal
+                      </span>
+                    </Link>
+                  )}
+
+                  {/* RAISED / ELEVATED CENTER ACTION: QR CODE ID PASS (Solid Modern iOS Design) */}
+                  <div className="relative flex-1 flex flex-col items-center justify-center -mt-5 sm:-mt-6 group">
+                    <Link
+                      to="/employee/qr"
+                      className="relative flex flex-col items-center justify-center tap-active"
+                      title="My QR ID Pass"
+                    >
+                      {/* Elevated Solid Circular Action Button */}
+                      <motion.div
+                        whileTap={{ scale: 0.90 }}
+                        whileHover={{ scale: 1.05 }}
+                        className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 transition-all duration-200 ${
+                          location.pathname === '/employee/qr'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40 border border-white/30'
+                            : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 shadow-md border border-white/10'
+                        }`}
                       >
-                        {isActive && (
-                          <motion.div
-                            layoutId="mobileEmpActiveDockPill"
-                            className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                          />
-                        )}
-                        <i className={`ti ${tab.icon} text-xl relative z-10 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
-                        <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
-                          {tab.label}
-                        </span>
-                      </Link>
-                    );
-                  })}
+                        <i className={`ti ti-qrcode text-xl sm:text-2xl transition-transform duration-200 ${location.pathname === '/employee/qr' ? 'scale-110' : ''}`} />
+                      </motion.div>
 
+                      {/* Micro Label */}
+                      <span className={`text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-1 font-bold ${
+                        location.pathname === '/employee/qr' ? 'text-white font-black' : 'text-slate-400 group-hover:text-slate-200'
+                      }`}>
+                        QR Pass
+                      </span>
+                    </Link>
+                  </div>
+
+                  {/* Right: Sign Out */}
                   <button
                     onClick={handleLogout}
-                    className="relative flex-1 min-w-0 py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-red-400 hover:text-red-300"
+                    className="relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                    title="Sign Out"
                   >
-                    <i className="ti ti-power text-xl relative z-10" />
-                    <span className="text-[9px] sm:text-[10px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
+                    <i className="ti ti-power text-lg sm:text-xl relative z-10" />
+                    <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
                       Logout
                     </span>
                   </button>
-                </>
+                </div>
               )}
             </nav>
           </div>
@@ -1302,48 +1486,53 @@ function App() {
         <Route path="/force-password-change" element={<ForcePasswordChange />} />
         <Route path="/biometric-setup" element={<ProtectedRoute><BiometricSetup /></ProtectedRoute>} />
 
-        {/* Global/Shared */}
-        <Route path="/" element={<RootRoute />} />
+        {/* Standalone Fullscreen Views */}
         <Route path="/scanner" element={
           <ProtectedRoute allowedRoles={['security', 'guard', 'security_guard', 'admin', 'superadmin', 'hr']}>
             <Suspense fallback={<div className="h-screen w-screen bg-black" />}><Scanner /></Suspense>
           </ProtectedRoute>
         } />
-
-        {/* Admin - Employees */}
-        <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeCreate /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeEdit /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><EmployeeShow /></MainLayout></ProtectedRoute>} />
         <Route path="/admin/employees/:id/qr" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeQrPrint /></ProtectedRoute>} />
 
-        {/* Admin - Attendance */}
-        <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AttendanceCalendar /></MainLayout></ProtectedRoute>} />
+        {/* Authenticated Persistent Shell (Sidebar, Header, and Floating Dock NEVER unmount or flash) */}
+        <Route element={<ProtectedRoute requireBiometrics><MainLayout /></ProtectedRoute>}>
+          <Route path="/" element={<RootRoute />} />
 
-        {/* Admin - Payroll */}
-        <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><StatutorySettings /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollIndex /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollCreate /></MainLayout></ProtectedRoute>} />
-        <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><PayrollShow /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Employees */}
+          <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
+          <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
+          <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
+          <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
 
-        {/* Admin - Audit Logs */}
-        <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><AuditLogsIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Attendance */}
+          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
+          <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
 
-        {/* Admin - Leaves */}
-        <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><LeavesIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Payroll */}
+          <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
+          <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
+          <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
+          <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
 
-        {/* Admin - Shifts */}
-        <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><ShiftsIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Audit Logs */}
+          <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AuditLogsIndex /></ProtectedRoute>} />
 
-        {/* Admin - Disciplinary */}
-        <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><MainLayout><DisciplinaryIndex /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Leaves */}
+          <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
 
-        {/* Employee */}
-        <Route path="/employee/dashboard" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeDashboard /></MainLayout></ProtectedRoute>} />
-        <Route path="/employee/qr" element={<ProtectedRoute requireBiometrics><MainLayout><MyQr /></MainLayout></ProtectedRoute>} />
-        <Route path="/employee/scanner" element={<ProtectedRoute requireBiometrics><MainLayout><EmployeeScanner /></MainLayout></ProtectedRoute>} />
+          {/* Admin - Shifts */}
+          <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ShiftsIndex /></ProtectedRoute>} />
+
+          {/* Admin - Disciplinary */}
+          <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
+
+          {/* Employee Flow */}
+          <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
+          <Route path="/employee/qr" element={<MyQr />} />
+          <Route path="/employee/scanner" element={<EmployeeScanner />} />
+        </Route>
       </Routes>
+      <SpeedInsights />
     </Router>
   );
 }

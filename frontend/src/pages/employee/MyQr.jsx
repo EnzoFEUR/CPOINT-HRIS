@@ -1,51 +1,138 @@
-import React, { useState } from 'react';
-import QRCode from '../../components/QRCode';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
+import QRCode from '../../components/QRCode';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { 
+    opacity: 1, 
+    transition: { 
+      staggerChildren: 0.05 
+    } 
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      type: 'spring', 
+      stiffness: 400, 
+      damping: 30 
+    } 
+  }
+};
 
 const MyQr = () => {
-    const [user] = useState(() => JSON.parse(localStorage.getItem('user')) || { first_name: 'Employee', last_name: '', id: '0' });
+  const [user] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user')) || {};
+    } catch {
+      return {};
+    }
+  });
 
-    return (
-        <div className="max-w-md mx-auto pb-24 lg:pb-6 px-4 sm:px-6 font-sans">
-            <motion.div 
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                className="bg-white p-5 sm:p-8 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 text-center"
-            >
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-50 text-blue-600 mb-3">
-                    <i className="ti ti-qrcode text-2xl" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight mb-1">My Digital Pass</h2>
-                <p className="text-slate-500 text-xs sm:text-sm mb-6">Hold near the terminal scanner to log your attendance.</p>
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-                <div className="flex justify-center mb-6">
-                    <div className="p-4 sm:p-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-inner">
-                        <QRCode 
-                            value={user.company_id || String(user.id)} 
-                            size={200} 
-                            level="H"
-                            fgColor="#0f172a"
-                        />
-                    </div>
-                </div>
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-left w-full">
-                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Personnel Information</p>
-                    <p className="text-base font-bold text-slate-800 truncate">{user.name || `${user.first_name || ''} ${user.last_name || ''}`}</p>
-                    <p className="text-xs text-slate-500 font-medium truncate">{user.job_title || 'Staff'} &bull; {user.department || 'General'}</p>
-                    <p className="text-[10px] font-mono font-bold text-slate-400 mt-1">ID: #{user.company_id || user.id}</p>
-                </div>
+  const qrValue = user.company_id || (user.id ? String(user.id) : 'CP-EMPLOYEE');
+  const employeeName = user.name || `${user.first_name || 'Employee'} ${user.last_name || ''}`.trim();
+  const department = user.department || 'Operations';
+  const jobTitle = user.job_title || user.role || 'Staff';
+  const avatarLetter = (user.first_name || employeeName || 'E').charAt(0).toUpperCase();
 
-                <div className="mt-6">
-                    <Link to="/employee/dashboard" className="inline-flex items-center gap-1.5 text-slate-500 hover:text-blue-600 font-bold text-xs sm:text-sm tap-active transition-colors">
-                        <i className="ti ti-arrow-left" /> Back to Portal
-                    </Link>
-                </div>
-            </motion.div>
-        </div>
-    );
+  const photoUrl = useMemo(() => {
+    if (user?.biometric_baseline_path) {
+      return user.biometric_baseline_path.startsWith('http')
+        ? user.biometric_baseline_path
+        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`;
+    }
+    return user?.company_id && user?.id
+      ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+      : null;
+  }, [user]);
+
+  const formattedDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+  });
+
+  return (
+    <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-3 sm:pt-4">
+      <motion.div 
+        variants={containerVariants} 
+        initial="hidden" 
+        animate="visible" 
+        className="w-full flex flex-col will-change-transform transform-gpu"
+      >
+
+        {/* Employee identity header */}
+        <motion.div variants={itemVariants} className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1 will-change-transform transform-gpu">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* User Avatar */}
+            <div className="relative w-12 h-12 rounded-full bg-slate-900 text-white font-bold text-base flex items-center justify-center overflow-hidden ring-2 ring-white shadow-xs shrink-0">
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                  alt={employeeName}
+                  className="w-full h-full object-cover"
+                />
+              ) : null}
+              <span
+                className="w-full h-full flex items-center justify-center"
+                style={{ display: photoUrl ? 'none' : 'flex' }}
+              >
+                {avatarLetter}
+              </span>
+            </div>
+
+            {/* Name & Job Title */}
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 truncate leading-tight">
+                {employeeName}
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
+                {jobTitle} &middot; {department}
+              </p>
+            </div>
+          </div>
+
+          {/* Company ID badge */}
+          <div className="shrink-0">
+            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 block shadow-2xs">
+              {qrValue}
+            </span>
+          </div>
+        </motion.div>
+
+        {/* QR Code card */}
+        <motion.div variants={itemVariants} className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs will-change-transform transform-gpu">
+          <QRCode
+            value={qrValue}
+            size={260}
+            fgColor="#0f172a"
+            bgColor="#ffffff"
+            className="rounded-xl"
+          />
+        </motion.div>
+
+        {/* Date and time footer */}
+        <motion.div variants={itemVariants} className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2 will-change-transform transform-gpu">
+          <span>{formattedDate}</span>
+          <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
+            {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        </motion.div>
+
+      </motion.div>
+    </div>
+  );
 };
 
 export default MyQr;
