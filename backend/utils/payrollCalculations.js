@@ -2,34 +2,31 @@
  * payrollCalculations.js
  * ------------------------------------------------------------------
  * Pure, side-effect-free DOLE (Philippines) payroll math:
- *   - Regular Holiday pay (worked / unworked / rest-day / OT)
- *   - Special Non-Working Day pay (worked / unworked / rest-day / OT)
- *   - 13th Month Pay aggregation (basic-salary-only, tax-exempt check)
- *
- * Framework-agnostic on purpose: no Supabase, no React, no fetch calls.
- * Import this from the Express route (authoritative calculation) and,
- * optionally, from the React app (for a live preview before submit).
- *
- * DOLE reference multipliers (Labor Code, Art. 94-95; Wage Order /
- * DOLE Labor Advisory on holiday pay rules):
- *
- *   Regular Holiday
- *     unworked  -> 100% of daily rate (conditioned on presence/paid
- *                  leave the workday immediately before the holiday)
- *     worked    -> 200% of hourly rate for the first 8 hours
- *     worked + rest day -> 260% of hourly rate for the first 8 hours
- *     OT        -> +30% of the applicable holiday hourly rate
- *
- *   Special Non-Working Day
- *     unworked  -> 0% ("no work, no pay")
- *     worked    -> 130% of hourly rate for the first 8 hours
- *     worked + rest day -> 150% of hourly rate for the first 8 hours
- *     OT        -> +30% of the applicable holiday hourly rate
- * ------------------------------------------------------------------
+ *   - String-to-number sanitization helpers (toSafeNumber, round2)
+ *   - Regular & Special Holiday pay multipliers
+ *   - RA 11210 Expanded Maternity Leave & Salary Differential Engine
+ *   - Philippine Statutory Paid Leaves (Paternity, Solo Parent, SIL, VAWC, Magna Carta)
+ *   - 13th Month Pay aggregation (basic salary + non-taxable maternity differential)
  */
 
 // ---------------------------------------------------------------
-// Constants
+// Data Sanitization & Math Helpers
+// ---------------------------------------------------------------
+
+/** Safely parses any input into a guaranteed finite Number to prevent string concatenation bugs. */
+export function toSafeNumber(val, fallback = 0) {
+    if (val === null || val === undefined || val === '') return fallback;
+    const parsed = Number(val);
+    return isNaN(parsed) ? fallback : parsed;
+}
+
+/** Rounds a numeric value to 2 decimal places safely. */
+export function round2(n) {
+    return Math.round((toSafeNumber(n) + Number.EPSILON) * 100) / 100;
+}
+
+// ---------------------------------------------------------------
+// Constants & Multipliers
 // ---------------------------------------------------------------
 
 export const HOLIDAY_TYPES = Object.freeze({
@@ -37,41 +34,79 @@ export const HOLIDAY_TYPES = Object.freeze({
     SPECIAL_NON_WORKING: 'special_non_working',
 });
 
-export const DOLE_DIVISOR = 21.75; // standard PH monthly-to-daily divisor
+export const DOLE_DIVISOR = 21.75; // Standard PH monthly-to-daily factor
 export const STANDARD_SHIFT_HOURS = 8;
-export const HOLIDAY_OT_PREMIUM = 0.30; // +30% of the holiday hourly rate
+export const HOLIDAY_OT_PREMIUM = 0.30;
 export const THIRTEENTH_MONTH_TAX_EXEMPT_CEILING = 90000;
 
 const MULTIPLIERS = Object.freeze({
     [HOLIDAY_TYPES.REGULAR]: {
         worked: 2.0,
         workedRestDay: 2.6,
-        unworked: 1.0, // conditioned on eligibility, see computeDayPay
+        unworked: 1.0,
     },
     [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: {
         worked: 1.3,
         workedRestDay: 1.5,
-        unworked: 0, // "no work, no pay"
+        unworked: 0,
     },
 });
 
 // ---------------------------------------------------------------
-// Rate helpers
+// Rate Helpers
 // ---------------------------------------------------------------
 
-/** Monthly salary -> { dailyRate, hourlyRate } using the DOLE 21.75 divisor. */
+/** Monthly salary -> { dailyRate, hourlyRate } using the DOLE 21.75 factor. */
 export function deriveRates(monthlySalary) {
-    const salary = Number(monthlySalary) || 0;
-    const dailyRate = salary / DOLE_DIVISOR;
-    const hourlyRate = dailyRate / STANDARD_SHIFT_HOURS;
+    const salary = toSafeNumber(monthlySalary);
+    const dailyRate = round2(salary / DOLE_DIVISOR);
+    const hourlyRate = round2(dailyRate / STANDARD_SHIFT_HOURS);
     return { dailyRate, hourlyRate };
 }
 
 // ---------------------------------------------------------------
-// Date / holiday-list helpers
+// Statutory Leaves & Maternity Differential Engine
 // ---------------------------------------------------------------
 
-/** Inclusive list of 'YYYY-MM-DD' strings between start and end. */
+/**
+ * Computes RA 11210 Expanded Maternity Leave Salary Differential.
+ * Differential = Full Monthly Basic Salary - SSS Approved Cash Benefit.
+ */
+export function calculateMaternityDifferential({ monthlySalary, sssCashBenefit = 0, leaveDays = 105 }) {
+    const safeSalary = toSafeNumber(monthlySalary);
+    const safeSssBenefit = toSafeNumber(sssCashBenefit);
+    const dailyRate = safeSalary / 30; // Calendar day divisor for statutory maternity benefit
+    const fullBasicPayForLeave = round2(dailyRate * toSafeNumber(leaveDays, 105));
+
+    const salaryDifferential = Math.max(0, round2(fullBasicPayForLeave - safeSssBenefit));
+
+    return {
+        fullBasicPayForLeave,
+        sssCashBenefit: safeSssBenefit,
+        salaryDifferential,
+    };
+}
+
+/**
+ * Computes additional Philippine Statutory Paid Leaves.
+ */
+export function calculateStatutoryLeavePay({ monthlySalary, leaveType, daysTaken = 0 }) {
+    const { dailyRate } = deriveRates(monthlySalary);
+    const safeDays = toSafeNumber(daysTaken);
+    const leavePay = round2(dailyRate * safeDays);
+
+    return {
+        leaveType,
+        daysTaken: safeDays,
+        dailyRate,
+        leavePay,
+    };
+}
+
+// ---------------------------------------------------------------
+// Date & Holiday Helpers
+// ---------------------------------------------------------------
+
 export function getPayPeriodDates(periodStart, periodEnd) {
     const dates = [];
     const cursor = new Date(`${periodStart}T00:00:00`);
@@ -92,7 +127,6 @@ function formatDate(d) {
     return `${y}-${m}-${day}`;
 }
 
-/** Build a Map<'YYYY-MM-DD', holidayRecord> for O(1) lookups. */
 export function indexHolidays(holidayList = []) {
     const map = new Map();
     for (const h of holidayList) {
@@ -101,30 +135,16 @@ export function indexHolidays(holidayList = []) {
     return map;
 }
 
-/**
- * Is `dateStr` a rest day for this employee?
- * Falls back to Sunday-only until per-employee rest-day schedules exist
- * (e.g. an `employees.rest_days` int[] column, 0=Sun...6=Sat).
- */
 export function isRestDay(dateStr, restDays = [0]) {
     const d = new Date(`${dateStr}T00:00:00`);
     if (isNaN(d.getTime())) return false;
     return restDays.includes(d.getDay());
 }
 
-/**
- * Did the employee work (or have an approved paid leave) on the workday
- * immediately preceding `dateStr`? Required for unworked-regular-holiday
- * eligibility. `attendanceByDate` is a Map<'YYYY-MM-DD', log[]>.
- *
- * NOTE: paid-leave records aren't modeled in the current schema — once a
- * `leaves` table exists, OR its approved dates in here.
- */
 export function wasPresentDayBefore(dateStr, attendanceByDate, restDays = [0]) {
     const d = new Date(`${dateStr}T00:00:00`);
-    if (isNaN(d.getTime())) return true; // fail-open: don't silently forfeit pay on bad input
+    if (isNaN(d.getTime())) return true;
 
-    // Walk back over the employee's rest day(s) to find the prior workday.
     const prev = new Date(d);
     do {
         prev.setDate(prev.getDate() - 1);
@@ -136,29 +156,9 @@ export function wasPresentDayBefore(dateStr, attendanceByDate, restDays = [0]) {
 }
 
 // ---------------------------------------------------------------
-// Core per-day holiday pay calculation
+// Core Per-Day Holiday Pay Calculation
 // ---------------------------------------------------------------
 
-/**
- * Compute holiday pay for a single calendar date.
- *
- * @param {object} params
- * @param {string}  params.dateStr        'YYYY-MM-DD'
- * @param {number}  params.hourlyRate
- * @param {number}  params.dailyRate
- * @param {number}  params.hoursWorked     actual hours rendered that day (0 if absent)
- * @param {Map}     params.holidaysByDate  from indexHolidays()
- * @param {Map}     params.attendanceByDate from indexAttendanceByDate()
- * @param {number[]} [params.restDays]     day-of-week ints that are rest days
- *
- * @returns {null|{
- *   date: string, holidayType: string, holidayName: string,
- *   worked: boolean, isRestDay: boolean, eligible: boolean,
- *   regularHours: number, overtimeHours: number,
- *   multiplier: number, pay: number,
- *   breakdown: { basicHolidayPay: number, overtimePay: number }
- * }}  null when `dateStr` is not a holiday at all.
- */
 export function computeDayPay({
     dateStr,
     hourlyRate,
@@ -171,17 +171,17 @@ export function computeDayPay({
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
 
-    const worked = hoursWorked > 0;
+    const safeHoursWorked = toSafeNumber(hoursWorked);
+    const worked = safeHoursWorked > 0;
     const restDayToday = isRestDay(dateStr, restDays);
-    const regularHours = Math.min(hoursWorked, STANDARD_SHIFT_HOURS);
-    const overtimeHours = Math.max(hoursWorked - STANDARD_SHIFT_HOURS, 0);
+    const regularHours = Math.min(safeHoursWorked, STANDARD_SHIFT_HOURS);
+    const overtimeHours = Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0);
     const table = MULTIPLIERS[holiday.type];
 
     if (!table) {
         throw new Error(`Unknown holiday type "${holiday.type}" for ${dateStr}`);
     }
 
-    // --- Unworked ---------------------------------------------------
     if (!worked) {
         if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING) {
             return {
@@ -199,9 +199,8 @@ export function computeDayPay({
             };
         }
 
-        // Regular holiday, unworked: 100% IF present/on paid leave the workday before.
         const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays);
-        const pay = eligible ? dailyRate : 0;
+        const pay = eligible ? round2(dailyRate) : 0;
         return {
             date: dateStr,
             holidayType: holiday.type,
@@ -223,11 +222,9 @@ export function computeDayPay({
         };
     }
 
-    // --- Worked -------------------------------------------------------
     const multiplier = restDayToday ? table.workedRestDay : table.worked;
-    const basicHolidayPay = hourlyRate * multiplier * regularHours;
-
-    const holidayHourlyRate = hourlyRate * multiplier;
+    const basicHolidayPay = toSafeNumber(hourlyRate) * multiplier * regularHours;
+    const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
     const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
     const overtimePay = otHourlyRate * overtimeHours;
 
@@ -250,21 +247,9 @@ export function computeDayPay({
 }
 
 // ---------------------------------------------------------------
-// Pay-period aggregation
+// Pay-Period Aggregation
 // ---------------------------------------------------------------
 
-/**
- * Walk every date in [periodStart, periodEnd], flag the ones that are
- * holidays, and return both the itemized list and the period total.
- *
- * @param {object} params
- * @param {string} params.periodStart
- * @param {string} params.periodEnd
- * @param {number} params.monthlySalary
- * @param {Array}  params.holidayList      raw rows from the `holidays` table
- * @param {Array}  params.attendanceLogs   raw rows from the `attendance` table (this employee, this period)
- * @param {number[]} [params.restDays]
- */
 export function computeHolidayPayForPeriod({
     periodStart,
     periodEnd,
@@ -294,7 +279,7 @@ export function computeHolidayPayForPeriod({
         if (result) items.push(result);
     }
 
-    const totalHolidayPay = round2(items.reduce((sum, i) => sum + i.pay, 0));
+    const totalHolidayPay = round2(items.reduce((sum, i) => sum + toSafeNumber(i.pay), 0));
     return { items, totalHolidayPay };
 }
 
@@ -321,25 +306,16 @@ function hoursWorkedOn(dateStr, attendanceByDate) {
 }
 
 // ---------------------------------------------------------------
-// 13th Month Pay
+// DOLE 13th Month Pay Aggregator (PD 851)
 // ---------------------------------------------------------------
 
-/**
- * Aggregate an employee's 13th month pay for a calendar year.
- *
- * Per DOLE (PD 851): 13th month pay = total BASIC salary actually earned
- * within the calendar year / 12. Overtime pay, holiday premiums, night
- * differentials, and allowances are excluded — so this function only
- * ever sums `basic_pay`, never `overtime_pay`, `holiday_pay`, or
- * `deductions`.
- *
- * @param {Array<{basic_pay:number, period_start:string}>} payrollRecords
- *        Payroll rows for one employee, already filtered to the target
- *        calendar year by the caller (e.g. a `.gte/.lte` on period_start).
- */
 export function aggregate13thMonthPay(payrollRecords = []) {
     const totalBasicSalaryEarned = round2(
-        payrollRecords.reduce((sum, r) => sum + (Number(r.basic_pay) || 0), 0)
+        payrollRecords.reduce((sum, r) => {
+            const basic = toSafeNumber(r.basic_pay);
+            const matDiff = toSafeNumber(r.maternity_salary_differential);
+            return sum + basic + matDiff;
+        }, 0)
     );
 
     const thirteenthMonthPay = round2(totalBasicSalaryEarned / 12);
@@ -355,12 +331,4 @@ export function aggregate13thMonthPay(payrollRecords = []) {
         isTaxExempt,
         taxableExcess,
     };
-}
-
-// ---------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------
-
-function round2(n) {
-    return Math.round((Number(n) || 0) * 100) / 100;
 }

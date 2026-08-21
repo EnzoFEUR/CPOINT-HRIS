@@ -1,10 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const parseDate = (dStr) => {
+    if (!dStr) return null;
+    const formatted = typeof dStr === 'string' ? dStr.replace(' ', 'T') : dStr;
+    const d = new Date(formatted);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+const extractDateStr = (dStr) => {
+    if (!dStr) return '';
+    if (typeof dStr === 'string') return dStr.substring(0, 10);
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 const formatLocalDate = (d) => {
     if (!d) return '';
@@ -18,7 +36,9 @@ const formatLocalDate = (d) => {
 
 const formatReadableDate = (dateStr) => {
     if (!dateStr) return 'Select Date';
-    const d = new Date(dateStr + 'T00:00:00');
+    const cleanStr = extractDateStr(dateStr);
+    if (!cleanStr) return dateStr;
+    const d = new Date(cleanStr + 'T00:00:00');
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
@@ -38,19 +58,20 @@ const PayrollCreate = () => {
         period_end: '',
         days_worked: 0,
         overtime_hours: 0,
+        pieces_produced: '',
         late_deductions: ''
     });
+
+    const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
+    const [empSearch, setEmpSearch] = useState('');
+    const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
+
     const [activePreset, setActivePreset] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [isCalculating, setIsCalculating] = useState(false);
 
-    // Holiday pay preview — fetched from POST /api/payroll/preview, which
-    // runs the exact same payrollCalculations logic the backend uses on
-    // submit. Informational only: this component holds no calculation
-    // logic of its own, so the preview can never drift from what actually
-    // gets saved.
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
 
     useEffect(() => {
@@ -58,8 +79,6 @@ const PayrollCreate = () => {
             .then(res => res.json())
             .then(result => {
                 const list = Array.isArray(result) ? result : (result.data || []);
-                // Admin and security accounts aren't paid through this
-                // payroll flow, so they shouldn't appear in the picker.
                 const payableList = list.filter(e => {
                     const roleStr = (e.role || '').toLowerCase();
                     return roleStr !== 'admin' && roleStr !== 'security';
@@ -81,74 +100,21 @@ const PayrollCreate = () => {
                 width: min(320px, calc(100vw - 2rem)) !important;
                 max-width: calc(100vw - 2rem) !important;
             }
-            .flatpickr-months {
-                margin-bottom: 8px !important;
-            }
-            .flatpickr-months .flatpickr-month {
-                color: #0f172a !important;
-                font-weight: 800 !important;
-                font-size: 1.05rem !important;
-            }
-            .flatpickr-current-month {
-                padding-top: 4px !important;
-            }
-            .flatpickr-current-month .flatpickr-monthDropdown-months {
-                font-weight: 800 !important;
-                color: #0f172a !important;
-            }
-            .flatpickr-weekdays {
-                margin-bottom: 6px !important;
-            }
-            span.flatpickr-weekday {
-                color: #64748b !important;
-                font-weight: 700 !important;
-                font-size: 0.8rem !important;
-            }
-            .flatpickr-days {
-                width: 100% !important;
-            }
-            .dayContainer {
-                width: 100% !important;
-                min-width: 100% !important;
-                max-width: 100% !important;
-                justify-content: space-around !important;
-            }
-            .flatpickr-day {
-                border-radius: 0.75rem !important;
-                font-weight: 600 !important;
-                color: #1e293b !important;
-                height: 42px !important;
-                line-height: 42px !important;
-                margin: 2px 0 !important;
-                transition: all 0.15s ease !important;
-                touch-action: manipulation !important;
-            }
-            .flatpickr-day:hover {
-                background: #eff6ff !important;
-                color: #2563eb !important;
-            }
-            .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange {
-                background: #2563eb !important;
-                border-color: #2563eb !important;
-                color: #ffffff !important;
-                font-weight: 800 !important;
-                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
-            }
-            .flatpickr-day.today {
-                border-color: #93c5fd !important;
-                background: #f0f9ff !important;
-                color: #0284c7 !important;
-            }
-            .flatpickr-day.prevMonthDay, .flatpickr-day.nextMonthDay {
-                color: #cbd5e1 !important;
-            }
-            .flatpickr-prev-month, .flatpickr-next-month {
-                padding: 6px !important;
-                border-radius: 0.5rem !important;
-            }
-            .flatpickr-prev-month:hover svg, .flatpickr-next-month:hover svg {
-                fill: #2563eb !important;
-            }
+            .flatpickr-months { margin-bottom: 8px !important; }
+            .flatpickr-months .flatpickr-month { color: #0f172a !important; font-weight: 800 !important; font-size: 1.05rem !important; }
+            .flatpickr-current-month { padding-top: 4px !important; }
+            .flatpickr-current-month .flatpickr-monthDropdown-months { font-weight: 800 !important; color: #0f172a !important; }
+            .flatpickr-weekdays { margin-bottom: 6px !important; }
+            span.flatpickr-weekday { color: #64748b !important; font-weight: 700 !important; font-size: 0.8rem !important; }
+            .flatpickr-days { width: 100% !important; }
+            .dayContainer { width: 100% !important; min-width: 100% !important; max-width: 100% !important; justify-content: space-around !important; }
+            .flatpickr-day { border-radius: 0.75rem !important; font-weight: 600 !important; color: #1e293b !important; height: 42px !important; line-height: 42px !important; margin: 2px 0 !important; transition: all 0.15s ease !important; touch-action: manipulation !important; }
+            .flatpickr-day:hover { background: #eff6ff !important; color: #2563eb !important; }
+            .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange { background: #2563eb !important; border-color: #2563eb !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important; }
+            .flatpickr-day.today { border-color: #93c5fd !important; background: #f0f9ff !important; color: #0284c7 !important; }
+            .flatpickr-day.prevMonthDay, .flatpickr-day.nextMonthDay { color: #cbd5e1 !important; }
+            .flatpickr-prev-month, .flatpickr-next-month { padding: 6px !important; border-radius: 0.5rem !important; }
+            .flatpickr-prev-month:hover svg, .flatpickr-next-month:hover svg { fill: #2563eb !important; }
         `;
         document.head.appendChild(style);
         return () => {
@@ -204,73 +170,87 @@ const PayrollCreate = () => {
         return employees.find(e => String(e.id) === String(formData.employee_id));
     }, [employees, formData.employee_id]);
 
+    const isFactoryEmployee = useMemo(() => {
+        return selectedEmployee?.department?.toLowerCase() === 'factory';
+    }, [selectedEmployee]);
+
+    const employeeRate = useMemo(() => {
+        if (!selectedEmployee) return 0;
+        return parseFloat(
+            selectedEmployee.piece_rate ||
+            selectedEmployee.rate_per_piece ||
+            selectedEmployee.salary ||
+            selectedEmployee.monthly_salary || 0
+        );
+    }, [selectedEmployee]);
+
+    const availableDepartments = useMemo(() => {
+        const depts = new Set(employees.map(e => e.department || 'Operations'));
+        return ['ALL', ...Array.from(depts)];
+    }, [employees]);
+
+    const filteredEmployees = useMemo(() => {
+        return employees.filter(emp => {
+            const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+            const dept = (emp.department || 'Operations').toLowerCase();
+            const matchesSearch = fullName.includes(empSearch.toLowerCase()) || dept.includes(empSearch.toLowerCase());
+            const matchesDept = selectedDeptFilter === 'ALL' || (emp.department || 'Operations') === selectedDeptFilter;
+            return matchesSearch && matchesDept;
+        });
+    }, [employees, empSearch, selectedDeptFilter]);
+
     useEffect(() => {
         const calculatePayroll = async () => {
             if (formData.employee_id && formData.period_start && formData.period_end) {
                 setIsCalculating(true);
                 try {
-                    // Attendance drives the client-side days_worked/overtime
-                    // display; the holiday-pay figure is NOT computed here —
-                    // it's fetched from the backend's /preview endpoint below,
-                    // so this component never carries its own copy of the
-                    // DOLE holiday math to drift out of sync with what
-                    // actually gets saved on submit.
-                    const [attendanceRes, previewRes] = await Promise.all([
-                        fetchWithAuth(`/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`),
-                        fetchWithAuth('/api/payroll/preview', {
-                            method: 'POST',
-                            body: JSON.stringify({
-                                employee_id: formData.employee_id,
-                                period_start: formData.period_start,
-                                period_end: formData.period_end,
-                            }),
-                        }),
-                    ]);
-
-                    const rawLogs = await attendanceRes.json();
-                    const previewData = await previewRes.json().catch(() => ({ items: [], totalHolidayPay: 0 }));
-
-                    // FIX: /api/attendance can return either a raw array or a
-                    // wrapped { data: [...] } object (same as /api/employees
-                    // above). The old code only handled the raw-array case,
-                    // so a wrapped response silently produced an empty list
-                    // and days_worked/overtime_hours stayed at 0.
-                    const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
-
-                    setHolidayPreview(
-                        previewRes.ok && Array.isArray(previewData.items)
-                            ? previewData
-                            : { items: [], totalHolidayPay: 0 }
+                    // 1. Fetch attendance logs first to determine actual worked days & dates
+                    const attendanceRes = await fetchWithAuth(
+                        `/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`
                     );
+                    const rawLogs = await attendanceRes.json();
+                    const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
 
                     const doleDivisor = 21.75;
                     const gracePeriodMins = 15;
 
-                    const salary = selectedEmployee ? parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) : 0;
-                    const dailyRate = salary / doleDivisor;
+                    const monthlyBase = isFactoryEmployee
+                        ? parseFloat(selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0)
+                        : employeeRate;
+
+                    const dailyRate = monthlyBase > 0 ? (monthlyBase / doleDivisor) : parseFloat(selectedEmployee?.daily_rate || 0);
                     const hourlyRate = dailyRate / 8;
                     const perMinuteRate = hourlyRate / 60;
 
-                    let daysWorked = 0;
                     let totalOvertime = 0;
                     let adjustments = 0;
 
-                    const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out) : [];
-                    daysWorked = completedLogs.length;
+                    const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
+
+                    const uniqueWorkedDates = Array.from(new Set(
+                        completedLogs
+                            .map(l => extractDateStr(l.date || l.time_in))
+                            .filter(Boolean)
+                    ));
+                    const daysWorked = uniqueWorkedDates.length;
 
                     completedLogs.forEach(log => {
-                        const timeIn = new Date(log.time_in);
-                        const timeOut = new Date(log.time_out);
-                        const scheduleStart = new Date((log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : '')) + 'T08:00:00');
+                        const timeIn = parseDate(log.time_in);
+                        const timeOut = parseDate(log.time_out);
+                        const dateStr = extractDateStr(log.date || log.time_in);
 
-                        if (!isNaN(timeIn.getTime()) && timeIn > scheduleStart) {
-                            const minutes = Math.floor((timeIn - scheduleStart) / 60000);
-                            if (minutes > gracePeriodMins) {
-                                adjustments += (minutes * perMinuteRate);
+                        if (timeIn && dateStr) {
+                            const scheduleStart = new Date(`${dateStr}T08:00:00`);
+
+                            if (!isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
+                                const minutes = Math.floor((timeIn - scheduleStart) / 60000);
+                                if (minutes > gracePeriodMins && perMinuteRate > 0) {
+                                    adjustments += (minutes * perMinuteRate);
+                                }
                             }
                         }
 
-                        if (!isNaN(timeIn.getTime()) && !isNaN(timeOut.getTime())) {
+                        if (timeIn && timeOut) {
                             const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
                             if (hoursWorked > 9) {
                                 totalOvertime += (hoursWorked - 9);
@@ -285,6 +265,29 @@ const PayrollCreate = () => {
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : ''
                     }));
 
+                    // 2. Pass complete employee context & attendance data to backend holiday preview
+                    const previewRes = await fetchWithAuth('/api/payroll/preview', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            employee_id: formData.employee_id,
+                            period_start: formData.period_start,
+                            period_end: formData.period_end,
+                            department: selectedEmployee?.department || 'Operations',
+                            days_worked: daysWorked,
+                            monthly_salary: selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0,
+                            daily_rate: dailyRate,
+                            worked_dates: uniqueWorkedDates
+                        }),
+                    });
+
+                    const previewData = await previewRes.json().catch(() => ({ items: [], totalHolidayPay: 0 }));
+
+                    setHolidayPreview(
+                        previewRes.ok && Array.isArray(previewData.items)
+                            ? previewData
+                            : { items: [], totalHolidayPay: 0 }
+                    );
+
                 } catch (err) {
                     console.error('Calculation error:', err);
                     setHolidayPreview({ items: [], totalHolidayPay: 0 });
@@ -294,7 +297,7 @@ const PayrollCreate = () => {
             }
         };
         calculatePayroll();
-    }, [formData.employee_id, formData.period_start, formData.period_end, selectedEmployee]);
+    }, [formData.employee_id, formData.period_start, formData.period_end, selectedEmployee, isFactoryEmployee, employeeRate]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -325,28 +328,15 @@ const PayrollCreate = () => {
 
                 const newRecord = data.data || data.payroll || data;
 
-                // If the response includes enough shape to render a row
-                // (an id and the linked employee), prepend it to every
-                // cached payroll list immediately — the new payslip shows
-                // up on PayrollIndex before the network refetch even
-                // finishes. If the response shape is unfamiliar, skip the
-                // optimistic prepend and fall back to a plain invalidate.
-                if (newRecord && newRecord.id && newRecord.employees) {
+                if (newRecord && newRecord.id) {
                     queryClient.setQueriesData({ queryKey: ['adminPayrolls'] }, (old) => {
                         if (!Array.isArray(old)) return old;
                         return [newRecord, ...old];
                     });
                 }
 
-                // Kick off the background refetch right away rather than
-                // waiting for the navigation delay below — by the time the
-                // list renders, it's either already correct (optimistic
-                // prepend) or the refetch has had a head start.
                 queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
 
-                // Still give the user a moment to see the success message
-                // before navigating — this delay no longer blocks the data
-                // from being ready.
                 setTimeout(() => {
                     navigate('/admin/payroll');
                 }, 900);
@@ -358,7 +348,15 @@ const PayrollCreate = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto py-6 sm:py-8 px-4 sm:px-6 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        <div className="max-w-4xl mx-auto py-6 sm:py-8 px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+            <Link
+                to="/admin/payroll"
+                className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors mb-4 tap-active"
+            >
+                <i className="ti ti-arrow-left text-base" />
+                <span>Back to Payroll</span>
+            </Link>
+
             <div className="bg-white p-5 sm:p-10 rounded-3xl sm:rounded-[2rem] shadow-sm border border-slate-100">
 
                 <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -392,65 +390,109 @@ const PayrollCreate = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
+                    {/* EMPLOYEE SELECTION TRIGGER & DISPLAY */}
                     <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
-                                <i className="ti ti-user"></i>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+                                    <i className="ti ti-user"></i>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
+                                    <p className="text-[11px] text-slate-400 font-medium leading-snug">Select an active workforce member</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
-                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Select an employee from your active workforce</p>
-                            </div>
+                            <span className="text-[11px] font-bold text-slate-500 bg-slate-200/60 px-2.5 py-1 rounded-full">
+                                {employees.length} Active
+                            </span>
                         </div>
-                        <select
-                            name="employee_id"
-                            value={formData.employee_id}
-                            onChange={handleInputChange}
-                            className="w-full p-4 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-sm text-base touch-manipulation"
-                            required
-                        >
-                            <option value="" disabled>Select an employee…</option>
-                            {employees.map((emp) => {
-                                const salary = parseFloat(emp.salary || emp.monthly_salary || 0);
-                                return (
-                                    <option key={emp.id} value={emp.id}>
-                                        {emp.first_name} {emp.last_name} — {emp.department || 'General'} (₱{salary.toLocaleString('en-US', { minimumFractionDigits: 2 })}/mo)
-                                    </option>
-                                );
-                            })}
-                        </select>
 
-                        {selectedEmployee && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-xl border border-slate-200/70"
+                        {!selectedEmployee ? (
+                            <button
+                                type="button"
+                                onClick={() => setIsEmpModalOpen(true)}
+                                className="w-full min-h-[56px] p-4 bg-white hover:bg-slate-100/80 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-2xl text-left transition-all group flex items-center justify-between shadow-xs touch-manipulation"
                             >
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Monthly Basic</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
-                                        ₱{parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                    </p>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-50 group-hover:bg-blue-100 text-blue-600 flex items-center justify-center text-lg transition-colors">
+                                        <i className="ti ti-user-plus"></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-base font-bold text-slate-700 group-hover:text-blue-600 transition-colors">Tap to choose employee</p>
+                                        <p className="text-xs text-slate-400">Search by name or department...</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Daily Rate (21.75)</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
-                                        ₱{(parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) / 21.75).toFixed(2)}
-                                    </p>
+                                <i className="ti ti-chevron-right text-slate-400 text-lg group-hover:translate-x-0.5 transition-transform"></i>
+                            </button>
+                        ) : (
+                            <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3.5 min-w-0">
+                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                                            {selectedEmployee.first_name?.[0]}{selectedEmployee.last_name?.[0]}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="text-base font-black text-slate-800 truncate">
+                                                    {selectedEmployee.first_name} {selectedEmployee.last_name}
+                                                </h4>
+                                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
+                                                    {selectedEmployee.department || 'Operations'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 font-mono font-semibold mt-0.5">
+                                                ₱{employeeRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / {isFactoryEmployee ? 'PC' : 'month'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEmpModalOpen(true)}
+                                        className="shrink-0 px-3 py-1.5 min-h-[38px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors touch-manipulation"
+                                    >
+                                        Change
+                                    </button>
                                 </div>
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Hourly Rate</span>
-                                    <p className="font-mono font-bold text-slate-800 text-sm">
-                                        ₱{((parseFloat(selectedEmployee.salary || selectedEmployee.monthly_salary || 0) / 21.75) / 8).toFixed(2)}
-                                    </p>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Department</span>
-                                    <p className="font-semibold text-slate-800 text-sm truncate">
-                                        {selectedEmployee.department || 'Operations'}
-                                    </p>
-                                </div>
-                            </motion.div>
+
+                                <motion.div
+                                    initial={{ opacity: 0, y: 5 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mt-4 pt-3 border-t border-slate-100"
+                                >
+                                    {isFactoryEmployee ? (
+                                        <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl flex items-center justify-between">
+                                            <div>
+                                                <span className="block text-[10px] font-bold uppercase text-amber-800">Factory Compensation Model</span>
+                                                <p className="text-xs font-semibold text-amber-700">Piece Rate Payment System</p>
+                                            </div>
+                                            <span className="font-mono font-black text-amber-900 text-sm bg-white px-3 py-1 rounded-lg border border-amber-200 shadow-xs">
+                                                ₱{employeeRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / PC
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                            <div className="bg-slate-50 p-2 rounded-xl">
+                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Monthly</span>
+                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                    ₱{employeeRate.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                </p>
+                                            </div>
+                                            <div className="bg-slate-50 p-2 rounded-xl">
+                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Daily (21.75)</span>
+                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                    ₱{(employeeRate / 21.75).toFixed(2)}
+                                                </p>
+                                            </div>
+                                            <div className="bg-slate-50 p-2 rounded-xl">
+                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Hourly Rate</span>
+                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                    ₱{((employeeRate / 21.75) / 8).toFixed(2)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            </div>
                         )}
                     </div>
 
@@ -465,12 +507,7 @@ const PayrollCreate = () => {
                             </div>
                         </div>
 
-                        {/* Horizontal-scroll chip strip: each preset keeps its full label on
-                            one line no matter the screen width, and scrolls instead of
-                            wrapping or squeezing on narrow phones. */}
-                        <div
-                            className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                        >
+                        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             <button
                                 type="button"
                                 onClick={() => applyCutoffPreset('current_1st')}
@@ -587,6 +624,37 @@ const PayrollCreate = () => {
                             )}
                         </div>
 
+                        {/* FACTORY PIECES PRODUCED INPUT FIELD */}
+                        {isFactoryEmployee && (
+                            <div className="p-5 bg-amber-50/80 rounded-2xl border border-amber-200/80 space-y-2.5">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-xs font-bold text-amber-900 uppercase tracking-wide">
+                                        Pieces Produced / Output Quantity
+                                    </label>
+                                    <span className="text-[10px] font-bold text-amber-800 uppercase bg-amber-200/60 px-2 py-0.5 rounded-md">
+                                        ₱{employeeRate.toFixed(2)} / Piece
+                                    </span>
+                                </div>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    name="pieces_produced"
+                                    value={formData.pieces_produced}
+                                    onChange={handleInputChange}
+                                    className="w-full p-4 bg-white border border-amber-300 rounded-xl font-mono text-amber-950 text-2xl font-black focus:ring-2 focus:ring-amber-500 transition-all outline-none shadow-xs touch-manipulation"
+                                    placeholder="Enter total pieces..."
+                                    required
+                                />
+                                <div className="flex justify-between items-center text-xs font-semibold text-slate-600 pt-1">
+                                    <span>Calculated Basic Gross Earnings:</span>
+                                    <span className="font-mono font-black text-emerald-600 text-base">
+                                        ₱{((parseFloat(formData.pieces_produced) || 0) * employeeRate).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Days Worked (Present)</label>
@@ -596,7 +664,7 @@ const PayrollCreate = () => {
                                     name="days_worked"
                                     value={formData.days_worked}
                                     readOnly
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner text-base"
                                     required
                                 />
                                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
@@ -611,7 +679,7 @@ const PayrollCreate = () => {
                                     name="overtime_hours"
                                     value={formData.overtime_hours}
                                     readOnly
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner text-base"
                                 />
                                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
                                     <i className="ti ti-clock text-blue-500"></i> Computed per standard shift schedule
@@ -689,7 +757,7 @@ const PayrollCreate = () => {
                                 name="late_deductions"
                                 value={formData.late_deductions}
                                 onChange={handleInputChange}
-                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm touch-manipulation"
+                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm touch-manipulation text-base"
                                 placeholder="0.00"
                             />
                             <p className="text-[11px] text-slate-500">
@@ -709,7 +777,7 @@ const PayrollCreate = () => {
                         <button
                             type="submit"
                             disabled={isSubmitting || !formData.employee_id}
-                            className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
+                            className="w-full min-h-[56px] py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
                         >
                             {!isSubmitting ? (
                                 <>
@@ -726,6 +794,140 @@ const PayrollCreate = () => {
                     </div>
                 </form>
             </div>
+
+            {/* SEARCHABLE EMPLOYEE MODAL */}
+            <AnimatePresence>
+                {isEmpModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsEmpModalOpen(false)}
+                            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+                        />
+
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
+                        >
+                            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-base font-bold">
+                                        <i className="ti ti-users"></i>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-extrabold text-slate-800">Select Employee</h3>
+                                        <p className="text-xs text-slate-400">Choose workforce member for payroll computation</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEmpModalOpen(false)}
+                                    className="w-9 h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-lg transition-colors touch-manipulation"
+                                >
+                                    <i className="ti ti-x"></i>
+                                </button>
+                            </div>
+
+                            <div className="p-4 border-b border-slate-100 space-y-3 bg-white">
+                                <div className="relative">
+                                    <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                                    <input
+                                        type="text"
+                                        value={empSearch}
+                                        onChange={(e) => setEmpSearch(e.target.value)}
+                                        placeholder="Search by name or department..."
+                                        className="w-full pl-10 pr-4 py-3 bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-base font-medium text-slate-800 outline-none transition-all"
+                                    />
+                                    {empSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEmpSearch('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            <i className="ti ti-x text-sm"></i>
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    {availableDepartments.map((dept) => (
+                                        <button
+                                            key={dept}
+                                            type="button"
+                                            onClick={() => setSelectedDeptFilter(dept)}
+                                            className={`shrink-0 min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            {dept}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="overflow-y-auto p-3 space-y-2 divide-y divide-slate-100">
+                                {filteredEmployees.length === 0 ? (
+                                    <div className="py-12 text-center text-slate-400 space-y-2">
+                                        <i className="ti ti-search-off text-3xl block"></i>
+                                        <p className="text-sm font-semibold">No employees match your search</p>
+                                    </div>
+                                ) : (
+                                    filteredEmployees.map((emp) => {
+                                        const isEmpFactory = (emp.department || '').toLowerCase() === 'factory';
+                                        const rate = parseFloat(emp.piece_rate || emp.rate_per_piece || emp.salary || emp.monthly_salary || 0);
+                                        const isSelected = String(formData.employee_id) === String(emp.id);
+
+                                        return (
+                                            <button
+                                                key={emp.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setFormData(prev => ({ ...prev, employee_id: emp.id }));
+                                                    setIsEmpModalOpen(false);
+                                                }}
+                                                className={`w-full min-h-[52px] p-3 rounded-2xl flex items-center justify-between text-left transition-all touch-manipulation active:scale-[0.98] ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className={`w-10 h-10 rounded-xl font-bold text-sm flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                                        {emp.first_name?.[0]}{emp.last_name?.[0]}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-bold text-slate-800 truncate">
+                                                            {emp.first_name} {emp.last_name}
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                                                                {emp.department || 'Operations'}
+                                                            </span>
+                                                            <span className="text-slate-300">&middot;</span>
+                                                            <span className="text-[11px] font-mono font-bold text-emerald-600">
+                                                                ₱{rate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / {isEmpFactory ? 'PC' : 'MO'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="shrink-0 ml-2">
+                                                    {isSelected ? (
+                                                        <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">
+                                                            <i className="ti ti-check"></i>
+                                                        </span>
+                                                    ) : (
+                                                        <i className="ti ti-chevron-right text-slate-300"></i>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
