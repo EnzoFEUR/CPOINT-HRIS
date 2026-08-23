@@ -375,8 +375,8 @@ export default function Show() {
                                     <i className="ti ti-printer text-base sm:text-lg" /> Print Badge
                                 </button>
                             </div>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </div>      
                 )}
             </AnimatePresence>
         </>
