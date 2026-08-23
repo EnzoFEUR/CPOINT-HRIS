@@ -5,6 +5,26 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 
+const toSafeNumber = (val) => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const parsed = parseFloat(String(val).replace(/[^0-9.-]+/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
+};
+
+const calculateGrossPay = (payroll) => {
+    if (!payroll) return 0;
+    if (payroll.gross_pay !== undefined && payroll.gross_pay !== null) {
+        return toSafeNumber(payroll.gross_pay);
+    }
+    const basic = toSafeNumber(payroll.basic_pay);
+    const ot = toSafeNumber(payroll.overtime_pay);
+    const holiday = toSafeNumber(payroll.holiday_pay);
+    const leave = toSafeNumber(payroll.leave_pay);
+    const matDiff = toSafeNumber(payroll.maternity_salary_differential);
+    return basic + ot + holiday + leave + matDiff;
+};
+
 /**
  * Enterprise Payroll Ledger & Financial Hub
  * Supports instant search, multi-parameter filtering, responsive card/table views, and DOLE audit summaries.
