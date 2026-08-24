@@ -359,11 +359,11 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
             { count: pendingLeavesCount },
             { data: recentLogs }
         ] = await Promise.all([
-            supabase.from('employees').select('*', { count: 'exact', head: true }),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).eq('department', 'Factory'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).eq('department', 'Retail'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).eq('department', 'IT'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).eq('department', 'HR/Admin'),
+            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security'),
+            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'Factory'),
+            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'Retail'),
+            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'IT'),
+            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'HR/Admin'),
             supabase.from('attendances').select('*', { count: 'exact', head: true }).eq('date', todayStr),
             supabase.from('attendances').select('*', { count: 'exact', head: true }).eq('date', todayStr).ilike('status', '%Late%'),
             supabase.from('leave_requests').select('*', { count: 'exact', head: true })

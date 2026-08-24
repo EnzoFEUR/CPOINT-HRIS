@@ -19,9 +19,9 @@ export default function PayrollShow() {
     const [payroll, setPayroll] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState(null);
+    const [imgError, setImgError] = useState(false);
 
     useEffect(() => {
-        // Defensive check: Do not execute network requests for undefined or malformed IDs
         if (!id || id === 'undefined' || !isValidUUID(id)) {
             setIsLoading(false);
             setErrorMessage('Invalid or missing Payroll record ID.');
@@ -31,6 +31,7 @@ export default function PayrollShow() {
         const fetchPayroll = async () => {
             setIsLoading(true);
             setErrorMessage(null);
+            setImgError(false);
             try {
                 const res = await fetchWithAuth(`/api/payroll/${id}`);
                 const result = await res.json();
@@ -107,55 +108,101 @@ export default function PayrollShow() {
         );
     }
 
-    // Holiday pay: an itemized array saved by the payroll route
-    // (payroll.holiday_breakdown), each entry shaped like the output of
-    // computeHolidayPayForPeriod() in payrollCalculations.js. Only ever
-    // render this section when there's something to show — most cutoffs
-    // won't contain a holiday at all.
     const holidayBreakdown = Array.isArray(payroll.holiday_breakdown) ? payroll.holiday_breakdown : [];
     const holidayPay = Number(payroll.holiday_pay || 0);
     const paidHolidayItems = holidayBreakdown.filter((h) => Number(h?.pay) > 0);
     const hasHolidayPay = holidayPay > 0 && paidHolidayItems.length > 0;
 
-    // Pre-calculate Gross Earnings to compute percentages (now includes holiday pay)
     const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0) + holidayPay;
 
-    // Logic to split the remarks string into itemized deductions
-    const deductionItems = payroll.remarks ? payroll.remarks.split(', ') : [];
-    let hasItemizedDeductions = false;
-    const itemizedDeductionsElements = [];
+    // --- CLEAN & DEDUPLICATED DEDUCTIONS PARSER ---
+    const deductionsMap = new Map();
 
-    deductionItems.forEach((item, index) => {
-        const parts = item.split(': ');
-        if (parts.length === 2 && !isNaN(Number(parts[1].replace(/,/g, '')))) {
-            hasItemizedDeductions = true;
-            const deductionName = parts[0].trim();
-            const deductionAmount = Number(parts[1].replace(/,/g, ''));
+    const setDeduction = (rawName, rawAmount) => {
+        if (!rawName) return;
+        const amount = Number(rawAmount || 0);
+        if (isNaN(amount)) return;
 
-            // Calculate percentage for ALL deductions if gross earnings exist
-            let percentageDisplay = null;
-            if (grossEarnings > 0) {
-                const percentage = ((deductionAmount / grossEarnings) * 100).toFixed(2);
-                percentageDisplay = (
-                    <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md ml-2 tracking-wide uppercase">
-                        {percentage}%
-                    </span>
-                );
+        const displayName = rawName.trim();
+        const normKey = displayName.toLowerCase();
+
+        // Check if an existing key matches to prevent duplicates
+        let targetKey = normKey;
+        for (const existingKey of deductionsMap.keys()) {
+            if (
+                (existingKey.includes('late') && normKey.includes('late')) ||
+                (existingKey.includes('absence') && normKey.includes('absence')) ||
+                existingKey === normKey
+            ) {
+                targetKey = existingKey;
+                break;
             }
-
-            itemizedDeductionsElements.push(
-                <div key={index} className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600 font-medium flex items-center">
-                        {deductionName}
-                        {percentageDisplay}
-                    </span>
-                    <span className="text-sm font-mono font-medium text-red-600">
-                        -₱{deductionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                </div>
-            );
         }
-    });
+
+        // Update map value
+        deductionsMap.set(targetKey, { name: displayName, amount });
+    };
+
+    // 1. Parse string remarks (e.g., "SSS: 750, PH: 1250, HDMF: 100, Tax: 0")
+    if (payroll.remarks) {
+        const items = payroll.remarks.split(',');
+        items.forEach((item) => {
+            const parts = item.split(':').map((s) => s?.trim());
+            if (parts.length === 2) {
+                const valNum = Number(parts[1].replace(/,/g, ''));
+                if (!isNaN(valNum)) {
+                    setDeduction(parts[0], valNum);
+                }
+            }
+        });
+    }
+
+    // 2. Fetch Late & Absence deductions directly from object fields
+    const lateAmt = Number(
+        payroll.late_deductions ??
+        payroll.late_deduction ??
+        payroll.tardiness_deduction ??
+        payroll.late_and_absence_deductions ??
+        payroll.late_amount ??
+        payroll.lates ??
+        0
+    );
+
+    const absenceAmt = Number(
+        payroll.absence_deductions ??
+        payroll.absence_deduction ??
+        payroll.absences ??
+        payroll.absence_amount ??
+        0
+    );
+
+    if (lateAmt > 0) setDeduction('Late / Tardiness Deductions', lateAmt);
+    if (absenceAmt > 0) setDeduction('Absences / Undertime', absenceAmt);
+
+    // 3. Optional loans / advances
+    if (Number(payroll.loan || payroll.loans || 0) > 0) {
+        setDeduction('Company Loan', Number(payroll.loan || payroll.loans));
+    }
+    if (Number(payroll.cash_advance || payroll.advances || 0) > 0) {
+        setDeduction('Cash Advance', Number(payroll.cash_advance || payroll.advances));
+    }
+
+    const deductionsList = Array.from(deductionsMap.values());
+
+    // Fallback if empty but payroll.deductions exists
+    if (deductionsList.length === 0 && Number(payroll.deductions || 0) > 0) {
+        deductionsList.push({ name: 'Total Deductions', amount: Number(payroll.deductions) });
+    }
+
+    const totalDeductions = deductionsList.reduce((sum, item) => sum + item.amount, 0);
+    const netPay = grossEarnings - totalDeductions;
+
+    // Resolve employee avatar image source
+    const avatarUrl = payroll.employees?.avatar_url || (
+        payroll.employees?.company_id && payroll.employees?.id
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`
+            : null
+    );
 
     return (
         <div className="max-w-4xl mx-auto py-10 px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
@@ -166,12 +213,10 @@ export default function PayrollShow() {
                 </Link>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                    {/* Print Button */}
                     <button onClick={() => window.print()} className="min-h-[44px] px-5 py-2.5 bg-slate-800 text-white text-sm font-bold rounded-xl hover:bg-slate-900 active:scale-95 transition flex items-center justify-center shadow-md touch-manipulation">
                         <i className="ti ti-printer mr-2 text-lg"></i> Print Payslip
                     </button>
 
-                    {/* Delete Button */}
                     <form onSubmit={handleDelete}>
                         <button type="submit" className="w-full min-h-[44px] px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 active:scale-95 transition flex items-center justify-center shadow-md touch-manipulation">
                             <i className="ti ti-trash mr-2 text-lg"></i> Delete Record
@@ -227,9 +272,7 @@ export default function PayrollShow() {
                         </div>
                     </div>
 
-                    {/* Holiday Pay Banner — only rendered when this payslip actually
-                        includes a holiday premium, so it never clutters an ordinary
-                        cutoff with an empty section. */}
+                    {/* Holiday Pay Banner */}
                     {hasHolidayPay && (
                         <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-5 print:border print:border-slate-800 print:bg-transparent">
                             <div className="flex items-center justify-between mb-3">
@@ -305,18 +348,40 @@ export default function PayrollShow() {
                         <div>
                             <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Deductions</h3>
                             <div className="space-y-3">
+                                {deductionsList.length > 0 ? (
+                                    deductionsList.map((ded, index) => {
+                                        let percentageDisplay = null;
+                                        if (grossEarnings > 0 && ded.amount > 0) {
+                                            const percentage = ((ded.amount / grossEarnings) * 100).toFixed(2);
+                                            percentageDisplay = (
+                                                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md ml-2 tracking-wide uppercase">
+                                                    {percentage}%
+                                                </span>
+                                            );
+                                        }
 
-                                {hasItemizedDeductions ? itemizedDeductionsElements : (
+                                        return (
+                                            <div key={index} className="flex justify-between items-center">
+                                                <span className="text-sm text-slate-600 font-medium flex items-center">
+                                                    {ded.name}
+                                                    {percentageDisplay}
+                                                </span>
+                                                <span className="text-sm font-mono font-medium text-red-600">
+                                                    -₱{ded.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
                                     <div className="flex justify-between items-center">
-                                        <span className="text-sm text-slate-600 font-medium">Total Deductions</span>
-                                        <span className="text-sm font-mono font-medium text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-sm text-slate-600 font-medium">No Deductions</span>
+                                        <span className="text-sm font-mono font-medium text-slate-400">₱0.00</span>
                                     </div>
                                 )}
-
                             </div>
                             <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
                                 <span className="text-sm font-bold text-slate-800">Total Deductions</span>
-                                <span className="text-base font-mono font-bold text-red-600">-₱{Number(payroll.deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-base font-mono font-bold text-red-600">-₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         </div>
                     </div>
@@ -329,7 +394,7 @@ export default function PayrollShow() {
                         </div>
                         <div className="mt-4 md:mt-0">
                             <span className="text-3xl font-black font-mono text-blue-700 print:text-slate-900">
-                                ₱{Number(payroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ₱{netPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
                     </div>

@@ -21,13 +21,15 @@ router.get('/', cacheResponse(20), async (req, res) => {
             
         if (error) throw error;
         
-        const enrichedRecords = records.map(record => ({
-            ...record,
-            employee_name: record.employees ? `${record.employees.first_name} ${record.employees.last_name}` : 'Unknown',
-            department: record.employees?.department || 'Unknown',
-            company_id: record.employees?.company_id || null,
-            employee_id: record.employees?.id || record.employee_id
-        }));
+        const enrichedRecords = records
+            .filter(record => record.employees && record.employees.company_id)
+            .map(record => ({
+                ...record,
+                employee_name: `${record.employees.first_name} ${record.employees.last_name}`,
+                department: record.employees.department || 'Unknown',
+                company_id: record.employees.company_id || null,
+                employee_id: record.employees.id || record.employee_id
+            }));
 
         res.json(enrichedRecords);
     } catch (err) {
