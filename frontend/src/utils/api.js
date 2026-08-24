@@ -13,11 +13,13 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
-        // 2. Prepare headers with the injected token
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(options.headers || {}),
-        };
+        // 2. Prepare headers with injected token & conditional Content-Type
+        const headers = { ...(options.headers || {}) };
+
+        // Do NOT set Content-Type to application/json if sending FormData
+        if (!(options.body instanceof FormData)) {
+            headers['Content-Type'] = 'application/json';
+        }
 
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;

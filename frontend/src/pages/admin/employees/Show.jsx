@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { IconFolder, IconFileOff, IconFile, IconExternalLink } from '@tabler/icons-react';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,14 +11,23 @@ export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+
+    // Employee State
     const [employee, setEmployee] = useState(null);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [imageError, setImageError] = useState(false);
+
+    // Modals State
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // 201 Documents State
+    const [documents, setDocuments] = useState([]);
+    const [isDocsLoading, setIsDocsLoading] = useState(true);
+
+    // Fetch Employee Details
     useEffect(() => {
         if (!id || id === 'undefined') return;
         
@@ -45,6 +55,93 @@ export default function Show() {
         return () => { isMounted = false; };
     }, [id, navigate]);
 
+    // Fetch 201 Documents
+    useEffect(() => {
+        if (!id || id === 'undefined') return;
+
+        let isMounted = true;
+        setIsDocsLoading(true);
+
+        const safeParseJson = async (res) => {
+            if (!res.ok) return null;
+            const text = await res.text();
+            if (!text) return null;
+            try {
+                return JSON.parse(text);
+            } catch {
+                return null;
+            }
+        };
+
+        const loadDocuments = async () => {
+            try {
+                let res = await fetchWithAuth(`/api/employee-documents?employee_id=${id}`);
+                let data = await safeParseJson(res);
+
+                // Fallback route check
+                if (!data || res.status === 404) {
+                    res = await fetchWithAuth(`/api/documents?employee_id=${id}`);
+                    data = await safeParseJson(res);
+                }
+
+                if (!isMounted) return;
+
+                if (data && data.success) {
+                    const docsList = data.documents || data.data || [];
+                    setDocuments(Array.isArray(docsList) ? docsList : []);
+                } else {
+                    setDocuments([]);
+                }
+            } catch (err) {
+                if (isMounted) setDocuments([]);
+            } finally {
+                if (isMounted) setIsDocsLoading(false);
+            }
+        };
+
+        loadDocuments();
+
+        return () => { isMounted = false; };
+    }, [id]);
+
+    const getFileMeta = (fileName = '') => {
+        const ext = (fileName.split('.').pop() || '').toLowerCase();
+        switch (ext) {
+            case 'pdf':
+                return { icon: 'ti-file-type-pdf', color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' };
+            case 'doc':
+            case 'docx':
+                return { icon: 'ti-file-type-docx', color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' };
+            case 'xls':
+            case 'xlsx':
+            case 'csv':
+                return { icon: 'ti-file-type-xls', color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' };
+            case 'ppt':
+            case 'pptx':
+                return { icon: 'ti-file-type-ppt', color: 'text-orange-500', bg: 'bg-orange-50', border: 'border-orange-100' };
+            case 'png':
+            case 'jpg':
+            case 'jpeg':
+            case 'gif':
+            case 'webp':
+                return { icon: 'ti-photo', color: 'text-purple-500', bg: 'bg-purple-50', border: 'border-purple-100' };
+            case 'zip':
+            case 'rar':
+            case '7z':
+                return { icon: 'ti-file-zip', color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
+            default:
+                return { icon: 'ti-file', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-100' };
+        }
+    };
+
+    const getDocumentUrl = (filePath) => {
+        if (!filePath) return '#';
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            return filePath;
+        }
+        return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/documents/${filePath}`;
+    };
+
     const printCard = () => {
         window.print();
     };
@@ -53,7 +150,6 @@ export default function Show() {
         if (!employee) return;
         setIsDeleting(true);
 
-        // Artificial smooth UX delay
         await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
@@ -66,7 +162,6 @@ export default function Show() {
             if (resData.success) {
                 toast.success('Employee deleted permanently.');
                 
-                // Instantly wipe the employee from the cache so they don't 'pop' out later
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? oldData.filter(emp => emp.id !== employee.id) : [];
                 });
@@ -120,7 +215,6 @@ export default function Show() {
             
             <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
                 
-                
                 <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
                 <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
@@ -131,6 +225,11 @@ export default function Show() {
                     </Link>
                     
                     <div className="flex flex-wrap gap-2 sm:gap-3">
+                        {/* 201 DOCUMENTS DIRECTORY LINK */}
+                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-sky-50 text-sky-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-sky-100 transition-all shadow-xs sm:shadow-sm border border-sky-100 flex items-center gap-1.5 sm:gap-2 tap-active">
+                            <i className="ti ti-folders text-base sm:text-lg" /> 201 Documents
+                        </Link>
+
                         <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
                             <i className="ti ti-qrcode text-base sm:text-lg" /> Print ID
                         </button>
@@ -249,6 +348,83 @@ export default function Show() {
                             </div>
                         </div>
                     </div>
+                </motion.div>
+
+                {/* 201 DOCUMENTS DISPLAY CARD */}
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-8">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-sky-50 text-sky-600 rounded-xl sm:rounded-2xl flex items-center justify-center border border-sky-100">
+                                <i className="ti ti-folders text-xl sm:text-2xl" />
+                            </div>
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">201 Documents</h3>
+                        </div>
+                        <span className="inline-flex px-3.5 py-1.5 bg-slate-50 text-slate-500 font-black text-[10px] sm:text-xs rounded-xl border border-slate-200 uppercase tracking-widest">
+                            {documents.length} {documents.length === 1 ? 'File' : 'Files'} Uploaded
+                        </span>
+                    </div>
+
+                    {isDocsLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12 sm:py-16 space-y-3 sm:space-y-4">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                            <p className="text-slate-400 font-bold tracking-widest uppercase text-[11px] sm:text-xs">Loading Documents...</p>
+                        </div>
+                    ) : documents.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-center py-12 sm:py-16 px-4 bg-slate-50/60 rounded-xl sm:rounded-2xl border border-dashed border-slate-200">
+                            <div className="h-14 w-14 sm:h-16 sm:w-16 bg-white text-slate-300 rounded-2xl flex items-center justify-center border border-slate-100 shadow-xs mb-4">
+                                <i className="ti ti-folder-x text-2xl sm:text-3xl" />
+                            </div>
+                            <h4 className="text-sm sm:text-base font-black text-slate-600 mb-1.5">No 201 documents uploaded yet</h4>
+                            <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-sm">
+                                There are currently no files attached to this employee record.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                            {documents.map((doc) => {
+                                const meta = getFileMeta(doc.file_name || doc.title || '');
+                                const displayTitle = doc.title || doc.file_name || 'Untitled Document';
+                                const fileUrl = getDocumentUrl(doc.file_path);
+
+                                return (
+                                    <div
+                                        key={doc.id}
+                                        className="flex items-start gap-3 p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all group"
+                                    >
+                                        <div className={`h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-xl flex items-center justify-center border ${meta.bg} ${meta.border} ${meta.color}`}>
+                                            <i className={`ti ${meta.icon} text-xl sm:text-2xl`} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold text-slate-700 truncate" title={displayTitle}>
+                                                {displayTitle}
+                                            </p>
+                                            {doc.category && (
+                                                <span className="inline-flex mt-1.5 px-2.5 py-0.5 bg-slate-50 text-slate-500 font-bold text-[10px] rounded-lg border border-slate-200 uppercase tracking-widest">
+                                                    {doc.category}
+                                                </span>
+                                            )}
+                                            <div className="mt-2.5 flex items-center gap-1.5">
+                                                {doc.file_path ? (
+                                                    <a
+                                                        href={fileUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-widest"
+                                                    >
+                                                        <i className="ti ti-external-link text-sm" /> View File
+                                                    </a>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-300 uppercase tracking-widest">
+                                                        <i className="ti ti-link-off text-sm" /> No File
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </motion.div>
             </div>
 
