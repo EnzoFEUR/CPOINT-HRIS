@@ -30,6 +30,7 @@ import EmployeeIndex from './pages/admin/employees/Index';
 import EmployeeCreate from './pages/admin/employees/Create';
 import EmployeeEdit from './pages/admin/employees/Edit';
 import EmployeeShow from './pages/admin/employees/Show';
+import Documents from "./pages/admin/documents/Documents";
 import EmployeeQrPrint from './pages/admin/employees/QrPrint';
 
 // Admin / Payroll
@@ -53,6 +54,7 @@ import DisciplinaryIndex from './pages/admin/disciplinary/Index';
 // Employee
 import MyQr from './pages/employee/MyQr';
 import EmployeeScanner from './pages/employee/Scanner';
+import MyProfile from './pages/employee/MyProfile';
 
 import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -161,7 +163,7 @@ const getPageTitle = (pathname) => {
   if (pathname === '/employee/dashboard') return 'Employee Portal';
   if (pathname === '/employee/qr') return 'My Digital QR';
   if (pathname === '/employee/scanner') return 'Self Scanner';
-  if (pathname === '/profile') return 'My Profile';
+  if (pathname === '/employee/profile') return 'My Profile';
 
   const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
   if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(segment)) {
@@ -1504,6 +1506,9 @@ function App() {
           <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
           <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
 
+          {/* Admin - Documents */}
+          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
+
           {/* Admin - Attendance */}
           <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
           <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
@@ -1530,6 +1535,7 @@ function App() {
           <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
           <Route path="/employee/qr" element={<MyQr />} />
           <Route path="/employee/scanner" element={<EmployeeScanner />} />
+          <Route path="/profile" element={<MyProfile />} />
         </Route>
       </Routes>
       <SpeedInsights />
