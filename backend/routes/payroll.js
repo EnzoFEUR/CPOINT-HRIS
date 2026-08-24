@@ -2,20 +2,51 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import {
+    toSafeNumber,
+    round2,
+    deriveRates,
     computeHolidayPayForPeriod,
+    calculateMaternityDifferential,
+    calculateStatutoryLeavePay,
     aggregate13thMonthPay,
 } from '../utils/payrollCalculations.js';
 
 const router = express.Router();
 
-// Helper to validate UUID format
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+/**
+ * Helper to normalize and sort date bounds to work bi-directionally
+ */
+const normalizeDateRange = (d1, d2) => {
+    if (!d1 || !d2) return { start: d1 || d2, end: d2 || d1 };
+    return d1 <= d2 ? { start: d1, end: d2 } : { start: d2, end: d1 };
+};
+
+/**
+ * Helper to derive an effective monthly salary base across all employee pay types
+ * (Monthly Salary, Daily Rate, or Piece Rate)
+ */
+const getEffectiveMonthlySalary = (employee) => {
+    if (!employee) return 0;
+
+    // Check both salary and monthly_salary database fields
+    const salary = toSafeNumber(employee.salary || employee.monthly_salary);
+    if (salary > 0) return salary;
+
+    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
+    if (dailyRate > 0) return dailyRate * 26; // Standard 26 working days conversion factor
+
+    const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
+    if (pieceRate > 0) return pieceRate * 8 * 26; // Standard hourly equivalent conversion
+
+    return 0;
+};
 
 // ==========================================
 // 1. STATUTORY SETTINGS ROUTES
 // ==========================================
 
-// GET Statutory Settings
 router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -31,7 +62,6 @@ router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     }
 });
 
-// UPDATE/UPSERT Statutory Settings from UI
 router.put('/statutory-settings', async (req, res) => {
     try {
         const payload = req.body;
@@ -64,15 +94,24 @@ router.put('/statutory-settings', async (req, res) => {
 });
 
 // ==========================================
-// 2. HOLIDAYS
+// 2. HOLIDAYS (BI-DIRECTIONAL DATE SUPPORT)
 // ==========================================
 
-// GET holiday list, optionally scoped to a date range: ?start=YYYY-MM-DD&end=YYYY-MM-DD
 router.get('/holidays', cacheResponse(60), async (req, res) => {
     try {
         let query = supabase.from('holidays').select('*').order('date', { ascending: true });
-        if (req.query.start) query = query.gte('date', req.query.start);
-        if (req.query.end) query = query.lte('date', req.query.end);
+
+        const rawStart = req.query.start || req.query.start_date;
+        const rawEnd = req.query.end || req.query.end_date;
+
+        if (rawStart && rawEnd) {
+            const { start, end } = normalizeDateRange(rawStart, rawEnd);
+            query = query.gte('date', start).lte('date', end);
+        } else if (rawStart) {
+            query = query.gte('date', rawStart);
+        } else if (rawEnd) {
+            query = query.lte('date', rawEnd);
+        }
 
         const { data, error } = await query;
         if (error) throw error;
@@ -82,7 +121,6 @@ router.get('/holidays', cacheResponse(60), async (req, res) => {
     }
 });
 
-// CREATE a holiday (admin: proclamation additions/corrections)
 router.post('/holidays', async (req, res) => {
     try {
         const { date, name, type } = req.body;
@@ -105,7 +143,6 @@ router.post('/holidays', async (req, res) => {
     }
 });
 
-// DELETE a holiday
 router.delete('/holidays/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -127,7 +164,6 @@ router.delete('/holidays/:id', async (req, res) => {
 // 3. 13TH MONTH PAY
 // ==========================================
 
-// GET 13th month pay aggregation for one employee: ?year=2026
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
         const { employee_id } = req.params;
@@ -135,7 +171,7 @@ router.get('/13th-month/:employee_id', async (req, res) => {
 
         const { data: records, error } = await supabase
             .from('payrolls')
-            .select('basic_pay, period_start')
+            .select('basic_pay, maternity_salary_differential, period_start')
             .eq('employee_id', employee_id)
             .gte('period_start', `${year}-01-01`)
             .lte('period_start', `${year}-12-31`);
@@ -150,14 +186,9 @@ router.get('/13th-month/:employee_id', async (req, res) => {
 });
 
 // ==========================================
-// 4. HOLIDAY PAY PREVIEW (no write — for PayrollCreate's UI card)
+// 4. HOLIDAY & PAYROLL PREVIEW
 // ==========================================
 
-// POST so a full { employee_id, period_start, period_end } body can be
-// sent without URL-encoding concerns. This is the SINGLE source of truth
-// for holiday math — the frontend calls this instead of keeping its own
-// copy of payrollCalculations.js, so the number shown before submit can
-// never drift from what POST / actually saves.
 router.post('/preview', async (req, res) => {
     try {
         const { employee_id, period_start, period_end } = req.body;
@@ -165,27 +196,28 @@ router.post('/preview', async (req, res) => {
             return res.status(400).json({ error: 'employee_id, period_start, and period_end are required.' });
         }
 
+        const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
+
         const { data: employee } = await supabase
             .from('employees')
             .select('*')
             .eq('id', employee_id)
             .single();
 
-        if (!employee || !employee.salary) {
-            // Not an error — just nothing to preview yet (e.g. employee has
-            // no salary set). Return an empty, well-shaped result.
+        const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
+        if (effectiveMonthlySalary <= 0) {
             return res.json({ items: [], totalHolidayPay: 0 });
         }
 
         // Fetch active holidays and employee attendance records for the given pay period
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
+            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', period_start)
-                .lte('date', period_end),
+                .gte('date', pStart)
+                .lte('date', pEnd),
         ]);
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
@@ -193,9 +225,9 @@ router.post('/preview', async (req, res) => {
             : [0]; // Default: Sunday (0) rest day
 
         const preview = computeHolidayPayForPeriod({
-            periodStart: period_start,
-            periodEnd: period_end,
-            monthlySalary: employee.salary,
+            periodStart: pStart,
+            periodEnd: pEnd,
+            monthlySalary: effectiveMonthlySalary,
             holidayList: holidayList || [],
             attendanceLogs: attendanceLogs || [],
             restDays,
@@ -208,10 +240,9 @@ router.post('/preview', async (req, res) => {
 });
 
 // ==========================================
-// 5. PAYROLL COMPUTATION & LIST ROUTES
+// 5. COMPUTE & SAVE PAYROLL (FULL ENGINE)
 // ==========================================
 
-// GET All Payrolls
 router.get('/', cacheResponse(20), async (req, res) => {
     try {
         let query = supabase.from('payrolls').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
@@ -239,115 +270,151 @@ router.get('/', cacheResponse(20), async (req, res) => {
     }
 });
 
-// COMPUTE & SAVE PAYROLL
 router.post('/', async (req, res) => {
     try {
-        const { employee_id, period_start, period_end, days_worked, overtime_hours, late_deductions } = req.body;
+        const {
+            employee_id,
+            period_start,
+            period_end,
+            overtime_hours,
+            late_deductions,
+            sss_cash_benefit,
+            maternity_leave_days,
+            paternity_days,
+            solo_parent_days,
+            sil_days,
+            pieces_produced,
+        } = req.body;
 
-        // Prevent duplicate payslips in the same period
+        const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
+
         const { data: existing } = await supabase
             .from('payrolls')
             .select('id')
             .eq('employee_id', employee_id)
-            .eq('period_start', period_start)
-            .eq('period_end', period_end)
+            .eq('period_start', pStart)
+            .eq('period_end', pEnd)
             .maybeSingle();
 
         if (existing) {
             return res.status(400).json({ error: 'A payslip for this employee in this pay period already exists.' });
         }
 
-        // Fetch Employee Salary
         const { data: employee } = await supabase
             .from('employees')
             .select('*')
             .eq('id', employee_id)
             .single();
 
-        if (!employee || !employee.salary) {
-            return res.status(400).json({ error: 'Cannot compute payroll: Employee has no monthly salary set.' });
+        const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
+
+        if (!employee || effectiveMonthlySalary <= 0) {
+            return res.status(400).json({ error: 'Cannot compute payroll: Employee has no salary, daily rate, or piece rate set.' });
         }
 
-        // Fetch Dynamic Statutory Settings from Database
         const { data: statutory } = await supabase
             .from('statutory_settings')
             .select('*')
             .limit(1)
             .maybeSingle();
 
-        // Safe conversion of UI settings into variables with fallbacks
-        const sssEeRate = statutory?.sss_employee_rate ? parseFloat(statutory.sss_employee_rate) / 100 : 0.05;
-        const sssMaxMsc = statutory?.sss_max_msc || statutory?.sss_max_comp ? parseFloat(statutory.sss_max_msc || statutory.sss_max_comp) : 30000;
+        const sssEeRate = statutory?.sss_employee_rate ? toSafeNumber(statutory.sss_employee_rate) / 100 : 0.05;
+        const sssMaxMsc = statutory?.sss_max_msc ? toSafeNumber(statutory.sss_max_msc) : 35000;
 
-        const phTotalRate = statutory?.philhealth_rate ? parseFloat(statutory.philhealth_rate) / 100 : 0.053;
-        const phFloor = statutory?.philhealth_min_salary ? parseFloat(statutory.philhealth_min_salary) : 10000;
-        const phCeiling = statutory?.philhealth_max_salary ? parseFloat(statutory.philhealth_max_salary) : 100000;
+        const phTotalRate = statutory?.philhealth_rate ? toSafeNumber(statutory.philhealth_rate) / 100 : 0.050;
+        const phFloor = statutory?.philhealth_min_salary ? toSafeNumber(statutory.philhealth_min_salary) : 10000;
+        const phCeiling = statutory?.philhealth_max_salary ? toSafeNumber(statutory.philhealth_max_salary) : 100000;
 
-        const pagIbigEeRate = statutory?.pagibig_employee_rate ? parseFloat(statutory.pagibig_employee_rate) / 100 : 0.022;
-        const pagIbigMaxCap = statutory?.pagibig_max_contribution ? parseFloat(statutory.pagibig_max_contribution) : 33;
+        const pagIbigEeRate = statutory?.pagibig_employee_rate ? toSafeNumber(statutory.pagibig_employee_rate) / 100 : 0.02;
+        const pagIbigMaxCap = statutory?.pagibig_max_contribution ? toSafeNumber(statutory.pagibig_max_contribution) : 100;
 
         // Pull holidays and attendance logs for this pay period to calculate DOLE holiday pay
         const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', period_start).lte('date', period_end),
+            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', period_start)
-                .lte('date', period_end),
+                .gte('date', pStart)
+                .lte('date', pEnd),
         ]);
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
             : [0]; // Default: Sunday (0) rest day
 
+        // Compute Holiday Pay using Effective Monthly Salary Base
         const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
-            periodStart: period_start,
-            periodEnd: period_end,
-            monthlySalary: employee.salary,
+            periodStart: pStart,
+            periodEnd: pEnd,
+            monthlySalary: effectiveMonthlySalary,
             holidayList: holidayList || [],
             attendanceLogs: attendanceLogs || [],
             restDays,
         });
 
-        // Calculate Earnings
-        const monthlyRate = parseFloat(employee.salary);
-        const dailyRate = monthlyRate / 21.75;
-        const basicPay = monthlyRate / 2;
-        const hourlyRate = dailyRate / 8;
-        const overtimePay = (hourlyRate * 1.25) * parseFloat(overtime_hours || 0);
-        const grossPay = basicPay + overtimePay + totalHolidayPay;
+        // Compute Statutory Leave Payments
+        const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days }).leavePay;
+        const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days }).leavePay;
+        const silPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'SIL', daysTaken: sil_days }).leavePay;
+        const totalOtherLeavePay = round2(toSafeNumber(paternityPay) + toSafeNumber(soloParentPay) + toSafeNumber(silPay));
 
-        // 1. SSS: Cap Salary Base at Max Salary Credit, apply Employee Share %
-        const sssSalaryBase = Math.min(monthlyRate, sssMaxMsc);
-        const sss = sssSalaryBase * sssEeRate;
+        // Compute RA 11210 Maternity Salary Differential
+        let matDiffPay = 0;
+        if (toSafeNumber(maternity_leave_days) > 0) {
+            const matResult = calculateMaternityDifferential({
+                monthlySalary: effectiveMonthlySalary,
+                sssCashBenefit: sss_cash_benefit,
+                leaveDays: maternity_leave_days,
+            });
+            matDiffPay = toSafeNumber(matResult.salaryDifferential);
+        }
 
-        // 2. PhilHealth: Clamp Salary Base between Floor & Ceiling, split total rate 50/50
-        const phSalaryBase = Math.min(Math.max(monthlyRate, phFloor), phCeiling);
-        const philHealth = (phSalaryBase * phTotalRate) / 2;
+        // Guaranteed Numeric Additions
+        const safeBasic = toSafeNumber(basicPay);
+        const safeOt = toSafeNumber(overtimePay);
+        const safeHoliday = toSafeNumber(totalHolidayPay);
+        const safeLeave = toSafeNumber(totalOtherLeavePay);
+        const safeMatDiff = toSafeNumber(matDiffPay);
 
-        // 3. Pag-IBIG: Apply Employee Share % to Salary, capped at Max Contribution
-        let pagIbig = monthlyRate * pagIbigEeRate;
-        if (pagIbig > pagIbigMaxCap) pagIbig = pagIbigMaxCap;
+        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff);
 
-        // Split mandatory contributions for semi-monthly cutoff
-        const semiMonthlyContributions = (sss + philHealth + pagIbig) / 2;
-        const lateDed = parseFloat(late_deductions || 0);
+        // --- STATUTORY DEDUCTIONS ---
+        const contributionSalaryBase = (isFactory && monthlyRate <= 0) ? (grossPay * 2) : effectiveMonthlySalary;
 
-        // 4. Semi-Monthly TRAIN Law Withholding Tax Bracket
-        const taxableIncome = grossPay - semiMonthlyContributions - lateDed;
+        const sssSalaryBase = Math.min(contributionSalaryBase, sssMaxMsc);
+        const sssMonthly = round2(sssSalaryBase * sssEeRate);
+
+        const phSalaryBase = Math.min(Math.max(contributionSalaryBase, phFloor), phCeiling);
+        const philHealthMonthly = round2((phSalaryBase * phTotalRate) / 2);
+
+        let pagIbigMonthly = round2(contributionSalaryBase * pagIbigEeRate);
+        if (pagIbigMonthly > pagIbigMaxCap) pagIbigMonthly = pagIbigMaxCap;
+
+        // Halve for semi-monthly pay period deductions
+        const sss = round2(sssMonthly / 2);
+        const philHealth = round2(philHealthMonthly / 2);
+        const pagIbig = round2(pagIbigMonthly / 2);
+
+        const semiMonthlyContributions = round2(sss + philHealth + pagIbig);
+        const lateDed = round2(toSafeNumber(late_deductions));
+
+        // Tax Base Calculation (TRAIN Law)
+        const taxableGross = Math.max(0, grossPay - safeMatDiff);
+        const taxableIncome = Math.max(0, round2(taxableGross - semiMonthlyContributions - lateDed));
+
         let tax = 0;
         if (taxableIncome > 10417) {
             if (taxableIncome <= 16666) {
-                tax = (taxableIncome - 10417) * 0.15;
+                tax = round2((taxableIncome - 10417) * 0.15);
             } else if (taxableIncome <= 33332) {
-                tax = 937.50 + ((taxableIncome - 16667) * 0.20);
+                tax = round2(937.50 + (taxableIncome - 16667) * 0.20);
             } else if (taxableIncome <= 83332) {
-                tax = 4270.83 + ((taxableIncome - 33333) * 0.25);
+                tax = round2(4270.83 + (taxableIncome - 33333) * 0.25);
             } else if (taxableIncome <= 333332) {
-                tax = 16770.83 + ((taxableIncome - 83333) * 0.30);
+                tax = round2(16770.83 + (taxableIncome - 83333) * 0.30);
             } else {
-                tax = 91770.83 + ((taxableIncome - 333333) * 0.35);
+                tax = round2(91770.83 + (taxableIncome - 333333) * 0.35);
             }
         }
 
@@ -398,28 +465,22 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Notification Entry
-        try {
-            const { createNotification } = await import('./notifications.js');
-            await createNotification({
-                target: employee_id,
-                title: 'New Payslip',
-                text: `Your payslip for ${period_start} to ${period_end} is now available for viewing.`,
-                type: 'payroll'
-            });
-        } catch (notifErr) {
-            console.error('Failed to send payslip notification:', notifErr);
-        }
+        if (insertError) throw insertError;
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
-        res.json({ success: true, message: 'Payroll Computed & Saved!', holiday_pay: totalHolidayPay, holiday_breakdown: holidayBreakdown });
-
+        res.json({
+            success: true,
+            message: 'Payroll Computed & Saved!',
+            gross_pay: grossPay,
+            net_pay: netPay,
+            holiday_pay: safeHoliday,
+            maternity_differential: safeMatDiff,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// GET Single Payroll
 router.get('/:id', cacheResponse(20), async (req, res) => {
     try {
         const { id } = req.params;
@@ -442,7 +503,6 @@ router.get('/:id', cacheResponse(20), async (req, res) => {
     }
 });
 
-// DELETE Payroll
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -454,20 +514,6 @@ router.delete('/:id', async (req, res) => {
         if (error) throw error;
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
-
-        if (req.body.admin_id) {
-            const { createAuditLog } = await import('./auditLogs.js');
-            await createAuditLog({
-                log_name: 'payroll',
-                description: `Deleted payroll record ID ${id}`,
-                subject_type: 'App\\Models\\Payroll',
-                subject_id: id,
-                event: 'deleted',
-                causer_id: req.body.admin_id,
-                properties: {}
-            });
-        }
-
         res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -9,9 +9,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Controlled department state to drive dynamic payroll fields
+    const [department, setDepartment] = useState(defaultValues.department || 'Factory');
+
+    // Monthly Salary State
     const [displaySalary, setDisplaySalary] = useState(defaultValues.monthly_salary ? formatSalary(defaultValues.monthly_salary) : '');
     const [rawSalary, setRawSalary] = useState(defaultValues.monthly_salary || '');
-    
+
+    // Piece Rate State
+    const [displayPieceRate, setDisplayPieceRate] = useState(defaultValues.piece_rate ? formatSalary(defaultValues.piece_rate) : '');
+    const [rawPieceRate, setRawPieceRate] = useState(defaultValues.piece_rate || '');
+
     function formatSalary(value) {
         let strVal = String(value);
         let num = strVal.replace(/[^\d.]/g, '');
@@ -26,11 +35,23 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplaySalary(formatSalary(value));
     };
 
+    const handlePieceRateChange = (e) => {
+        const value = e.target.value.replace(/[^0-9.]/g, '');
+        setRawPieceRate(value);
+        setDisplayPieceRate(formatSalary(value));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
-        data.monthly_salary = parseFloat(data.monthly_salary);
+
+        // Attach pay type and numerical rates based on department
+        const isFactory = department === 'Factory';
+        data.department = department;
+        data.pay_type = isFactory ? 'piece_rate' : 'monthly';
+        data.monthly_salary = isFactory ? 0 : parseFloat(rawSalary || 0);
+        data.piece_rate = isFactory ? parseFloat(rawPieceRate || 0) : 0;
 
         setIsSubmitting(true);
         await new Promise(resolve => setTimeout(resolve, 800));
@@ -41,18 +62,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 body: JSON.stringify(data)
             });
             const result = await res.json();
-            
+
             if (result.success) {
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? [result.data, ...oldData] : [result.data];
                 });
 
-                navigate('/admin/employees', { 
-                    state: { 
-                        success: 'Account Created Successfully!', 
+                navigate('/admin/employees', {
+                    state: {
+                        success: 'Account Created Successfully!',
                         temp_password: result.temp_password,
                         company_id: result.data.company_id
-                    } 
+                    }
                 });
             } else {
                 toast.error('Error: ' + result.error);
@@ -93,32 +114,32 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-                    
+
                     {/* ACCOUNT DETAILS */}
                     <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
                         <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
                             <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-mail text-lg sm:text-xl" /></span>
                             Account Security
                         </h3>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
                                 <input type="email" name="email" required defaultValue={defaultValues.email || ''}
-                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                       placeholder="employee@company.com" />
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    placeholder="employee@company.com" />
                             </div>
-                            
+
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={defaultValues.role || 'employee'}
-                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
                                     <option value="admin">System Administrator</option>
                                 </select>
                             </div>
-                            
+
                             <div className="md:col-span-2 mt-1">
                                 <div className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl border border-blue-100 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
                                     <i className="ti ti-wand text-base" />
@@ -138,27 +159,31 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
                                 <input type="text" name="first_name" required defaultValue={defaultValues.first_name || ''}
-                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                       placeholder="John" />
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    placeholder="John" />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
                                 <input type="text" name="last_name" required defaultValue={defaultValues.last_name || ''}
-                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                       placeholder="Doe" />
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    placeholder="Doe" />
                             </div>
 
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
                                 <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
-                                       className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                       placeholder="e.g. Forklift Operator" />
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    placeholder="e.g. Machine Operator" />
                             </div>
 
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>
-                                <select name="department" defaultValue={defaultValues.department || 'Factory'}
-                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
+                                <select
+                                    name="department"
+                                    value={department}
+                                    onChange={(e) => setDepartment(e.target.value)}
+                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer"
+                                >
                                     <option value="Factory">Factory Floor</option>
                                     <option value="Retail">Retail Store</option>
                                     <option value="Security">Security</option>
@@ -170,24 +195,65 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         </div>
                     </div>
 
-                    {/* PAYROLL DETAILS */}
+                    {/* DYNAMIC PAYROLL DETAILS */}
                     <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
                         <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-cash-banknote text-lg sm:text-xl" /></span>
+                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs">
+                                <i className="ti ti-cash-banknote text-lg sm:text-xl" />
+                            </span>
                             Payroll Configuration
                         </h3>
-                        
-                        <div className="max-w-md">
-                            <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Monthly Base Salary</label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
-                                <input type="text" required value={displaySalary} onChange={handleSalaryChange}
-                                       className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
-                                       placeholder="0.00" />
-                                <input type="hidden" name="monthly_salary" value={rawSalary} />
+
+                        {department === 'Factory' ? (
+                            <div className="space-y-4">
+                                <div className="inline-flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-800 rounded-xl border border-amber-200/80 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
+                                    <i className="ti ti-box text-base text-amber-600 shrink-0" />
+                                    <span>Factory Mode: Piece-Rate Compensation Selected</span>
+                                </div>
+
+                                <div className="max-w-md">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Rate Per Piece (₱/unit)
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={displayPieceRate}
+                                            onChange={handlePieceRateChange}
+                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-amber-300 focus:border-amber-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-amber-500/10 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            placeholder="0.00"
+                                        />
+                                        <input type="hidden" name="piece_rate" value={rawPieceRate} />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1">
+                                        <i className="ti ti-info-circle" /> Total gross pay = (Completed Output Units × Piece Rate)
+                                    </p>
+                                </div>
                             </div>
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1"><i className="ti ti-info-circle" /> Used for standard payslip generation</p>
-                        </div>
+                        ) : (
+                            <div className="max-w-md">
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    Monthly Base Salary
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={displaySalary}
+                                        onChange={handleSalaryChange}
+                                        className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                        placeholder="0.00"
+                                    />
+                                    <input type="hidden" name="monthly_salary" value={rawSalary} />
+                                </div>
+                                <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1">
+                                    <i className="ti ti-info-circle" /> Used for standard semi-monthly payslip generation
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {/* SUBMIT */}
