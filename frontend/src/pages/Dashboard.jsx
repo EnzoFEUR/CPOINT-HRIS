@@ -1,283 +1,574 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
 
-export default function Dashboard() {
-    const fetchDashboardData = async () => {
-        const res = await fetchWithAuth('/api/dashboard/admin');
-        const result = await res.json();
-        return result;
-    };
+const GRADE_COLORS = {
+    'A+': { color: 'bg-emerald-500', textCol: 'text-emerald-700', bgCol: 'bg-emerald-50' },
+    'A': { color: 'bg-emerald-500', textCol: 'text-emerald-700', bgCol: 'bg-emerald-50' },
+    'B+': { color: 'bg-blue-500', textCol: 'text-blue-700', bgCol: 'bg-blue-50' },
+    'B': { color: 'bg-amber-500', textCol: 'text-amber-700', bgCol: 'bg-amber-50' },
+    'C+': { color: 'bg-amber-500', textCol: 'text-amber-700', bgCol: 'bg-amber-50' },
+    'C': { color: 'bg-rose-500', textCol: 'text-rose-700', bgCol: 'bg-rose-50' },
+};
 
-    const { data: dashboardData, isLoading, isError, refetch } = useQuery({
+const RISK_STYLES = {
+    High: 'bg-red-50 text-red-700 border-red-200',
+    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
+    Low: 'bg-orange-50 text-orange-700 border-orange-200',
+};
+
+export default function Dashboard() {
+    const queryClient = useQueryClient();
+    const [trendView, setTrendView] = useState('weekly');
+
+    // 1. Fetch Master Dashboard Telemetry (Cached for 10s, auto-invalidated on real-time events)
+    // refetchInterval is a polling fallback in case the Supabase realtime channel below drops
+    // (e.g. the table isn't added to the realtime publication, or the socket disconnects) -
+    // the dashboard should never go stale silently even if the websocket layer misbehaves.
+    const { data: dashboardData, isLoading } = useQuery({
         queryKey: ['adminDashboard'],
-        queryFn: fetchDashboardData
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/dashboard/admin');
+            return res.json();
+        },
+        staleTime: 10000,
+        refetchInterval: 30000,
     });
 
-    // Real-Time WebSockets for the Live Activity Feed & Counters
-    React.useEffect(() => {
-        const subscription = supabase
+    // 2. Fetch AI Executive Briefing from Google Gemini 2.0
+    const { data: aiData, refetch: refetchAI, isFetching: isAILoading } = useQuery({
+        queryKey: ['aiDailyBriefing'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/ai/analytics/daily-briefing');
+            return res.json();
+        },
+        staleTime: 60000,
+        refetchInterval: 5 * 60000,
+    });
+
+    // 3. Fetch AI Anomaly / Burnout Detection (30-day lookback, deterministic counts + AI narrative)
+    const { data: anomalyData, isLoading: isAnomalyLoading } = useQuery({
+        queryKey: ['aiAnomalies'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/ai/analytics/anomalies');
+            return res.json();
+        },
+        staleTime: 5 * 60000,
+        refetchInterval: 5 * 60000,
+    });
+
+    // 4. Fetch 15-Day Cutoff Payroll Forecaster (deterministic, from employees.salary + attendances)
+    const { data: payrollData, isLoading: isPayrollLoading } = useQuery({
+        queryKey: ['payrollForecast'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/dashboard/payroll-forecast');
+            return res.json();
+        },
+        staleTime: 60000,
+        refetchInterval: 60000,
+    });
+
+    // 5. Real-Time WebSocket Synchronization (Listens to DB changes)
+    useEffect(() => {
+        const liveChannel = supabase
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
-                refetch();
+                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['aiDailyBriefing'] });
+                queryClient.invalidateQueries({ queryKey: ['aiAnomalies'] });
+                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-                refetch();
+                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                refetch();
+                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .subscribe();
 
-        const handleRefresh = () => refetch();
-        window.addEventListener('refresh_dashboard', handleRefresh);
-
         return () => {
-            supabase.removeChannel(subscription);
-            window.removeEventListener('refresh_dashboard', handleRefresh);
+            supabase.removeChannel(liveChannel);
         };
-    }, [refetch]);
+    }, [queryClient]);
 
     if (isLoading || !dashboardData) {
         return (
-            <motion.div 
-                key="loading"
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center h-[60vh] space-y-4"
-            >
-                <div className="h-16 w-16 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
-                    <i className="ti ti-chart-pie-3 text-3xl text-blue-500"></i>
+            <div className="flex flex-col items-center justify-center h-[65vh] space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center animate-pulse">
+                    <i className="ti ti-chart-pie-3 text-3xl text-blue-600" />
                 </div>
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Analytics...</p>
-            </motion.div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting Real-Time Telemetry...</p>
+            </div>
         );
     }
 
-    const { 
-        totalStaff, deptBreakdown,
-        presentTodayCount, lateTodayCount, onLeaveCount, 
-        pendingLeavesCount, recentLogs, weeklyTrends
+    const {
+        totalStaff = 0,
+        presentTodayCount = 0,
+        lateTodayCount = 0,
+        pendingLeavesCount = 0,
+        deptBreakdown = {},
+        recentLogs = [],
+        weeklyTrends = [],
+        monthlyTrends = [],
+        deptPunctuality = [],
+        doleCompliance = null,
     } = dashboardData;
 
-    const presentPercentage = totalStaff ? Math.round((presentTodayCount / totalStaff) * 100) : 0;
-    const maxTrendValue = Math.max(...weeklyTrends.map(t => t.value));
+    // The Weekly/Monthly toggle switches which pre-computed series renders below -
+    // previously trendView only changed the button's highlight and never touched
+    // the actual chart data, so "Monthly" looked identical to "Weekly".
+    const activeTrend = trendView === 'monthly' ? monthlyTrends : weeklyTrends;
+
+    const presentPercentage = totalStaff > 0 ? Math.round((presentTodayCount / totalStaff) * 100) : 0;
+    const briefing = aiData?.briefing;
+    const maxTrendValue = Math.max(...activeTrend.map(t => t.value || 0), 100);
+
+    // Department ranking now sourced from real 30-day punctuality data
+    const deptList = deptPunctuality.map(d => ({
+        name: d.name,
+        score: d.score,
+        grade: d.grade,
+        sampleSize: d.sampleSize,
+        ...(GRADE_COLORS[d.grade] || GRADE_COLORS['B']),
+    }));
+    const topDept = deptList[0];
+
+    const burnoutAlerts = anomalyData?.report?.burnout_risk_alerts || [];
+    const latePatterns = anomalyData?.report?.frequent_late_patterns || [];
+    const riskFlags = [...burnoutAlerts, ...latePatterns].slice(0, 3);
 
     return (
-        <motion.div 
-            key="dashboard"
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ duration: 0.3 }}
-            className="space-y-6 pb-6"
-        >
+        <div className="max-w-7xl mx-auto space-y-6 pb-12">
             
-            {/* Page header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+            {/* ========================================================================= */}
+            {/* 1. HEADER WITH REAL-TIME TELEMETRY PILL                                   */}
+            {/* ========================================================================= */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">HRIS Analytics</h2>
+                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Executive HR Command Center</h2>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">Biometric telemetry, DOLE compliance monitoring & predictive AI analytics</p>
                 </div>
-                <div className="flex gap-2">
-                    <button className="flex items-center gap-2 bg-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200 shadow-xs sm:shadow-sm hover:bg-slate-50 tap-active transition-colors">
-                        <i className="ti ti-download text-slate-500"></i>
-                        <span className="text-xs sm:text-sm font-bold text-slate-700">Export</span>
-                    </button>
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-700 shadow-xs">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span>Live Stream Connected</span>
+                    </div>
                 </div>
             </div>
 
-            {/* KPI cards (2 columns on mobile, 4 columns on desktop) */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-users text-4xl sm:text-6xl text-blue-600"></i>
+            {/* ========================================================================= */}
+            {/* 2. GRID 1: FULL-WIDTH AI EXECUTIVE BRIEFING (GEMINI 2.0)                  */}
+            {/* ========================================================================= */}
+            <motion.div layout className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-800 text-white shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+                <div className="absolute bottom-0 left-1/3 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
+                                <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Daily Briefing
+                            </span>
+                            <span className="text-slate-400 text-xs font-medium">Real-time Telemetry</span>
+                        </div>
+                        <button
+                            onClick={() => refetchAI({ fresh: true })}
+                            disabled={isAILoading}
+                            className="self-start sm:self-center px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/20 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer tap-active"
+                        >
+                            <i className={`ti ti-refresh text-emerald-400 ${isAILoading ? 'animate-spin' : ''}`} />
+                            <span>{isAILoading ? 'Analyzing...' : 'Refresh AI'}</span>
+                        </button>
                     </div>
-                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Total Staff</p>
-                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{totalStaff}</h3>
-                    <div className="mt-2 sm:mt-3 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-emerald-500">
-                        <i className="ti ti-trending-up"></i>
-                        <span>Active</span>
+
+                    <p className="text-sm sm:text-base font-bold text-slate-200 leading-relaxed">
+                        {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
+                    </p>
+
+                    {/* 3 Micro-Insight Pills */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Punctuality Rating</span>
+                            <p className="text-slate-200 font-semibold mt-1">
+                                {lateTodayCount === 0 ? '✨ 100% On-time compliance across shifts.' : `⚠️ ${lateTodayCount} staff clocked in past grace period.`}
+                            </p>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Top Division</span>
+                            <p className="text-slate-200 font-semibold mt-1">
+                                {topDept ? `${topDept.name} leading on-time attendance (${topDept.score}%).` : 'Not enough data yet.'}
+                            </p>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Pending Approvals</span>
+                            <p className="text-slate-200 font-semibold mt-1">
+                                {pendingLeavesCount > 0 ? `🚨 ${pendingLeavesCount} leave requests pending review.` : '✅ All leave requests cleared.'}
+                            </p>
+                        </div>
                     </div>
                 </div>
+            </motion.div>
 
-                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-user-check text-4xl sm:text-6xl text-emerald-600"></i>
+            {/* ========================================================================= */}
+            {/* 3. GRID 2: 4-COLUMN EXECUTIVE KPI CARDS                                   */}
+            {/* ========================================================================= */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
+                        <i className="ti ti-users text-5xl text-blue-600" />
                     </div>
-                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Present Rate</p>
-                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{presentPercentage}%</h3>
-                    <div className="mt-2 sm:mt-3 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-500 truncate">
-                        <span>{presentTodayCount} in today</span>
-                    </div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Workforce</p>
+                    <motion.h3 key={totalStaff} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                        {totalStaff}
+                    </motion.h3>
+                    <span className="text-xs font-bold text-emerald-600 mt-2 block flex items-center gap-1">
+                        <i className="ti ti-check" /> Active Staff
+                    </span>
                 </div>
 
-                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-clock-exclamation text-4xl sm:text-6xl text-orange-600"></i>
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
+                        <i className="ti ti-user-check text-5xl text-emerald-600" />
                     </div>
-                    <p className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 sm:mb-2">Late Arrivals</p>
-                    <h3 className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">{lateTodayCount}</h3>
-                    <div className="mt-2 sm:mt-3 flex items-center gap-1 text-[11px] sm:text-xs font-bold text-orange-500">
-                        <i className="ti ti-alert-triangle"></i>
-                        <span>Check logs</span>
-                    </div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Present Rate</p>
+                    <motion.h3 key={presentPercentage} initial={{ scale: 1.15, color: '#10B981' }} animate={{ scale: 1, color: '#1E293B' }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                        {presentPercentage}%
+                    </motion.h3>
+                    <span className="text-xs font-bold text-slate-500 mt-2 block">
+                        {presentTodayCount} of {totalStaff} on-site
+                    </span>
                 </div>
 
-                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-4 sm:p-6 rounded-2xl shadow-xs sm:shadow-sm shadow-blue-600/20 text-white tap-active transition-all relative overflow-hidden group block cursor-pointer">
-                    <div className="absolute right-0 top-0 p-4 sm:p-6 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden sm:block">
-                        <i className="ti ti-plane-departure text-4xl sm:text-6xl text-white"></i>
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
+                        <i className="ti ti-clock-exclamation text-5xl text-amber-600" />
                     </div>
-                    <p className="text-[11px] sm:text-xs font-bold text-blue-200 uppercase tracking-wider mb-1 sm:mb-2">Leaves</p>
-                    <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight">{pendingLeavesCount}</h3>
-                    <div className="mt-2 sm:mt-3 flex items-center justify-between text-[11px] sm:text-xs font-bold text-white">
-                        <span>Pending</span>
-                        <span>Review &rarr;</span>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Late Arrivals</p>
+                    <motion.h3 key={lateTodayCount} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                        {lateTodayCount}
+                    </motion.h3>
+                    <span className="text-xs font-bold text-amber-600 mt-2 block flex items-center gap-1">
+                        <i className="ti ti-alert-triangle" /> Past grace period
+                    </span>
+                </div>
+
+                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 sm:p-6 rounded-3xl shadow-sm text-white block cursor-pointer relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-5 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden sm:block">
+                        <i className="ti ti-plane-departure text-5xl text-white" />
                     </div>
+                    <p className="text-[11px] font-bold text-blue-200 uppercase tracking-wider">Pending Leaves</p>
+                    <motion.h3 key={pendingLeavesCount} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-white mt-1 tracking-tight">
+                        {pendingLeavesCount}
+                    </motion.h3>
+                    <span className="text-xs font-bold text-white mt-2 block flex items-center justify-between">
+                        <span>Requires Review</span>
+                        <span>&rarr;</span>
+                    </span>
                 </Link>
             </div>
 
-            {/* Metrics grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
+            {/* ========================================================================= */}
+            {/* 4. GRID 3: PREDICTIVE ANALYTICS & FORECASTING (2 COLUMNS)                  */}
+            {/* ========================================================================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
-                {/* Weekly Trend Chart (2/3 width) */}
-                <div className="xl:col-span-2 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 border border-slate-100 shadow-xs sm:shadow-sm overflow-hidden">
-                    <div className="flex justify-between items-center mb-8">
+                {/* A. Department Punctuality Scorecard (live, from 30-day attendance data) */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-xl font-bold text-slate-800">Attendance Volume Trend</h3>
-                            <p className="text-xs font-medium text-slate-500 mt-1">Last 7 days workforce presence</p>
+                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-trophy text-amber-500 text-lg" /> Department Punctuality Scorecard
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">Evaluated against shift start & grace periods</p>
                         </div>
-                        <div className="bg-slate-50 rounded-lg p-1 flex text-xs font-bold text-slate-500">
-                            <button className="px-3 py-1.5 bg-white text-blue-600 shadow-xs sm:shadow-sm rounded-md tap-active">Weekly</button>
-                            <button className="px-3 py-1.5 hover:text-slate-800 transition-colors rounded-md tap-active">Monthly</button>
-                        </div>
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-black rounded-lg">
+                            30-Day Index
+                        </span>
                     </div>
-                    
-                    {/* CSS Bar Chart */}
-                    <div className="overflow-x-auto touch-scroll">
-                        <div className="h-64 flex items-end justify-between gap-2 sm:gap-6 mt-4 min-w-[300px]">
-                            {weeklyTrends.map((trend, i) => {
-                                const height = `${(trend.value / maxTrendValue) * 100}%`;
-                                const isToday = i === 4; // Mocking Friday as today for visual highlight
-                                return (
-                                    <div key={i} className="flex-1 flex flex-col justify-end items-center group">
-                                        <div className="w-full flex justify-center items-end relative h-full">
-                                            {/* Tooltip */}
-                                            <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg transition-opacity pointer-events-none whitespace-nowrap z-10">
-                                                {trend.value}% Present
-                                            </div>
-                                            {/* Bar */}
-                                            <div 
-                                                className={`w-full max-w-[40px] rounded-t-xl transition-all duration-700 ease-out ${isToday ? 'bg-blue-600 shadow-lg shadow-blue-500/30' : 'bg-slate-100 group-hover:bg-blue-100'}`} 
-                                                style={{ height }}
-                                            ></div>
-                                        </div>
-                                        <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
-                                            {trend.day}
+
+                    <div className="space-y-3.5 pt-1">
+                        {deptList.length > 0 ? deptList.map((d) => (
+                            <div key={d.name} className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs font-bold">
+                                    <span className="text-slate-700">{d.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono text-slate-500">{d.score}%</span>
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${d.bgCol} ${d.textCol} border border-current/20`}>
+                                            Grade: {d.grade}
                                         </span>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div className={`${d.color} h-2 rounded-full transition-all duration-1000`} style={{ width: `${d.score}%` }} />
+                                </div>
+                            </div>
+                        )) : (
+                            <p className="text-xs text-slate-400 font-bold py-6 text-center">No attendance records in the last 30 days yet.</p>
+                        )}
                     </div>
                 </div>
 
-                {/* Right Column: Live Feed & Dept */}
-                <div className="xl:col-span-1 space-y-6">
-                    
-                    {/* Department Breakdown */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 lg:p-8 border border-slate-100 shadow-xs sm:shadow-sm">
-                        <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <i className="ti ti-chart-pie text-blue-600"></i> Department Allocation
-                        </h3>
-                        <div className="space-y-5">
-                            {Object.entries(deptBreakdown).map(([dept, count]) => {
-                                const percentage = totalStaff ? Math.round((count / totalStaff) * 100) : 0;
-                                let color = 'bg-blue-500';
-                                if (dept === 'Factory') color = 'bg-indigo-500';
-                                if (dept === 'Retail') color = 'bg-emerald-500';
-                                if (dept === 'IT') color = 'bg-amber-500';
-                                
-                                return (
-                                    <div key={dept}>
-                                        <div className="flex justify-between text-xs font-bold mb-2">
-                                            <span className="text-slate-700">{dept}</span>
-                                            <span className="text-slate-500">{count} ({percentage}%)</span>
-                                        </div>
-                                        <div className="w-full bg-slate-50 rounded-full h-2 overflow-hidden">
-                                            <div className={`${color} h-2 rounded-full`} style={{ width: `${percentage}%` }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Live Activity Feed */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-100 shadow-xs sm:shadow-sm h-[320px] flex flex-col">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                <i className="ti ti-activity text-red-500 animate-pulse"></i> Live Log Feed
+                {/* B. Predictive Burnout & Turnover Radar (live, from Gemini anomaly detection) */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-flame text-red-500 text-lg" /> Predictive Burnout & Turnover Radar
                             </h3>
-                            <Link to="/admin/attendance" className="text-xs font-bold text-blue-600 hover:underline">View All</Link>
+                            <p className="text-xs text-slate-400 font-medium">AI anomaly detection for fatigue & pattern shifts</p>
                         </div>
-                        
-                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
-                            <AnimatePresence initial={false}>
-                                {recentLogs.length > 0 ? recentLogs.map(log => (
-                                    <motion.div 
-                                        key={log.id} 
-                                        initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        className="flex gap-3"
-                                        layout
-                                    >
-                                        <div className="mt-1">
-                                            <div className="w-2 h-2 rounded-full bg-blue-500 ring-4 ring-blue-50"></div>
-                                            <div className="w-px h-full bg-slate-100 mx-auto my-1"></div>
-                                        </div>
-                                        <div className="pb-4">
-                                            <p className="text-sm font-bold text-slate-700">
-                                                {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
-                                            </p>
-                                            <p className="text-[10px] text-slate-500 mt-0.5">
-                                                Clocked in at <span className="font-bold text-slate-700">{new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                            </p>
-                                            {log.status.includes('Late') && (
-                                                <span className="inline-block mt-1 px-2 py-0.5 bg-red-50 text-red-600 text-[9px] font-bold uppercase rounded border border-red-100">
-                                                    {log.status}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                )) : (
-                                    <motion.div 
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        className="h-full flex flex-col items-center justify-center text-center pb-8"
-                                    >
-                                        <i className="ti ti-zzz text-3xl text-slate-200 mb-2"></i>
-                                        <p className="text-xs font-bold text-slate-400">No recent logs today.</p>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
+                        <span className="px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-md border border-red-200">
+                            {isAnomalyLoading ? '...' : `${riskFlags.length} Flags Active`}
+                        </span>
                     </div>
 
+                    <div className="space-y-2.5">
+                        {riskFlags.length > 0 ? riskFlags.map((flag, i) => (
+                            <div key={i} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-800 truncate">{flag.employee_name}</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
+                                        {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
+                                    </p>
+                                </div>
+                                <span className={`px-2 py-1 text-[10px] font-black uppercase rounded-lg border shrink-0 ${RISK_STYLES[flag.severity] || RISK_STYLES.Low}`}>
+                                    {flag.severity || 'Flagged'}
+                                </span>
+                            </div>
+                        )) : (
+                            <p className="text-xs text-slate-400 font-bold py-6 text-center">
+                                {isAnomalyLoading ? 'Scanning 30-day attendance history...' : 'No burnout or turnover risk signals detected.'}
+                            </p>
+                        )}
+                    </div>
+
+                    {anomalyData?.report?.general_health_assessment && (
+                        <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
+                            <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
+                            <p>{anomalyData.report.general_health_assessment}</p>
+                        </div>
+                    )}
                 </div>
+
             </div>
 
+            {/* ========================================================================= */}
+            {/* 5. GRID 4: FINANCIAL & COMPLIANCE INTELLIGENCE (2 COLUMNS)                 */}
+            {/* ========================================================================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                
+                {/* A. 15-Day Cutoff Payroll Forecaster (live, deterministic calc from employees.salary + attendances) */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : '15-Day Cutoff'} Payroll Forecaster
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">Projected payout based on active timecards</p>
+                        </div>
+                        {payrollData?.employeesWithPayrate > 0 && (
+                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-black rounded-lg border border-emerald-200 shrink-0">
+                                Day {payrollData.elapsedWorkingDays}/{payrollData.totalCutoffWorkingDays}
+                            </span>
+                        )}
+                    </div>
 
+                    {payrollData?.employeesWithPayrate > 0 ? (
+                        <>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 rounded-2xl p-4">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accrued So Far</p>
+                                    <motion.p key={payrollData.actualPayToDate} initial={{ scale: 1.1 }} animate={{ scale: 1 }} className="text-xl font-black text-slate-800 mt-1">
+                                        ₱{payrollData.actualPayToDate.toLocaleString()}
+                                    </motion.p>
+                                </div>
+                                <div className="bg-slate-900 rounded-2xl p-4">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Cutoff Total</p>
+                                    <motion.p key={payrollData.projectedCutoffTotal} initial={{ scale: 1.1 }} animate={{ scale: 1 }} className="text-xl font-black text-white mt-1">
+                                        ₱{payrollData.projectedCutoffTotal.toLocaleString()}
+                                    </motion.p>
+                                </div>
+                            </div>
 
-            <style>{`
-                .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
-                @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-            `}</style>
-        </motion.div>
+                            {payrollData.deptBreakdown?.length > 0 && (
+                                <div className="space-y-2 pt-1">
+                                    {payrollData.deptBreakdown.slice(0, 4).map(d => (
+                                        <div key={d.name} className="flex items-center justify-between text-xs">
+                                            <span className="font-bold text-slate-600">{d.name}</span>
+                                            <span className="font-mono font-black text-slate-800">₱{d.projected.toLocaleString()}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {payrollData.insight && (
+                                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
+                                    <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
+                                    <p>{payrollData.insight}</p>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="bg-slate-900 rounded-2xl p-5 text-white flex flex-col items-center justify-center text-center gap-2">
+                            <i className="ti ti-currency-peso text-3xl text-slate-500" />
+                            <p className="text-xs font-bold text-slate-400 max-w-xs">
+                                {isPayrollLoading ? 'Calculating projected payroll...' : 'No active employees have a configured salary yet.'}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* B. DOLE Labor Standard Health Meter (live, from attendance data) */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Labor Standard Health Meter
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">Automated Philippine statutory compliance audit</p>
+                        </div>
+                        <span className="px-3 py-1 bg-emerald-500/10 text-emerald-700 text-xs font-black rounded-lg border border-emerald-500/20">
+                            {doleCompliance ? `${doleCompliance.restDay.compliancePercent}% Audit-Ready` : '—'}
+                        </span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        {doleCompliance ? (
+                            <>
+                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 font-bold text-slate-700">
+                                        <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-500' : 'ti-alert-circle-filled text-amber-500'} text-base`} />
+                                        <span>{doleCompliance.restDay.label}</span>
+                                    </div>
+                                    <span className={`font-mono text-[11px] font-black ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                        {doleCompliance.restDay.status}
+                                    </span>
+                                </div>
+                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 font-bold text-slate-700">
+                                        <i className="ti ti-circle-check-filled text-emerald-500 text-base" />
+                                        <span>{doleCompliance.holidayMultiplier.label}</span>
+                                    </div>
+                                    <span className="font-mono text-[11px] font-black text-emerald-600">{doleCompliance.holidayMultiplier.status}</span>
+                                </div>
+                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 font-bold text-slate-700">
+                                        <i className="ti ti-circle-check-filled text-emerald-500 text-base" />
+                                        <span>{doleCompliance.nightDifferential.label}</span>
+                                    </div>
+                                    <span className="font-mono text-[11px] font-black text-emerald-600">{doleCompliance.nightDifferential.status}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <p className="text-xs text-slate-400 font-bold py-6 text-center">Compliance data unavailable.</p>
+                        )}
+                    </div>
+                </div>
+
+            </div>
+
+            {/* ========================================================================= */}
+            {/* 6. GRID 5: 7-DAY ATTENDANCE TREND (8 COLS) + LIVE ACTIVITY FEED (4 COLS)  */}
+            {/* ========================================================================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                
+                {/* 7-Day Trend Chart (live) */}
+                <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 className="text-base font-black text-slate-800">Workforce Attendance Volume Trend</h3>
+                            <p className="text-xs text-slate-400 font-medium">{trendView === 'monthly' ? '5-Week' : '7-Day'} calendar presence percentage</p>
+                        </div>
+                        <div className="bg-slate-100 rounded-xl p-1 flex text-xs font-bold text-slate-500">
+                            <button
+                                onClick={() => setTrendView('weekly')}
+                                className={`px-3 py-1 rounded-lg transition-all ${trendView === 'weekly' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-800'}`}
+                            >
+                                Weekly
+                            </button>
+                            <button
+                                onClick={() => setTrendView('monthly')}
+                                className={`px-3 py-1 rounded-lg transition-all ${trendView === 'monthly' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-800'}`}
+                            >
+                                Monthly
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="h-56 flex items-stretch justify-between gap-1 sm:gap-3 pt-10">
+                        {activeTrend.map((trend, i) => {
+                            const height = `${(trend.value / maxTrendValue) * 100}%`;
+                            const isToday = i === activeTrend.length - 1;
+                            return (
+                                <div key={trend.date || trend.day || i} className="flex-1 min-w-0 flex flex-col justify-end items-center group">
+                                    <div className="w-full flex justify-center items-end relative flex-1">
+                                        <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                            {trend.value}% Present
+                                        </div>
+                                        <div
+                                            className={`w-full max-w-[36px] rounded-t-xl transition-all duration-700 ease-out ${isToday ? 'bg-blue-600 shadow-lg shadow-blue-500/30' : 'bg-slate-100 group-hover:bg-blue-100'}`}
+                                            style={{ height }}
+                                        />
+                                    </div>
+                                    <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider text-center ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
+                                        {trend.day}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Live Biometric Activity Feed */}
+                <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> Live Gate Feed
+                        </h3>
+                        <Link to="/admin/attendance" className="text-xs font-bold text-blue-600 hover:underline">View All &rarr;</Link>
+                    </div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-1">
+                        <AnimatePresence initial={false}>
+                            {recentLogs.length > 0 ? recentLogs.map((log) => (
+                                <motion.div
+                                    key={log.id}
+                                    initial={{ opacity: 0, y: -15 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0 }}
+                                    className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center text-xs shrink-0">
+                                            {log.employees ? `${log.employees.first_name?.[0] || 'C'}${log.employees.last_name?.[0] || 'P'}` : 'CP'}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black text-slate-800 truncate">
+                                                {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Staff'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
+                                                {log.employees?.department || 'Production'} • {new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                                        {log.status}
+                                    </span>
+                                </motion.div>
+                            )) : (
+                                <p className="text-xs text-slate-400 font-bold py-8 text-center">No biometric logs recorded today yet.</p>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
     );
 }
