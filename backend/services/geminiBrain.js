@@ -319,66 +319,87 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
     },
 
     /**
-     * Detect attendance anomalies, habit patterns, and burnout indicators
+     * Phrase a short executive narrative on top of ALREADY-COMPUTED, verified attendance
+     * signals (see attendanceIntelligence.js). Counts, names, and streak lengths are never
+     * generated here - only summarized - so this can never hallucinate a number or a person
+     * who isn't actually in the data. Returns null (never throws past this method) if Gemini
+     * is unavailable; callers should have a deterministic fallback sentence ready.
      */
-    async detectAttendanceAnomalies(attendanceLogs) {
-      const cacheKey = `attendance_anomalies_${attendanceLogs.length}_${new Date().toISOString().slice(0, 13)}`;
+    async narrateAttendanceHealth(signals) {
+      const cacheKey = `attendance_health_narrative_${signals.sample_size}_${signals.anomalies_detected_count}_${new Date().toISOString().slice(0, 13)}`;
       if (aiCache.has(cacheKey)) {
         return aiCache.get(cacheKey);
       }
 
-      const sampleLogs = (attendanceLogs || []).slice(0, 80).map(l => ({
-        emp_name: l.employees ? `${l.employees.first_name} ${l.employees.last_name}` : l.employee_id,
-        dept: l.employees?.department || 'General',
-        date: l.date,
-        status: l.status,
-        time_in: l.time_in
-      }));
+      const prompt = `Given these EXACT, already-verified workforce attendance statistics for the last 30 days
+(do not invent, alter, or add any numbers or names - only summarize what is given):
+- Employees analyzed: ${signals.sample_size}
+- Frequent late-arrival flags (3+ lates): ${signals.frequent_late_patterns.length}
+- Burnout / no-rest-day risk flags (7+ consecutive worked days): ${signals.burnout_risk_alerts.length}
+- Monday/Friday absenteeism pattern flags: ${signals.monday_friday_patterns.length}
 
-      const prompt = `Analyze these attendance records for operational anomalies:
-${JSON.stringify(sampleLogs)}
+Write ONE concise, professional 1-2 sentence executive health assessment summarizing what this means operationally.
 
-Detect:
-1. Frequent latecomers (3+ lates)
-2. Monday/Friday absenteeism trends
-3. Sudden attendance drops
-
-Respond in strictly valid JSON:
-{
-  "anomalies_detected_count": number,
-  "frequent_late_patterns": [
-    { "employee_name": string, "department": string, "late_count": number, "severity": "Low" | "Medium" | "High", "insight": string }
-  ],
-  "monday_friday_patterns": [
-    { "employee_name": string, "pattern": string }
-  ],
-  "burnout_risk_alerts": [
-    { "employee_name": string, "reason": string, "suggested_action": string }
-  ],
-  "general_health_assessment": string
-}`;
+Respond in strictly valid JSON: { "general_health_assessment": "string" }`;
 
       try {
-        const raw = await executeGemini(prompt, 'You are an HR anomaly forensic engine.', { isJson: true });
-        const parsed = safeParseJson(raw, {
-          anomalies_detected_count: 0,
-          frequent_late_patterns: [],
-          monday_friday_patterns: [],
-          burnout_risk_alerts: [],
-          general_health_assessment: 'All attendance patterns are within acceptable organizational thresholds.'
-        });
-
-        aiCache.set(cacheKey, parsed);
-        return parsed;
+        const raw = await executeGemini(
+          prompt,
+          'You are an HR workforce health summarizer. You only phrase numbers you are given - you never invent data.',
+          { isJson: true, timeoutMs: 4000 }
+        );
+        const parsed = safeParseJson(raw, null);
+        if (parsed?.general_health_assessment) {
+          aiCache.set(cacheKey, parsed);
+          return parsed;
+        }
+        return null;
       } catch (err) {
-        return {
-          anomalies_detected_count: 0,
-          frequent_late_patterns: [],
-          monday_friday_patterns: [],
-          burnout_risk_alerts: [],
-          general_health_assessment: 'Attendance records operating normally with zero severe anomalies.',
-          fallback: true
-        };
+        console.warn('[BRAIN_ANALYTICS] Attendance narrative unavailable:', err.message);
+        return null;
+      }
+    },
+
+    /**
+     * Phrase a short executive insight on top of an ALREADY-COMPUTED payroll forecast
+     * (see computePayrollForecast in routes/dashboard.js). Same principle as
+     * narrateAttendanceHealth: this never generates or alters a peso figure, only
+     * comments on figures that are already known to be correct. Returns null on any
+     * failure so the frontend can render the numbers without an insight line.
+     */
+    async generatePayrollInsight(forecast) {
+      const cacheKey = `payroll_insight_${forecast.cutoffStart}_${forecast.projectedCutoffTotal}`;
+      if (aiCache.has(cacheKey)) {
+        return aiCache.get(cacheKey);
+      }
+
+      const prompt = `Given this EXACT, already-computed payroll forecast (do not alter or invent any figures):
+Cutoff period: ${forecast.cutoffLabel}
+Working days elapsed: ${forecast.elapsedWorkingDays} of ${forecast.totalCutoffWorkingDays}
+Actual payroll accrued so far: PHP ${forecast.actualPayToDate}
+Projected total for the full cutoff: PHP ${forecast.projectedCutoffTotal}
+Department breakdown: ${JSON.stringify(forecast.deptBreakdown)}
+
+Write ONE concise, professional sentence an HR/finance executive would want to see - e.g. flagging
+the top-cost department or a notable trend. Do not invent numbers not shown above.
+
+Respond in strictly valid JSON: { "insight": "string" }`;
+
+      try {
+        const raw = await executeGemini(
+          prompt,
+          'You are a payroll cost analyst AI. You only phrase numbers you are given - you never invent data.',
+          { isJson: true, timeoutMs: 4000 }
+        );
+        const parsed = safeParseJson(raw, null);
+        if (parsed?.insight) {
+          aiCache.set(cacheKey, parsed);
+          return parsed;
+        }
+        return null;
+      } catch (err) {
+        console.warn('[BRAIN_ANALYTICS] Payroll insight unavailable:', err.message);
+        return null;
       }
     },
 

@@ -1,7 +1,6 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { applyWorkforceFilter } from '../utils/workforce.js';
 
 const router = express.Router();
 
@@ -10,9 +9,6 @@ router.get('/', cacheResponse(30), async (req, res) => {
         let query = supabase.from('employees').select('*').order('created_at', { ascending: false });
         if (req.query.employee_id) {
             query = query.eq('id', req.query.employee_id);
-        }
-        if (req.query.include_system !== 'true') {
-            query = applyWorkforceFilter(query);
         }
         const { data, error } = await query;
         if (error) throw error;
