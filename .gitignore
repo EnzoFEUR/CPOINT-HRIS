@@ -23,3 +23,9 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Local Documentation & Study Plans (Private / Ignored from Git)
+docs/
+*.pdf
+*plan*.md
+*guide*.md

@@ -216,7 +216,7 @@ const Scanner = () => {
         }
     }, [onScanSuccess, showFeedback]);
 
-    // ── 6. Lifecycle & Effects ──
+    // Load face detection models
     useEffect(() => {
         const loadModels = async () => {
             const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';

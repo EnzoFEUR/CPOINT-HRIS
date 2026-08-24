@@ -20,17 +20,28 @@ router.get('/', async (req, res) => {
         const { data: notifications, error } = await query;
         if (error) throw error;
 
-        // Fetch employees to enrich notifications with avatars
-        const { data: employees } = await supabase
-            .from('employees')
-            .select('id, company_id, first_name, last_name');
+        // Only fetch specific employees related to these notifications (targeted query, no full-table scan)
+        const relevantEmpIds = Array.from(new Set(
+            (notifications || [])
+                .map(n => n.sender_id || (n.target !== 'admin' ? n.target : null))
+                .filter(Boolean)
+        ));
 
-        const empMap = new Map();
-        (employees || []).forEach(emp => {
-            empMap.set(emp.id, emp);
-            const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
-            empMap.set(fullName, emp);
-        });
+        let empMap = new Map();
+        let employees = [];
+        if (relevantEmpIds.length > 0) {
+            const { data } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name')
+                .in('id', relevantEmpIds);
+
+            employees = data || [];
+            employees.forEach(emp => {
+                empMap.set(emp.id, emp);
+                const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+                empMap.set(fullName, emp);
+            });
+        }
 
         const enriched = (notifications || []).map(notif => {
             let matchedEmp = null;
@@ -39,7 +50,7 @@ router.get('/', async (req, res) => {
             } else if (notif.target && empMap.has(notif.target)) {
                 matchedEmp = empMap.get(notif.target);
             } else {
-                for (const emp of (employees || [])) {
+                for (const emp of employees) {
                     const fullName = `${emp.first_name} ${emp.last_name}`;
                     if ((notif.title && notif.title.includes(fullName)) || (notif.text && notif.text.includes(fullName))) {
                         matchedEmp = emp;
@@ -102,6 +113,19 @@ export const createNotification = async ({ target, title, text, type, sender_id,
         event: 'NEW_NOTIFICATION',
         payload: enrichedPayload
     });
+
+    // Dispatch push notification to user devices
+    import('../services/pushService.js')
+        .then(({ sendPushToUser }) => {
+            sendPushToUser(target, {
+                title,
+                body: text,
+                type: type || 'system',
+                url: target === 'admin' ? '/admin/leaves' : '/employee/dashboard'
+            }).catch(err => console.error('[PUSH_DISPATCH] Error:', err.message));
+        })
+        .catch(err => console.error('[PUSH_IMPORT] Error:', err.message));
+
     return enrichedPayload;
 };
 

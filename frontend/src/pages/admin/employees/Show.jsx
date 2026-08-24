@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { IconFolder, IconFileOff, IconFile, IconExternalLink } from '@tabler/icons-react';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,14 +11,23 @@ export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+
+    // Employee State
     const [employee, setEmployee] = useState(null);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [imageError, setImageError] = useState(false);
+
+    // Modals State
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // 201 Documents State
+    const [documents, setDocuments] = useState([]);
+    const [isDocsLoading, setIsDocsLoading] = useState(true);
+
+    // Fetch Employee Details
     useEffect(() => {
         if (!id || id === 'undefined') return;
 
@@ -155,9 +165,9 @@ export default function Show() {
                         </div>
                     </div>
 
-                    <div className="text-center sm:text-left flex-1 min-w-0">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 text-white font-mono font-bold text-xs rounded-lg border border-white/20 uppercase tracking-widest mb-2">
-                            <i className="ti ti-id text-indigo-300" /> ID: {employee.company_id || employee.id}
+                    <div className="relative z-10 text-center sm:text-left flex-1 min-w-0">
+                        <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 bg-white/10 text-white font-bold text-[10px] sm:text-xs rounded-xl border border-white/20 uppercase tracking-widest mb-2 sm:mb-3 backdrop-blur-md">
+                            <i className="ti ti-id text-indigo-300" /> {employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}
                         </div>
                         <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2 truncate">
                             {employee.first_name} {employee.last_name}
@@ -281,6 +291,83 @@ export default function Show() {
                         </div>
                     </div>
                 </motion.div>
+
+                {/* 201 DOCUMENTS DISPLAY CARD */}
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-8">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-sky-50 text-sky-600 rounded-xl sm:rounded-2xl flex items-center justify-center border border-sky-100">
+                                <i className="ti ti-folders text-xl sm:text-2xl" />
+                            </div>
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">201 Documents</h3>
+                        </div>
+                        <span className="inline-flex px-3.5 py-1.5 bg-slate-50 text-slate-500 font-black text-[10px] sm:text-xs rounded-xl border border-slate-200 uppercase tracking-widest">
+                            {documents.length} {documents.length === 1 ? 'File' : 'Files'} Uploaded
+                        </span>
+                    </div>
+
+                    {isDocsLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12 sm:py-16 space-y-3 sm:space-y-4">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                            <p className="text-slate-400 font-bold tracking-widest uppercase text-[11px] sm:text-xs">Loading Documents...</p>
+                        </div>
+                    ) : documents.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-center py-12 sm:py-16 px-4 bg-slate-50/60 rounded-xl sm:rounded-2xl border border-dashed border-slate-200">
+                            <div className="h-14 w-14 sm:h-16 sm:w-16 bg-white text-slate-300 rounded-2xl flex items-center justify-center border border-slate-100 shadow-xs mb-4">
+                                <i className="ti ti-folder-x text-2xl sm:text-3xl" />
+                            </div>
+                            <h4 className="text-sm sm:text-base font-black text-slate-600 mb-1.5">No 201 documents uploaded yet</h4>
+                            <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-sm">
+                                There are currently no files attached to this employee record.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                            {documents.map((doc) => {
+                                const meta = getFileMeta(doc.file_name || doc.title || '');
+                                const displayTitle = doc.title || doc.file_name || 'Untitled Document';
+                                const fileUrl = getDocumentUrl(doc.file_path);
+
+                                return (
+                                    <div
+                                        key={doc.id}
+                                        className="flex items-start gap-3 p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all group"
+                                    >
+                                        <div className={`h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-xl flex items-center justify-center border ${meta.bg} ${meta.border} ${meta.color}`}>
+                                            <i className={`ti ${meta.icon} text-xl sm:text-2xl`} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold text-slate-700 truncate" title={displayTitle}>
+                                                {displayTitle}
+                                            </p>
+                                            {doc.category && (
+                                                <span className="inline-flex mt-1.5 px-2.5 py-0.5 bg-slate-50 text-slate-500 font-bold text-[10px] rounded-lg border border-slate-200 uppercase tracking-widest">
+                                                    {doc.category}
+                                                </span>
+                                            )}
+                                            <div className="mt-2.5 flex items-center gap-1.5">
+                                                {doc.file_path ? (
+                                                    <a
+                                                        href={fileUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-widest"
+                                                    >
+                                                        <i className="ti ti-external-link text-sm" /> View File
+                                                    </a>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-slate-300 uppercase tracking-widest">
+                                                        <i className="ti ti-link-off text-sm" /> No File
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </motion.div>
             </div>
 
             <AnimatePresence>
@@ -320,31 +407,63 @@ export default function Show() {
 
             <AnimatePresence>
                 {isPrintModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-                        <div id="qr-print-card" className="bg-white rounded-2xl max-w-sm w-full p-6 text-center border border-slate-200 shadow-2xl space-y-4">
-                            <div className="text-left border-b pb-3 border-slate-100 flex justify-between items-center">
-                                <div>
-                                    <h2 className="text-base font-black text-slate-900 uppercase">Employee ID</h2>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">C-Point Official Badge</p>
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity no-print"
+                            onClick={() => setIsPrintModalOpen(false)}
+                        />
+                        <motion.div 
+                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            id="qr-print-card"
+                            className="relative bg-white rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10"
+                        >
+                            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                                <div className="text-left">
+                                    <h1 className="text-lg sm:text-xl font-black text-slate-900 uppercase tracking-wider">C-Point Official ID</h1>
+                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Biometric Gate Pass</p>
+                                </div>
+                                <span className="px-3 py-1 bg-slate-900 text-white font-mono text-xs font-black rounded-lg">
+                                    {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS')}
+                                </span>
+                            </div>
+
+                            <div className="flex justify-center mb-6">
+                                <div className="p-4 bg-white border-2 border-slate-200/80 rounded-2xl flex items-center justify-center shadow-sm">
+                                    <QRCode 
+                                        value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
+                                        size={240}
+                                        fgColor="#0f172a"
+                                        bgColor="#ffffff"
+                                        level="H"
+                                        margin={2}
+                                        className="rounded-lg"
+                                    />
                                 </div>
                                 <span className="font-mono text-xs font-bold px-2 py-0.5 bg-slate-100 rounded">
                                     {employee.company_id || employee.id}
                                 </span>
                             </div>
-                            <div className="flex justify-center py-2">
-                                <QRCode value={String(employee.company_id || employee.id)} size={200} />
+
+                            <div className="mb-6">
+                                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight truncate">{employee.name}</h2>
+                                <p className="text-indigo-600 font-black uppercase text-xs sm:text-sm tracking-widest mt-1.5">{employee.job_title ?? 'STAFF'}</p>
+                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? employee.department + ' Department' : 'Operations'}</p>
                             </div>
-                            <div>
-                                <h3 className="text-xl font-black text-slate-900">{employee.name}</h3>
-                                <p className="text-xs font-bold text-indigo-600 uppercase mt-0.5">{employee.job_title || 'Staff'}</p>
-                                <p className="text-[10px] text-slate-400 uppercase font-bold">{employee.department || 'General'} Department</p>
+
+                            <div className="no-print flex gap-2.5 sm:gap-3">
+                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-3 sm:py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition tap-active text-xs sm:text-sm">
+                                    Close
+                                </button>
+                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-3.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-indigo-600 shadow-xl shadow-slate-900/20 transition tap-active text-xs sm:text-sm">
+                                    <i className="ti ti-printer text-base sm:text-lg" /> Print Badge
+                                </button>
                             </div>
-                            <div className="no-print flex gap-2 pt-2">
-                                <button onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 font-bold rounded-xl text-xs text-slate-600">Close</button>
-                                <button onClick={printCard} className="flex-1 py-2.5 bg-indigo-600 font-bold rounded-xl text-xs text-white">Print</button>
-                            </div>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </div>      
                 )}
             </AnimatePresence>
         </>

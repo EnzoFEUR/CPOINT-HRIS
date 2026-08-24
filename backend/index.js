@@ -4,6 +4,27 @@ import dotenv from 'dotenv';
 import compression from 'compression';
 import { supabase } from './supabaseClient.js';
 
+// Route Imports
+import employeeRoutes from './routes/employees.js';
+import attendanceRoutes from './routes/attendance.js';
+import payrollRoutes from './routes/payroll.js';
+import leaveRoutes from './routes/leaves.js';
+import dashboardRoutes from './routes/dashboard.js';
+import profileRoutes from './routes/profile.js';
+import auditLogRoutes from './routes/auditLogs.js';
+import shiftRoutes from './routes/shifts.js';
+import disciplinaryRoutes from './routes/disciplinary.js';
+import notificationRoutes from './routes/notifications.js';
+import pushRoutes from './routes/push.js';
+import aiRoutes from './routes/ai.js';
+import employeeDocumentRoutes from './routes/employeeDocuments.js';
+
+// Middleware & Utilities
+import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
+import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
+import { startCronJobs } from './utils/cronJobs.js';
+import './cron/attendanceJobs.js';
+
 dotenv.config();
 
 const app = express();
@@ -18,22 +39,7 @@ app.use(compression({
 // Core Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-
-// Supabase client moved to supabaseClient.js to avoid circular dependencies
-
-import employeeRoutes from './routes/employees.js';
-import attendanceRoutes from './routes/attendance.js';
-import payrollRoutes from './routes/payroll.js';
-import leaveRoutes from './routes/leaves.js';
-import dashboardRoutes from './routes/dashboard.js';
-import profileRoutes from './routes/profile.js';
-import auditLogRoutes from './routes/auditLogs.js';
-import shiftRoutes from './routes/shifts.js';
-import disciplinaryRoutes from './routes/disciplinary.js';
-import notificationRoutes from './routes/notifications.js';
-import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
-import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
-import { startCronJobs } from './utils/cronJobs.js';
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Start background workers
 startCronJobs();
@@ -53,6 +59,9 @@ app.use('/api/disciplinary', verifyToken, checkAdminOrOwnership, disciplinaryRou
 app.use('/api/profile', verifyToken, profileRoutes);
 app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
+app.use('/api/push', verifyToken, pushRoutes);
+app.use('/api/ai', verifyToken, aiRoutes);
+app.use('/api/employee-documents', verifyToken, employeeDocumentRoutes);
 
 // Root Status
 app.get('/', (req, res) => {
@@ -78,9 +87,6 @@ app.get('/api/health', async (req, res) => {
         });
     }
 });
-
-// Initialize Cron Jobs
-import './cron/attendanceJobs.js';
 
 app.listen(port, () => {
     console.log('HRIS server running on port ' + port);
