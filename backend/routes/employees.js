@@ -98,6 +98,9 @@ router.post('/', async (req, res) => {
         const company_id = `CP-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
 
         // Insert into employees table
+        // NOTE: the employees table's actual column is `monthly_salary` (numeric) -
+        // this used to write to a non-existent `salary` column, which meant every
+        // employee creation through this route was silently failing at the DB level.
         const { data: empData, error: empError } = await supabase
             .from('employees')
             .insert({
@@ -110,7 +113,7 @@ router.post('/', async (req, res) => {
                 role,
                 department,
                 job_title,
-                salary: monthly_salary,
+                monthly_salary: monthly_salary,
                 email_hash: lookupHash,
                 status: 'active',
                 requires_password_change: true
