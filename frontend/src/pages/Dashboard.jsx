@@ -24,10 +24,7 @@ export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
 
-    // 1. Fetch Master Dashboard Telemetry (Cached for 10s, auto-invalidated on real-time events)
-    // refetchInterval is a polling fallback in case the Supabase realtime channel below drops
-    // (e.g. the table isn't added to the realtime publication, or the socket disconnects) -
-    // the dashboard should never go stale silently even if the websocket layer misbehaves.
+    // Master dashboard telemetry
     const { data: dashboardData, isLoading } = useQuery({
         queryKey: ['adminDashboard'],
         queryFn: async () => {
@@ -38,7 +35,7 @@ export default function Dashboard() {
         refetchInterval: 30000,
     });
 
-    // 2. Fetch AI Executive Briefing from Google Gemini 2.0
+    // AI executive briefing
     const { data: aiData, refetch: refetchAI, isFetching: isAILoading } = useQuery({
         queryKey: ['aiDailyBriefing'],
         queryFn: async () => {
@@ -49,7 +46,7 @@ export default function Dashboard() {
         refetchInterval: 5 * 60000,
     });
 
-    // 3. Fetch AI Anomaly / Burnout Detection (30-day lookback, deterministic counts + AI narrative)
+    // Anomaly and burnout detection
     const { data: anomalyData, isLoading: isAnomalyLoading } = useQuery({
         queryKey: ['aiAnomalies'],
         queryFn: async () => {
@@ -60,7 +57,7 @@ export default function Dashboard() {
         refetchInterval: 5 * 60000,
     });
 
-    // 4. Fetch 15-Day Cutoff Payroll Forecaster (deterministic, from employees.salary + attendances)
+    // Payroll forecast
     const { data: payrollData, isLoading: isPayrollLoading } = useQuery({
         queryKey: ['payrollForecast'],
         queryFn: async () => {
@@ -71,7 +68,7 @@ export default function Dashboard() {
         refetchInterval: 60000,
     });
 
-    // 5. Real-Time WebSocket Synchronization (Listens to DB changes)
+    // Real-time synchronization
     useEffect(() => {
         const liveChannel = supabase
             .channel('dashboard_live')
@@ -119,16 +116,14 @@ export default function Dashboard() {
         doleCompliance = null,
     } = dashboardData;
 
-    // The Weekly/Monthly toggle switches which pre-computed series renders below -
-    // previously trendView only changed the button's highlight and never touched
-    // the actual chart data, so "Monthly" looked identical to "Weekly".
+    // Active trend data
     const activeTrend = trendView === 'monthly' ? monthlyTrends : weeklyTrends;
 
     const presentPercentage = totalStaff > 0 ? Math.round((presentTodayCount / totalStaff) * 100) : 0;
     const briefing = aiData?.briefing;
     const maxTrendValue = Math.max(...activeTrend.map(t => t.value || 0), 100);
 
-    // Department ranking now sourced from real 30-day punctuality data
+    // Department punctuality ranking
     const deptList = deptPunctuality.map(d => ({
         name: d.name,
         score: d.score,
@@ -145,36 +140,21 @@ export default function Dashboard() {
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-12">
             
-            {/* ========================================================================= */}
-            {/* 1. HEADER WITH REAL-TIME TELEMETRY PILL                                   */}
-            {/* ========================================================================= */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Executive HR Command Center</h2>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">Biometric telemetry, DOLE compliance monitoring & predictive AI analytics</p>
-                </div>
-                <div className="flex items-center gap-2 self-start sm:self-center">
-                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-700 shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                        <span>Live Stream Connected</span>
-                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Dashboard</h2>
                 </div>
             </div>
 
-            {/* ========================================================================= */}
-            {/* 2. GRID 1: FULL-WIDTH AI EXECUTIVE BRIEFING (GEMINI 2.0)                  */}
-            {/* ========================================================================= */}
-            <motion.div layout className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-800 text-white shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-                <div className="absolute bottom-0 left-1/3 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
+            {/* AI Executive Briefing */}
+            <div className="bg-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-800 text-white shadow-xl relative overflow-hidden">
                 <div className="relative z-10 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
                                 <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Daily Briefing
                             </span>
-                            <span className="text-slate-400 text-xs font-medium">Real-time Telemetry</span>
                         </div>
                         <button
                             onClick={() => refetchAI({ fresh: true })}
@@ -190,42 +170,40 @@ export default function Dashboard() {
                         {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
                     </p>
 
-                    {/* 3 Micro-Insight Pills */}
+                    {/* Summary metrics */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
                             <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Punctuality Rating</span>
                             <p className="text-slate-200 font-semibold mt-1">
-                                {lateTodayCount === 0 ? '✨ 100% On-time compliance across shifts.' : `⚠️ ${lateTodayCount} staff clocked in past grace period.`}
+                                {lateTodayCount === 0 ? '100% On-time compliance across shifts.' : `${lateTodayCount} staff clocked in past grace period.`}
                             </p>
                         </div>
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
                             <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Top Division</span>
                             <p className="text-slate-200 font-semibold mt-1">
                                 {topDept ? `${topDept.name} leading on-time attendance (${topDept.score}%).` : 'Not enough data yet.'}
                             </p>
                         </div>
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
                             <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Pending Approvals</span>
                             <p className="text-slate-200 font-semibold mt-1">
-                                {pendingLeavesCount > 0 ? `🚨 ${pendingLeavesCount} leave requests pending review.` : '✅ All leave requests cleared.'}
+                                {pendingLeavesCount > 0 ? `${pendingLeavesCount} leave requests pending review.` : 'All leave requests cleared.'}
                             </p>
                         </div>
                     </div>
                 </div>
-            </motion.div>
+            </div>
 
-            {/* ========================================================================= */}
-            {/* 3. GRID 2: 4-COLUMN EXECUTIVE KPI CARDS                                   */}
-            {/* ========================================================================= */}
+            {/* KPI Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-users text-5xl text-blue-600" />
                     </div>
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Workforce</p>
-                    <motion.h3 key={totalStaff} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
                         {totalStaff}
-                    </motion.h3>
+                    </h3>
                     <span className="text-xs font-bold text-emerald-600 mt-2 block flex items-center gap-1">
                         <i className="ti ti-check" /> Active Staff
                     </span>
@@ -236,9 +214,9 @@ export default function Dashboard() {
                         <i className="ti ti-user-check text-5xl text-emerald-600" />
                     </div>
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Present Rate</p>
-                    <motion.h3 key={presentPercentage} initial={{ scale: 1.15, color: '#10B981' }} animate={{ scale: 1, color: '#1E293B' }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
                         {presentPercentage}%
-                    </motion.h3>
+                    </h3>
                     <span className="text-xs font-bold text-slate-500 mt-2 block">
                         {presentTodayCount} of {totalStaff} on-site
                     </span>
@@ -249,9 +227,9 @@ export default function Dashboard() {
                         <i className="ti ti-clock-exclamation text-5xl text-amber-600" />
                     </div>
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Late Arrivals</p>
-                    <motion.h3 key={lateTodayCount} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
                         {lateTodayCount}
-                    </motion.h3>
+                    </h3>
                     <span className="text-xs font-bold text-amber-600 mt-2 block flex items-center gap-1">
                         <i className="ti ti-alert-triangle" /> Past grace period
                     </span>
@@ -262,9 +240,9 @@ export default function Dashboard() {
                         <i className="ti ti-plane-departure text-5xl text-white" />
                     </div>
                     <p className="text-[11px] font-bold text-blue-200 uppercase tracking-wider">Pending Leaves</p>
-                    <motion.h3 key={pendingLeavesCount} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="text-3xl sm:text-4xl font-black text-white mt-1 tracking-tight">
+                    <h3 className="text-3xl sm:text-4xl font-black text-white mt-1 tracking-tight">
                         {pendingLeavesCount}
-                    </motion.h3>
+                    </h3>
                     <span className="text-xs font-bold text-white mt-2 block flex items-center justify-between">
                         <span>Requires Review</span>
                         <span>&rarr;</span>
@@ -272,12 +250,10 @@ export default function Dashboard() {
                 </Link>
             </div>
 
-            {/* ========================================================================= */}
-            {/* 4. GRID 3: PREDICTIVE ANALYTICS & FORECASTING (2 COLUMNS)                  */}
-            {/* ========================================================================= */}
+            {/* Predictive Analytics */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
-                {/* A. Department Punctuality Scorecard (live, from 30-day attendance data) */}
+                {/* Department Punctuality Scorecard */}
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -313,7 +289,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* B. Predictive Burnout & Turnover Radar (live, from Gemini anomaly detection) */}
+                {/* Predictive Burnout & Turnover Radar */}
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -357,12 +333,10 @@ export default function Dashboard() {
 
             </div>
 
-            {/* ========================================================================= */}
-            {/* 5. GRID 4: FINANCIAL & COMPLIANCE INTELLIGENCE (2 COLUMNS)                 */}
-            {/* ========================================================================= */}
+            {/* Financial & Compliance Intelligence */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
-                {/* A. 15-Day Cutoff Payroll Forecaster (live, deterministic calc from employees.salary + attendances) */}
+                {/* 15-Day Cutoff Payroll Forecaster */}
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -383,15 +357,15 @@ export default function Dashboard() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="bg-slate-50 rounded-2xl p-4">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accrued So Far</p>
-                                    <motion.p key={payrollData.actualPayToDate} initial={{ scale: 1.1 }} animate={{ scale: 1 }} className="text-xl font-black text-slate-800 mt-1">
+                                    <p className="text-xl font-black text-slate-800 mt-1">
                                         ₱{payrollData.actualPayToDate.toLocaleString()}
-                                    </motion.p>
+                                    </p>
                                 </div>
                                 <div className="bg-slate-900 rounded-2xl p-4">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Cutoff Total</p>
-                                    <motion.p key={payrollData.projectedCutoffTotal} initial={{ scale: 1.1 }} animate={{ scale: 1 }} className="text-xl font-black text-white mt-1">
+                                    <p className="text-xl font-black text-white mt-1">
                                         ₱{payrollData.projectedCutoffTotal.toLocaleString()}
-                                    </motion.p>
+                                    </p>
                                 </div>
                             </div>
 
@@ -423,7 +397,7 @@ export default function Dashboard() {
                     )}
                 </div>
 
-                {/* B. DOLE Labor Standard Health Meter (live, from attendance data) */}
+                {/* DOLE Labor Standard Compliance */}
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -472,12 +446,10 @@ export default function Dashboard() {
 
             </div>
 
-            {/* ========================================================================= */}
-            {/* 6. GRID 5: 7-DAY ATTENDANCE TREND (8 COLS) + LIVE ACTIVITY FEED (4 COLS)  */}
-            {/* ========================================================================= */}
+            {/* Attendance Trend & Live Gate Feed */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 
-                {/* 7-Day Trend Chart (live) */}
+                {/* 7-Day Trend Chart */}
                 <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between mb-6">
                         <div>
@@ -528,42 +500,37 @@ export default function Dashboard() {
                 <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> Live Gate Feed
+                            <span className="" /> Live Gate Feed
                         </h3>
                         <Link to="/admin/attendance" className="text-xs font-bold text-blue-600 hover:underline">View All &rarr;</Link>
                     </div>
 
                     <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-1">
-                        <AnimatePresence initial={false}>
-                            {recentLogs.length > 0 ? recentLogs.map((log) => (
-                                <motion.div
-                                    key={log.id}
-                                    initial={{ opacity: 0, y: -15 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0 }}
-                                    className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center text-xs shrink-0">
-                                            {log.employees ? `${log.employees.first_name?.[0] || 'C'}${log.employees.last_name?.[0] || 'P'}` : 'CP'}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-xs font-black text-slate-800 truncate">
-                                                {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Staff'}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
-                                                {log.employees?.department || 'Production'} • {new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </p>
-                                        </div>
+                        {recentLogs.length > 0 ? recentLogs.map((log) => (
+                            <div
+                                key={log.id}
+                                className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100 transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center text-xs shrink-0">
+                                        {log.employees ? `${log.employees.first_name?.[0] || 'C'}${log.employees.last_name?.[0] || 'P'}` : 'CP'}
                                     </div>
-                                    <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                        {log.status}
-                                    </span>
-                                </motion.div>
-                            )) : (
-                                <p className="text-xs text-slate-400 font-bold py-8 text-center">No biometric logs recorded today yet.</p>
-                            )}
-                        </AnimatePresence>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-800 truncate">
+                                            {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Staff'}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
+                                            {log.employees?.department || 'Production'} • {new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                                    {log.status}
+                                </span>
+                            </div>
+                        )) : (
+                            <p className="text-xs text-slate-400 font-bold py-8 text-center">No biometric logs recorded today yet.</p>
+                        )}
                     </div>
                 </div>
 

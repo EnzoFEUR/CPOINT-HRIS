@@ -24,10 +24,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* 2. STATS BENTO GRID */}
+      {/* Stats grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* A. PRIMARY METRIC: Total Staff */}
+        {/* Total staff */}
         <div className="lg:col-span-1 bg-slate-900 rounded-[2rem] p-8 text-white group cursor-pointer relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -mr-6 -mt-6"></div>
           
@@ -49,7 +49,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* B. MINI STATS GRID */}
+        {/* Department metrics */}
         <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-sm border border-slate-100 hover:border-indigo-100 flex flex-col justify-between hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 group relative overflow-hidden cursor-pointer">
             <div className="relative z-10 flex justify-between items-start">
@@ -105,9 +105,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 3. MAIN CONTENT SPLIT */}
+      {/* Main content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-        {/* LEFT: REQUESTS TABLE */}
+        {/* Leave requests */}
         <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-[2rem] shadow-sm border border-slate-100 flex flex-col overflow-hidden">
           <div className="p-8 border-b border-slate-50 flex justify-between items-center">
             <div>
@@ -163,7 +163,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* RIGHT: CALENDAR WIDGET */}
+        {/* Schedule */}
         <div className="lg:col-span-1 bg-white/80 backdrop-blur-md p-8 rounded-[2rem] shadow-sm border border-slate-100 h-fit">
           <div className="flex justify-between items-center mb-8">
             <div>

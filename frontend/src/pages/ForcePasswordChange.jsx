@@ -144,7 +144,7 @@ export default function ForcePasswordChange() {
                                 </div>
                             </div>
 
-                            {/* PASSWORD SECURITY CHECKER */}
+                            {/* Password security requirements */}
                             <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
                                 <p className="text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider">Security Requirements</p>
                                 <div className="grid grid-cols-2 gap-3 text-sm">

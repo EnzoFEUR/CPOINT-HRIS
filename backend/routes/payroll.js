@@ -43,9 +43,7 @@ const getEffectiveMonthlySalary = (employee) => {
     return 0;
 };
 
-// ==========================================
-// 1. STATUTORY SETTINGS ROUTES
-// ==========================================
+// 1. Statutory settings
 
 router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     try {
@@ -93,9 +91,7 @@ router.put('/statutory-settings', async (req, res) => {
     }
 });
 
-// ==========================================
-// 2. HOLIDAYS (BI-DIRECTIONAL DATE SUPPORT)
-// ==========================================
+// 2. Holidays
 
 router.get('/holidays', cacheResponse(60), async (req, res) => {
     try {
@@ -123,21 +119,21 @@ router.get('/holidays', cacheResponse(60), async (req, res) => {
 
 router.post('/holidays', async (req, res) => {
     try {
-        const { date, name, type } = req.body;
-        if (!date || !name || !['regular', 'special_non_working'].includes(type)) {
-            return res.status(400).json({ error: 'date, name, and a valid type are required.' });
+        const { name, date, type } = req.body;
+        if (!name || !date || !type) {
+            return res.status(400).json({ error: 'name, date, and type are required.' });
         }
 
         const { data, error } = await supabase
             .from('holidays')
-            .insert({ date, name, type })
+            .insert([{ name, date, type }])
             .select()
             .single();
 
         if (error) throw error;
 
         invalidateCache(['/api/payroll/holidays']);
-        res.json({ success: true, data });
+        res.status(201).json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -146,7 +142,10 @@ router.post('/holidays', async (req, res) => {
 router.delete('/holidays/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || !isValidUUID(id)) {
+        const isNumericId = !isNaN(Number(id));
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+        if (!isNumericId && !isUUID) {
             return res.status(400).json({ error: 'Invalid holiday ID format.' });
         }
 
@@ -160,9 +159,7 @@ router.delete('/holidays/:id', async (req, res) => {
     }
 });
 
-// ==========================================
-// 3. 13TH MONTH PAY
-// ==========================================
+// 3. 13th month pay
 
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
@@ -185,9 +182,7 @@ router.get('/13th-month/:employee_id', async (req, res) => {
     }
 });
 
-// ==========================================
-// 4. HOLIDAY & PAYROLL PREVIEW
-// ==========================================
+// 4. Holiday and payroll preview
 
 router.post('/preview', async (req, res) => {
     try {
@@ -239,9 +234,7 @@ router.post('/preview', async (req, res) => {
     }
 });
 
-// ==========================================
-// 5. COMPUTE & SAVE PAYROLL (FULL ENGINE)
-// ==========================================
+// 5. Compute and save payroll
 
 router.get('/', cacheResponse(20), async (req, res) => {
     try {

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 export default function Show() {
     const { id } = useParams();
@@ -14,7 +15,6 @@ export default function Show() {
     // Employee State
     const [employee, setEmployee] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [imageError, setImageError] = useState(false);
 
     // Modals State
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -218,14 +218,14 @@ export default function Show() {
                 <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
                 <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
-                {/* TOP NAVIGATION */}
+                {/* Top navigation */}
                 <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-3">
                     <Link to="/admin/employees" className="px-4 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all shadow-xs border border-slate-200 flex items-center gap-2">
                         <i className="ti ti-arrow-left text-lg" /> Back to Directory
                     </Link>
                     
                     <div className="flex flex-wrap gap-2 sm:gap-3">
-                        {/* 201 DOCUMENTS DIRECTORY LINK */}
+                        {/* 201 Documents link */}
                         <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-sky-50 text-sky-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-sky-100 transition-all shadow-xs sm:shadow-sm border border-sky-100 flex items-center gap-1.5 sm:gap-2 tap-active">
                             <i className="ti ti-folders text-base sm:text-lg" /> 201 Documents
                         </Link>
@@ -244,23 +244,18 @@ export default function Show() {
                     </div>
                 </motion.div>
 
-                {/* EMPLOYEE HERO BANNER */}
+                {/* Employee profile banner */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 rounded-2xl shadow-md p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 relative overflow-hidden">
                     <div className="relative shrink-0">
-                        <div className="h-28 w-28 sm:h-36 sm:w-36">
-                            {!imageError ? (
-                                <img
-                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${employee.company_id || employee.id}/${employee.id}.jpg`}
-                                    onError={() => setImageError(true)}
-                                    alt={employee.name}
-                                    className="w-full h-full object-cover rounded-2xl shadow-xl border-4 border-white/10 bg-slate-800"
-                                />
-                            ) : (
-                                <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl sm:text-5xl font-black shadow-xl border-4 border-white/10">
-                                    {employee.first_name?.[0] || employee.name?.charAt(0) || 'E'}
-                                </div>
-                            )}
-                        </div>
+                        <EmployeeAvatar
+                            employee={employee}
+                            size="h-28 w-28 sm:h-36 sm:w-36"
+                            rounded="rounded-2xl"
+                            border="border-4 border-white/10"
+                            shadow="shadow-xl"
+                            theme="gradient"
+                            textSize="text-4xl sm:text-5xl"
+                        />
                     </div>
 
                     <div className="relative z-10 text-center sm:text-left flex-1 min-w-0">
@@ -291,7 +286,7 @@ export default function Show() {
                     </div>
                 </motion.div>
 
-                {/* PERSONAL & PAYROLL DETAILS */}
+                {/* Personal and payroll details */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
@@ -391,7 +386,7 @@ export default function Show() {
                     </div>
                 </motion.div>
 
-                {/* 201 DOCUMENTS DISPLAY CARD */}
+                {/* 201 Documents */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-8">
                         <div className="flex items-center gap-3 sm:gap-4">
@@ -469,7 +464,7 @@ export default function Show() {
                 </motion.div>
             </div>
 
-            {/* DELETE MODAL */}
+            {/* Delete confirmation modal */}
             <AnimatePresence>
                 {isDeleteModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
@@ -505,7 +500,7 @@ export default function Show() {
                 )}
             </AnimatePresence>
 
-            {/* PRINT QR BADGE MODAL */}
+            {/* Print QR badge modal */}
             <AnimatePresence>
                 {isPrintModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
