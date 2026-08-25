@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import QRCode from '../../components/QRCode';
+import EmployeeAvatar from '../../components/EmployeeAvatar';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -35,6 +36,8 @@ const MyQr = () => {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -75,22 +78,16 @@ const MyQr = () => {
         <motion.div variants={itemVariants} className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1 will-change-transform transform-gpu">
           <div className="flex items-center gap-3.5 min-w-0">
             {/* User Avatar */}
-            <div className="relative w-12 h-12 rounded-full bg-slate-900 text-white font-bold text-base flex items-center justify-center overflow-hidden ring-2 ring-white shadow-xs shrink-0">
-              {photoUrl ? (
-                <img
-                  src={photoUrl}
-                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                  alt={employeeName}
-                  className="w-full h-full object-cover"
-                />
-              ) : null}
-              <span
-                className="w-full h-full flex items-center justify-center"
-                style={{ display: photoUrl ? 'none' : 'flex' }}
-              >
-                {avatarLetter}
-              </span>
-            </div>
+            <EmployeeAvatar
+              employee={user}
+              photoUrl={photoUrl}
+              size="w-12 h-12"
+              rounded="rounded-full"
+              border="ring-2 ring-white"
+              shadow="shadow-xs"
+              theme="dark"
+              textSize="text-base"
+            />
 
             {/* Name & Job Title */}
             <div className="min-w-0 flex-1">

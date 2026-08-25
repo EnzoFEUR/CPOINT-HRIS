@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 const toSafeNumber = (val) => {
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -149,39 +150,6 @@ export default function PayrollIndex() {
         visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
     };
 
-    // Resilient Employee Avatar: loads face baseline photo or gracefully renders stylized initials
-    const EmployeeAvatar = ({ payroll, size = 'h-12 w-12' }) => {
-        const [imgFailed, setImgFailed] = useState(false);
-        const emp = payroll?.employees;
-        const firstName = emp?.first_name || '';
-        const lastName = emp?.last_name || '';
-        const initials = (firstName || lastName)
-            ? `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
-            : 'EM';
-
-        const avatarSrc = emp?.avatar_url || (emp?.company_id && emp?.id
-            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
-            : null);
-
-        return (
-            <div className={`relative ${size} rounded-xl overflow-hidden shrink-0 border border-slate-200/80 shadow-xs bg-gradient-to-br from-emerald-50 to-slate-100 flex items-center justify-center select-none`}>
-                {avatarSrc && !imgFailed ? (
-                    <img
-                        src={avatarSrc}
-                        onError={() => setImgFailed(true)}
-                        alt={`${firstName} ${lastName}`}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                    />
-                ) : (
-                    <span className="font-black text-emerald-700 text-xs sm:text-sm tracking-wider">
-                        {initials}
-                    </span>
-                )}
-            </div>
-        );
-    };
-
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
@@ -193,7 +161,7 @@ export default function PayrollIndex() {
 
     return (
         <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            {/* HERO HEADER */}
+            {/* Header */}
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
                     <div>
@@ -218,7 +186,7 @@ export default function PayrollIndex() {
 
                         <Link
                             to="/admin/payroll/process"
-                            className="px-5 sm:px-6 py-3 sm:py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl font-black text-xs sm:text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2 tap-active border border-emerald-400"
+                            className="px-5 sm:px-6 py-3 sm:py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl font-black text-xs sm:text-sm transition-all shadow-xs flex items-center gap-2 tap-active border border-emerald-400"
                         >
                             <i className="ti ti-calculator text-lg" />
                             <span>Compute Payroll</span>
@@ -227,7 +195,7 @@ export default function PayrollIndex() {
                 </div>
             </motion.div>
 
-            {/* DYNAMIC RESPONSIVE FILTER TOOLBAR */}
+            {/* Filter toolbar */}
             <motion.div
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -341,85 +309,81 @@ export default function PayrollIndex() {
                 </div>
             </motion.div>
 
-            {/* TABLE CONTAINER */}
+            {/* Table container */}
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
-                {/* MOBILE CARDS VIEW */}
+                {/* Mobile view */}
                 <div className="block md:hidden divide-y divide-slate-100">
-                    <AnimatePresence>
-                        {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => {
-                            const grossVal = calculateGrossPay(payroll);
-                            const dedVal = toSafeNumber(payroll.deductions);
-                            const netVal = toSafeNumber(payroll.net_pay);
+                    {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => {
+                        const grossVal = calculateGrossPay(payroll);
+                        const dedVal = toSafeNumber(payroll.deductions);
+                        const netVal = toSafeNumber(payroll.net_pay);
 
-                            return (
-                                <motion.div
-                                    variants={rowVariants}
-                                    layout
-                                    key={`mobile-${payroll.id}`}
-                                    className="p-4 space-y-3 hover:bg-emerald-50/20 transition-colors"
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <EmployeeAvatar payroll={payroll} size="h-10 w-10" />
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-black text-slate-800 truncate">
-                                                    {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
-                                                </p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
-                                                    {payroll.employees?.department || 'Staff'} &bull; {payroll.employees?.company_id || `#${payroll.employee_id.substring(0, 6)}`}
-                                                </p>
-                                            </div>
+                        return (
+                            <div
+                                key={`mobile-${payroll.id}`}
+                                className="p-4 space-y-3 hover:bg-emerald-50/20 transition-colors"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="emerald" />
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-black text-slate-800 truncate">
+                                                {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+                                                {payroll.employees?.department || 'Staff'} &bull; {payroll.employees?.company_id || `#${payroll.employee_id.substring(0, 6)}`}
+                                            </p>
                                         </div>
+                                    </div>
 
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1 shrink-0">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {payroll.status || 'Completed'}
+                                    <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1 shrink-0">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {payroll.status || 'Completed'}
+                                    </span>
+                                </div>
+
+                                <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="font-bold text-slate-500">Pay Period</span>
+                                        <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200/60">
+                                            {dayjs(payroll.period_start).format('MMM DD')} &rarr; {dayjs(payroll.period_end).format('MMM DD, YYYY')}
                                         </span>
                                     </div>
 
-                                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="font-bold text-slate-500">Pay Period</span>
-                                            <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200/60">
-                                                {dayjs(payroll.period_start).format('MMM DD')} &rarr; {dayjs(payroll.period_end).format('MMM DD, YYYY')}
-                                            </span>
+                                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/40 text-xs">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Pay</span>
+                                            <p className="font-mono font-bold text-slate-700">₱{grossVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                         </div>
-
-                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/40 text-xs">
-                                            <div>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Pay</span>
-                                                <p className="font-mono font-bold text-slate-700">₱{grossVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] font-bold text-red-400 uppercase">Deductions</span>
-                                                <p className="font-mono font-bold text-red-500">-₱{dedVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                                            <span className="text-xs font-black uppercase text-slate-500">Net Take-Home Pay</span>
-                                            <span className="text-base font-black text-emerald-600 font-mono">
-                                                ₱{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-red-400 uppercase">Deductions</span>
+                                            <p className="font-mono font-bold text-red-500">-₱{dedVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                         </div>
                                     </div>
 
-                                    <Link
-                                        to={`/admin/payroll/${payroll.id}`}
-                                        className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 tap-active transition-colors"
-                                    >
-                                        <i className="ti ti-receipt-2 text-base" /> View Full Payslip
-                                    </Link>
-                                </motion.div>
-                            );
-                        }) : (
-                            <div className="p-8 text-center text-slate-400">
-                                <p className="text-xs font-bold">No payroll records found for this period</p>
+                                    <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                                        <span className="text-xs font-black uppercase text-slate-500">Net Take-Home Pay</span>
+                                        <span className="text-base font-black text-emerald-600 font-mono">
+                                            ₱{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <Link
+                                    to={`/admin/payroll/${payroll.id}`}
+                                    className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 tap-active transition-colors"
+                                >
+                                    <i className="ti ti-receipt-2 text-base" /> View Full Payslip
+                                </Link>
                             </div>
-                        )}
-                    </AnimatePresence>
+                        );
+                    }) : (
+                        <div className="p-8 text-center text-slate-400">
+                            <p className="text-xs font-bold">No payroll records found for this period</p>
+                        </div>
+                    )}
                 </div>
 
-                {/* DESKTOP TABLE VIEW */}
+                {/* Desktop table view */}
                 <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
@@ -433,96 +397,94 @@ export default function PayrollIndex() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            <AnimatePresence>
-                                {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => {
-                                    const grossVal = calculateGrossPay(payroll);
-                                    const dedVal = toSafeNumber(payroll.deductions);
-                                    const netVal = toSafeNumber(payroll.net_pay);
+                            {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => {
+                                const grossVal = calculateGrossPay(payroll);
+                                const dedVal = toSafeNumber(payroll.deductions);
+                                const netVal = toSafeNumber(payroll.net_pay);
 
-                                    return (
-                                        <motion.tr variants={rowVariants} layout key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
-                                            <td className="px-6 lg:px-8 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <EmployeeAvatar payroll={payroll} />
-                                                    <div>
-                                                        <p className="text-sm font-black text-slate-800 group-hover:text-emerald-600 transition-colors">
-                                                            {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                                            {payroll.employees?.department || 'Staff'} &bull; {payroll.employees?.company_id || `#${payroll.employee_id.substring(0, 6)}`}
-                                                        </p>
-                                                    </div>
+                                return (
+                                    <tr key={payroll.id} className="hover:bg-emerald-50/30 transition-colors group">
+                                        <td className="px-6 lg:px-8 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-12 w-12" theme="emerald" />
+                                                <div>
+                                                    <p className="text-sm font-black text-slate-800 group-hover:text-emerald-600 transition-colors">
+                                                        {payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown'}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                                        {payroll.employees?.department || 'Staff'} &bull; {payroll.employees?.company_id || `#${payroll.employee_id.substring(0, 6)}`}
+                                                    </p>
                                                 </div>
-                                            </td>
-
-                                            <td className="px-6 lg:px-8 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-slate-700">
-                                                        {dayjs(payroll.period_start).format('MMM DD')}
-                                                        <span className="text-slate-300 mx-1">&rarr;</span>
-                                                        {dayjs(payroll.period_end).format('MMM DD, YYYY')}
-                                                    </span>
-                                                    <span className="px-2 py-0.5 mt-1 bg-slate-100 text-slate-500 rounded-md text-[10px] font-bold uppercase tracking-widest w-max border border-slate-200">
-                                                        15-Day Cycle
-                                                    </span>
-                                                </div>
-                                            </td>
-
-                                            <td className="px-6 lg:px-8 py-4">
-                                                <div className="flex flex-col gap-0.5 text-xs max-w-[180px]">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-slate-400 font-bold text-[11px]">Gross</span>
-                                                        <span className="font-mono font-bold text-slate-700">₱{grossVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-red-400 font-bold text-[11px]">Deductions</span>
-                                                        <span className="font-mono font-bold text-red-500">-₱{dedVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            <td className="px-6 lg:px-8 py-4 text-right">
-                                                <span className="text-lg font-black text-emerald-600 font-mono tracking-tight">
-                                                    ₱{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </span>
-                                            </td>
-
-                                            <td className="px-6 lg:px-8 py-4 text-center">
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-1.5 mx-auto">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {payroll.status || 'Completed'}
-                                                </span>
-                                            </td>
-
-                                            <td className="px-6 lg:px-8 py-4 text-right">
-                                                <Link
-                                                    to={`/admin/payroll/${payroll.id}`}
-                                                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs rounded-xl shadow-xs transition-all tap-active"
-                                                >
-                                                    <i className="ti ti-receipt-2 text-base font-bold text-emerald-600" />
-                                                    <span>View</span>
-                                                </Link>
-                                            </td>
-                                        </motion.tr>
-                                    );
-                                }) : (
-                                    <motion.tr variants={rowVariants}>
-                                        <td colSpan="6" className="px-8 py-20 text-center">
-                                            <div className="flex flex-col items-center justify-center text-slate-400">
-                                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-3">
-                                                    <i className="ti ti-receipt-off text-3xl text-slate-300" />
-                                                </div>
-                                                <p className="text-lg font-black text-slate-800 tracking-tight">Vault Empty</p>
-                                                <p className="text-xs text-slate-400 font-medium mt-0.5 max-w-sm">No payroll records found for this period. Click "Compute" to generate new payslips.</p>
                                             </div>
                                         </td>
-                                    </motion.tr>
-                                )}
-                            </AnimatePresence>
+
+                                        <td className="px-6 lg:px-8 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-slate-700">
+                                                    {dayjs(payroll.period_start).format('MMM DD')}
+                                                    <span className="text-slate-300 mx-1">&rarr;</span>
+                                                    {dayjs(payroll.period_end).format('MMM DD, YYYY')}
+                                                </span>
+                                                <span className="px-2 py-0.5 mt-1 bg-slate-100 text-slate-500 rounded-md text-[10px] font-bold uppercase tracking-widest w-max border border-slate-200">
+                                                    15-Day Cycle
+                                                </span>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-6 lg:px-8 py-4">
+                                            <div className="flex flex-col gap-0.5 text-xs max-w-[180px]">
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400 font-bold text-[11px]">Gross</span>
+                                                    <span className="font-mono font-bold text-slate-700">₱{grossVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-red-400 font-bold text-[11px]">Deductions</span>
+                                                    <span className="font-mono font-bold text-red-500">-₱{dedVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-6 lg:px-8 py-4 text-right">
+                                            <span className="text-lg font-black text-emerald-600 font-mono tracking-tight">
+                                                ₱{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-6 lg:px-8 py-4 text-center">
+                                            <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-1.5 mx-auto">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {payroll.status || 'Completed'}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-6 lg:px-8 py-4 text-right">
+                                            <Link
+                                                to={`/admin/payroll/${payroll.id}`}
+                                                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs rounded-xl shadow-xs transition-all tap-active"
+                                            >
+                                                <i className="ti ti-receipt-2 text-base font-bold text-emerald-600" />
+                                                <span>View</span>
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan="6" className="px-8 py-20 text-center">
+                                        <div className="flex flex-col items-center justify-center text-slate-400">
+                                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-3">
+                                                <i className="ti ti-receipt-off text-3xl text-slate-300" />
+                                            </div>
+                                            <p className="text-lg font-black text-slate-800 tracking-tight">Vault Empty</p>
+                                            <p className="text-xs text-slate-400 font-medium mt-0.5 max-w-sm">No payroll records found for this period. Click "Compute" to generate new payslips.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
 
-                {/* PAGINATION BAR */}
+                {/* Pagination */}
                 <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
                     <div>
                         {totalItems > 0 ? (

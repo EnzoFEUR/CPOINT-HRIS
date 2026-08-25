@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../../utils/api';
+import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 export default function DisciplinaryIndex() {
     const [records, setRecords] = useState([]);
@@ -204,22 +205,12 @@ export default function DisciplinaryIndex() {
                                     {/* Header: Employee info + Status */}
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="relative h-10 w-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-xs bg-red-50 flex items-center justify-center">
-                                                {record.company_id && record.employee_id ? (
-                                                    <img 
-                                                        src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${record.company_id}/${record.employee_id}.jpg`}
-                                                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                                        alt=""
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : null}
-                                                <div 
-                                                    className="w-full h-full rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-sm shadow-inner"
-                                                    style={{ display: (record.company_id && record.employee_id) ? 'none' : 'flex' }}
-                                                >
-                                                    {record.employee_name ? record.employee_name.charAt(0) : '?'}
-                                                </div>
-                                            </div>
+                                            <EmployeeAvatar
+                                                companyId={record.company_id}
+                                                employeeId={record.employee_id}
+                                                employeeName={record.employee_name}
+                                                size="h-10 w-10"
+                                            />
                                             <div className="min-w-0">
                                                 <p className="text-sm font-black text-slate-800 truncate">
                                                     {record.employee_name}
@@ -313,22 +304,12 @@ export default function DisciplinaryIndex() {
                                             
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 group-hover:scale-105 transition-transform border border-slate-200 shadow-sm bg-red-50 flex items-center justify-center">
-                                                        {record.company_id && record.employee_id ? (
-                                                            <img 
-                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${record.company_id}/${record.employee_id}.jpg`}
-                                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                                                alt={record.employee_name}
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        ) : null}
-                                                        <div 
-                                                            className="w-full h-full rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-base shadow-inner"
-                                                            style={{ display: (record.company_id && record.employee_id) ? 'none' : 'flex' }}
-                                                        >
-                                                            {record.employee_name ? record.employee_name.charAt(0) : '?'}
-                                                        </div>
-                                                    </div>
+                                                    <EmployeeAvatar
+                                                        companyId={record.company_id}
+                                                        employeeId={record.employee_id}
+                                                        employeeName={record.employee_name}
+                                                        size="h-12 w-12"
+                                                    />
                                                     <div>
                                                         <p className="text-base font-black text-slate-800 group-hover:text-red-600 transition-colors">
                                                             {record.employee_name}

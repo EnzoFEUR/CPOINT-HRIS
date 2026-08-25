@@ -336,6 +336,58 @@ const getNotificationAvatar = (notif, employeeMap) => {
   return { avatarSrc, initials };
 };
 
+const notifAvatarCache = new Map();
+
+const NotificationAvatar = ({ avatarSrc, initials, visuals, size = 'h-11 w-11', textClass = 'text-sm', badgeClass = 'h-4 w-4 text-[9px] -bottom-1 -right-1', ringClass = 'ring-1 ring-slate-900' }) => {
+  const initialStatus = avatarSrc ? notifAvatarCache.get(avatarSrc) : null;
+  const [status, setStatus] = useState(() => initialStatus || 'loading');
+
+  useEffect(() => {
+    if (!avatarSrc) {
+      setStatus('failed');
+      return;
+    }
+    const cached = notifAvatarCache.get(avatarSrc);
+    if (cached) setStatus(cached);
+    else setStatus('loading');
+  }, [avatarSrc]);
+
+  const handleLoad = () => {
+    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'loaded');
+    setStatus('loaded');
+  };
+
+  const handleError = () => {
+    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'failed');
+    setStatus('failed');
+  };
+
+  const isLoaded = status === 'loaded';
+  const isFailed = status === 'failed';
+
+  return (
+    <div className={`relative ${size} shrink-0`}>
+      <div className={`w-full h-full rounded-xl flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
+        {initials}
+      </div>
+      {avatarSrc && !isFailed && (
+        <img
+          src={avatarSrc}
+          onLoad={handleLoad}
+          onError={handleError}
+          alt=""
+          className={`absolute inset-0 w-full h-full object-cover rounded-xl ${
+            isLoaded ? 'opacity-100' : 'opacity-0'
+          } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
+        />
+      )}
+      <span className={`absolute ${badgeClass} rounded-full flex items-center justify-center text-white shadow-sm ${ringClass} ${visuals.badge}`}>
+        <i className={`ti ${visuals.icon}`} />
+      </span>
+    </div>
+  );
+};
+
 function MainLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
@@ -410,7 +462,7 @@ function MainLayout({ children }) {
       setDeferredPrompt(null);
       setIsStandalone(true);
       setShowInstallGuide(false);
-      toast.success('C-Point HRIS installed to your Home Screen!', { icon: '🎉' });
+      toast.success('C-Point HRIS installed to your Home Screen!');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -487,7 +539,7 @@ function MainLayout({ children }) {
   const searchIndex = isAdmin(user) ? [
     { label: 'Admin Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
-    { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
+    { label: 'Shift Deployment', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
     { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
     { label: 'Statutory Settings', route: '/admin/payroll/statutory-settings', icon: 'ti-adjustments-horizontal' },
@@ -557,25 +609,15 @@ function MainLayout({ children }) {
               onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
               className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
             >
-              <div className="relative h-11 w-11 shrink-0">
-                {avatar.avatarSrc ? (
-                  <img
-                    src={avatar.avatarSrc}
-                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                    alt={notif.sender_name || 'Sender'}
-                    className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
-                  />
-                ) : null}
-                <div
-                  className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
-                  style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                >
-                  {avatar.initials}
-                </div>
-                <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
-                  <i className={`ti ${visuals.icon}`} />
-                </span>
-              </div>
+              <NotificationAvatar
+                avatarSrc={avatar.avatarSrc}
+                initials={avatar.initials}
+                visuals={visuals}
+                size="h-11 w-11"
+                textClass="text-sm"
+                badgeClass="h-4 w-4 text-[9px] -bottom-1 -right-1"
+                ringClass="ring-1 ring-slate-900"
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
@@ -690,7 +732,7 @@ function MainLayout({ children }) {
               {/* Nav links */}
               {[
                 { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
-                { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Engine' },
+                { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Deployment' },
                 { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
                 { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
                 { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
@@ -866,25 +908,15 @@ function MainLayout({ children }) {
                           onClick={() => handleNotificationClick(notif)}
                           className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
                         >
-                          <div className="relative h-9 w-9 shrink-0">
-                            {avatar.avatarSrc ? (
-                              <img
-                                src={avatar.avatarSrc}
-                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                alt=""
-                                className="w-full h-full object-cover rounded-xl border border-slate-200"
-                              />
-                            ) : null}
-                            <div
-                              className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner ${visuals.bg}`}
-                              style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                            >
-                              {avatar.initials}
-                            </div>
-                            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] text-white shadow-xs ring-1 ring-white ${visuals.badge}`}>
-                              <i className={`ti ${visuals.icon}`} />
-                            </span>
-                          </div>
+                          <NotificationAvatar
+                            avatarSrc={avatar.avatarSrc}
+                            initials={avatar.initials}
+                            visuals={visuals}
+                            size="h-9 w-9"
+                            textClass="text-xs"
+                            badgeClass="h-3.5 w-3.5 text-[8px] -bottom-1 -right-1"
+                            ringClass="ring-1 ring-white"
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
