@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.jsx'
-import { supabase } from './supabaseClient'
+import { supabase } from './supabaseClient.js'
 
 // Error Boundary to eliminate mobile white screens and provide actionable recovery
 class RootErrorBoundary extends Component {
