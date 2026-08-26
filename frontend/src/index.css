@@ -58,6 +58,20 @@ body {
     display: none;
 }
 
+/* Biometric & Profile Photo Protection: Anti-Drag, Anti-Save, and Anti-Right-Click */
+img, 
+.protected-photo, 
+[data-protected-photo] {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* Disables mobile long-press image preview / save sheet */
+}
+
 .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
