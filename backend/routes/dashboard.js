@@ -21,24 +21,12 @@ function lastNDateStrings(n, endDate = new Date()) {
 }
 
 /**
- * Real 7-day attendance volume trend: for each of the last 7 days,
- * (# attendance records that day / total active employees) * 100
+ * In-memory computation of 7-day attendance volume trends
  */
-async function computeWeeklyTrends(totalEmployees) {
+function computeWeeklyTrendsFromRecords(records, totalEmployees) {
     const days = lastNDateStrings(7);
-    const startDate = days[0];
-    const endDate = days[days.length - 1];
-
-    const { data, error } = await supabase
-        .from('attendances')
-        .select('date')
-        .gte('date', startDate)
-        .lte('date', endDate);
-
-    if (error) throw error;
-
     const countsByDate = {};
-    (data || []).forEach(r => {
+    (records || []).forEach(r => {
         countsByDate[r.date] = (countsByDate[r.date] || 0) + 1;
     });
 
@@ -53,24 +41,14 @@ async function computeWeeklyTrends(totalEmployees) {
 }
 
 /**
- * monthly attendance volume trend, 5 weekly buckets 
+ * In-memory computation of monthly attendance volume trends (5 weekly buckets)
  */
-async function computeMonthlyTrends(totalEmployees) {
+function computeMonthlyTrendsFromRecords(records, totalEmployees) {
     const WEEKS = 5;
     const days = lastNDateStrings(WEEKS * 7); // 35 days, oldest -> newest
-    const startDate = days[0];
-    const endDate = days[days.length - 1];
-
-    const { data, error } = await supabase
-        .from('attendances')
-        .select('date')
-        .gte('date', startDate)
-        .lte('date', endDate);
-
-    if (error) throw error;
 
     const countsByDate = {};
-    (data || []).forEach(r => {
+    (records || []).forEach(r => {
         countsByDate[r.date] = (countsByDate[r.date] || 0) + 1;
     });
 
@@ -95,21 +73,16 @@ async function computeMonthlyTrends(totalEmployees) {
 }
 
 /**
- * department scorecard: over the last 30 days, per department,
+ * In-memory department scorecard over the last 30 days
  */
-async function computeDepartmentPunctuality() {
+function computeDepartmentPunctualityFromRecords(records, empMap) {
     const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
-
-    const { data, error } = await supabase
-        .from('attendances')
-        .select('status, employees:employee_id(department)')
-        .gte('date', thirtyDaysAgo);
-
-    if (error) throw error;
-
     const deptStats = {};
-    (data || []).forEach(r => {
-        const dept = r.employees?.department || 'Unassigned';
+
+    (records || []).forEach(r => {
+        if (r.date < thirtyDaysAgo) return;
+        const emp = empMap.get(r.employee_id);
+        const dept = emp?.department || 'Unassigned';
         if (!deptStats[dept]) deptStats[dept] = { total: 0, late: 0 };
         deptStats[dept].total += 1;
         if ((r.status || '').toLowerCase().includes('late')) {
@@ -137,30 +110,17 @@ async function computeDepartmentPunctuality() {
 }
 
 /**
- * Real DOLE compliance checks computed from attendance data:
- *  1. Weekly Rest Day Rule - flags any employee working 7+ consecutive calendar days
- *     without a gap in the last 30 days (Labor Code Art. 91: 1 rest day per 6 work days).
- *  2. Regular Holiday Multiplier - reports whether holiday-flagged attendance exists
- *     and how many records are pending the 200% premium tag.
- *  3. Night Shift Differential - reports how many active employees are on a night shift
- *     roster (entitled to the +10% NSD under Art. 86).
+ * In-memory DOLE compliance checks computed from attendance records:
+ *  1. Weekly Rest Day Rule (Labor Code Art. 91: 1 rest day per 6 work days)
+ *  2. Regular Holiday Multipliers (200%)
+ *  3. Night Shift Differential (+10% under Art. 86)
  */
-async function computeDoleCompliance() {
+function computeDoleComplianceFromRecords(records, nightShiftCount) {
     const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
+    const filteredRecords = (records || []).filter(r => r.date >= thirtyDaysAgo);
 
-    const [attendanceRes, nightShiftRes] = await Promise.all([
-        supabase.from('attendances').select('employee_id, date, status').gte('date', thirtyDaysAgo),
-        supabase.from('employees').select('id', { count: 'exact', head: true }).ilike('shift', '%night%')
-    ]);
-
-    if (attendanceRes.error) throw attendanceRes.error;
-    if (nightShiftRes.error) throw nightShiftRes.error;
-
-    const records = attendanceRes.data || [];
-
-    // --- 1. Rest day rule: longest consecutive worked-day streak per employee ---
     const datesByEmployee = {};
-    records.forEach(r => {
+    filteredRecords.forEach(r => {
         if (!datesByEmployee[r.employee_id]) datesByEmployee[r.employee_id] = new Set();
         datesByEmployee[r.employee_id].add(r.date);
     });
@@ -191,11 +151,7 @@ async function computeDoleCompliance() {
         ? Math.round((compliantEmployees / employeeIds.length) * 100)
         : 100;
 
-    // --- 2. Holiday multiplier: any holiday-tagged attendance in range ---
-    const holidayRecords = records.filter(r => (r.status || '').toLowerCase().includes('holiday'));
-
-    // --- 3. Night shift differential: active employees on a night roster ---
-    const nightShiftCount = nightShiftRes.count || 0;
+    const holidayRecords = filteredRecords.filter(r => (r.status || '').toLowerCase().includes('holiday'));
 
     return {
         restDay: {
@@ -217,9 +173,6 @@ async function computeDoleCompliance() {
     };
 }
 
-// Semi-monthly (1-15 / 16-end) cutoff, 6-day work week convention used elsewhere in
-// this file (DOLE rest-day rule = 1 rest day per 6 work days), so ~313 working days/year
-// -> ~26 working days/month is the standard PH daily-rate divisor.
 const PH_WORKING_DAYS_PER_MONTH = 26;
 
 function getCutoffRange(refDate = new Date()) {
@@ -235,10 +188,6 @@ function getCutoffRange(refDate = new Date()) {
     return { start: new Date(year, month, 16), end: new Date(year, month, lastDay), label: `${monthName} 16-${lastDay}` };
 }
 
-/**
- * Count working days (every day except Sunday, matching the 6-day work week
- * convention used by the DOLE rest-day check above) between two dates, inclusive.
- */
 function countWorkingDays(start, end) {
     if (end < start) return 0;
     let count = 0;
@@ -251,11 +200,7 @@ function countWorkingDays(start, end) {
 }
 
 /**
- * Real 15-day cutoff payroll forecaster: prorates each active employee's monthly
- * salary into a daily rate, sums ACTUAL pay for working days already logged this
- * cutoff (applying the 200% holiday multiplier / +10% night differential where
- * flagged), then PROJECTS the remainder of the cutoff using that employee's own
- * attendance rate so far. Purely arithmetic - no LLM involved in the figures themselves.
+ * 15-day cutoff payroll forecaster
  */
 async function computePayrollForecast() {
     const today = new Date();
@@ -299,8 +244,8 @@ async function computePayrollForecast() {
         let empActual = 0;
         records.forEach(r => {
             const status = (r.status || '').toLowerCase();
-            if (status.includes('holiday')) empActual += dailyRate * 2; // Art. 94 regular holiday 200%
-            else if (isNightShift) empActual += dailyRate * 1.1;         // Art. 86 NSD +10%
+            if (status.includes('holiday')) empActual += dailyRate * 2;
+            else if (isNightShift) empActual += dailyRate * 1.1;
             else empActual += dailyRate;
         });
 
@@ -343,57 +288,107 @@ router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (re
     }
 });
 
+/**
+ * Optimized Single-Pass Admin Dashboard Telemetry
+ * Consolidates 16 database roundtrips into 3 high-speed queries with in-memory aggregation.
+ */
 router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = new Date().toISOString().split('T')[0];
+        const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
+        // Execute only 3 consolidated queries in parallel
         const [
-            { count: totalStaff },
-            { count: factoryStaffCount },
-            { count: retailStaffCount },
-            { count: itStaffCount },
-            { count: hrStaffCount },
-            { count: presentTodayCount },
-            { count: lateTodayCount },
-            { count: onLeaveCount },
-            { count: pendingLeavesCount },
-            { data: recentLogs }
+            { data: rawEmployees, error: empErr },
+            { data: rawAttendances, error: attErr },
+            { data: rawLeaves, error: leaveErr }
         ] = await Promise.all([
-            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'Factory'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'Retail'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'IT'),
-            supabase.from('employees').select('*', { count: 'exact', head: true }).not('company_id', 'is', null).neq('role', 'admin').neq('role', 'security').eq('department', 'HR/Admin'),
-            supabase.from('attendances').select('*', { count: 'exact', head: true }).eq('date', todayStr),
-            supabase.from('attendances').select('*', { count: 'exact', head: true }).eq('date', todayStr).ilike('status', '%Late%'),
-            supabase.from('leave_requests').select('*', { count: 'exact', head: true })
-                .eq('status', 'Approved')
-                .lte('start_date', todayStr)
-                .gte('end_date', todayStr),
-            supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'New'),
-            supabase.from('attendances').select('*, employees:employee_id(*)').eq('date', todayStr).order('created_at', { ascending: false }).limit(5)
+            supabase
+                .from('employees')
+                .select('id, department, role, shift, company_id')
+                .not('company_id', 'is', null)
+                .neq('role', 'admin')
+                .neq('role', 'security'),
+            supabase
+                .from('attendances')
+                .select('id, employee_id, date, status, created_at, time_in, time_out, employees:employee_id(id, company_id, first_name, last_name, department, shift)')
+                .gte('date', thirtyFiveDaysAgo)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('leave_requests')
+                .select('status, start_date, end_date')
         ]);
 
-        const [weeklyTrends, monthlyTrends, deptPunctuality, doleCompliance] = await Promise.all([
-            computeWeeklyTrends(totalStaff || 0),
-            computeMonthlyTrends(totalStaff || 0),
-            computeDepartmentPunctuality(),
-            computeDoleCompliance()
-        ]);
+        if (empErr) throw empErr;
+        if (attErr) throw attErr;
+        if (leaveErr) throw leaveErr;
+
+        const employees = rawEmployees || [];
+        const attendances = rawAttendances || [];
+        const leaves = rawLeaves || [];
+
+        // 1. Employee Department Breakdown
+        const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
+        const empMap = new Map();
+        let nightShiftCount = 0;
+
+        employees.forEach(emp => {
+            empMap.set(emp.id, emp);
+            const dept = emp.department || 'Other';
+            if (dept === 'Factory') deptBreakdown.Factory++;
+            else if (dept === 'Retail') deptBreakdown.Retail++;
+            else if (dept === 'IT') deptBreakdown.IT++;
+            else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
+
+            if ((emp.shift || '').toLowerCase().includes('night')) {
+                nightShiftCount++;
+            }
+        });
+
+        // 2. Today's Attendance Counters & Recent Logs
+        let presentTodayCount = 0;
+        let lateTodayCount = 0;
+        const recentLogs = [];
+
+        attendances.forEach(att => {
+            if (att.date === todayStr) {
+                presentTodayCount++;
+                if ((att.status || '').toLowerCase().includes('late')) {
+                    lateTodayCount++;
+                }
+                if (recentLogs.length < 5) {
+                    recentLogs.push(att);
+                }
+            }
+        });
+
+        // 3. Leave Requests Counters
+        let onLeaveCount = 0;
+        let pendingLeavesCount = 0;
+
+        leaves.forEach(l => {
+            if (l.status === 'New') {
+                pendingLeavesCount++;
+            }
+            if (l.status === 'Approved' && l.start_date <= todayStr && l.end_date >= todayStr) {
+                onLeaveCount++;
+            }
+        });
+
+        // 4. In-Memory Analytics (Instant 0ms calculation)
+        const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
+        const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
+        const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances, nightShiftCount);
 
         res.json({
-            totalStaff: totalStaff || 0,
-            deptBreakdown: {
-                Factory: factoryStaffCount || 0,
-                Retail: retailStaffCount || 0,
-                IT: itStaffCount || 0,
-                HR: hrStaffCount || 0
-            },
-            presentTodayCount: presentTodayCount || 0,
-            lateTodayCount: lateTodayCount || 0,
-            onLeaveCount: onLeaveCount || 0,
-            pendingLeavesCount: pendingLeavesCount || 0,
-            recentLogs: recentLogs || [],
+            totalStaff: employees.length,
+            deptBreakdown,
+            presentTodayCount,
+            lateTodayCount,
+            onLeaveCount,
+            pendingLeavesCount,
+            recentLogs,
             weeklyTrends,
             monthlyTrends,
             deptPunctuality,
@@ -405,7 +400,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
     }
 });
 
-// Consolidated BFF Endpoint for Employee Dashboard (Single-Trip High Performance)
+// Consolidated BFF Endpoint for Employee Dashboard
 router.get('/employee/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;

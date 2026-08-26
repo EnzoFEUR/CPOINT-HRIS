@@ -14,47 +14,47 @@ import ForcePasswordChange from './pages/ForcePasswordChange';
 import BiometricSetup from './pages/BiometricSetup';
 import VerifyEmail from './pages/VerifyEmail';
 
-// Core Flow Pages
-import Dashboard from './pages/Dashboard';
-import EmployeeDashboard from './pages/EmployeeDashboard';
+// Lazy Loaded Core Flow Pages
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const EmployeeDashboard = lazy(() => import('./pages/EmployeeDashboard'));
 
 // Heavy Scanner (Lazy Loaded for gate terminal only)
 const Scanner = lazy(() => import('./pages/Scanner'));
 
 // Admin / Attendance
-import AttendanceIndex from './pages/admin/attendance/Index';
-import AttendanceCalendar from './pages/admin/attendance/Calendar';
+const AttendanceIndex = lazy(() => import('./pages/admin/attendance/Index'));
+const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'));
 
 // Admin / Employees
-import EmployeeIndex from './pages/admin/employees/Index';
-import EmployeeCreate from './pages/admin/employees/Create';
-import EmployeeEdit from './pages/admin/employees/Edit';
-import EmployeeShow from './pages/admin/employees/Show';
-import Documents from "./pages/admin/documents/Documents";
-import EmployeeQrPrint from './pages/admin/employees/QrPrint';
+const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
+const EmployeeCreate = lazy(() => import('./pages/admin/employees/Create'));
+const EmployeeEdit = lazy(() => import('./pages/admin/employees/Edit'));
+const EmployeeShow = lazy(() => import('./pages/admin/employees/Show'));
+const Documents = lazy(() => import('./pages/admin/documents/Documents'));
+const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
 
 // Admin / Payroll
-import StatutorySettings from './pages/admin/payroll/StatutorySettings';
-import PayrollIndex from './pages/admin/payroll/Index';
-import PayrollCreate from './pages/admin/payroll/Create';
-import PayrollShow from './pages/admin/payroll/Show';
+const StatutorySettings = lazy(() => import('./pages/admin/payroll/StatutorySettings'));
+const PayrollIndex = lazy(() => import('./pages/admin/payroll/Index'));
+const PayrollCreate = lazy(() => import('./pages/admin/payroll/Create'));
+const PayrollShow = lazy(() => import('./pages/admin/payroll/Show'));
 
 // Admin / Audit Logs
-import AuditLogsIndex from './pages/admin/audit-logs/Index';
+const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 
 // Admin / Leaves
-import LeavesIndex from './pages/admin/leaves/Index';
+const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 
 // Admin / Shifts
-import ShiftsIndex from './pages/admin/shifts/Index';
+const ShiftsIndex = lazy(() => import('./pages/admin/shifts/Index'));
 
 // Admin / Disciplinary
-import DisciplinaryIndex from './pages/admin/disciplinary/Index';
+const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 
 // Employee
-import MyQr from './pages/employee/MyQr';
-import EmployeeScanner from './pages/employee/Scanner';
-import MyProfile from './pages/employee/MyProfile';
+const MyQr = lazy(() => import('./pages/employee/MyQr'));
+const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
+const MyProfile = lazy(() => import('./pages/employee/MyProfile'));
 
 import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -990,7 +990,13 @@ function MainLayout({ children }) {
 
           {/* Page Main Content — instant swap, persistent shell (eliminates flash/blank gap) */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
-            {children || <Outlet />}
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-[50vh] w-full">
+                <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+              </div>
+            }>
+              {children || <Outlet />}
+            </Suspense>
           </main>
 
           {/* Modern mobile floating dock (island style) */}

@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { createAuditLog } from './auditLogs.js';
 import {
     toSafeNumber,
     round2,
@@ -446,7 +447,6 @@ router.post('/', async (req, res) => {
 
         // Audit Log Entry
         if (req.body.admin_id) {
-            const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'payroll',
                 description: `Computed payroll for employee ID ${employee_id}`,

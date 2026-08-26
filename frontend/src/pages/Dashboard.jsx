@@ -74,8 +74,6 @@ export default function Dashboard() {
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
-                queryClient.invalidateQueries({ queryKey: ['aiDailyBriefing'] });
-                queryClient.invalidateQueries({ queryKey: ['aiAnomalies'] });
                 queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
