@@ -294,11 +294,13 @@ const getNotificationAvatar = (notif, employeeMap) => {
   }
 
   if (matchedEmp) {
-    if (matchedEmp.biometric_baseline_path) {
+    if (matchedEmp.avatar_url) {
+      avatarSrc = matchedEmp.avatar_url;
+    } else if (matchedEmp.biometric_baseline_path) {
       avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
         ? matchedEmp.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
-    } else if (matchedEmp.company_id && matchedEmp.id) {
+    } else if (matchedEmp.has_registered_biometrics === true && matchedEmp.company_id && matchedEmp.id) {
       avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
     }
 
@@ -307,11 +309,6 @@ const getNotificationAvatar = (notif, employeeMap) => {
       const l = (matchedEmp.last_name && matchedEmp.last_name[0]) || '';
       initials = (f + l).toUpperCase() || 'CP';
     }
-  }
-
-  if (!avatarSrc && notif.company_id && (notif.sender_id || notif.target)) {
-    const id = notif.sender_id || notif.target;
-    avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${id}.jpg`;
   }
 
   if (initials === 'CP') {
