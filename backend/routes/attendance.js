@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
 import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -276,6 +277,7 @@ const sendError = (res, err, reqId) => {
 router.get(
   '/',
   checkAdminOrOwnership,
+  cacheResponse(15),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     const { employee_id, start_date, end_date, page = '1', limit = '50' } = req.query;
@@ -553,7 +555,7 @@ router.post(
 
       logger.info(reqId, 'Time-in recorded', { employee_id, status, minutesLate: status === 'Late' ? Math.floor((now - callTime) / 60_000) : 0 });
 
-      await auditLog(reqId, { employee_id, action: 'TIME_IN', details: { status, livenessConfidence }, ip_address: req.ip });
+      invalidateCache(['/api/attendance', '/api/dashboard']);
 
       return res.status(201).json({
         status: 'success',
@@ -586,6 +588,8 @@ router.post(
 
       await auditLog(reqId, { employee_id, action: 'TIME_OUT', details: { attendance_id: existing.id }, ip_address: req.ip });
 
+      invalidateCache(['/api/attendance', '/api/dashboard']);
+
       return res.json({
         status: 'success',
         code: 'TIME_OUT',
@@ -600,6 +604,7 @@ router.post(
 router.get(
   '/calendar',
   checkAdminOrOwnership,
+  cacheResponse(20),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     const { date = getTodayString() } = req.query;

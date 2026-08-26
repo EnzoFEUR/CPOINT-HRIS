@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ const requireRole = (allowedRoles) => {
  * GET /api/ai/analytics/daily-briefing
  * Fetches real-time workforce metrics and generates an executive AI briefing
  */
-router.get('/analytics/daily-briefing', requireRole(['admin', 'hr', 'manager']), async (req, res) => {
+router.get('/analytics/daily-briefing', requireRole(['admin', 'hr', 'manager']), cacheResponse(120), async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
         const forceFresh = req.query.fresh === 'true';
@@ -93,7 +94,7 @@ router.get('/analytics/daily-briefing', requireRole(['admin', 'hr', 'manager']),
  * This avoids the two failure modes of the old LLM-only approach: hallucinated counts/names,
  * and a 200-record cap that silently dropped data for larger companies.
  */
-router.get('/analytics/anomalies', requireRole(['admin', 'hr', 'manager']), async (req, res) => {
+router.get('/analytics/anomalies', requireRole(['admin', 'hr', 'manager']), cacheResponse(300), async (req, res) => {
     try {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
