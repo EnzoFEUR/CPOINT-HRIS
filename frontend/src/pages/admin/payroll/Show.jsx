@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../../utils/api';
+import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
@@ -241,17 +242,14 @@ export default function PayrollShow() {
                     {/* Employee & Period Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100">
                         <div className="flex items-center gap-4">
-                            <div className="relative h-14 w-14 rounded-2xl overflow-hidden shrink-0 border border-slate-200 shadow-xs bg-gradient-to-br from-emerald-50 to-slate-100 flex items-center justify-center font-black text-emerald-700 text-base">
-                                {payroll.employees?.company_id && payroll.employees?.id ? (
-                                    <img
-                                        src={payroll.employees?.avatar_url || `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`}
-                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                        alt=""
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : null}
-                                <span className="absolute">{(payroll.employees?.first_name?.[0] || 'E')}{(payroll.employees?.last_name?.[0] || '')}</span>
-                            </div>
+                            <EmployeeAvatar 
+                                employee={payroll.employees} 
+                                size="h-14 w-14" 
+                                rounded="rounded-2xl" 
+                                border="border border-slate-200" 
+                                shadow="shadow-xs"
+                                theme="emerald"
+                            />
                             <div>
                                 <p className="text-xs font-bold text-slate-400 uppercase mb-0.5">Employee Details</p>
                                 <p className="text-xl font-black text-slate-800">{payroll.employees ? `${payroll.employees.first_name} ${payroll.employees.last_name}` : 'Unknown Employee'}</p>

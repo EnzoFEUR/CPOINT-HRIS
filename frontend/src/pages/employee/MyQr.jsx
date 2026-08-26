@@ -51,14 +51,16 @@ const MyQr = () => {
   const avatarLetter = (user.first_name || employeeName || 'E').charAt(0).toUpperCase();
 
   const photoUrl = useMemo(() => {
+    if (user?.avatar_url) return user.avatar_url;
     if (user?.biometric_baseline_path) {
       return user.biometric_baseline_path.startsWith('http')
         ? user.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`;
     }
-    return user?.company_id && user?.id
-      ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-      : null;
+    if (user?.has_registered_biometrics === true && user?.company_id && user?.id) {
+      return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`;
+    }
+    return null;
   }, [user]);
 
   const formattedDate = currentTime.toLocaleDateString('en-US', {

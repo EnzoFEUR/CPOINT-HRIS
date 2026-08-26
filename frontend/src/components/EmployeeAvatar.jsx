@@ -63,11 +63,14 @@ export const EmployeeAvatar = ({
             return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${rawPhoto.replace(/^\/+/, '')}`;
         }
 
-        const compId = companyId || employee?.company_id || employee?.companyId || employee?.id || employeeId;
-        const empId = employeeId || employee?.id || employee?.employee_id;
+        // Only attempt storage fetch if employee explicitly has registered biometrics
+        if (employee?.has_registered_biometrics === true) {
+            const compId = companyId || employee?.company_id || employee?.companyId;
+            const empId = employeeId || employee?.id || employee?.employee_id;
 
-        if (compId && empId) {
-            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${compId}/${empId}.jpg`;
+            if (compId && empId) {
+                return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${compId}/${empId}.jpg`;
+            }
         }
 
         return null;
