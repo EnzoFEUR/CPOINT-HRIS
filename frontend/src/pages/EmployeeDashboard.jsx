@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -54,7 +55,7 @@ const EmployeeDashboard = () => {
             console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
         }
 
-        // Resilient parallel fallback directly to individual routes
+        // Fallback fetch
         const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.allSettled([
             fetchWithAuth(`/api/attendance?employee_id=${userId}`),
             fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
@@ -76,11 +77,11 @@ const EmployeeDashboard = () => {
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
         enabled: !!user.id && user.role !== 'security',
-        staleTime: 0,               // Always live & real-time
-        refetchOnWindowFocus: true  // Auto-sync when returning to tab
+        staleTime: 0,
+        refetchOnWindowFocus: true,
     });
 
-    // Real-time live sync for dashboard updates
+    // Real-time synchronization
     useEffect(() => {
         if (!user?.id) return;
 
@@ -114,7 +115,7 @@ const EmployeeDashboard = () => {
         };
     }, [user?.id, queryClient]);
 
-    // Derived State with safe unwrap for both direct arrays and { data: [...] } objects
+    // Derived state
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
 
@@ -177,13 +178,15 @@ const EmployeeDashboard = () => {
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
     const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
-    const photoUrl = user?.biometric_baseline_path
-        ? (user.biometric_baseline_path.startsWith('http')
-            ? user.biometric_baseline_path
-            : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
-        : (user?.company_id && user?.id
-            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-            : null);
+    const photoUrl = user?.avatar_url
+        ? user.avatar_url
+        : user?.biometric_baseline_path
+            ? (user.biometric_baseline_path.startsWith('http')
+                ? user.biometric_baseline_path
+                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
+            : (user?.has_registered_biometrics === true && user?.company_id && user?.id
+                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+                : null);
 
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -194,7 +197,7 @@ const EmployeeDashboard = () => {
     
     const sDetails = shiftDetails[shift] || shiftDetails['Unassigned'];
 
-    // Animation variants - Exact enterprise spring motion consistent with Admin modules
+    // Animation variants
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: { 
@@ -258,29 +261,23 @@ const EmployeeDashboard = () => {
                         </p>
                     </div>
                     
-                    {/* User Avatar Circle with Profile Picture */}
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-slate-950/20 border-4 border-white shrink-0 overflow-hidden">
-                        {photoUrl ? (
-                            <img
-                                src={photoUrl}
-                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                alt={user.name || 'Profile'}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : null}
-                        <span 
-                            className="w-full h-full flex items-center justify-center"
-                            style={{ display: photoUrl ? 'none' : 'flex' }}
-                        >
-                            {getInitial(user.name)}
-                        </span>
-                    </div>
+                    {/* User Avatar */}
+                    <EmployeeAvatar
+                        employee={user}
+                        photoUrl={photoUrl}
+                        size="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24"
+                        rounded="rounded-full"
+                        border="border-4 border-white"
+                        shadow="shadow-xl shadow-slate-950/20"
+                        theme="dark"
+                        textSize="text-2xl sm:text-3xl md:text-4xl"
+                    />
                 </motion.div>
 
-                {/* Action cards: Option 1 - Latest Pay & Today's Shift */}
+                {/* Primary actions */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
-                    {/* Payroll card */}
+                    {/* Payroll */}
                     <motion.div 
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
@@ -305,7 +302,7 @@ const EmployeeDashboard = () => {
                         </div>
                     </motion.div>
 
-                    {/* Today's Shift Card */}
+                    {/* Today's shift */}
                     <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group">
                         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/30 via-transparent to-transparent opacity-60" />
                         <div className="relative z-10 flex justify-between items-start">
@@ -330,7 +327,7 @@ const EmployeeDashboard = () => {
 
                 </motion.div>
 
-                {/* Secondary actions: Request Leave & Overview */}
+                {/* Secondary actions */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
                     {/* Leave request */}
@@ -503,10 +500,6 @@ const EmployeeDashboard = () => {
 
                 </motion.div>
             </motion.div>
-
-            {/*  */}
-            {/* Modals */}
-            {/*  */}
 
             {/* QR modal */}
             <AnimatePresence>

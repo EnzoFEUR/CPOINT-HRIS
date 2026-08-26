@@ -14,47 +14,47 @@ import ForcePasswordChange from './pages/ForcePasswordChange';
 import BiometricSetup from './pages/BiometricSetup';
 import VerifyEmail from './pages/VerifyEmail';
 
-// Core Flow Pages
-import Dashboard from './pages/Dashboard';
-import EmployeeDashboard from './pages/EmployeeDashboard';
+// Lazy Loaded Core Flow Pages
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const EmployeeDashboard = lazy(() => import('./pages/EmployeeDashboard'));
 
 // Heavy Scanner (Lazy Loaded for gate terminal only)
 const Scanner = lazy(() => import('./pages/Scanner'));
 
 // Admin / Attendance
-import AttendanceIndex from './pages/admin/attendance/Index';
-import AttendanceCalendar from './pages/admin/attendance/Calendar';
+const AttendanceIndex = lazy(() => import('./pages/admin/attendance/Index'));
+const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'));
 
 // Admin / Employees
-import EmployeeIndex from './pages/admin/employees/Index';
-import EmployeeCreate from './pages/admin/employees/Create';
-import EmployeeEdit from './pages/admin/employees/Edit';
-import EmployeeShow from './pages/admin/employees/Show';
-import Documents from "./pages/admin/documents/Documents";
-import EmployeeQrPrint from './pages/admin/employees/QrPrint';
+const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
+const EmployeeCreate = lazy(() => import('./pages/admin/employees/Create'));
+const EmployeeEdit = lazy(() => import('./pages/admin/employees/Edit'));
+const EmployeeShow = lazy(() => import('./pages/admin/employees/Show'));
+const Documents = lazy(() => import('./pages/admin/documents/Documents'));
+const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
 
 // Admin / Payroll
-import StatutorySettings from './pages/admin/payroll/StatutorySettings';
-import PayrollIndex from './pages/admin/payroll/Index';
-import PayrollCreate from './pages/admin/payroll/Create';
-import PayrollShow from './pages/admin/payroll/Show';
+const StatutorySettings = lazy(() => import('./pages/admin/payroll/StatutorySettings'));
+const PayrollIndex = lazy(() => import('./pages/admin/payroll/Index'));
+const PayrollCreate = lazy(() => import('./pages/admin/payroll/Create'));
+const PayrollShow = lazy(() => import('./pages/admin/payroll/Show'));
 
 // Admin / Audit Logs
-import AuditLogsIndex from './pages/admin/audit-logs/Index';
+const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 
 // Admin / Leaves
-import LeavesIndex from './pages/admin/leaves/Index';
+const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 
 // Admin / Shifts
-import ShiftsIndex from './pages/admin/shifts/Index';
+const ShiftsIndex = lazy(() => import('./pages/admin/shifts/Index'));
 
 // Admin / Disciplinary
-import DisciplinaryIndex from './pages/admin/disciplinary/Index';
+const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 
 // Employee
-import MyQr from './pages/employee/MyQr';
-import EmployeeScanner from './pages/employee/Scanner';
-import MyProfile from './pages/employee/MyProfile';
+const MyQr = lazy(() => import('./pages/employee/MyQr'));
+const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
+const MyProfile = lazy(() => import('./pages/employee/MyProfile'));
 
 import { isPushSupported, getNotificationPermission, subscribeUserToPush, sendTestPush } from './utils/pushNotifications';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -294,11 +294,13 @@ const getNotificationAvatar = (notif, employeeMap) => {
   }
 
   if (matchedEmp) {
-    if (matchedEmp.biometric_baseline_path) {
+    if (matchedEmp.avatar_url) {
+      avatarSrc = matchedEmp.avatar_url;
+    } else if (matchedEmp.biometric_baseline_path) {
       avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
         ? matchedEmp.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
-    } else if (matchedEmp.company_id && matchedEmp.id) {
+    } else if (matchedEmp.has_registered_biometrics === true && matchedEmp.company_id && matchedEmp.id) {
       avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
     }
 
@@ -307,11 +309,6 @@ const getNotificationAvatar = (notif, employeeMap) => {
       const l = (matchedEmp.last_name && matchedEmp.last_name[0]) || '';
       initials = (f + l).toUpperCase() || 'CP';
     }
-  }
-
-  if (!avatarSrc && notif.company_id && (notif.sender_id || notif.target)) {
-    const id = notif.sender_id || notif.target;
-    avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${notif.company_id}/${id}.jpg`;
   }
 
   if (initials === 'CP') {
@@ -334,6 +331,58 @@ const getNotificationAvatar = (notif, employeeMap) => {
   }
 
   return { avatarSrc, initials };
+};
+
+const notifAvatarCache = new Map();
+
+const NotificationAvatar = ({ avatarSrc, initials, visuals, size = 'h-11 w-11', textClass = 'text-sm', badgeClass = 'h-4 w-4 text-[9px] -bottom-1 -right-1', ringClass = 'ring-1 ring-slate-900' }) => {
+  const initialStatus = avatarSrc ? notifAvatarCache.get(avatarSrc) : null;
+  const [status, setStatus] = useState(() => initialStatus || 'loading');
+
+  useEffect(() => {
+    if (!avatarSrc) {
+      setStatus('failed');
+      return;
+    }
+    const cached = notifAvatarCache.get(avatarSrc);
+    if (cached) setStatus(cached);
+    else setStatus('loading');
+  }, [avatarSrc]);
+
+  const handleLoad = () => {
+    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'loaded');
+    setStatus('loaded');
+  };
+
+  const handleError = () => {
+    if (avatarSrc) notifAvatarCache.set(avatarSrc, 'failed');
+    setStatus('failed');
+  };
+
+  const isLoaded = status === 'loaded';
+  const isFailed = status === 'failed';
+
+  return (
+    <div className={`relative ${size} shrink-0`}>
+      <div className={`w-full h-full rounded-xl flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
+        {initials}
+      </div>
+      {avatarSrc && !isFailed && (
+        <img
+          src={avatarSrc}
+          onLoad={handleLoad}
+          onError={handleError}
+          alt=""
+          className={`absolute inset-0 w-full h-full object-cover rounded-xl ${
+            isLoaded ? 'opacity-100' : 'opacity-0'
+          } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
+        />
+      )}
+      <span className={`absolute ${badgeClass} rounded-full flex items-center justify-center text-white shadow-sm ${ringClass} ${visuals.badge}`}>
+        <i className={`ti ${visuals.icon}`} />
+      </span>
+    </div>
+  );
 };
 
 function MainLayout({ children }) {
@@ -410,7 +459,7 @@ function MainLayout({ children }) {
       setDeferredPrompt(null);
       setIsStandalone(true);
       setShowInstallGuide(false);
-      toast.success('C-Point HRIS installed to your Home Screen!', { icon: '🎉' });
+      toast.success('C-Point HRIS installed to your Home Screen!');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -487,7 +536,7 @@ function MainLayout({ children }) {
   const searchIndex = isAdmin(user) ? [
     { label: 'Admin Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
-    { label: 'Shift Engine & Scheduling', route: '/admin/shifts', icon: 'ti-calendar-time' },
+    { label: 'Shift Deployment', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
     { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
     { label: 'Statutory Settings', route: '/admin/payroll/statutory-settings', icon: 'ti-adjustments-horizontal' },
@@ -557,25 +606,15 @@ function MainLayout({ children }) {
               onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
               className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
             >
-              <div className="relative h-11 w-11 shrink-0">
-                {avatar.avatarSrc ? (
-                  <img
-                    src={avatar.avatarSrc}
-                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                    alt={notif.sender_name || 'Sender'}
-                    className="w-full h-full object-cover rounded-xl shadow-sm border border-slate-700"
-                  />
-                ) : null}
-                <div
-                  className={`w-full h-full rounded-xl flex items-center justify-center font-black text-sm shadow-inner ${visuals.bg}`}
-                  style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                >
-                  {avatar.initials}
-                </div>
-                <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] text-white shadow-sm ring-1 ring-slate-900 ${visuals.badge}`}>
-                  <i className={`ti ${visuals.icon}`} />
-                </span>
-              </div>
+              <NotificationAvatar
+                avatarSrc={avatar.avatarSrc}
+                initials={avatar.initials}
+                visuals={visuals}
+                size="h-11 w-11"
+                textClass="text-sm"
+                badgeClass="h-4 w-4 text-[9px] -bottom-1 -right-1"
+                ringClass="ring-1 ring-slate-900"
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
@@ -690,7 +729,7 @@ function MainLayout({ children }) {
               {/* Nav links */}
               {[
                 { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
-                { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Engine' },
+                { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Deployment' },
                 { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
                 { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
                 { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
@@ -866,25 +905,15 @@ function MainLayout({ children }) {
                           onClick={() => handleNotificationClick(notif)}
                           className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
                         >
-                          <div className="relative h-9 w-9 shrink-0">
-                            {avatar.avatarSrc ? (
-                              <img
-                                src={avatar.avatarSrc}
-                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                alt=""
-                                className="w-full h-full object-cover rounded-xl border border-slate-200"
-                              />
-                            ) : null}
-                            <div
-                              className={`w-full h-full rounded-xl flex items-center justify-center font-black text-xs shadow-inner ${visuals.bg}`}
-                              style={{ display: avatar.avatarSrc ? 'none' : 'flex' }}
-                            >
-                              {avatar.initials}
-                            </div>
-                            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px] text-white shadow-xs ring-1 ring-white ${visuals.badge}`}>
-                              <i className={`ti ${visuals.icon}`} />
-                            </span>
-                          </div>
+                          <NotificationAvatar
+                            avatarSrc={avatar.avatarSrc}
+                            initials={avatar.initials}
+                            visuals={visuals}
+                            size="h-9 w-9"
+                            textClass="text-xs"
+                            badgeClass="h-3.5 w-3.5 text-[8px] -bottom-1 -right-1"
+                            ringClass="ring-1 ring-white"
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -958,7 +987,13 @@ function MainLayout({ children }) {
 
           {/* Page Main Content — instant swap, persistent shell (eliminates flash/blank gap) */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
-            {children || <Outlet />}
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-[50vh] w-full">
+                <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+              </div>
+            }>
+              {children || <Outlet />}
+            </Suspense>
           </main>
 
           {/* Modern mobile floating dock (island style) */}
@@ -1445,6 +1480,35 @@ function MainLayout({ children }) {
 }
 
 function App() {
+  // Global Biometric Photo & Avatar Protection (Anti-Save, Anti-Drag, Anti-New-Tab)
+  useEffect(() => {
+    const handleContextMenu = (e) => {
+      if (
+        e.target.tagName === 'IMG' ||
+        e.target.closest('img') ||
+        e.target.closest('[data-protected-photo]') ||
+        e.target.closest('.protected-photo')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const handleDragStart = (e) => {
+      if (e.target.tagName === 'IMG' || e.target.closest('img')) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    document.addEventListener('dragstart', handleDragStart, { capture: true });
+
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+      document.removeEventListener('dragstart', handleDragStart, { capture: true });
+    };
+  }, []);
+
   return (
     <Router>
       <Toaster

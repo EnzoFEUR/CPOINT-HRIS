@@ -1,68 +1,128 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 
-const Calendar = () => {
-    const [selectedDate, setSelectedDate] = useState(new Date());
-    const [activeDates, setActiveDates] = useState([]);
-    const [dailyLogs, setDailyLogs] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+const formatDateKey = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
-    const fetchCalendarData = async (dateObj) => {
-        setIsLoading(true);
-        try {
-            // format YYYY-MM-DD
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            const dateStr = `${year}-${month}-${day}`;
+const timelinePhotoCache = new Map();
 
-            const res = await fetchWithAuth(`/api/attendance/calendar?date=${dateStr}`);
-            const result = await res.json();
-            
-            const calendarData = result.data || result || {};
-            const logs = calendarData.dailyLogs || [];
-            const dates = calendarData.activeDates || [];
-
-            setDailyLogs(logs);
-            setActiveDates(dates);
-
-            // If current selected day has no logs but month has active dates, auto-focus latest active date on initial load
-            if (logs.length === 0 && dates.length > 0 && !sessionStorage.getItem('calendar_user_picked')) {
-                const latestDateStr = dates[dates.length - 1];
-                const [y, m, d] = latestDateStr.split('-');
-                setSelectedDate(new Date(y, m - 1, d));
-            }
-        } catch (err) {
-            console.error("Failed to fetch calendar:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+const TimelinePhoto = ({ photoPath, employeeName }) => {
+    const photoUrl = photoPath ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath}` : null;
+    const initialStatus = photoUrl ? timelinePhotoCache.get(photoUrl) : null;
+    const [status, setStatus] = useState(() => initialStatus || 'loading');
 
     useEffect(() => {
-        fetchCalendarData(selectedDate);
-        
-        // Supabase Realtime WebSocket Subscription
+        if (!photoUrl) {
+            setStatus('failed');
+            return;
+        }
+        const cached = timelinePhotoCache.get(photoUrl);
+        if (cached) setStatus(cached);
+        else setStatus('loading');
+    }, [photoUrl]);
+
+    const handleLoad = () => {
+        if (photoUrl) timelinePhotoCache.set(photoUrl, 'loaded');
+        setStatus('loaded');
+    };
+
+    const handleError = () => {
+        if (photoUrl) timelinePhotoCache.set(photoUrl, 'failed');
+        setStatus('failed');
+    };
+
+    const initial = employeeName ? employeeName.charAt(0).toUpperCase() : '?';
+    const isLoaded = status === 'loaded';
+    const isFailed = status === 'failed';
+
+    return (
+        <div 
+            onContextMenu={(e) => e.preventDefault()}
+            className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl bg-slate-100 overflow-hidden shadow-inner shrink-0 relative border border-slate-200 flex items-center justify-center select-none"
+        >
+            <span className="font-black text-slate-400 text-lg sm:text-2xl select-none pointer-events-none">
+                {initial}
+            </span>
+            {photoUrl && !isFailed && (
+                <img
+                    src={photoUrl}
+                    onLoad={handleLoad}
+                    onError={handleError}
+                    onContextMenu={(e) => e.preventDefault()}
+                    draggable={false}
+                    className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none ${
+                        isLoaded ? 'opacity-100' : 'opacity-0'
+                    } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
+                    alt="Time In Proof"
+                />
+            )}
+        </div>
+    );
+};
+
+const Calendar = () => {
+    const queryClient = useQueryClient();
+    const [selectedDate, setSelectedDate] = useState(() => new Date());
+    const hasUserPicked = useRef(Boolean(sessionStorage.getItem('calendar_user_picked')));
+    const hasAutoNavigated = useRef(false);
+
+    const dateStr = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
+
+    // Query calendar data for selected date and month
+    const { data: calendarData, isLoading, isFetching } = useQuery({
+        queryKey: ['attendanceCalendar', dateStr],
+        queryFn: async () => {
+            const res = await fetchWithAuth(`/api/attendance/calendar?date=${dateStr}`);
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed to fetch calendar');
+            return result.data || result || {};
+        },
+        staleTime: 30000,
+    });
+
+    // Auto-focus latest active date on initial load if current day has no records
+    useEffect(() => {
+        if (!hasUserPicked.current && !hasAutoNavigated.current && calendarData) {
+            const logs = calendarData.dailyLogs || [];
+            const dates = calendarData.activeDates || [];
+            if (logs.length === 0 && dates.length > 0) {
+                hasAutoNavigated.current = true;
+                const latestDateStr = dates[dates.length - 1];
+                const [y, m, d] = latestDateStr.split('-');
+                setSelectedDate(new Date(Number(y), Number(m) - 1, Number(d)));
+            }
+        }
+    }, [calendarData]);
+
+    // Supabase Realtime WebSocket Subscription
+    useEffect(() => {
         const subscription = supabase
             .channel('attendance_live_calendar')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, (payload) => {
-                console.log('Real-Time Update Detected:', payload);
-                fetchCalendarData(selectedDate);
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['attendanceCalendar'] });
             })
             .subscribe();
 
         return () => {
             supabase.removeChannel(subscription);
         };
-    }, [selectedDate]);
+    }, [queryClient]);
 
-    const onDateSelect = (dateStr) => {
+    const activeDates = calendarData?.activeDates || [];
+    const dailyLogs = calendarData?.dailyLogs || [];
+
+    const onDateSelect = (newDateStr) => {
+        hasUserPicked.current = true;
         sessionStorage.setItem('calendar_user_picked', 'true');
-        // Parse date properly to avoid timezone shifts
-        const [y, m, d] = dateStr.split('-');
-        setSelectedDate(new Date(y, m - 1, d));
+        const [y, m, d] = newDateStr.split('-');
+        setSelectedDate(new Date(Number(y), Number(m) - 1, Number(d)));
     };
 
     const onPrevMonth = () => {
@@ -73,44 +133,32 @@ const Calendar = () => {
         setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1));
     };
 
-    // Helper to format month and year
     const monthYearFormatted = selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    
+
     // Day logic
     const startOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
     const endOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
-    const startDayOfWeek = startOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
-    
-    // Padding days
+    const startDayOfWeek = startOfMonth.getDay();
+
     const emptyCells = Array.from({ length: startDayOfWeek }).map((_, i) => <div key={`empty-${i}`}></div>);
 
     const daysInMonth = endOfMonth.getDate();
     const dayCells = Array.from({ length: daysInMonth }).map((_, i) => {
         const day = i + 1;
-        const currentDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
-        
-        // Use local timezone format hack to get YYYY-MM-DD reliably without UTC offset issues
-        const year = currentDate.getFullYear();
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-        const dateStr = String(currentDate.getDate()).padStart(2, '0');
-        const dateString = `${year}-${month}-${dateStr}`;
+        const cellDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
+        const cellDateString = formatDateKey(cellDate);
 
-        const selYear = selectedDate.getFullYear();
-        const selMonth = String(selectedDate.getMonth() + 1).padStart(2, '0');
-        const selDateStr = String(selectedDate.getDate()).padStart(2, '0');
-        const selectedDateString = `${selYear}-${selMonth}-${selDateStr}`;
-
-        const isSelected = dateString === selectedDateString;
-        const hasLogs = activeDates.includes(dateString);
+        const isSelected = cellDateString === dateStr;
+        const hasLogs = activeDates.includes(cellDateString);
 
         return (
             <button
-                key={dateString}
-                onClick={() => onDateSelect && onDateSelect(dateString)}
-                className={`relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+                key={cellDateString}
+                onClick={() => onDateSelect(cellDateString)}
+                className={`relative w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl transition-all duration-200 text-xs sm:text-sm font-semibold select-none ${
                     isSelected 
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 font-bold scale-110' 
-                        : 'hover:bg-slate-50 text-slate-700'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold scale-105' 
+                        : 'hover:bg-slate-100 text-slate-700 active:scale-95'
                 }`}
             >
                 <span>{day}</span>
@@ -121,15 +169,21 @@ const Calendar = () => {
         );
     });
 
-    // Sort logs chronologically for the playback timeline
-    const sortedLogs = [...dailyLogs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
-    
+    // Chronological logs
+    const sortedLogs = useMemo(() => {
+        return [...dailyLogs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
+    }, [dailyLogs]);
+
     const totalPresent = sortedLogs.length;
     const totalLate = sortedLogs.filter(log => String(log.status).toLowerCase() === 'late').length;
     const onTime = totalPresent - totalLate;
 
+    const showInitialLoading = isLoading && !calendarData;
+
     return (
         <div className="max-w-7xl mx-auto pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans space-y-4 sm:space-y-6">
+            
+            {/* Header */}
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-8">
                     <div>
@@ -147,32 +201,41 @@ const Calendar = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
                 
+                {/* Left Side: Stats & Calendar Picker */}
                 <div className="xl:col-span-1 space-y-4 sm:space-y-6">
                     <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden group flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
+                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
                             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-1.5">
                                 <i className="ti ti-thumb-up text-emerald-500 text-base sm:text-lg"></i> On Time
                             </p>
-                            <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
-                                {isLoading ? <i className="ti ti-loader-2 animate-spin inline-block text-xl text-emerald-500"></i> : onTime}
-                            </p>
-                        </motion.div>
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden group flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
+                            {showInitialLoading ? (
+                                <div className="h-8 sm:h-12 w-16 bg-slate-100 rounded-lg animate-pulse my-1" />
+                            ) : (
+                                <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
+                                    {onTime}
+                                </p>
+                            )}
+                        </div>
+                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
                             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-1.5">
                                 <i className="ti ti-alert-triangle text-orange-500 text-base sm:text-lg"></i> Late
                             </p>
-                            <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
-                                {isLoading ? <i className="ti ti-loader-2 animate-spin inline-block text-xl text-orange-500"></i> : totalLate}
-                            </p>
-                        </motion.div>
+                            {showInitialLoading ? (
+                                <div className="h-8 sm:h-12 w-16 bg-slate-100 rounded-lg animate-pulse my-1" />
+                            ) : (
+                                <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
+                                    {totalLate}
+                                </p>
+                            )}
+                        </div>
                     </div>
 
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }} className="bg-white p-4 sm:p-8 rounded-2xl shadow-xs sm:shadow-sm border border-slate-200">
+                    <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl shadow-xs sm:shadow-sm border border-slate-200">
                         <div className="flex justify-between items-center mb-5 sm:mb-8">
                             <button onClick={onPrevMonth} className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors border border-slate-200 shadow-xs tap-active">
                                 <i className="ti ti-chevron-left text-base sm:text-lg"></i>
                             </button>
-                            <span className="font-black text-slate-800 text-sm sm:text-lg uppercase tracking-wide">
+                            <span className="font-black text-slate-800 text-sm sm:text-base lg:text-lg uppercase tracking-wide">
                                 {monthYearFormatted}
                             </span>
                             <button onClick={onNextMonth} className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors border border-slate-200 shadow-xs tap-active">
@@ -190,100 +253,107 @@ const Calendar = () => {
                             {emptyCells}
                             {dayCells}
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
 
+                {/* Right Side: Detailed Timeline */}
                 <div className="xl:col-span-2">
-                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-4 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-200 min-h-[400px] sm:min-h-[500px]">
-                        <h3 className="font-black text-slate-800 text-lg sm:text-2xl mb-5 sm:mb-8 flex flex-wrap items-center gap-2 sm:gap-3">
-                            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
-                                <i className="ti ti-clock-play text-base sm:text-xl"></i>
-                            </div>
-                            <span className="text-blue-600 border-b-2 border-blue-200/50 pb-0.5 text-sm sm:text-xl">
-                                {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                            </span>
-                        </h3>
+                    <div className="bg-white p-4 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-200 min-h-[400px] sm:min-h-[500px]">
+                        <div className="flex items-center justify-between mb-5 sm:mb-8 pb-4 border-b border-slate-100">
+                            <h3 className="font-black text-slate-800 text-lg sm:text-2xl flex flex-wrap items-center gap-2 sm:gap-3">
+                                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
+                                    <i className="ti ti-clock-play text-base sm:text-xl"></i>
+                                </div>
+                                <span className="text-blue-600 text-sm sm:text-xl">
+                                    {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                                </span>
+                            </h3>
 
-                        {isLoading ? (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 mt-4 sm:mt-8">
+                            {isFetching && !showInitialLoading && (
+                                <div className="flex items-center gap-1.5 text-xs text-blue-600 font-bold">
+                                    <i className="ti ti-loader-2 animate-spin text-sm" />
+                                    <span className="hidden sm:inline">Syncing...</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {showInitialLoading ? (
+                            <div className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 mt-4 sm:mt-8">
                                 <div className="h-12 w-12 sm:h-16 sm:w-16 bg-white shadow-xs border border-slate-100 rounded-full flex items-center justify-center mb-3 sm:mb-4">
                                     <i className="ti ti-loader-2 text-2xl sm:text-3xl text-blue-500 animate-spin"></i>
                                 </div>
                                 <p className="text-slate-600 font-bold text-sm sm:text-lg">Fetching Attendance Logs...</p>
-                            </motion.div>
+                            </div>
                         ) : sortedLogs.length > 0 ? (
                             <div className="relative pl-5 sm:pl-8 border-l-2 sm:border-l-[3px] border-slate-200 space-y-4 sm:space-y-6 pb-2 ml-1 sm:ml-4">
                                 <AnimatePresence>
-                                    {sortedLogs.map((log, idx) => (
-                                        <motion.div 
-                                            key={log.id || idx}
-                                            initial={{ opacity: 0, x: -20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: idx * 0.05, type: 'spring', stiffness: 400, damping: 30 }}
-                                            className="relative group"
-                                        >
-                                            <div className={`absolute -left-[27px] sm:-left-[41px] top-5 sm:top-6 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 sm:border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-125 ${String(log.status).toLowerCase() === 'late' ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
-                                            
-                                            <div className="bg-white rounded-2xl p-3.5 sm:p-6 border border-slate-200 shadow-xs sm:shadow-sm hover:shadow-lg transition-all flex flex-col sm:flex-row gap-3 sm:gap-6 items-start sm:items-center">
+                                    {sortedLogs.map((log, idx) => {
+                                        const fullName = log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown Worker';
+                                        const isLate = String(log.status).toLowerCase() === 'late';
+
+                                        return (
+                                            <div 
+                                                key={log.id || idx}
+                                                className="relative group"
+                                            >
+                                                <div className={`absolute -left-[27px] sm:-left-[41px] top-5 sm:top-6 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 sm:border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-125 ${isLate ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
                                                 
-                                                <div className="h-14 w-14 sm:h-24 sm:w-24 rounded-xl bg-slate-100 overflow-hidden shadow-inner flex-shrink-0 relative border border-slate-200">
-                                                    {log.time_in_photo ? (
-                                                        <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="h-full w-full object-cover" alt="Time In Proof" />
-                                                    ) : (
-                                                        <div className="h-full w-full flex items-center justify-center text-slate-300">
-                                                            <i className="ti ti-user-scan text-2xl sm:text-3xl"></i>
+                                                <div className="bg-white rounded-2xl p-3.5 sm:p-6 border border-slate-200 shadow-xs sm:shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row gap-3 sm:gap-6 items-start sm:items-center">
+                                                    
+                                                    <TimelinePhoto
+                                                        photoPath={log.time_in_photo}
+                                                        employeeName={fullName}
+                                                    />
+                                                    
+                                                    <div className="flex-1 w-full min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
+                                                            <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
+                                                                <i className="ti ti-login-2 text-blue-500 text-xs sm:text-sm"></i>
+                                                                In: {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                            {log.time_out && (
+                                                                <span className="font-mono font-medium text-slate-500 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
+                                                                    <i className="ti ti-logout-2 text-rose-400 text-xs sm:text-sm"></i>
+                                                                    Out: {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
-                                                
-                                                <div className="flex-1 w-full min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
-                                                        <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
-                                                            <i className="ti ti-login-2 text-blue-500 text-xs sm:text-sm"></i>
-                                                            In: {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                        {log.time_out && (
-                                                            <span className="font-mono font-medium text-slate-500 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
-                                                                <i className="ti ti-logout-2 text-rose-400 text-xs sm:text-sm"></i>
-                                                                Out: {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                        
+                                                        <p className="font-bold text-slate-800 text-sm sm:text-xl tracking-tight truncate">
+                                                            {fullName}
+                                                        </p>
+                                                        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-400 mt-0.5 sm:mt-1 truncate">
+                                                            {log.employees?.job_title || 'Staff'} &bull; {log.employees?.department || 'General'}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
+                                                        {isLate ? (
+                                                            <span className="w-full sm:w-auto bg-orange-100 text-orange-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-orange-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
+                                                                <i className="ti ti-alert-triangle text-base sm:text-xl"></i> Late
+                                                            </span>
+                                                        ) : (
+                                                            <span className="w-full sm:w-auto bg-emerald-100 text-emerald-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-emerald-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
+                                                                <i className="ti ti-thumb-up text-base sm:text-xl"></i> On Time
                                                             </span>
                                                         )}
                                                     </div>
-                                                    
-                                                    <p className="font-bold text-slate-800 text-sm sm:text-xl tracking-tight truncate">
-                                                        {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown Worker'}
-                                                    </p>
-                                                    <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-400 mt-0.5 sm:mt-1 truncate">
-                                                        {log.employees?.job_title || 'Staff'} &bull; {log.employees?.department || 'General'}
-                                                    </p>
-                                                </div>
-
-                                                <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
-                                                    {String(log.status).toLowerCase() === 'late' ? (
-                                                        <span className="w-full sm:w-auto bg-orange-100 text-orange-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-orange-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
-                                                            <i className="ti ti-alert-triangle text-base sm:text-xl"></i> Late
-                                                        </span>
-                                                    ) : (
-                                                        <span className="w-full sm:w-auto bg-emerald-100 text-emerald-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-emerald-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
-                                                            <i className="ti ti-thumb-up text-base sm:text-xl"></i> On Time
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
-                                        </motion.div>
-                                    ))}
+                                        );
+                                    })}
                                 </AnimatePresence>
                             </div>
                         ) : (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 mt-4 sm:mt-8">
-                                <div className="h-16 w-16 sm:h-24 sm:w-24 bg-white shadow-xs border border-slate-100 rounded-full flex items-center justify-center mb-3 sm:mb-6">
-                                    <i className="ti ti-ghost text-3xl sm:text-5xl text-slate-300"></i>
+                            <div className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 mt-4 sm:mt-8">
+                                <div className="h-14 w-14 sm:h-20 sm:w-20 bg-white shadow-xs border border-slate-100 rounded-full flex items-center justify-center mb-3 sm:mb-4">
+                                    <i className="ti ti-calendar-off text-2xl sm:text-4xl text-slate-300"></i>
                                 </div>
-                                <p className="text-slate-800 font-black text-lg sm:text-2xl tracking-tight">It's a Ghost Town</p>
-                                <p className="text-slate-500 font-medium text-xs sm:text-base mt-1 sm:mt-2 max-w-sm">No attendance activity was recorded on this specific date. Try selecting another day.</p>
-                            </motion.div>
+                                <p className="text-slate-800 font-black text-base sm:text-xl tracking-tight">No Attendance Records</p>
+                                <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1 max-w-sm">No biometric attendance logs were recorded on this date.</p>
+                            </div>
                         )}
-                    </motion.div>
+                    </div>
                 </div>
 
             </div>
@@ -292,4 +362,3 @@ const Calendar = () => {
 };
 
 export default Calendar;
-
