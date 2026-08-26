@@ -142,20 +142,25 @@ export const EmployeeAvatar = ({
     const isFailed = imgStatus === 'failed';
 
     return (
-        <div className={`relative ${size} ${rounded} overflow-hidden shrink-0 ${border} ${shadow} ${themeClass} flex items-center justify-center select-none ${className}`}>
+        <div 
+            onContextMenu={(e) => e.preventDefault()}
+            className={`relative ${size} ${rounded} overflow-hidden shrink-0 ${border} ${shadow} ${themeClass} flex items-center justify-center select-none ${className}`}
+        >
             {/* Fallback initial letters - always present at paint time to eliminate pop */}
-            <span className={`font-black ${resolvedTextSize} tracking-wide select-none`}>
+            <span className={`font-black ${resolvedTextSize} tracking-wide select-none pointer-events-none`}>
                 {initials}
             </span>
 
-            {/* Photo overlay with zero-flash cache resolution */}
+            {/* Photo overlay with zero-flash cache resolution & anti-save protections */}
             {resolvedAvatarSrc && !isFailed && (
                 <img
                     src={resolvedAvatarSrc}
                     onLoad={handleLoad}
                     onError={handleError}
+                    onContextMenu={(e) => e.preventDefault()}
+                    draggable={false}
                     alt={resolvedName || 'Employee'}
-                    className={`absolute inset-0 w-full h-full object-cover ${
+                    className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none ${
                         isLoaded ? 'opacity-100' : 'opacity-0'
                     } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
                     loading="lazy"

@@ -170,9 +170,16 @@ const Index = () => {
                                         {log.time_in_photo && (
                                             <button 
                                                 onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In Proof')}
-                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active"
+                                                onContextMenu={(e) => e.preventDefault()}
+                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active select-none"
                                             >
-                                                <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                <img 
+                                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
+                                                    onContextMenu={(e) => e.preventDefault()}
+                                                    draggable={false}
+                                                    className="w-full h-full object-cover pointer-events-none select-none" 
+                                                    alt="Proof" 
+                                                />
                                             </button>
                                         )}
                                     </div>
@@ -198,9 +205,16 @@ const Index = () => {
                                         {log.time_out_photo && (
                                             <button 
                                                 onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out Proof')}
-                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active"
+                                                onContextMenu={(e) => e.preventDefault()}
+                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active select-none"
                                             >
-                                                <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                <img 
+                                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
+                                                    onContextMenu={(e) => e.preventDefault()}
+                                                    draggable={false}
+                                                    className="w-full h-full object-cover pointer-events-none select-none" 
+                                                    alt="Proof" 
+                                                />
                                             </button>
                                         )}
                                     </div>
@@ -266,12 +280,19 @@ const Index = () => {
                                                 {log.time_in_photo ? (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
-                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                        onContextMenu={(e) => e.preventDefault()}
+                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img select-none"
                                                     >
                                                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                             <i className="ti ti-maximize text-white" />
                                                         </div>
-                                                        <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                        <img 
+                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
+                                                            onContextMenu={(e) => e.preventDefault()}
+                                                            draggable={false}
+                                                            className="w-full h-full object-cover pointer-events-none select-none" 
+                                                            alt="Proof" 
+                                                        />
                                                     </button>
                                                 ) : (
                                                     <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Proof</span>
@@ -298,12 +319,19 @@ const Index = () => {
                                                 {log.time_out_photo && (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
-                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img"
+                                                        onContextMenu={(e) => e.preventDefault()}
+                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img select-none"
                                                     >
                                                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                             <i className="ti ti-maximize text-white" />
                                                         </div>
-                                                        <img src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} className="w-full h-full object-cover" alt="Proof" />
+                                                        <img 
+                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
+                                                            onContextMenu={(e) => e.preventDefault()}
+                                                            draggable={false}
+                                                            className="w-full h-full object-cover pointer-events-none select-none" 
+                                                            alt="Proof" 
+                                                        />
                                                     </button>
                                                 )}
                                             </div>
@@ -407,9 +435,19 @@ const Index = () => {
                                 </button>
                             </div>
 
-                            {/* Image Container with subtle 2px rounding */}
-                            <div className="bg-slate-900/5 rounded-[2px] overflow-hidden flex justify-center min-h-[200px] border border-slate-200">
-                                <img key={selectedImage} src={selectedImage} alt="Verification" className="w-full h-auto object-contain max-h-[65vh] rounded-[2px]" />
+                            {/* Image Container with subtle 2px rounding & anti-save protections */}
+                            <div 
+                                onContextMenu={(e) => e.preventDefault()}
+                                className="bg-slate-900/5 rounded-[2px] overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
+                            >
+                                <img 
+                                    key={selectedImage} 
+                                    src={selectedImage} 
+                                    onContextMenu={(e) => e.preventDefault()}
+                                    draggable={false}
+                                    alt="Verification" 
+                                    className="w-full h-auto object-contain max-h-[65vh] rounded-[2px] pointer-events-none select-none" 
+                                />
                             </div>
                         </motion.div>
                     </div>

@@ -43,8 +43,11 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
     const isFailed = status === 'failed';
 
     return (
-        <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl bg-slate-100 overflow-hidden shadow-inner shrink-0 relative border border-slate-200 flex items-center justify-center select-none">
-            <span className="font-black text-slate-400 text-lg sm:text-2xl select-none">
+        <div 
+            onContextMenu={(e) => e.preventDefault()}
+            className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl bg-slate-100 overflow-hidden shadow-inner shrink-0 relative border border-slate-200 flex items-center justify-center select-none"
+        >
+            <span className="font-black text-slate-400 text-lg sm:text-2xl select-none pointer-events-none">
                 {initial}
             </span>
             {photoUrl && !isFailed && (
@@ -52,7 +55,9 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
                     src={photoUrl}
                     onLoad={handleLoad}
                     onError={handleError}
-                    className={`absolute inset-0 w-full h-full object-cover ${
+                    onContextMenu={(e) => e.preventDefault()}
+                    draggable={false}
+                    className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none ${
                         isLoaded ? 'opacity-100' : 'opacity-0'
                     } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
                     alt="Time In Proof"
