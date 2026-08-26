@@ -6,6 +6,7 @@ import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// --- Utility Helpers ---
 const parseDate = (dStr) => {
     if (!dStr) return null;
     const formatted = typeof dStr === 'string' ? dStr.replace(' ', 'T') : dStr;
@@ -15,7 +16,7 @@ const parseDate = (dStr) => {
 
 const extractDateStr = (dStr) => {
     if (!dStr) return '';
-    if (typeof dStr === 'string') return dStr.substring(0, 10);
+    if (typeof dStr === 'string' && dStr.length >= 10) return dStr.substring(0, 10);
     const d = new Date(dStr);
     if (isNaN(d.getTime())) return '';
     const year = d.getFullYear();
@@ -24,15 +25,8 @@ const extractDateStr = (dStr) => {
     return `${year}-${month}-${day}`;
 };
 
-const formatLocalDate = (d) => {
-    if (!d) return '';
-    const dateObj = new Date(d);
-    if (isNaN(dateObj.getTime())) return '';
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+// Reuse extractDateStr for standard YYYY-MM-DD formatting
+const formatLocalDate = extractDateStr;
 
 const formatReadableDate = (dateStr) => {
     if (!dateStr) return 'Select Date';
@@ -42,6 +36,12 @@ const formatReadableDate = (dateStr) => {
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+const getEmployeeDept = (emp) => emp?.department || 'Operations';
+const isFactoryDept = (dept) => (dept || '').toLowerCase() === 'factory';
+const getEmployeeRate = (emp) => parseFloat(
+    emp?.piece_rate || emp?.rate_per_piece || emp?.salary || emp?.monthly_salary || 0
+);
 
 const HOLIDAY_LABELS = {
     regular: 'Regular Holiday',
@@ -66,7 +66,8 @@ const PayrollCreate = () => {
     const [empSearch, setEmpSearch] = useState('');
     const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
 
-    const [activePreset, setActivePreset] = useState(null);
+    const [activePreset, setActivePreset] = useState('current_week');
+    const [includeWeekends, setIncludeWeekends] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -124,31 +125,22 @@ const PayrollCreate = () => {
     }, []);
 
     useEffect(() => {
-        applyCutoffPreset('current_1st');
+        applyCutoffPreset('current_week', includeWeekends);
     }, []);
 
-    const applyCutoffPreset = (presetKey) => {
+    const applyCutoffPreset = (presetKey = 'current_week', withWeekends = includeWeekends) => {
         setActivePreset(presetKey);
         const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth();
 
-        let start, end;
-        if (presetKey === 'current_1st') {
-            start = new Date(year, month, 1);
-            end = new Date(year, month, 15);
-        } else if (presetKey === 'current_2nd') {
-            start = new Date(year, month, 16);
-            end = new Date(year, month + 1, 0);
-        } else if (presetKey === 'prev_2nd') {
-            start = new Date(year, month - 1, 16);
-            end = new Date(year, month, 0);
-        } else if (presetKey === 'full_month') {
-            start = new Date(year, month, 1);
-            end = new Date(year, month + 1, 0);
-        }
+        if (presetKey === 'current_week') {
+            const dayOfWeek = now.getDay();
+            const distanceToMon = (dayOfWeek + 6) % 7;
+            const start = new Date(now);
+            start.setDate(now.getDate() - distanceToMon);
+            const end = new Date(start);
 
-        if (start && end) {
+            end.setDate(start.getDate() + (withWeekends ? 6 : 4));
+
             setFormData(prev => ({
                 ...prev,
                 period_start: formatLocalDate(start),
@@ -157,13 +149,83 @@ const PayrollCreate = () => {
         }
     };
 
-    const periodDaysCount = useMemo(() => {
-        if (!formData.period_start || !formData.period_end) return 0;
+    const toggleWeekends = () => {
+        const nextState = !includeWeekends;
+        setIncludeWeekends(nextState);
+
+        if (activePreset === 'current_week') {
+            applyCutoffPreset('current_week', nextState);
+        } else if (nextState && formData.period_start) {
+            const s = new Date(formData.period_start + 'T00:00:00');
+            if (!isNaN(s.getTime())) {
+                const e = new Date(s);
+                e.setDate(s.getDate() + 6);
+                setFormData(prev => ({
+                    ...prev,
+                    period_end: formatLocalDate(e)
+                }));
+            }
+        }
+    };
+
+    const handleStartDateChange = ([date]) => {
+        if (!date) return;
+        setActivePreset('custom');
+        const startStr = formatLocalDate(date);
+
+        if (includeWeekends) {
+            const end = new Date(date);
+            end.setDate(date.getDate() + 6);
+            setFormData(prev => ({
+                ...prev,
+                period_start: startStr,
+                period_end: formatLocalDate(end)
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                period_start: startStr
+            }));
+        }
+    };
+
+    const handleEndDateChange = ([date]) => {
+        if (!date) return;
+        setActivePreset('custom');
+        const endStr = formatLocalDate(date);
+
+        if (includeWeekends) {
+            const start = new Date(date);
+            start.setDate(date.getDate() - 6);
+            setFormData(prev => ({
+                ...prev,
+                period_start: formatLocalDate(start),
+                period_end: endStr
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                period_end: endStr
+            }));
+        }
+    };
+
+    // Consolidated period calculations into a single memo
+    const { periodDaysCount, isInvalidDateRange } = useMemo(() => {
+        if (!formData.period_start || !formData.period_end) {
+            return { periodDaysCount: 0, isInvalidDateRange: false };
+        }
         const s = new Date(formData.period_start + 'T00:00:00');
         const e = new Date(formData.period_end + 'T00:00:00');
-        if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+            return { periodDaysCount: 0, isInvalidDateRange: false };
+        }
+        if (e < s) {
+            return { periodDaysCount: 0, isInvalidDateRange: true };
+        }
         const diffTime = Math.abs(e - s);
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        const count = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        return { periodDaysCount: count, isInvalidDateRange: false };
     }, [formData.period_start, formData.period_end]);
 
     const selectedEmployee = useMemo(() => {
@@ -171,40 +233,34 @@ const PayrollCreate = () => {
     }, [employees, formData.employee_id]);
 
     const isFactoryEmployee = useMemo(() => {
-        return selectedEmployee?.department?.toLowerCase() === 'factory';
+        return isFactoryDept(selectedEmployee?.department);
     }, [selectedEmployee]);
 
     const employeeRate = useMemo(() => {
-        if (!selectedEmployee) return 0;
-        return parseFloat(
-            selectedEmployee.piece_rate ||
-            selectedEmployee.rate_per_piece ||
-            selectedEmployee.salary ||
-            selectedEmployee.monthly_salary || 0
-        );
+        return getEmployeeRate(selectedEmployee);
     }, [selectedEmployee]);
 
     const availableDepartments = useMemo(() => {
-        const depts = new Set(employees.map(e => e.department || 'Operations'));
+        const depts = new Set(employees.map(getEmployeeDept));
         return ['ALL', ...Array.from(depts)];
     }, [employees]);
 
     const filteredEmployees = useMemo(() => {
+        const search = empSearch.toLowerCase();
         return employees.filter(emp => {
             const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
-            const dept = (emp.department || 'Operations').toLowerCase();
-            const matchesSearch = fullName.includes(empSearch.toLowerCase()) || dept.includes(empSearch.toLowerCase());
-            const matchesDept = selectedDeptFilter === 'ALL' || (emp.department || 'Operations') === selectedDeptFilter;
+            const dept = getEmployeeDept(emp);
+            const matchesSearch = fullName.includes(search) || dept.toLowerCase().includes(search);
+            const matchesDept = selectedDeptFilter === 'ALL' || dept === selectedDeptFilter;
             return matchesSearch && matchesDept;
         });
     }, [employees, empSearch, selectedDeptFilter]);
 
     useEffect(() => {
         const calculatePayroll = async () => {
-            if (formData.employee_id && formData.period_start && formData.period_end) {
+            if (formData.employee_id && formData.period_start && formData.period_end && !isInvalidDateRange) {
                 setIsCalculating(true);
                 try {
-                    // 1. Fetch attendance logs first to determine actual worked days & dates
                     const attendanceRes = await fetchWithAuth(
                         `/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`
                     );
@@ -224,20 +280,17 @@ const PayrollCreate = () => {
 
                     let totalOvertime = 0;
                     let adjustments = 0;
+                    const workedDatesSet = new Set();
 
                     const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
 
-                    const uniqueWorkedDates = Array.from(new Set(
-                        completedLogs
-                            .map(l => extractDateStr(l.date || l.time_in))
-                            .filter(Boolean)
-                    ));
-                    const daysWorked = uniqueWorkedDates.length;
-
+                    // Combined single iteration over time logs
                     completedLogs.forEach(log => {
+                        const dateStr = extractDateStr(log.date || log.time_in);
+                        if (dateStr) workedDatesSet.add(dateStr);
+
                         const timeIn = parseDate(log.time_in);
                         const timeOut = parseDate(log.time_out);
-                        const dateStr = extractDateStr(log.date || log.time_in);
 
                         if (timeIn && dateStr) {
                             const scheduleStart = new Date(`${dateStr}T08:00:00`);
@@ -258,6 +311,9 @@ const PayrollCreate = () => {
                         }
                     });
 
+                    const uniqueWorkedDates = Array.from(workedDatesSet);
+                    const daysWorked = uniqueWorkedDates.length;
+
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
@@ -265,14 +321,13 @@ const PayrollCreate = () => {
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : ''
                     }));
 
-                    // 2. Pass complete employee context & attendance data to backend holiday preview
                     const previewRes = await fetchWithAuth('/api/payroll/preview', {
                         method: 'POST',
                         body: JSON.stringify({
                             employee_id: formData.employee_id,
                             period_start: formData.period_start,
                             period_end: formData.period_end,
-                            department: selectedEmployee?.department || 'Operations',
+                            department: getEmployeeDept(selectedEmployee),
                             days_worked: daysWorked,
                             monthly_salary: selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0,
                             daily_rate: dailyRate,
@@ -297,15 +352,20 @@ const PayrollCreate = () => {
             }
         };
         calculatePayroll();
-    }, [formData.employee_id, formData.period_start, formData.period_end, selectedEmployee, isFactoryEmployee, employeeRate]);
+    }, [formData.employee_id, formData.period_start, formData.period_end, selectedEmployee, isFactoryEmployee, employeeRate, isInvalidDateRange]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isInvalidDateRange) {
+            setError('End date cannot be earlier than start date.');
+            return;
+        }
+
         setError(null);
         setSuccess(null);
         setIsSubmitting(true);
@@ -348,61 +408,61 @@ const PayrollCreate = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto py-6 sm:py-8 px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+        <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
             <Link
                 to="/admin/payroll"
-                className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors mb-4 tap-active"
+                className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors mb-4 tap-active"
             >
                 <i className="ti ti-arrow-left text-base" />
                 <span>Back to Payroll</span>
             </Link>
 
-            <div className="bg-white p-5 sm:p-10 rounded-3xl sm:rounded-[2rem] shadow-sm border border-slate-100">
+            <div className="bg-white p-4 sm:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] shadow-sm border border-slate-100">
 
                 <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
-                    <div className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shadow-blue-500/20">
+                    <div className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-lg sm:text-2xl shadow-lg shadow-blue-500/20">
                         <i className="ti ti-calculator"></i>
                     </div>
                     <div className="min-w-0">
-                        <h2 className="text-xl sm:text-3xl font-black text-slate-800 tracking-tight leading-tight">Payroll Calculator</h2>
-                        <p className="text-slate-400 text-[11px] sm:text-sm font-semibold uppercase tracking-wider mt-0.5 leading-snug">Automated DOLE Wage &amp; Deductions Computation</p>
+                        <h2 className="text-lg sm:text-3xl font-black text-slate-800 tracking-tight leading-tight truncate">Payroll Calculator</h2>
+                        <p className="text-slate-400 text-[10px] sm:text-sm font-semibold uppercase tracking-wider mt-0.5 leading-snug truncate">Automated DOLE Wage &amp; Deductions Computation</p>
                     </div>
                 </div>
 
                 {error && (
-                    <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-xl"></i>
-                        <div>
-                            <h4 className="text-sm font-bold text-red-800">Action Stopped</h4>
-                            <p className="text-sm text-red-600 mt-1">{error}</p>
+                    <div className="mb-6 sm:mb-8 p-3.5 sm:p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm flex items-start gap-3">
+                        <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-lg sm:text-xl"></i>
+                        <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-bold text-red-800">Action Stopped</h4>
+                            <p className="text-xs sm:text-sm text-red-600 mt-0.5 break-words">{error}</p>
                         </div>
                     </div>
                 )}
 
                 {success && (
-                    <div className="mb-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-xl shadow-sm flex items-start gap-3">
-                        <i className="ti ti-circle-check text-emerald-500 mt-0.5 text-xl"></i>
-                        <div>
-                            <h4 className="text-sm font-bold text-emerald-800">Success</h4>
-                            <p className="text-sm text-emerald-600 mt-1">{success}</p>
+                    <div className="mb-6 sm:mb-8 p-3.5 sm:p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-xl shadow-sm flex items-start gap-3">
+                        <i className="ti ti-circle-check text-emerald-500 mt-0.5 text-lg sm:text-xl"></i>
+                        <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-bold text-emerald-800">Success</h4>
+                            <p className="text-xs sm:text-sm text-emerald-600 mt-0.5 break-words">{success}</p>
                         </div>
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    {/* EMPLOYEE SELECTION TRIGGER & DISPLAY */}
-                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100">
+                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+                    {/* EMPLOYEE SELECTION */}
+                    <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100">
                         <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2.5 sm:gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                     <i className="ti ti-user"></i>
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium leading-snug">Select an active workforce member</p>
+                                <div className="min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Employee Directory</h3>
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">Select an active workforce member</p>
                                 </div>
                             </div>
-                            <span className="text-[11px] font-bold text-slate-500 bg-slate-200/60 px-2.5 py-1 rounded-full">
+                            <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 bg-slate-200/60 px-2 sm:px-2.5 py-1 rounded-full shrink-0">
                                 {employees.length} Active
                             </span>
                         </div>
@@ -411,33 +471,33 @@ const PayrollCreate = () => {
                             <button
                                 type="button"
                                 onClick={() => setIsEmpModalOpen(true)}
-                                className="w-full min-h-[56px] p-4 bg-white hover:bg-slate-100/80 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-2xl text-left transition-all group flex items-center justify-between shadow-xs touch-manipulation"
+                                className="w-full min-h-[56px] p-3.5 sm:p-4 bg-white hover:bg-slate-100/80 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-2xl text-left transition-all group flex items-center justify-between shadow-xs touch-manipulation"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-50 group-hover:bg-blue-100 text-blue-600 flex items-center justify-center text-lg transition-colors">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-50 group-hover:bg-blue-100 text-blue-600 flex items-center justify-center text-lg transition-colors shrink-0">
                                         <i className="ti ti-user-plus"></i>
                                     </div>
-                                    <div>
-                                        <p className="text-base font-bold text-slate-700 group-hover:text-blue-600 transition-colors">Tap to choose employee</p>
-                                        <p className="text-xs text-slate-400">Search by name or department...</p>
+                                    <div className="min-w-0">
+                                        <p className="text-sm sm:text-base font-bold text-slate-700 group-hover:text-blue-600 transition-colors truncate">Tap to choose employee</p>
+                                        <p className="text-xs text-slate-400 truncate">Search by name or department...</p>
                                     </div>
                                 </div>
-                                <i className="ti ti-chevron-right text-slate-400 text-lg group-hover:translate-x-0.5 transition-transform"></i>
+                                <i className="ti ti-chevron-right text-slate-400 text-lg group-hover:translate-x-0.5 transition-transform shrink-0 ml-2"></i>
                             </button>
                         ) : (
-                            <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden">
+                            <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden">
                                 <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-3.5 min-w-0">
-                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                                    <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
+                                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-base sm:text-lg flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
                                             {selectedEmployee.first_name?.[0]}{selectedEmployee.last_name?.[0]}
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="text-base font-black text-slate-800 truncate">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <h4 className="text-sm sm:text-base font-black text-slate-800 truncate">
                                                     {selectedEmployee.first_name} {selectedEmployee.last_name}
                                                 </h4>
-                                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
-                                                    {selectedEmployee.department || 'Operations'}
+                                                <span className="shrink-0 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md">
+                                                    {getEmployeeDept(selectedEmployee)}
                                                 </span>
                                             </div>
                                             <p className="text-xs text-slate-500 font-mono font-semibold mt-0.5">
@@ -448,7 +508,7 @@ const PayrollCreate = () => {
                                     <button
                                         type="button"
                                         onClick={() => setIsEmpModalOpen(true)}
-                                        className="shrink-0 px-3 py-1.5 min-h-[38px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors touch-manipulation"
+                                        className="shrink-0 px-2.5 sm:px-3 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors touch-manipulation"
                                     >
                                         Change
                                     </button>
@@ -457,35 +517,35 @@ const PayrollCreate = () => {
                                 <motion.div
                                     initial={{ opacity: 0, y: 5 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="mt-4 pt-3 border-t border-slate-100"
+                                    className="mt-3.5 pt-3 border-t border-slate-100"
                                 >
                                     {isFactoryEmployee ? (
-                                        <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl flex items-center justify-between">
+                                        <div className="bg-amber-50/80 border border-amber-200/80 p-2.5 sm:p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div>
                                                 <span className="block text-[10px] font-bold uppercase text-amber-800">Factory Compensation Model</span>
                                                 <p className="text-xs font-semibold text-amber-700">Piece Rate Payment System</p>
                                             </div>
-                                            <span className="font-mono font-black text-amber-900 text-sm bg-white px-3 py-1 rounded-lg border border-amber-200 shadow-xs">
+                                            <span className="self-start sm:self-auto font-mono font-black text-amber-900 text-xs sm:text-sm bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-xs">
                                                 ₱{employeeRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / PC
                                             </span>
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center">
                                             <div className="bg-slate-50 p-2 rounded-xl">
-                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Monthly</span>
-                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                <span className="block text-[8px] sm:text-[9px] font-bold uppercase text-slate-400">Monthly</span>
+                                                <p className="font-mono font-bold text-slate-800 text-[11px] sm:text-xs">
                                                     ₱{employeeRate.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                 </p>
                                             </div>
                                             <div className="bg-slate-50 p-2 rounded-xl">
-                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Daily (21.75)</span>
-                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                <span className="block text-[8px] sm:text-[9px] font-bold uppercase text-slate-400">Daily (21.75)</span>
+                                                <p className="font-mono font-bold text-slate-800 text-[11px] sm:text-xs">
                                                     ₱{(employeeRate / 21.75).toFixed(2)}
                                                 </p>
                                             </div>
                                             <div className="bg-slate-50 p-2 rounded-xl">
-                                                <span className="block text-[9px] font-bold uppercase text-slate-400">Hourly Rate</span>
-                                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                                <span className="block text-[8px] sm:text-[9px] font-bold uppercase text-slate-400">Hourly Rate</span>
+                                                <p className="font-mono font-bold text-slate-800 text-[11px] sm:text-xs">
                                                     ₱{((employeeRate / 21.75) / 8).toFixed(2)}
                                                 </p>
                                             </div>
@@ -496,59 +556,57 @@ const PayrollCreate = () => {
                         )}
                     </div>
 
-                    <div className="bg-slate-50/80 p-5 sm:p-6 rounded-2xl border border-slate-100 space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
-                                <i className="ti ti-calendar-event"></i>
+                    {/* CUTOFF PERIOD SECTION */}
+                    <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2.5 sm:gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+                                    <i className="ti ti-calendar-event"></i>
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">
+                                        {includeWeekends ? 'Auto 7-Day calculation active' : 'Pick start & end dates freely'}
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff Period</h3>
-                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Standard semi-monthly cutoff or custom date range</p>
-                            </div>
+
+                            {activePreset === 'custom' && (
+                                <span className="text-[10px] sm:text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1">
+                                    <i className="ti ti-edit"></i> {includeWeekends ? 'Auto-Week Lock' : 'Free Choice Mode'}
+                                </span>
+                            )}
                         </div>
 
-                        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {/* TOGGLE BUTTON */}
+                        <div className="flex items-center gap-2 flex-wrap">
                             <button
                                 type="button"
-                                onClick={() => applyCutoffPreset('current_1st')}
-                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'current_1st' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                onClick={toggleWeekends}
+                                className={`shrink-0 whitespace-nowrap min-h-[38px] sm:min-h-[42px] px-3.5 sm:px-4 py-2 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 flex items-center gap-2 ${includeWeekends
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : 'bg-slate-200 text-slate-700 border border-slate-300'
+                                    }`}
                             >
-                                1st – 15th
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => applyCutoffPreset('current_2nd')}
-                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'current_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                            >
-                                16th – End
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => applyCutoffPreset('prev_2nd')}
-                                className={`shrink-0 whitespace-nowrap min-h-[42px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 ${activePreset === 'prev_2nd' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                            >
-                                Last Month
+                                <i className={`ti ${includeWeekends ? 'ti-calendar-check text-emerald-600' : 'ti-calendar-minus text-slate-500'} text-base`}></i>
+                                <span>{includeWeekends ? 'Auto-Weekends: Active (1 Week Auto)' : 'Auto-Weekends: Inactive (Free Choice)'}</span>
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <i className="ti ti-calendar-event text-blue-600 text-sm"></i> Cutoff Start Date
+                        {/* DATE PICKERS */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                                <div className="flex items-center justify-between mb-2 gap-1">
+                                    <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 truncate">
+                                        <i className="ti ti-calendar-event text-blue-600 text-sm shrink-0"></i> Start Date
                                     </span>
-                                    <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md shrink-0">
                                         {formatReadableDate(formData.period_start)}
                                     </span>
                                 </div>
                                 <Flatpickr
                                     value={formData.period_start}
-                                    onChange={([date]) => {
-                                        if (date) {
-                                            setActivePreset('custom');
-                                            setFormData(prev => ({ ...prev, period_start: formatLocalDate(date) }));
-                                        }
-                                    }}
+                                    onChange={handleStartDateChange}
                                     options={{
                                         dateFormat: "Y-m-d",
                                         altInput: true,
@@ -556,28 +614,23 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-base transition-colors touch-manipulation"
+                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm sm:text-base transition-colors touch-manipulation"
                                     placeholder="Click to pick start date"
                                 />
                             </div>
 
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <i className="ti ti-flag text-emerald-600 text-sm"></i> Cutoff End Date
+                            <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                                <div className="flex items-center justify-between mb-2 gap-1">
+                                    <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 truncate">
+                                        <i className="ti ti-flag text-emerald-600 text-sm shrink-0"></i> End Date
                                     </span>
-                                    <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0">
                                         {formatReadableDate(formData.period_end)}
                                     </span>
                                 </div>
                                 <Flatpickr
                                     value={formData.period_end}
-                                    onChange={([date]) => {
-                                        if (date) {
-                                            setActivePreset('custom');
-                                            setFormData(prev => ({ ...prev, period_end: formatLocalDate(date) }));
-                                        }
-                                    }}
+                                    onChange={handleEndDateChange}
                                     options={{
                                         dateFormat: "Y-m-d",
                                         altInput: true,
@@ -585,17 +638,24 @@ const PayrollCreate = () => {
                                         disableMobile: true,
                                         allowInput: false
                                     }}
-                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-base transition-colors touch-manipulation"
+                                    className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm sm:text-base transition-colors touch-manipulation"
                                     placeholder="Click to pick end date"
                                 />
                             </div>
                         </div>
 
-                        {periodDaysCount > 0 && (
-                            <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50/70 border border-blue-100 px-4 py-2.5 rounded-xl text-xs text-blue-900 font-medium">
+                        {/* DATE VALIDATION WARNING */}
+                        {isInvalidDateRange && (
+                            <p className="text-xs text-red-600 font-bold flex items-center gap-1 pt-1">
+                                <i className="ti ti-alert-circle text-base"></i> End date cannot be earlier than start date.
+                            </p>
+                        )}
+
+                        {periodDaysCount > 0 && !isInvalidDateRange && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50/70 border border-blue-100 p-3 rounded-xl text-xs text-blue-900 font-medium">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <i className="ti ti-info-circle text-blue-600 text-base shrink-0"></i>
-                                    <span>
+                                    <span className="truncate">
                                         {formatReadableDate(formData.period_start)} &rarr; {formatReadableDate(formData.period_end)}
                                     </span>
                                 </div>
@@ -608,26 +668,25 @@ const PayrollCreate = () => {
 
                     <div className="space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                     <i className="ti ti-clock-check"></i>
                                 </div>
                                 <div className="min-w-0">
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-tight">Attendance & Rendered Hours</h3>
-                                    <p className="text-[11px] text-slate-400 font-medium leading-snug">Verified biometric time logs & overtime</p>
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Attendance & Rendered Hours</h3>
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">Verified biometric time logs & overtime</p>
                                 </div>
                             </div>
                             {isCalculating && (
-                                <div className="shrink-0 whitespace-nowrap text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 animate-pulse">
+                                <div className="shrink-0 text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 animate-pulse">
                                     <i className="ti ti-loader animate-spin"></i> Calculating...
                                 </div>
                             )}
                         </div>
 
-                        {/* FACTORY PIECES PRODUCED INPUT FIELD */}
                         {isFactoryEmployee && (
-                            <div className="p-5 bg-amber-50/80 rounded-2xl border border-amber-200/80 space-y-2.5">
-                                <div className="flex justify-between items-center">
+                            <div className="p-4 sm:p-5 bg-amber-50/80 rounded-2xl border border-amber-200/80 space-y-2.5">
+                                <div className="flex justify-between items-center flex-wrap gap-1">
                                     <label className="block text-xs font-bold text-amber-900 uppercase tracking-wide">
                                         Pieces Produced / Output Quantity
                                     </label>
@@ -642,47 +701,47 @@ const PayrollCreate = () => {
                                     name="pieces_produced"
                                     value={formData.pieces_produced}
                                     onChange={handleInputChange}
-                                    className="w-full p-4 bg-white border border-amber-300 rounded-xl font-mono text-amber-950 text-2xl font-black focus:ring-2 focus:ring-amber-500 transition-all outline-none shadow-xs touch-manipulation"
+                                    className="w-full p-3.5 sm:p-4 bg-white border border-amber-300 rounded-xl font-mono text-amber-950 text-xl sm:text-2xl font-black focus:ring-2 focus:ring-amber-500 transition-all outline-none shadow-xs touch-manipulation"
                                     placeholder="Enter total pieces..."
                                     required
                                 />
                                 <div className="flex justify-between items-center text-xs font-semibold text-slate-600 pt-1">
-                                    <span>Calculated Basic Gross Earnings:</span>
-                                    <span className="font-mono font-black text-emerald-600 text-base">
+                                    <span>Calculated Gross Earnings:</span>
+                                    <span className="font-mono font-black text-emerald-600 text-sm sm:text-base">
                                         ₱{((parseFloat(formData.pieces_produced) || 0) * employeeRate).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                     </span>
                                 </div>
                             </div>
                         )}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Days Worked (Present)</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 sm:mb-2">Days Worked (Present)</label>
                                 <input
                                     type="number"
                                     step="0.5"
                                     name="days_worked"
                                     value={formData.days_worked}
                                     readOnly
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner text-base"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black text-slate-800 outline-none shadow-inner"
                                     required
                                 />
                                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
-                                    <i className="ti ti-bolt text-amber-500"></i> Auto-computed from biometric logs
+                                    <i className="ti ti-bolt text-amber-500 shrink-0"></i> Auto-computed from logs
                                 </p>
                             </div>
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Overtime Hours (&gt;9h shifts)</label>
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 sm:mb-2">Overtime Hours (&gt;9h shifts)</label>
                                 <input
                                     type="number"
                                     step="0.5"
                                     name="overtime_hours"
                                     value={formData.overtime_hours}
                                     readOnly
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-xl font-black text-slate-800 outline-none shadow-inner text-base"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black text-slate-800 outline-none shadow-inner"
                                 />
                                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
-                                    <i className="ti ti-clock text-blue-500"></i> Computed per standard shift schedule
+                                    <i className="ti ti-clock text-blue-500 shrink-0"></i> Computed per standard shift
                                 </p>
                             </div>
                         </div>
@@ -694,36 +753,36 @@ const PayrollCreate = () => {
                             animate={{ opacity: 1, y: 0 }}
                             className="space-y-3"
                         >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+                                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                         <i className="ti ti-confetti"></i>
                                     </div>
                                     <div className="min-w-0">
-                                        <h3 className="text-sm font-bold text-slate-800 tracking-tight">Holiday Pay (DOLE)</h3>
-                                        <p className="text-[11px] text-slate-400 font-medium leading-snug">Detected within this cutoff — recalculated authoritatively on save</p>
+                                        <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight truncate">Holiday Pay (DOLE)</h3>
+                                        <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">Detected within cutoff — recalculated on save</p>
                                     </div>
                                 </div>
-                                <span className="self-start sm:self-auto shrink-0 font-black bg-amber-500 text-white px-3 py-1 rounded-lg text-sm shadow-sm">
+                                <span className="self-start sm:self-auto shrink-0 font-black bg-amber-500 text-white px-3 py-1 rounded-lg text-xs sm:text-sm shadow-sm">
                                     +₱{holidayPreview.totalHolidayPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
 
                             <div className="bg-amber-50/60 border border-amber-100 rounded-2xl divide-y divide-amber-100/80 overflow-hidden">
                                 {holidayPreview.items.map((item) => (
-                                    <div key={item.date} className="flex items-center justify-between px-4 py-3 text-xs">
+                                    <div key={item.date} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 gap-1 sm:gap-2 text-xs">
                                         <div>
                                             <p className="font-bold text-slate-800">
                                                 {formatReadableDate(item.date)} &middot; {item.holidayName}
                                             </p>
-                                            <p className="text-slate-500 mt-0.5">
+                                            <p className="text-slate-500 mt-0.5 text-[11px]">
                                                 {HOLIDAY_LABELS[item.holidayType] || item.holidayType}
                                                 {item.isRestDay ? ' · Rest Day' : ''}
                                                 {' · '}
                                                 {item.worked ? `Worked (${item.multiplier * 100}%)` : (item.eligible ? 'Unworked (paid)' : 'Unworked (unpaid)')}
                                             </p>
                                         </div>
-                                        <span className={`font-mono font-bold ${item.pay > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                        <span className={`font-mono font-bold self-end sm:self-auto ${item.pay > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                             ₱{item.pay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                         </span>
                                     </div>
@@ -733,18 +792,18 @@ const PayrollCreate = () => {
                     )}
 
                     <div className="space-y-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5 sm:gap-3">
                             <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                 <i className="ti ti-adjustments"></i>
                             </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800 tracking-tight">Adjustments & Manual Overrides</h3>
-                                <p className="text-[11px] text-slate-400 font-medium leading-snug">Calculated tardiness deductions and allowable HR overrides</p>
+                            <div className="min-w-0">
+                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Adjustments & Manual Overrides</h3>
+                                <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">Calculated tardiness deductions & allowable HR overrides</p>
                             </div>
                         </div>
 
-                        <div className="p-5 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">
-                            <div className="flex justify-between items-center">
+                        <div className="p-4 sm:p-5 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">
+                            <div className="flex justify-between items-center flex-wrap gap-1">
                                 <label className="block text-xs font-bold text-red-600 uppercase">Late Deductions / Absences (₱)</label>
                                 <span className="text-[10px] font-bold text-red-600 uppercase bg-red-100/80 px-2 py-0.5 rounded-md">
                                     Admin Override Allowed
@@ -757,36 +816,36 @@ const PayrollCreate = () => {
                                 name="late_deductions"
                                 value={formData.late_deductions}
                                 onChange={handleInputChange}
-                                className="w-full p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm touch-manipulation text-base"
+                                className="w-full p-3.5 sm:p-4 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-lg sm:text-xl font-bold focus:ring-2 focus:ring-red-400 transition-all outline-none shadow-sm touch-manipulation"
                                 placeholder="0.00"
                             />
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-[10px] sm:text-[11px] text-slate-500">
                                 15-minute grace period automatically accounted for. You can adjust this amount manually before saving.
                             </p>
                         </div>
                     </div>
 
-                    <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-3">
-                        <i className="ti ti-shield-check text-blue-600 text-xl mt-0.5"></i>
-                        <p className="text-xs text-slate-600 leading-relaxed">
-                            <strong>DOLE Compliance Engine:</strong> Government mandatory deductions (SSS, PhilHealth, Pag-IBIG, and TRAIN Law Withholding Tax) are automatically calculated and deducted upon generation. Holiday premiums shown above are included in gross pay before tax.
+                    <div className="p-3.5 sm:p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-start gap-2.5 sm:gap-3">
+                        <i className="ti ti-shield-check text-blue-600 text-lg sm:text-xl mt-0.5 shrink-0"></i>
+                        <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed">
+                            <strong>DOLE Compliance Engine:</strong> Government mandatory deductions (SSS, PhilHealth, Pag-IBIG, and TRAIN Law Withholding Tax) are automatically calculated and deducted upon generation.
                         </p>
                     </div>
 
-                    <div className="pt-4">
+                    <div className="pt-2 sm:pt-4">
                         <button
                             type="submit"
-                            disabled={isSubmitting || !formData.employee_id}
-                            className="w-full min-h-[56px] py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
+                            disabled={isSubmitting || !formData.employee_id || isInvalidDateRange}
+                            className="w-full min-h-[52px] sm:min-h-[56px] py-4 sm:py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-base sm:text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-2.5 sm:gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
                         >
                             {!isSubmitting ? (
                                 <>
-                                    <i className="ti ti-cash text-2xl"></i>
+                                    <i className="ti ti-cash text-xl sm:text-2xl"></i>
                                     <span>Compute & Distribute Payslip</span>
                                 </>
                             ) : (
                                 <>
-                                    <i className="ti ti-loader text-2xl animate-spin"></i>
+                                    <i className="ti ti-loader text-xl sm:text-2xl animate-spin"></i>
                                     <span>Computing DOLE Contributions...</span>
                                 </>
                             )}
@@ -812,28 +871,28 @@ const PayrollCreate = () => {
                             animate={{ y: 0 }}
                             exit={{ y: '100%' }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
+                            className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
                         >
                             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-2.5">
-                                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-base font-bold">
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-sm sm:text-base font-bold shrink-0">
                                         <i className="ti ti-users"></i>
                                     </div>
-                                    <div>
-                                        <h3 className="text-base font-extrabold text-slate-800">Select Employee</h3>
-                                        <p className="text-xs text-slate-400">Choose workforce member for payroll computation</p>
+                                    <div className="min-w-0">
+                                        <h3 className="text-sm sm:text-base font-extrabold text-slate-800 truncate">Select Employee</h3>
+                                        <p className="text-[10px] sm:text-xs text-slate-400 truncate">Choose workforce member for payroll computation</p>
                                     </div>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => setIsEmpModalOpen(false)}
-                                    className="w-9 h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-lg transition-colors touch-manipulation"
+                                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-base sm:text-lg transition-colors touch-manipulation shrink-0 ml-2"
                                 >
                                     <i className="ti ti-x"></i>
                                 </button>
                             </div>
 
-                            <div className="p-4 border-b border-slate-100 space-y-3 bg-white">
+                            <div className="p-3.5 sm:p-4 border-b border-slate-100 space-y-3 bg-white">
                                 <div className="relative">
                                     <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
                                     <input
@@ -841,7 +900,7 @@ const PayrollCreate = () => {
                                         value={empSearch}
                                         onChange={(e) => setEmpSearch(e.target.value)}
                                         placeholder="Search by name or department..."
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-base font-medium text-slate-800 outline-none transition-all"
+                                        className="w-full pl-10 pr-9 py-2.5 sm:py-3 bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-sm sm:text-base font-medium text-slate-800 outline-none transition-all"
                                     />
                                     {empSearch && (
                                         <button
@@ -860,7 +919,7 @@ const PayrollCreate = () => {
                                             key={dept}
                                             type="button"
                                             onClick={() => setSelectedDeptFilter(dept)}
-                                            className={`shrink-0 min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            className={`shrink-0 min-h-[34px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                                         >
                                             {dept}
                                         </button>
@@ -868,16 +927,16 @@ const PayrollCreate = () => {
                                 </div>
                             </div>
 
-                            <div className="overflow-y-auto p-3 space-y-2 divide-y divide-slate-100">
+                            <div className="overflow-y-auto p-2.5 sm:p-3 space-y-1.5 sm:space-y-2 divide-y divide-slate-100">
                                 {filteredEmployees.length === 0 ? (
                                     <div className="py-12 text-center text-slate-400 space-y-2">
                                         <i className="ti ti-search-off text-3xl block"></i>
-                                        <p className="text-sm font-semibold">No employees match your search</p>
+                                        <p className="text-xs sm:text-sm font-semibold">No employees match your search</p>
                                     </div>
                                 ) : (
                                     filteredEmployees.map((emp) => {
-                                        const isEmpFactory = (emp.department || '').toLowerCase() === 'factory';
-                                        const rate = parseFloat(emp.piece_rate || emp.rate_per_piece || emp.salary || emp.monthly_salary || 0);
+                                        const isEmpFactory = isFactoryDept(emp.department);
+                                        const rate = getEmployeeRate(emp);
                                         const isSelected = String(formData.employee_id) === String(emp.id);
 
                                         return (
@@ -888,22 +947,22 @@ const PayrollCreate = () => {
                                                     setFormData(prev => ({ ...prev, employee_id: emp.id }));
                                                     setIsEmpModalOpen(false);
                                                 }}
-                                                className={`w-full min-h-[52px] p-3 rounded-2xl flex items-center justify-between text-left transition-all touch-manipulation active:scale-[0.98] ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                                className={`w-full min-h-[50px] p-2.5 sm:p-3 rounded-2xl flex items-center justify-between text-left transition-all touch-manipulation active:scale-[0.98] ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
                                             >
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <div className={`w-10 h-10 rounded-xl font-bold text-sm flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
                                                         {emp.first_name?.[0]}{emp.last_name?.[0]}
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-bold text-slate-800 truncate">
+                                                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">
                                                             {emp.first_name} {emp.last_name}
                                                         </p>
-                                                        <div className="flex items-center gap-2 mt-0.5">
-                                                            <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                                                                {emp.department || 'Operations'}
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 uppercase truncate">
+                                                                {getEmployeeDept(emp)}
                                                             </span>
                                                             <span className="text-slate-300">&middot;</span>
-                                                            <span className="text-[11px] font-mono font-bold text-emerald-600">
+                                                            <span className="text-[10px] sm:text-[11px] font-mono font-bold text-emerald-600 truncate">
                                                                 ₱{rate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / {isEmpFactory ? 'PC' : 'MO'}
                                                             </span>
                                                         </div>
@@ -912,7 +971,7 @@ const PayrollCreate = () => {
 
                                                 <div className="shrink-0 ml-2">
                                                     {isSelected ? (
-                                                        <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">
+                                                        <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">
                                                             <i className="ti ti-check"></i>
                                                         </span>
                                                     ) : (
