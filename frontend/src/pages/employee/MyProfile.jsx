@@ -290,7 +290,7 @@ export default function MyProfile() {
                             rounded="rounded-2xl"
                             border="border-4 border-white/10"
                             shadow="shadow-2xl"
-                            theme="gradient"
+                            theme="indigo"
                             textSize="text-4xl"
                             showOnlineStatus={true}
                             isOnline={true}

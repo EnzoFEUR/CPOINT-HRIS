@@ -735,9 +735,6 @@ export default function BiometricSetup() {
           </span>
         </button>
 
-        {/* Subtle Vignette */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_50%,_rgba(0,0,0,0.5)_100%)] pointer-events-none z-10" />
-
         {/* Boot & Ready Overlays */}
         {(state.mode === MODES.BOOT || state.mode === MODES.READY) && (
           <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">

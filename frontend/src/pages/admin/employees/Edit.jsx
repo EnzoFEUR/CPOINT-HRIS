@@ -267,7 +267,7 @@ export default function Edit() {
 
                     {/* SUBMIT */}
                     <div className="pt-2 sm:pt-4">
-                        <button type="submit" className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-sm sm:text-base tracking-wide rounded-xl shadow-lg shadow-indigo-600/30 tap-active transition-all flex items-center justify-center gap-2">
+                        <button type="submit" className="w-full py-3.5 sm:py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm sm:text-base tracking-wide rounded-xl shadow-lg shadow-indigo-600/20 tap-active transition-all flex items-center justify-center gap-2 cursor-pointer">
                             <i className="ti ti-device-floppy text-lg sm:text-xl" /> Save Changes
                         </button>
                     </div>

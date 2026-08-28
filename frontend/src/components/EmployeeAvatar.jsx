@@ -125,7 +125,7 @@ export const EmployeeAvatar = ({
             case 'cyan': return 'bg-cyan-50 text-cyan-800';
             case 'red': return 'bg-red-50 text-red-800';
             case 'dark': return 'bg-slate-900 text-white';
-            case 'gradient': return 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white';
+            case 'gradient': return 'bg-indigo-600 text-white';
             default: return 'bg-slate-100 text-slate-800';
         }
     }, [theme, isFactory]);

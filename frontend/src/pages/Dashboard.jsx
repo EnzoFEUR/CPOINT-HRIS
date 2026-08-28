@@ -233,7 +233,7 @@ export default function Dashboard() {
                     </span>
                 </div>
 
-                <Link to="/admin/leaves" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 sm:p-6 rounded-3xl shadow-sm text-white block cursor-pointer relative overflow-hidden group">
+                <Link to="/admin/leaves" className="bg-indigo-600 hover:bg-indigo-700 transition-colors p-5 sm:p-6 rounded-3xl shadow-sm text-white block cursor-pointer relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden sm:block">
                         <i className="ti ti-plane-departure text-5xl text-white" />
                     </div>

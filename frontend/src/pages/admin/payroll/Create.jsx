@@ -433,7 +433,7 @@ const PayrollCreate = () => {
             <div className="bg-white p-4 sm:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] shadow-sm border border-slate-100">
 
                 <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
-                    <div className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-lg sm:text-2xl shadow-lg shadow-blue-500/20">
+                    <div className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 bg-blue-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-lg sm:text-2xl shadow-lg shadow-blue-500/20">
                         <i className="ti ti-calculator"></i>
                     </div>
                     <div className="min-w-0">

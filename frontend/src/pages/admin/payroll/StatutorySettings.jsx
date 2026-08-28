@@ -263,7 +263,7 @@ export default function StatutorySettings({ onBack }) {
                     </div>
                 </div>
 
-                <div className="flex justify-end pt-2 sticky bottom-0 sm:static bg-gradient-to-t from-white via-white/95 sm:bg-none pb-3 sm:pb-0 -mx-3 px-3 sm:mx-0 sm:px-0">
+                <div className="flex justify-end pt-2 sticky bottom-0 sm:static bg-white/95 backdrop-blur-xs sm:bg-transparent pb-3 sm:pb-0 -mx-3 px-3 sm:mx-0 sm:px-0">
                     <button
                         type="submit"
                         disabled={loading}

@@ -281,7 +281,7 @@ const EmployeeDashboard = () => {
                     <motion.div 
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
-                        className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
+                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
@@ -304,7 +304,6 @@ const EmployeeDashboard = () => {
 
                     {/* Today's shift */}
                     <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group">
-                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/30 via-transparent to-transparent opacity-60" />
                         <div className="relative z-10 flex justify-between items-start">
                             <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-blue-400 mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors">
                                 <i className="ti ti-calendar-time text-2xl sm:text-3xl" />
@@ -519,7 +518,7 @@ const EmployeeDashboard = () => {
                         >
                             <div className="w-12 sm:w-16 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:mb-8" />
                             
-                            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
                                 {getInitial(user.name)}
                             </div>
                             <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{user.name}</h2>
@@ -555,7 +554,7 @@ const EmployeeDashboard = () => {
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto touch-scroll"
                         >
-                            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 sm:p-8 text-white text-center relative">
+                            <div className="bg-emerald-600 p-6 sm:p-8 text-white text-center relative">
                                 <div className="w-12 sm:w-16 h-1.5 bg-white/20 rounded-full mx-auto mb-4 sm:mb-6" />
                                 <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 backdrop-blur-md rounded-xl sm:rounded-2xl mx-auto flex items-center justify-center border border-white/20 mb-3 sm:mb-4 shadow-lg">
                                     <i className="ti ti-receipt-2 text-2xl sm:text-3xl" />
