@@ -565,7 +565,7 @@ router.post(
       });
     } else {
       // TIME OUT
-      const { error: updateErr } = await supabase
+      const { data: updatedRows, error: updateErr } = await supabase
         .from('attendances')
         .update({
           time_out: now.toISOString(),
@@ -574,13 +574,12 @@ router.post(
           liveness_verified_out: livenessPassed,
         })
         .eq('id', existing.id)
-        .eq('time_out', null); // Optimistic lock
+        .is('time_out', null)
+        .select();
 
       if (updateErr) throw new AppError(`Database error: ${updateErr.message}`, 500, 'DB_ERROR');
 
-      // Verify update succeeded (optimistic lock check)
-      const { data: verify } = await supabase.from('attendances').select('time_out').eq('id', existing.id).single();
-      if (!verify?.time_out) {
+      if (!updatedRows || updatedRows.length === 0) {
         throw new ConflictError('Attendance already updated. Please refresh.');
       }
 
