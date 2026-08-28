@@ -65,7 +65,7 @@ class RootErrorBoundary extends Component {
             width: '60px',
             height: '60px',
             borderRadius: '18px',
-            background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+            background: '#2563eb',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

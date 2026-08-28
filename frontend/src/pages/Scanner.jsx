@@ -1180,7 +1180,6 @@ const Scanner = () => {
               ref={canvasRef} 
               className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
             />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_45%,_rgba(0,0,0,0.6)_100%)] pointer-events-none" />
 
             {/* Top Control Bar */}
             <div className="absolute top-[max(env(safe-area-inset-top,12px),12px)] inset-x-0 flex items-center justify-between px-4 sm:px-6 z-30 pt-2">
@@ -1319,7 +1318,7 @@ const Scanner = () => {
 
       {/* Top HUD (QR Mode Header) */}
       {state.mode === MODES.QR && (
-        <div className="absolute top-0 inset-x-0 z-30 bg-gradient-to-b from-black/80 via-black/40 to-transparent pb-8 pointer-events-none">
+        <div className="absolute top-0 inset-x-0 z-30 bg-black/60 backdrop-blur-xs pb-4 pointer-events-none">
           <div className="flex justify-between items-center px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
             <div className="flex items-center gap-2.5 pt-1">
               <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center text-slate-200 border border-white/10">

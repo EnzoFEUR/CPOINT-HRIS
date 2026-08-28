@@ -676,7 +676,7 @@ function MainLayout({ children }) {
         {/* Logo */}
         <div className="flex items-center h-24 px-8 border-b border-white/5 shrink-0">
           <div className="flex items-center gap-4 group cursor-pointer">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">CP</div>
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">CP</div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-wide">C-Point</h1>
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">HRIS</p>
@@ -770,7 +770,7 @@ function MainLayout({ children }) {
         <div className="p-4 mt-auto border-t border-white/5 bg-slate-900/20 rounded-b-[2rem] shrink-0">
           <Link to="/profile" className="flex items-center p-3 rounded-2xl group mb-2 cursor-pointer hover:bg-white/5">
             <div className="relative">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold shadow-lg">
+              <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-lg">
                 {user.name ? user.name.charAt(0) : (user.first_name ? user.first_name.charAt(0) : '?')}
               </div>
               <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-green-500 border-2 border-[#0B132B] rounded-full"></span>
@@ -793,7 +793,7 @@ function MainLayout({ children }) {
           {/* Header */}
           <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300 touch-none select-none overscroll-none">
             <div className="flex items-center gap-3">
-              <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-black text-xs shadow-sm">
+              <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs shadow-sm">
                 CP
               </div>
               <div>
@@ -1193,7 +1193,7 @@ function MainLayout({ children }) {
 
                   {/* PWA Install Banner (Discreetly visible for Admins only when not installed) */}
                   {user?.role === 'admin' && !isStandalone && (
-                    <div className="mb-4 p-3.5 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="mb-4 p-3.5 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/30 shrink-0">
                           CP
@@ -1325,7 +1325,7 @@ function MainLayout({ children }) {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-black text-base text-white shadow-lg shadow-blue-500/30 shrink-0">
+                      <div className="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-base text-white shadow-lg shadow-blue-500/30 shrink-0">
                         CP
                       </div>
                       <div>
@@ -1346,7 +1346,7 @@ function MainLayout({ children }) {
                   {deferredPrompt && (
                     <button
                       onClick={handleInstallApp}
-                      className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2"
+                      className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2"
                     >
                       <i className="ti ti-download text-base" /> 1-Tap Quick Install
                     </button>

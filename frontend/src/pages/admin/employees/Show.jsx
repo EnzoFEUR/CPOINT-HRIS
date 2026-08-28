@@ -253,7 +253,7 @@ export default function Show() {
                             rounded="rounded-2xl"
                             border="border-4 border-white/10"
                             shadow="shadow-xl"
-                            theme="gradient"
+                            theme="indigo"
                             textSize="text-4xl sm:text-5xl"
                         />
                     </div>
