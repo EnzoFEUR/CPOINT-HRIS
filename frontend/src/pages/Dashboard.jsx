@@ -522,7 +522,11 @@ export default function Dashboard() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${
+                                    log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-700 border-red-200' :
+                                    log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                                    'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}>
                                     {log.status}
                                 </span>
                             </div>

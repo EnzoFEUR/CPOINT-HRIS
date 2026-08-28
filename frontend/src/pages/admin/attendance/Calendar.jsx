@@ -174,9 +174,9 @@ const Calendar = () => {
         return [...dailyLogs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
     }, [dailyLogs]);
 
-    const totalPresent = sortedLogs.length;
+    const totalAbsent = sortedLogs.filter(log => String(log.status).toLowerCase() === 'absent').length;
     const totalLate = sortedLogs.filter(log => String(log.status).toLowerCase() === 'late').length;
-    const onTime = totalPresent - totalLate;
+    const onTime = sortedLogs.filter(log => String(log.status).toLowerCase() === 'present').length;
 
     const showInitialLoading = isLoading && !calendarData;
 
@@ -203,28 +203,40 @@ const Calendar = () => {
                 
                 {/* Left Side: Stats & Calendar Picker */}
                 <div className="xl:col-span-1 space-y-4 sm:space-y-6">
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
-                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                                <i className="ti ti-thumb-up text-emerald-500 text-base sm:text-lg"></i> On Time
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
+                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <i className="ti ti-thumb-up text-emerald-500 text-sm sm:text-base"></i> On Time
                             </p>
                             {showInitialLoading ? (
-                                <div className="h-8 sm:h-12 w-16 bg-slate-100 rounded-lg animate-pulse my-1" />
+                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
                             ) : (
-                                <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
+                                <p className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">
                                     {onTime}
                                 </p>
                             )}
                         </div>
-                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[90px] sm:min-h-[110px]">
-                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                                <i className="ti ti-alert-triangle text-orange-500 text-base sm:text-lg"></i> Late
+                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
+                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <i className="ti ti-alert-triangle text-orange-500 text-sm sm:text-base"></i> Late
                             </p>
                             {showInitialLoading ? (
-                                <div className="h-8 sm:h-12 w-16 bg-slate-100 rounded-lg animate-pulse my-1" />
+                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
                             ) : (
-                                <p className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tight">
+                                <p className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">
                                     {totalLate}
+                                </p>
+                            )}
+                        </div>
+                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
+                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <i className="ti ti-user-x text-red-500 text-sm sm:text-base"></i> Absent
+                            </p>
+                            {showInitialLoading ? (
+                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
+                            ) : (
+                                <p className="text-2xl sm:text-4xl font-black text-red-600 tracking-tight">
+                                    {totalAbsent}
                                 </p>
                             )}
                         </div>
@@ -289,14 +301,18 @@ const Calendar = () => {
                                 <AnimatePresence>
                                     {sortedLogs.map((log, idx) => {
                                         const fullName = log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown Worker';
-                                        const isLate = String(log.status).toLowerCase() === 'late';
+                                        const statusStr = String(log.status || '').toLowerCase();
+                                        const isAbsent = statusStr === 'absent';
+                                        const isLate = statusStr === 'late';
 
                                         return (
                                             <div 
                                                 key={log.id || idx}
                                                 className="relative group"
                                             >
-                                                <div className={`absolute -left-[27px] sm:-left-[41px] top-5 sm:top-6 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 sm:border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-125 ${isLate ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
+                                                <div className={`absolute -left-[27px] sm:-left-[41px] top-5 sm:top-6 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 sm:border-4 border-white shadow-md transition-transform duration-300 group-hover:scale-125 ${
+                                                    isAbsent ? 'bg-red-500' : isLate ? 'bg-orange-500' : 'bg-emerald-500'
+                                                }`}></div>
                                                 
                                                 <div className="bg-white rounded-2xl p-3.5 sm:p-6 border border-slate-200 shadow-xs sm:shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row gap-3 sm:gap-6 items-start sm:items-center">
                                                     
@@ -307,15 +323,24 @@ const Calendar = () => {
                                                     
                                                     <div className="flex-1 w-full min-w-0">
                                                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
-                                                            <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
-                                                                <i className="ti ti-login-2 text-blue-500 text-xs sm:text-sm"></i>
-                                                                In: {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
-                                                            {log.time_out && (
-                                                                <span className="font-mono font-medium text-slate-500 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
-                                                                    <i className="ti ti-logout-2 text-rose-400 text-xs sm:text-sm"></i>
-                                                                    Out: {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                            {isAbsent ? (
+                                                                <span className="font-mono font-bold text-red-600 bg-red-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-red-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
+                                                                    <i className="ti ti-user-x text-red-500 text-xs sm:text-sm"></i>
+                                                                    No Biometric Scans (Absent)
                                                                 </span>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
+                                                                        <i className="ti ti-login-2 text-blue-500 text-xs sm:text-sm"></i>
+                                                                        In: {log.time_in ? new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                    </span>
+                                                                    {log.time_out && (
+                                                                        <span className="font-mono font-medium text-slate-500 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-xs flex items-center gap-1 sm:gap-1.5">
+                                                                            <i className="ti ti-logout-2 text-rose-400 text-xs sm:text-sm"></i>
+                                                                            Out: {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    )}
+                                                                </>
                                                             )}
                                                         </div>
                                                         
@@ -328,7 +353,11 @@ const Calendar = () => {
                                                     </div>
 
                                                     <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
-                                                        {isLate ? (
+                                                        {isAbsent ? (
+                                                            <span className="w-full sm:w-auto bg-red-100 text-red-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-red-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
+                                                                <i className="ti ti-user-x text-base sm:text-xl"></i> Absent
+                                                            </span>
+                                                        ) : isLate ? (
                                                             <span className="w-full sm:w-auto bg-orange-100 text-orange-700 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-widest border border-orange-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xs">
                                                                 <i className="ti ti-alert-triangle text-base sm:text-xl"></i> Late
                                                             </span>
