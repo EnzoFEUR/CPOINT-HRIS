@@ -76,12 +76,13 @@ export default function ShiftsIndex() {
     // Mutation for shift assignment
     const assignShiftMutation = useMutation({
         mutationFn: async ({ employeeId, shift }) => {
-            const res = await fetchWithAuth(`/api/employees/${employeeId}`, {
-                method: 'PUT',
-                body: JSON.stringify({ shift })
+            const res = await fetchWithAuth('/api/shifts/assign', {
+                method: 'POST',
+                body: JSON.stringify({ employee_id: employeeId, shift })
             });
-            if (!res.ok) throw new Error('Failed to assign schedule');
-            return res.json();
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to assign schedule');
+            return data;
         },
         onSuccess: (data, variables) => {
             toast.success(`Schedule assigned: ${variables.shift}`);

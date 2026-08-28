@@ -431,6 +431,12 @@ function MainLayout({ children }) {
   const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
 
   useEffect(() => {
+    if (user?.id && getNotificationPermission() === 'granted') {
+      subscribeUserToPush(user.id, true).catch(() => {});
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
     // Check if app is already running in standalone mode (PWA installed)
     const isStandaloneMode =
       window.matchMedia('(display-mode: standalone)').matches ||
