@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
+import { createNotification } from './notifications.js';
 import {
     toSafeNumber,
     round2,
@@ -469,6 +470,29 @@ router.post('/', async (req, res) => {
         }
 
         if (insertError) throw insertError;
+
+        // Notify employee of new payslip
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+        const avatarUrl = emp?.company_id && emp?.id
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+            : null;
+
+        await createNotification({
+            target: employee_id,
+            title: 'New Payslip Available',
+            text: `Your payslip for ${pStart} to ${pEnd} is ready (Net Pay: ₱${netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}).`,
+            type: 'payroll',
+            sender_id: emp?.id,
+            company_id: emp?.company_id,
+            sender_name: 'HR & Payroll',
+            sender_avatar: avatarUrl
+        });
 
         // Audit Log Entry
         if (req.body.admin_id) {
