@@ -246,7 +246,7 @@ const Scanner = () => {
             }
             .laser-line {
                 animation: scan-laser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-                background: linear-gradient(to right, transparent, #3b82f6, transparent);
+                background: #3b82f6;
             }
     
             #reader button { display: none !important; }
@@ -272,7 +272,7 @@ const Scanner = () => {
             
             {/* HEADER */}
             <div className="text-center mb-10 space-y-3">
-                <div className="flex mx-auto items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-2 relative overflow-hidden">
+                <div className="flex mx-auto items-center justify-center h-16 w-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-2 relative overflow-hidden">
                     <i className="ti ti-scan text-3xl relative z-10"></i>
                     {modelsLoaded && <div className="absolute inset-0 bg-blue-400/20 laser-line pointer-events-none"></div>}
                 </div>
@@ -299,7 +299,7 @@ const Scanner = () => {
                         <button 
                             onClick={startScanner}
                             disabled={!modelsLoaded}
-                            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 ios-btn flex items-center justify-center gap-2"
+                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 ios-btn flex items-center justify-center gap-2"
                         >
                             <i className="ti ti-power text-xl"></i>
                             Launch Camera

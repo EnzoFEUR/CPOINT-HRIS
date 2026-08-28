@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../utils/api';
+import EmployeeAvatar from '../../components/EmployeeAvatar';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -12,7 +13,6 @@ export default function MyProfile() {
     const [documents, setDocuments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
-    const [imageError, setImageError] = useState(false);
     const [docSearch, setDocSearch] = useState('');
     const fileInputRef = useRef(null);
     const dragCounter = useRef(0);
@@ -284,21 +284,17 @@ export default function MyProfile() {
 
                 <div className="relative z-10 flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
                     <div className="relative h-28 w-28 sm:h-32 sm:w-32 shrink-0">
-                        {!imageError && profile?.id ? (
-                            <img
-                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${profile.company_id}/${profile.id}.jpg`}
-                                onError={() => setImageError(true)}
-                                alt={profile?.first_name || 'User'}
-                                className="w-full h-full object-cover rounded-2xl border-4 border-white/10 shadow-2xl bg-slate-800"
-                            />
-                        ) : (
-                            <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-black border-4 border-white/10 shadow-2xl">
-                                {profile?.first_name ? profile.first_name.charAt(0) : 'U'}
-                            </div>
-                        )}
-                        <span className="absolute -bottom-1 -right-1 h-6 w-6 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center" title="Active Account">
-                            <i className="ti ti-check text-white text-xs font-bold" />
-                        </span>
+                        <EmployeeAvatar
+                            employee={profile}
+                            size="h-28 w-28 sm:h-32 sm:w-32"
+                            rounded="rounded-2xl"
+                            border="border-4 border-white/10"
+                            shadow="shadow-2xl"
+                            theme="indigo"
+                            textSize="text-4xl"
+                            showOnlineStatus={true}
+                            isOnline={true}
+                        />
                     </div>
 
                     <div className="flex-1 min-w-0">

@@ -42,7 +42,7 @@ export default defineConfig({
             if (normalizedId.includes('flatpickr') || normalizedId.includes('sweetalert2')) {
               return 'vendor-ui-heavy';
             }
-            if (normalizedId.includes('lucide-react')) {
+            if (normalizedId.includes('@tabler/icons-react') || normalizedId.includes('lucide-react')) {
               return 'vendor-icons';
             }
             return 'vendor-core';

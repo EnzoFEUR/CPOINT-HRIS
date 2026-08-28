@@ -58,6 +58,20 @@ body {
     display: none;
 }
 
+/* Biometric & Profile Photo Protection: Anti-Drag, Anti-Save, and Anti-Right-Click */
+img, 
+.protected-photo, 
+[data-protected-photo] {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* Disables mobile long-press image preview / save sheet */
+}
+
 .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -148,7 +162,7 @@ body {
     left: 50%;
     width: 0;
     height: 0;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+    background: rgba(255, 255, 255, 0.08);
     transform: translate(-50%, -50%);
     transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
         height 0.6s cubic-bezier(0.16, 1, 0.3, 1),
@@ -243,67 +257,5 @@ body {
 
     100% {
         transform: scaleY(1.1) translateY(5%);
-    }
-}
-
-.bg-blobs {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: -10;
-    overflow: hidden;
-    background-color: #f8fafc;
-    pointer-events: none;
-}
-
-.blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(60px);
-    opacity: 0.6;
-    animation: float-edge 12s infinite ease-in-out alternate;
-}
-
-.blob-1 {
-    top: 10%;
-    left: -8rem;
-    width: 20rem;
-    height: 20rem;
-    background: #e0e7ff;
-    animation-delay: 0s;
-}
-
-.blob-2 {
-    bottom: 5%;
-    right: -10rem;
-    width: 24rem;
-    height: 24rem;
-    background: #dbeafe;
-    animation-delay: -4s;
-    animation-direction: alternate-reverse;
-}
-
-.blob-3 {
-    top: 35%;
-    right: -6rem;
-    width: 16rem;
-    height: 16rem;
-    background: #fce7f3;
-    animation-delay: -8s;
-}
-
-@keyframes float-edge {
-    0% {
-        transform: translateY(0) scale(1);
-    }
-
-    50% {
-        transform: translateY(3rem) scale(1.05);
-    }
-
-    100% {
-        transform: translateY(-3rem) scale(0.95);
     }
 }

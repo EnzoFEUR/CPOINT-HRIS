@@ -8,13 +8,17 @@ const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@cpointhris.com';
 
-// Configure Web Push with VAPID credentials if available
+// Configure Web Push with VAPID credentials if set in environment
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-    webpush.setVapidDetails(
-        VAPID_SUBJECT,
-        VAPID_PUBLIC_KEY,
-        VAPID_PRIVATE_KEY
-    );
+    try {
+        webpush.setVapidDetails(
+            VAPID_SUBJECT,
+            VAPID_PUBLIC_KEY,
+            VAPID_PRIVATE_KEY
+        );
+    } catch (vapidErr) {
+        console.error('[VAPID] Configuration error:', vapidErr.message);
+    }
 }
 
 export const getVapidPublicKey = () => VAPID_PUBLIC_KEY;

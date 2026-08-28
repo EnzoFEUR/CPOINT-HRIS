@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
 import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -276,6 +277,7 @@ const sendError = (res, err, reqId) => {
 router.get(
   '/',
   checkAdminOrOwnership,
+  cacheResponse(15),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     const { employee_id, start_date, end_date, page = '1', limit = '50' } = req.query;
@@ -553,7 +555,7 @@ router.post(
 
       logger.info(reqId, 'Time-in recorded', { employee_id, status, minutesLate: status === 'Late' ? Math.floor((now - callTime) / 60_000) : 0 });
 
-      await auditLog(reqId, { employee_id, action: 'TIME_IN', details: { status, livenessConfidence }, ip_address: req.ip });
+      invalidateCache(['/api/attendance', '/api/dashboard']);
 
       return res.status(201).json({
         status: 'success',
@@ -563,7 +565,7 @@ router.post(
       });
     } else {
       // TIME OUT
-      const { error: updateErr } = await supabase
+      const { data: updatedRows, error: updateErr } = await supabase
         .from('attendances')
         .update({
           time_out: now.toISOString(),
@@ -572,19 +574,20 @@ router.post(
           liveness_verified_out: livenessPassed,
         })
         .eq('id', existing.id)
-        .eq('time_out', null); // Optimistic lock
+        .is('time_out', null)
+        .select();
 
       if (updateErr) throw new AppError(`Database error: ${updateErr.message}`, 500, 'DB_ERROR');
 
-      // Verify update succeeded (optimistic lock check)
-      const { data: verify } = await supabase.from('attendances').select('time_out').eq('id', existing.id).single();
-      if (!verify?.time_out) {
+      if (!updatedRows || updatedRows.length === 0) {
         throw new ConflictError('Attendance already updated. Please refresh.');
       }
 
       logger.info(reqId, 'Time-out recorded', { employee_id, attendance_id: existing.id });
 
       await auditLog(reqId, { employee_id, action: 'TIME_OUT', details: { attendance_id: existing.id }, ip_address: req.ip });
+
+      invalidateCache(['/api/attendance', '/api/dashboard']);
 
       return res.json({
         status: 'success',
@@ -600,6 +603,7 @@ router.post(
 router.get(
   '/calendar',
   checkAdminOrOwnership,
+  cacheResponse(20),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
     const { date = getTodayString() } = req.query;

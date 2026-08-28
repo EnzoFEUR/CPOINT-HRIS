@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
+import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
-// --- Utility Helpers ---
 const parseDate = (dStr) => {
     if (!dStr) return null;
     const formatted = typeof dStr === 'string' ? dStr.replace(' ', 'T') : dStr;
@@ -25,7 +25,6 @@ const extractDateStr = (dStr) => {
     return `${year}-${month}-${day}`;
 };
 
-// Reuse extractDateStr for standard YYYY-MM-DD formatting
 const formatLocalDate = extractDateStr;
 
 const formatReadableDate = (dateStr) => {
@@ -210,7 +209,6 @@ const PayrollCreate = () => {
         }
     };
 
-    // Consolidated period calculations into a single memo
     const { periodDaysCount, isInvalidDateRange } = useMemo(() => {
         if (!formData.period_start || !formData.period_end) {
             return { periodDaysCount: 0, isInvalidDateRange: false };
@@ -240,6 +238,19 @@ const PayrollCreate = () => {
         return getEmployeeRate(selectedEmployee);
     }, [selectedEmployee]);
 
+    // Check if the selected employee has no worked days, overtime, or pieces produced
+    const hasNoWorkedTime = useMemo(() => {
+        if (!formData.employee_id || isCalculating) return false;
+        const days = parseFloat(formData.days_worked || 0);
+        const ot = parseFloat(formData.overtime_hours || 0);
+        const pieces = parseFloat(formData.pieces_produced || 0);
+
+        if (isFactoryEmployee) {
+            return days === 0 && ot === 0 && pieces === 0;
+        }
+        return days === 0 && ot === 0;
+    }, [formData.employee_id, formData.days_worked, formData.overtime_hours, formData.pieces_produced, isFactoryEmployee, isCalculating]);
+
     const availableDepartments = useMemo(() => {
         const depts = new Set(employees.map(getEmployeeDept));
         return ['ALL', ...Array.from(depts)];
@@ -257,63 +268,84 @@ const PayrollCreate = () => {
     }, [employees, empSearch, selectedDeptFilter]);
 
     useEffect(() => {
+        if (!formData.employee_id || !formData.period_start || !formData.period_end || isInvalidDateRange) {
+            return;
+        }
+
+        let isMounted = true;
+        setIsCalculating(true);
+
         const calculatePayroll = async () => {
-            if (formData.employee_id && formData.period_start && formData.period_end && !isInvalidDateRange) {
-                setIsCalculating(true);
-                try {
-                    const attendanceRes = await fetchWithAuth(
-                        `/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`
-                    );
-                    const rawLogs = await attendanceRes.json();
-                    const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
+            try {
+                const attendanceRes = await fetchWithAuth(
+                    `/api/attendance?employee_id=${formData.employee_id}&start_date=${formData.period_start}&end_date=${formData.period_end}`
+                );
+                const rawLogs = await attendanceRes.json();
+                const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
 
-                    const doleDivisor = 21.75;
-                    const gracePeriodMins = 15;
+                const doleDivisor = 21.75;
+                const gracePeriodMins = 15;
 
-                    const monthlyBase = isFactoryEmployee
-                        ? parseFloat(selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0)
-                        : employeeRate;
+                const monthlyBase = isFactoryEmployee
+                    ? parseFloat(selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0)
+                    : employeeRate;
 
-                    const dailyRate = monthlyBase > 0 ? (monthlyBase / doleDivisor) : parseFloat(selectedEmployee?.daily_rate || 0);
-                    const hourlyRate = dailyRate / 8;
-                    const perMinuteRate = hourlyRate / 60;
+                const dailyRate = monthlyBase > 0 ? (monthlyBase / doleDivisor) : parseFloat(selectedEmployee?.daily_rate || 0);
+                const hourlyRate = dailyRate / 8;
+                const perMinuteRate = hourlyRate / 60;
 
-                    let totalOvertime = 0;
-                    let adjustments = 0;
-                    const workedDatesSet = new Set();
+                let totalOvertime = 0;
+                let adjustments = 0;
+                const workedDatesSet = new Set();
 
-                    const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
+                const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
 
-                    // Combined single iteration over time logs
-                    completedLogs.forEach(log => {
-                        const dateStr = extractDateStr(log.date || log.time_in);
-                        if (dateStr) workedDatesSet.add(dateStr);
+                completedLogs.forEach(log => {
+                    const dateStr = extractDateStr(log.date || log.time_in);
+                    if (dateStr) workedDatesSet.add(dateStr);
 
-                        const timeIn = parseDate(log.time_in);
-                        const timeOut = parseDate(log.time_out);
+                    const timeIn = parseDate(log.time_in);
+                    const timeOut = parseDate(log.time_out);
 
-                        if (timeIn && dateStr) {
-                            const scheduleStart = new Date(`${dateStr}T08:00:00`);
+                    if (timeIn && dateStr) {
+                        const scheduleStart = new Date(`${dateStr}T08:00:00`);
 
-                            if (!isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
-                                const minutes = Math.floor((timeIn - scheduleStart) / 60000);
-                                if (minutes > gracePeriodMins && perMinuteRate > 0) {
-                                    adjustments += (minutes * perMinuteRate);
-                                }
+                        if (!isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
+                            const minutes = Math.floor((timeIn - scheduleStart) / 60000);
+                            if (minutes > gracePeriodMins && perMinuteRate > 0) {
+                                adjustments += (minutes * perMinuteRate);
                             }
                         }
+                    }
 
-                        if (timeIn && timeOut) {
-                            const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
-                            if (hoursWorked > 9) {
-                                totalOvertime += (hoursWorked - 9);
-                            }
+                    if (timeIn && timeOut) {
+                        const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+                        if (hoursWorked > 9) {
+                            totalOvertime += (hoursWorked - 9);
                         }
-                    });
+                    }
+                });
 
-                    const uniqueWorkedDates = Array.from(workedDatesSet);
-                    const daysWorked = uniqueWorkedDates.length;
+                const uniqueWorkedDates = Array.from(workedDatesSet);
+                const daysWorked = uniqueWorkedDates.length;
 
+                const previewRes = await fetchWithAuth('/api/payroll/preview', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        employee_id: formData.employee_id,
+                        period_start: formData.period_start,
+                        period_end: formData.period_end,
+                        department: getEmployeeDept(selectedEmployee),
+                        days_worked: daysWorked,
+                        monthly_salary: selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0,
+                        daily_rate: dailyRate,
+                        worked_dates: uniqueWorkedDates
+                    }),
+                });
+
+                const previewData = await previewRes.json().catch(() => ({ items: [], totalHolidayPay: 0 }));
+
+                if (isMounted) {
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
@@ -321,37 +353,30 @@ const PayrollCreate = () => {
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : ''
                     }));
 
-                    const previewRes = await fetchWithAuth('/api/payroll/preview', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            employee_id: formData.employee_id,
-                            period_start: formData.period_start,
-                            period_end: formData.period_end,
-                            department: getEmployeeDept(selectedEmployee),
-                            days_worked: daysWorked,
-                            monthly_salary: selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0,
-                            daily_rate: dailyRate,
-                            worked_dates: uniqueWorkedDates
-                        }),
-                    });
-
-                    const previewData = await previewRes.json().catch(() => ({ items: [], totalHolidayPay: 0 }));
-
                     setHolidayPreview(
                         previewRes.ok && Array.isArray(previewData.items)
                             ? previewData
                             : { items: [], totalHolidayPay: 0 }
                     );
+                }
 
-                } catch (err) {
-                    console.error('Calculation error:', err);
+            } catch (err) {
+                console.error('Calculation error:', err);
+                if (isMounted) {
                     setHolidayPreview({ items: [], totalHolidayPay: 0 });
-                } finally {
+                }
+            } finally {
+                if (isMounted) {
                     setIsCalculating(false);
                 }
             }
         };
+
         calculatePayroll();
+
+        return () => {
+            isMounted = false;
+        };
     }, [formData.employee_id, formData.period_start, formData.period_end, selectedEmployee, isFactoryEmployee, employeeRate, isInvalidDateRange]);
 
     const handleInputChange = (e) => {
@@ -363,6 +388,11 @@ const PayrollCreate = () => {
         e.preventDefault();
         if (isInvalidDateRange) {
             setError('End date cannot be earlier than start date.');
+            return;
+        }
+
+        if (hasNoWorkedTime) {
+            setError('Cannot compute payroll for an employee with 0 worked days and 0 overtime hours.');
             return;
         }
 
@@ -420,7 +450,7 @@ const PayrollCreate = () => {
             <div className="bg-white p-4 sm:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] shadow-sm border border-slate-100">
 
                 <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
-                    <div className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-lg sm:text-2xl shadow-lg shadow-blue-500/20">
+                    <div className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 bg-blue-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center text-lg sm:text-2xl shadow-lg shadow-blue-500/20">
                         <i className="ti ti-calculator"></i>
                     </div>
                     <div className="min-w-0">
@@ -450,7 +480,7 @@ const PayrollCreate = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-                    {/* EMPLOYEE SELECTION */}
+                    {/* Employee Selection */}
                     <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2.5 sm:gap-3">
@@ -488,9 +518,14 @@ const PayrollCreate = () => {
                             <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
-                                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-base sm:text-lg flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-                                            {selectedEmployee.first_name?.[0]}{selectedEmployee.last_name?.[0]}
-                                        </div>
+                                        <EmployeeAvatar
+                                            employee={selectedEmployee}
+                                            size="h-11 w-11 sm:h-13 sm:w-13"
+                                            rounded="rounded-xl sm:rounded-2xl"
+                                            border="border-2 border-white"
+                                            shadow="shadow-md shadow-blue-500/15"
+                                            textSize="text-base sm:text-lg"
+                                        />
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 <h4 className="text-sm sm:text-base font-black text-slate-800 truncate">
@@ -514,11 +549,7 @@ const PayrollCreate = () => {
                                     </button>
                                 </div>
 
-                                <motion.div
-                                    initial={{ opacity: 0, y: 5 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="mt-3.5 pt-3 border-t border-slate-100"
-                                >
+                                <div className="mt-3.5 pt-3 border-t border-slate-100">
                                     {isFactoryEmployee ? (
                                         <div className="bg-amber-50/80 border border-amber-200/80 p-2.5 sm:p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div>
@@ -551,12 +582,12 @@ const PayrollCreate = () => {
                                             </div>
                                         </div>
                                     )}
-                                </motion.div>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* CUTOFF PERIOD SECTION */}
+                    {/* Cutoff Period Section */}
                     <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100 space-y-4">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-2.5 sm:gap-3">
@@ -578,12 +609,12 @@ const PayrollCreate = () => {
                             )}
                         </div>
 
-                        {/* TOGGLE BUTTON */}
+                        {/* Toggle Button */}
                         <div className="flex items-center gap-2 flex-wrap">
                             <button
                                 type="button"
                                 onClick={toggleWeekends}
-                                className={`shrink-0 whitespace-nowrap min-h-[38px] sm:min-h-[42px] px-3.5 sm:px-4 py-2 text-xs font-bold rounded-xl transition-all touch-manipulation active:scale-95 flex items-center gap-2 ${includeWeekends
+                                className={`shrink-0 whitespace-nowrap min-h-[38px] sm:min-h-[42px] px-3.5 sm:px-4 py-2 text-xs font-bold rounded-xl transition-colors touch-manipulation flex items-center gap-2 ${includeWeekends
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                     : 'bg-slate-200 text-slate-700 border border-slate-300'
                                     }`}
@@ -593,7 +624,7 @@ const PayrollCreate = () => {
                             </button>
                         </div>
 
-                        {/* DATE PICKERS */}
+                        {/* Date Pickers */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                             <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
                                 <div className="flex items-center justify-between mb-2 gap-1">
@@ -644,7 +675,7 @@ const PayrollCreate = () => {
                             </div>
                         </div>
 
-                        {/* DATE VALIDATION WARNING */}
+                        {/* Date Validation Warning */}
                         {isInvalidDateRange && (
                             <p className="text-xs text-red-600 font-bold flex items-center gap-1 pt-1">
                                 <i className="ti ti-alert-circle text-base"></i> End date cannot be earlier than start date.
@@ -667,7 +698,7 @@ const PayrollCreate = () => {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
+                        <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-3 min-h-[32px]">
                             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
                                     <i className="ti ti-clock-check"></i>
@@ -678,8 +709,8 @@ const PayrollCreate = () => {
                                 </div>
                             </div>
                             {isCalculating && (
-                                <div className="shrink-0 text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 animate-pulse">
-                                    <i className="ti ti-loader animate-spin"></i> Calculating...
+                                <div className="shrink-0 text-xs font-semibold text-blue-600 flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                                    <i className="ti ti-loader animate-spin text-sm"></i> Calculating...
                                 </div>
                             )}
                         </div>
@@ -745,14 +776,20 @@ const PayrollCreate = () => {
                                 </p>
                             </div>
                         </div>
+
+                        {/* Zero Work Warning Banner */}
+                        {hasNoWorkedTime && (
+                            <div className="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                                <i className="ti ti-alert-circle text-amber-600 text-xl shrink-0"></i>
+                                <p className="text-xs sm:text-sm text-amber-800 font-bold">
+                                    Employee has 0 worked days and 0 overtime hours for this cutoff period. Payroll cannot be generated.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {holidayPreview.items.length > 0 && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="space-y-3"
-                        >
+                        <div className="space-y-3 transition-opacity duration-200">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
                                 <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
@@ -788,7 +825,7 @@ const PayrollCreate = () => {
                                     </div>
                                 ))}
                             </div>
-                        </motion.div>
+                        </div>
                     )}
 
                     <div className="space-y-4">
@@ -835,8 +872,8 @@ const PayrollCreate = () => {
                     <div className="pt-2 sm:pt-4">
                         <button
                             type="submit"
-                            disabled={isSubmitting || !formData.employee_id || isInvalidDateRange}
-                            className="w-full min-h-[52px] sm:min-h-[56px] py-4 sm:py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-base sm:text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-2.5 sm:gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-slate-900 touch-manipulation"
+                            disabled={isSubmitting || !formData.employee_id || isInvalidDateRange || hasNoWorkedTime}
+                            className="w-full min-h-[52px] sm:min-h-[56px] py-4 sm:py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-base sm:text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-colors flex items-center justify-center gap-2.5 sm:gap-3 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation cursor-pointer"
                         >
                             {!isSubmitting ? (
                                 <>
@@ -854,23 +891,26 @@ const PayrollCreate = () => {
                 </form>
             </div>
 
-            {/* SEARCHABLE EMPLOYEE MODAL */}
+            {/* Searchable Employee Modal */}
             <AnimatePresence>
                 {isEmpModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+                    >
+                        <div
                             onClick={() => setIsEmpModalOpen(false)}
-                            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+                            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
                         />
 
                         <motion.div
-                            initial={{ y: '100%' }}
-                            animate={{ y: 0 }}
-                            exit={{ y: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 24, scale: 0.96 }}
+                            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                             className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
                         >
                             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -886,7 +926,7 @@ const PayrollCreate = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsEmpModalOpen(false)}
-                                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-base sm:text-lg transition-colors touch-manipulation shrink-0 ml-2"
+                                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-base sm:text-lg transition-colors touch-manipulation shrink-0 ml-2 cursor-pointer"
                                 >
                                     <i className="ti ti-x"></i>
                                 </button>
@@ -919,7 +959,7 @@ const PayrollCreate = () => {
                                             key={dept}
                                             type="button"
                                             onClick={() => setSelectedDeptFilter(dept)}
-                                            className={`shrink-0 min-h-[34px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                            className={`shrink-0 min-h-[34px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation cursor-pointer ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                                         >
                                             {dept}
                                         </button>
@@ -947,12 +987,15 @@ const PayrollCreate = () => {
                                                     setFormData(prev => ({ ...prev, employee_id: emp.id }));
                                                     setIsEmpModalOpen(false);
                                                 }}
-                                                className={`w-full min-h-[50px] p-2.5 sm:p-3 rounded-2xl flex items-center justify-between text-left transition-all touch-manipulation active:scale-[0.98] ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                                className={`w-full min-h-[52px] p-2.5 sm:p-3 rounded-2xl flex items-center justify-between text-left transition-colors touch-manipulation cursor-pointer ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
                                             >
                                                 <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                                                        {emp.first_name?.[0]}{emp.last_name?.[0]}
-                                                    </div>
+                                                    <EmployeeAvatar
+                                                        employee={emp}
+                                                        size="h-10 w-10 sm:h-11 sm:w-11"
+                                                        rounded="rounded-xl"
+                                                        textSize="text-xs sm:text-sm"
+                                                    />
                                                     <div className="min-w-0">
                                                         <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">
                                                             {emp.first_name} {emp.last_name}
@@ -984,7 +1027,7 @@ const PayrollCreate = () => {
                                 )}
                             </div>
                         </motion.div>
-                    </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
         </div>

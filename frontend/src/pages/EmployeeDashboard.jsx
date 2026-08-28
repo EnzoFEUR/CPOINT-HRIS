@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -54,7 +55,7 @@ const EmployeeDashboard = () => {
             console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
         }
 
-        // Resilient parallel fallback directly to individual routes
+        // Fallback fetch
         const [attRes, payRes, shiftRes, discRes, leaveRes] = await Promise.allSettled([
             fetchWithAuth(`/api/attendance?employee_id=${userId}`),
             fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=1`),
@@ -76,11 +77,11 @@ const EmployeeDashboard = () => {
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
         enabled: !!user.id && user.role !== 'security',
-        staleTime: 0,               // Always live & real-time
-        refetchOnWindowFocus: true  // Auto-sync when returning to tab
+        staleTime: 0,
+        refetchOnWindowFocus: true,
     });
 
-    // Real-time live sync for dashboard updates
+    // Real-time synchronization
     useEffect(() => {
         if (!user?.id) return;
 
@@ -114,7 +115,7 @@ const EmployeeDashboard = () => {
         };
     }, [user?.id, queryClient]);
 
-    // Derived State with safe unwrap for both direct arrays and { data: [...] } objects
+    // Derived state
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
 
@@ -177,13 +178,15 @@ const EmployeeDashboard = () => {
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
     const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
-    const photoUrl = user?.biometric_baseline_path
-        ? (user.biometric_baseline_path.startsWith('http')
-            ? user.biometric_baseline_path
-            : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
-        : (user?.company_id && user?.id
-            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-            : null);
+    const photoUrl = user?.avatar_url
+        ? user.avatar_url
+        : user?.biometric_baseline_path
+            ? (user.biometric_baseline_path.startsWith('http')
+                ? user.biometric_baseline_path
+                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
+            : (user?.has_registered_biometrics === true && user?.company_id && user?.id
+                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
+                : null);
 
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -194,7 +197,7 @@ const EmployeeDashboard = () => {
     
     const sDetails = shiftDetails[shift] || shiftDetails['Unassigned'];
 
-    // Animation variants - Exact enterprise spring motion consistent with Admin modules
+    // Animation variants
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: { 
@@ -258,33 +261,27 @@ const EmployeeDashboard = () => {
                         </p>
                     </div>
                     
-                    {/* User Avatar Circle with Profile Picture */}
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-slate-950/20 border-4 border-white shrink-0 overflow-hidden">
-                        {photoUrl ? (
-                            <img
-                                src={photoUrl}
-                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                alt={user.name || 'Profile'}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : null}
-                        <span 
-                            className="w-full h-full flex items-center justify-center"
-                            style={{ display: photoUrl ? 'none' : 'flex' }}
-                        >
-                            {getInitial(user.name)}
-                        </span>
-                    </div>
+                    {/* User Avatar */}
+                    <EmployeeAvatar
+                        employee={user}
+                        photoUrl={photoUrl}
+                        size="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24"
+                        rounded="rounded-full"
+                        border="border-4 border-white"
+                        shadow="shadow-xl shadow-slate-950/20"
+                        theme="dark"
+                        textSize="text-2xl sm:text-3xl md:text-4xl"
+                    />
                 </motion.div>
 
-                {/* Action cards: Option 1 - Latest Pay & Today's Shift */}
+                {/* Primary actions */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
-                    {/* Payroll card */}
+                    {/* Payroll */}
                     <motion.div 
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
-                        className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
+                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
@@ -305,9 +302,8 @@ const EmployeeDashboard = () => {
                         </div>
                     </motion.div>
 
-                    {/* Today's Shift Card */}
+                    {/* Today's shift */}
                     <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group">
-                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/30 via-transparent to-transparent opacity-60" />
                         <div className="relative z-10 flex justify-between items-start">
                             <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-blue-400 mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors">
                                 <i className="ti ti-calendar-time text-2xl sm:text-3xl" />
@@ -330,7 +326,7 @@ const EmployeeDashboard = () => {
 
                 </motion.div>
 
-                {/* Secondary actions: Request Leave & Overview */}
+                {/* Secondary actions */}
                 <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
                     {/* Leave request */}
@@ -430,26 +426,41 @@ const EmployeeDashboard = () => {
 
                         <div className="space-y-4 sm:space-y-6">
                             {recentLogs.length > 0 ? recentLogs.map((log) => {
-                                const logDate = new Date(log.created_at);
-                                const isLate = log.status.includes('Late');
+                                const logDate = new Date(log.date || log.created_at);
+                                const statusStr = String(log.status || '').toLowerCase();
+                                const isAbsent = statusStr === 'absent';
+                                const isLate = statusStr === 'late';
                                 return (
                                     <div key={log.id} className="flex gap-3 sm:gap-4">
                                         <div className="flex flex-col items-center">
-                                            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1.5 ${isLate ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 'bg-emerald-500 shadow-[0_0_10px_#10b981]'}`} />
+                                            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1.5 ${
+                                                isAbsent ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' :
+                                                isLate ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 
+                                                'bg-emerald-500 shadow-[0_0_10px_#10b981]'
+                                            }`} />
                                             <div className="w-[2px] h-full bg-slate-100 mt-2 rounded-full" />
                                         </div>
                                         <div className="pb-4 sm:pb-6">
                                             <p className="text-slate-800 font-bold text-sm sm:text-lg">{logDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                                             <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-                                                <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                    <i className="ti ti-login text-slate-400" />
-                                                    {log.time_in ? new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
-                                                </span>
-                                                <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                    <i className="ti ti-logout text-slate-400" />
-                                                    {log.time_out ? new Date(log.time_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Active'}
-                                                </span>
-                                                {isLate && <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Late</span>}
+                                                {isAbsent ? (
+                                                    <span className="bg-red-100 text-red-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                        <i className="ti ti-user-x text-red-500" />
+                                                        Absent
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                            <i className="ti ti-login text-slate-400" />
+                                                            {log.time_in ? new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                                                        </span>
+                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                            <i className="ti ti-logout text-slate-400" />
+                                                            {log.time_out ? new Date(log.time_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Active'}
+                                                        </span>
+                                                        {isLate && <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Late</span>}
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -504,10 +515,6 @@ const EmployeeDashboard = () => {
                 </motion.div>
             </motion.div>
 
-            {/*  */}
-            {/* Modals */}
-            {/*  */}
-
             {/* QR modal */}
             <AnimatePresence>
                 {showQrModal && (
@@ -526,7 +533,7 @@ const EmployeeDashboard = () => {
                         >
                             <div className="w-12 sm:w-16 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:mb-8" />
                             
-                            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
                                 {getInitial(user.name)}
                             </div>
                             <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{user.name}</h2>
@@ -562,7 +569,7 @@ const EmployeeDashboard = () => {
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto touch-scroll"
                         >
-                            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 sm:p-8 text-white text-center relative">
+                            <div className="bg-emerald-600 p-6 sm:p-8 text-white text-center relative">
                                 <div className="w-12 sm:w-16 h-1.5 bg-white/20 rounded-full mx-auto mb-4 sm:mb-6" />
                                 <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 backdrop-blur-md rounded-xl sm:rounded-2xl mx-auto flex items-center justify-center border border-white/20 mb-3 sm:mb-4 shadow-lg">
                                     <i className="ti ti-receipt-2 text-2xl sm:text-3xl" />

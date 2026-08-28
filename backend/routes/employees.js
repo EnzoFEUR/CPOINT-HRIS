@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { applyWorkforceFilter } from '../utils/workforce.js';
+import { createNotification } from './notifications.js';
 
 const router = express.Router();
 
@@ -10,9 +10,6 @@ router.get('/', cacheResponse(30), async (req, res) => {
         let query = supabase.from('employees').select('*').order('created_at', { ascending: false });
         if (req.query.employee_id) {
             query = query.eq('id', req.query.employee_id);
-        }
-        if (req.query.include_system !== 'true') {
-            query = applyWorkforceFilter(query);
         }
         const { data, error } = await query;
         if (error) throw error;
@@ -162,7 +159,8 @@ router.put('/:id', async (req, res) => {
             department,
             job_title,
             monthly_salary,
-            piece_rate
+            piece_rate,
+            shift
         } = req.body;
 
         const parsedSalary = monthly_salary !== undefined && monthly_salary !== null && !isNaN(monthly_salary)
@@ -184,6 +182,7 @@ router.put('/:id', async (req, res) => {
 
         if (email) updatePayload.email = email;
         if (role) updatePayload.role = role;
+        if (shift) updatePayload.shift = shift;
 
         const { error } = await supabase
             .from('employees')
@@ -192,7 +191,47 @@ router.put('/:id', async (req, res) => {
 
         if (error) throw error;
 
-        invalidateCache(['/api/employees', '/api/dashboard']);
+        // Notify employee if compensation or shift was modified
+        if (parsedSalary !== null || parsedPieceRate !== null || shift) {
+            const { data: emp } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name')
+                .eq('id', req.params.id)
+                .maybeSingle();
+
+            const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+            const avatarUrl = emp?.company_id && emp?.id
+                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+                : null;
+
+            if (shift) {
+                await createNotification({
+                    target: req.params.id,
+                    title: `Shift Schedule: ${shift}`,
+                    text: `Your shift schedule has been updated to ${shift}.`,
+                    type: 'shift',
+                    sender_id: emp?.id,
+                    company_id: emp?.company_id,
+                    sender_name: empName,
+                    sender_avatar: avatarUrl
+                });
+            } else if (parsedSalary !== null || parsedPieceRate !== null) {
+                await createNotification({
+                    target: req.params.id,
+                    title: 'Compensation Updated',
+                    text: parsedSalary !== null
+                        ? `Your monthly compensation is set to ₱${parsedSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`
+                        : `Your piece rate has been updated.`,
+                    type: 'payroll',
+                    sender_id: emp?.id,
+                    company_id: emp?.company_id,
+                    sender_name: 'HR & Payroll',
+                    sender_avatar: avatarUrl
+                });
+            }
+        }
+
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/shifts']);
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');

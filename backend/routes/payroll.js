@@ -1,6 +1,8 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { createAuditLog } from './auditLogs.js';
+import { createNotification } from './notifications.js';
 import {
     toSafeNumber,
     round2,
@@ -41,9 +43,7 @@ const getEffectiveMonthlySalary = (employee) => {
     return 0;
 };
 
-// ==========================================
-// 1. STATUTORY SETTINGS ROUTES
-// ==========================================
+// 1. Statutory settings
 
 router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     try {
@@ -91,9 +91,7 @@ router.put('/statutory-settings', async (req, res) => {
     }
 });
 
-// ==========================================
-// 2. HOLIDAYS (BI-DIRECTIONAL DATE SUPPORT)
-// ==========================================
+// 2. Holidays
 
 router.get('/holidays', cacheResponse(60), async (req, res) => {
     try {
@@ -121,21 +119,21 @@ router.get('/holidays', cacheResponse(60), async (req, res) => {
 
 router.post('/holidays', async (req, res) => {
     try {
-        const { date, name, type } = req.body;
-        if (!date || !name || !['regular', 'special_non_working'].includes(type)) {
-            return res.status(400).json({ error: 'date, name, and a valid type are required.' });
+        const { name, date, type } = req.body;
+        if (!name || !date || !type) {
+            return res.status(400).json({ error: 'name, date, and type are required.' });
         }
 
         const { data, error } = await supabase
             .from('holidays')
-            .insert({ date, name, type })
+            .insert([{ name, date, type }])
             .select()
             .single();
 
         if (error) throw error;
 
         invalidateCache(['/api/payroll/holidays']);
-        res.json({ success: true, data });
+        res.status(201).json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -144,7 +142,10 @@ router.post('/holidays', async (req, res) => {
 router.delete('/holidays/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || !isValidUUID(id)) {
+        const isNumericId = !isNaN(Number(id));
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+        if (!isNumericId && !isUUID) {
             return res.status(400).json({ error: 'Invalid holiday ID format.' });
         }
 
@@ -158,9 +159,7 @@ router.delete('/holidays/:id', async (req, res) => {
     }
 });
 
-// ==========================================
-// 3. 13TH MONTH PAY
-// ==========================================
+// 3. 13th month pay
 
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
@@ -183,9 +182,7 @@ router.get('/13th-month/:employee_id', async (req, res) => {
     }
 });
 
-// ==========================================
-// 4. HOLIDAY & PAYROLL PREVIEW
-// ==========================================
+// 4. Holiday and payroll preview
 
 router.post('/preview', async (req, res) => {
     try {
@@ -236,9 +233,7 @@ router.post('/preview', async (req, res) => {
     }
 });
 
-// ==========================================
-// 5. COMPUTE & SAVE PAYROLL (WEEKLY ENGINE)
-// ==========================================
+// 5. Compute and save payroll
 
 router.get('/', cacheResponse(20), async (req, res) => {
     try {
@@ -476,9 +471,31 @@ router.post('/', async (req, res) => {
 
         if (insertError) throw insertError;
 
-        // Audit Logging
-        if (admin_id) {
-            const { createAuditLog } = await import('./auditLogs.js');
+        // Notify employee of new payslip
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+        const avatarUrl = emp?.company_id && emp?.id
+            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
+            : null;
+
+        await createNotification({
+            target: employee_id,
+            title: 'New Payslip Available',
+            text: `Your payslip for ${pStart} to ${pEnd} is ready (Net Pay: ₱${netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}).`,
+            type: 'payroll',
+            sender_id: emp?.id,
+            company_id: emp?.company_id,
+            sender_name: 'HR & Payroll',
+            sender_avatar: avatarUrl
+        });
+
+        // Audit Log Entry
+        if (req.body.admin_id) {
             await createAuditLog({
                 log_name: 'payroll',
                 description: `Computed weekly payroll for employee ID ${employee_id}`,
