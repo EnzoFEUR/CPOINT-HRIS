@@ -426,26 +426,41 @@ const EmployeeDashboard = () => {
 
                         <div className="space-y-4 sm:space-y-6">
                             {recentLogs.length > 0 ? recentLogs.map((log) => {
-                                const logDate = new Date(log.created_at);
-                                const isLate = log.status.includes('Late');
+                                const logDate = new Date(log.date || log.created_at);
+                                const statusStr = String(log.status || '').toLowerCase();
+                                const isAbsent = statusStr === 'absent';
+                                const isLate = statusStr === 'late';
                                 return (
                                     <div key={log.id} className="flex gap-3 sm:gap-4">
                                         <div className="flex flex-col items-center">
-                                            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1.5 ${isLate ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 'bg-emerald-500 shadow-[0_0_10px_#10b981]'}`} />
+                                            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1.5 ${
+                                                isAbsent ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' :
+                                                isLate ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 
+                                                'bg-emerald-500 shadow-[0_0_10px_#10b981]'
+                                            }`} />
                                             <div className="w-[2px] h-full bg-slate-100 mt-2 rounded-full" />
                                         </div>
                                         <div className="pb-4 sm:pb-6">
                                             <p className="text-slate-800 font-bold text-sm sm:text-lg">{logDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                                             <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-                                                <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                    <i className="ti ti-login text-slate-400" />
-                                                    {log.time_in ? new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
-                                                </span>
-                                                <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                    <i className="ti ti-logout text-slate-400" />
-                                                    {log.time_out ? new Date(log.time_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Active'}
-                                                </span>
-                                                {isLate && <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Late</span>}
+                                                {isAbsent ? (
+                                                    <span className="bg-red-100 text-red-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                        <i className="ti ti-user-x text-red-500" />
+                                                        Absent
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                            <i className="ti ti-login text-slate-400" />
+                                                            {log.time_in ? new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                                                        </span>
+                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
+                                                            <i className="ti ti-logout text-slate-400" />
+                                                            {log.time_out ? new Date(log.time_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Active'}
+                                                        </span>
+                                                        {isLate && <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Late</span>}
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

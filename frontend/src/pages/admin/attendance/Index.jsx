@@ -223,8 +223,9 @@ const Index = () => {
                                 {/* Card Footer: Status */}
                                 <div className="flex items-center justify-between pt-1">
                                     <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
-                                        log.status.includes('Late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                        'bg-cyan-50 text-cyan-600 border-cyan-200'
+                                        log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-600 border-red-200' :
+                                        log.status?.toLowerCase().includes('late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
+                                        'bg-emerald-50 text-emerald-600 border-emerald-200'
                                     }`}>
                                         {log.status}
                                     </span>
@@ -340,8 +341,9 @@ const Index = () => {
                                         {/* Status Column */}
                                         <td className="px-6 py-4 text-center">
                                             <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border ${
-                                                log.status.includes('Late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                                'bg-cyan-50 text-cyan-600 border-cyan-200'
+                                                log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-600 border-red-200' :
+                                                log.status?.toLowerCase().includes('late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
+                                                'bg-emerald-50 text-emerald-600 border-emerald-200'
                                             }`}>
                                                 {log.status}
                                             </span>
