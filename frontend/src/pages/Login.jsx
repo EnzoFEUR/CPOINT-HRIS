@@ -199,10 +199,6 @@ export default function Login() {
 
     return (
         <div className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 relative overflow-hidden select-none p-4 sm:p-6">
-            {/* Ambient background glows */}
-            <div className="absolute -top-24 -right-24 w-72 h-72 sm:w-96 sm:h-96 bg-blue-400/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -left-24 w-72 h-72 sm:w-96 sm:h-96 bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
-
             {/* Top branding spacer */}
             <div className="pt-2 sm:pt-4" />
 
