@@ -199,8 +199,10 @@ export default function PayrollShow() {
 
     // Resolve employee avatar image source
     const avatarUrl = payroll.employees?.avatar_url || (
-        payroll.employees?.company_id && payroll.employees?.id
-            ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${payroll.employees.company_id}/${payroll.employees.id}.jpg`
+        payroll.employees?.biometric_baseline_path
+            ? (payroll.employees.biometric_baseline_path.startsWith('http')
+                ? payroll.employees.biometric_baseline_path
+                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${payroll.employees.biometric_baseline_path.replace(/^\/+/, '')}`)
             : null
     );
 

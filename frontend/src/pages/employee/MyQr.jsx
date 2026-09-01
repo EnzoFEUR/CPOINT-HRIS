@@ -30,9 +30,6 @@ const MyQr = () => {
         ? user.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`;
     }
-    if (user?.has_registered_biometrics === true && user?.company_id && user?.id) {
-      return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`;
-    }
     return null;
   }, [user]);
 
