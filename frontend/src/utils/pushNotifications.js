@@ -140,7 +140,7 @@ export const sendTestPush = async (userId) => {
         }
 
         if (res.ok && data.success) {
-            // Also trigger immediate local service worker notification for instant visual verification
+            // Trigger local notification for verification
             try {
                 const reg = await navigator.serviceWorker.ready;
                 await reg.showNotification('C-Point HRIS', {

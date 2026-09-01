@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient'; // Make sure this import path matches your project structure
 
@@ -307,9 +306,9 @@ export default function Documents() {
             onDrop={handleDrop}
         >
             {/* PAGE-WIDE DRAG OVERLAY */}
-            <AnimatePresence>
+            
                 {isDraggingPage && (
-                    <motion.div
+                    <div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -320,12 +319,12 @@ export default function Documents() {
                             <p className="font-black text-slate-800 text-sm uppercase tracking-widest">Drop to Upload</p>
                             <p className="text-xs text-slate-400 font-medium mt-1">We'll take it from here</p>
                         </div>
-                    </motion.div>
+                    </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* TOP NAVIGATION */}
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                 <Link
                     to={employeeId ? `/admin/employees/${employeeId}` : '/admin/employees'}
                     className="px-4 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm border border-slate-100 flex items-center gap-2 tap-active"
@@ -339,10 +338,10 @@ export default function Documents() {
                 >
                     <i className="ti ti-upload text-lg" /> Upload Document
                 </button>
-            </motion.div>
+            </div>
 
-            {/* HEADER */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8">
+            {/* Header */}
+            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8">
                 <div className="flex items-center gap-4">
                     <div className="h-12 w-12 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center border border-sky-100">
                         <i className="ti ti-folders text-2xl" />
@@ -354,12 +353,12 @@ export default function Documents() {
                         </p>
                     </div>
                 </div>
-            </motion.div>
+            </div>
 
             {/* COMPLIANCE ALERTS */}
-            <AnimatePresence>
+            
                 {alerts.length > 0 && (
-                    <motion.div
+                    <div
                         initial={{ opacity: 0, y: -8, height: 0 }}
                         animate={{ opacity: 1, y: 0, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
@@ -386,12 +385,12 @@ export default function Documents() {
                                 </div>
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* CONTROLS */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-4">
+            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-4">
                 <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
                     <div className="relative w-full sm:w-80">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
@@ -447,7 +446,7 @@ export default function Documents() {
                         );
                     })}
                 </div>
-            </motion.div>
+            </div>
 
             {/* FILE GRID / LOADING / EMPTY STATE */}
             {isLoading ? (
@@ -456,7 +455,7 @@ export default function Documents() {
                     <p className="text-xs font-bold uppercase tracking-widest">Loading Documents...</p>
                 </div>
             ) : filteredDocuments.length === 0 ? (
-                <motion.div
+                <div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
@@ -470,17 +469,17 @@ export default function Documents() {
                     <p className="text-xs text-slate-400 font-medium mt-1 text-center">
                         {documents.length === 0 ? 'Click here, or drag & drop a file anywhere on this page.' : 'Try adjusting your search query or selected category filter.'}
                     </p>
-                </motion.div>
+                </div>
             ) : (
-                <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    <AnimatePresence mode="popLayout">
+                <div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    
                         {filteredDocuments.map((doc) => {
                             const iconClasses = getFileIcon(doc.file_name);
                             const status = getExpiryStatus(doc);
                             const publicUrl = getPublicUrl(doc.file_path);
 
                             return (
-                                <motion.div
+                                <div
                                     key={doc.id}
                                     layout
                                     initial={{ opacity: 0, scale: 0.95 }}
@@ -546,18 +545,18 @@ export default function Documents() {
                                             </button>
                                         </div>
                                     </div>
-                                </motion.div>
+                                </div>
                             );
                         })}
-                    </AnimatePresence>
-                </motion.div>
+                    
+                </div>
             )}
 
             {/* UPLOAD DOCUMENT MODAL */}
-            <AnimatePresence>
+            
                 {isUploadModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <motion.div
+                        <div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -565,7 +564,7 @@ export default function Documents() {
                             onClick={() => !isUploading && setIsUploadModalOpen(false)}
                         />
 
-                        <motion.div
+                        <div
                             initial={{ scale: 0.95, y: 20, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -702,10 +701,10 @@ export default function Documents() {
                                     </button>
                                 </div>
                             </form>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
         </div>
     );

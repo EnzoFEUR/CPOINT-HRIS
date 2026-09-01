@@ -77,25 +77,6 @@ img,
     scrollbar-width: none;
 }
 
-/* Smooth fade-in-up for modals, dropdowns, page sections */
-.animate-fade-in-up {
-    animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-fade-in {
-    animation: fadeIn 0.25s ease both;
-}
-
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(12px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 /* Custom scrollbar for sidebar/panels */
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
@@ -192,70 +173,10 @@ img,
     z-index: 10;
 }
 
-.animate-enter {
-    animation: enter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes enter {
-    from {
-        opacity: 0;
-        transform: translateY(20px) scale(0.98);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
 .ios-pro-card {
     background-color: #0B132B;
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.3);
     position: relative;
     overflow: hidden;
-    transition: border-color 0.5s ease;
-}
-
-.ios-pro-card:hover {
-    border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.edge-light-left,
-.edge-light-right {
-    position: absolute;
-    top: 10%;
-    bottom: 10%;
-    width: 5rem;
-    filter: blur(45px);
-    opacity: 0;
-    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-    pointer-events: none;
-}
-
-.edge-light-left {
-    left: -3rem;
-    background: #0a84ff;
-    animation: breathe-light 7s ease-in-out infinite alternate;
-}
-
-.edge-light-right {
-    right: -3rem;
-    background: #5e5ce6;
-    animation: breathe-light 9s ease-in-out infinite alternate-reverse;
-}
-
-.ios-pro-card:hover .edge-light-left,
-.ios-pro-card:hover .edge-light-right {
-    opacity: 0.4;
-}
-
-@keyframes breathe-light {
-    0% {
-        transform: scaleY(0.8) translateY(-5%);
-    }
-
-    100% {
-        transform: scaleY(1.1) translateY(5%);
-    }
 }

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
@@ -215,79 +214,89 @@ export default function Show() {
             
             <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
                 
-                <div className="fixed top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-                <div className="fixed bottom-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-
                 {/* Top navigation */}
-                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-3">
-                    <Link to="/admin/employees" className="px-4 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all shadow-xs border border-slate-200 flex items-center gap-2">
-                        <i className="ti ti-arrow-left text-lg" /> Back to Directory
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <Link to="/admin/employees" className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
+                        <i className="ti ti-arrow-left text-sm" /> Back to Directory
                     </Link>
                     
-                    <div className="flex flex-wrap gap-2 sm:gap-3">
+                    <div className="flex flex-wrap gap-2 sm:gap-2.5">
                         {/* 201 Documents link */}
-                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-sky-50 text-sky-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-sky-100 transition-all shadow-xs sm:shadow-sm border border-sky-100 flex items-center gap-1.5 sm:gap-2 tap-active">
-                            <i className="ti ti-folders text-base sm:text-lg" /> 201 Documents
+                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
+                            <i className="ti ti-folders text-slate-500 text-base" /> 201 Documents
                         </Link>
 
-                        <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
-                            <i className="ti ti-qrcode text-base sm:text-lg" /> Print Badge
+                        <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5 cursor-pointer">
+                            <i className="ti ti-qrcode text-slate-500 text-base" /> Print Badge
                         </button>
 
-                        <Link to={`/admin/employees/${employee.id}/edit`} className="px-4 py-2.5 bg-indigo-50 text-indigo-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-100 transition-all shadow-xs border border-indigo-100 flex items-center gap-2">
-                            <i className="ti ti-pencil text-lg" /> Edit Profile
+                        <Link to={`/admin/employees/${employee.id}/edit`} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg transition-colors shadow-xs flex items-center gap-1.5">
+                            <i className="ti ti-pencil text-base" /> Edit Profile
                         </Link>
 
-                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-4 py-2.5 bg-red-50 text-red-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-xs border border-red-100 flex items-center gap-2">
-                            <i className="ti ti-trash text-lg" /> Delete
+                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
+                            <i className="ti ti-trash text-base" /> Delete
                         </button>
                     </div>
-                </motion.div>
+                </div>
 
-                {/* Employee profile banner */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 rounded-2xl shadow-md p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 relative overflow-hidden">
-                    <div className="relative shrink-0">
-                        <EmployeeAvatar
-                            employee={employee}
-                            size="h-28 w-28 sm:h-36 sm:w-36"
-                            rounded="rounded-2xl"
-                            border="border-4 border-white/10"
-                            shadow="shadow-xl"
-                            theme="indigo"
-                            textSize="text-4xl sm:text-5xl"
-                        />
-                    </div>
-
-                    <div className="relative z-10 text-center sm:text-left flex-1 min-w-0">
-                        <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 bg-white/10 text-white font-bold text-[10px] sm:text-xs rounded-xl border border-white/20 uppercase tracking-widest mb-2 sm:mb-3 backdrop-blur-md">
-                            <i className="ti ti-id text-indigo-300" /> {employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')}
+                {/* Unified Enterprise Employee Profile Banner */}
+                <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+                        <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
+                            <EmployeeAvatar
+                                employee={employee}
+                                size="h-24 w-24 sm:h-28 sm:w-28"
+                                rounded="rounded-xl"
+                                border="border-2 border-slate-700"
+                                shadow="shadow-xs"
+                                theme="dark"
+                                textSize="text-3xl sm:text-4xl"
+                            />
                         </div>
-                        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2 truncate">
-                            {employee.first_name} {employee.last_name}
-                        </h1>
 
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-3">
-                            <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs font-bold tracking-wider">
+                        <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
+                                    <i className="ti ti-id text-slate-400" /> {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-EMPLOYEE')}
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                    {employee.department || 'General'}
+                                </span>
+                                {isFactory ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                        Piece-Rate Production
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        Salaried Monthly
+                                    </span>
+                                )}
+                            </div>
+
+                            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">
+                                {employee.first_name} {employee.last_name}
+                            </h1>
+                            <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5">
                                 {employee.job_title || 'Staff Member'}
-                            </span>
+                            </p>
 
-                            <span className={`px-3 py-1 rounded-lg text-xs font-bold border flex items-center gap-1.5 ${isFactory
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                                : 'bg-white/10 text-white border-white/10'
-                                }`}>
-                                <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-building'} ${isFactory ? 'text-amber-400' : 'text-indigo-300'}`} />
-                                {employee.department || 'General'}
-                            </span>
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-3 text-xs font-medium text-slate-400">
+                                <span className="flex items-center gap-1.5">
+                                    <i className="ti ti-mail text-slate-400 text-sm" /> {employee.email}
+                                </span>
+                                {employee.phone && (
+                                    <span className="flex items-center gap-1.5 font-mono">
+                                        <i className="ti ti-phone text-slate-400 text-sm" /> {employee.phone}
+                                    </span>
+                                )}
+                            </div>
                         </div>
-
-                        <p className="text-indigo-200 font-medium text-xs sm:text-sm flex items-center justify-center sm:justify-start gap-1.5 truncate">
-                            <i className="ti ti-mail text-indigo-400" /> {employee.email}
-                        </p>
                     </div>
-                </motion.div>
+                </div>
 
                 {/* Personal and payroll details */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
 
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
@@ -384,10 +393,10 @@ export default function Show() {
                             </div>
                         </div>
                     </div>
-                </motion.div>
+                </div>
 
                 {/* 201 Documents */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-8">
                         <div className="flex items-center gap-3 sm:gap-4">
                             <div className="h-10 w-10 sm:h-12 sm:w-12 bg-sky-50 text-sky-600 rounded-xl sm:rounded-2xl flex items-center justify-center border border-sky-100">
@@ -461,11 +470,11 @@ export default function Show() {
                             })}
                         </div>
                     )}
-                </motion.div>
+                </div>
             </div>
 
             {/* Delete confirmation modal */}
-            <AnimatePresence>
+            
                 {isDeleteModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
                         <div className="bg-white rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
@@ -498,18 +507,18 @@ export default function Show() {
                         </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* Print QR badge modal */}
-            <AnimatePresence>
+            
                 {isPrintModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity no-print"
                             onClick={() => setIsPrintModalOpen(false)}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 40, opacity: 0 }}
@@ -555,10 +564,10 @@ export default function Show() {
                                     <i className="ti ti-printer text-base sm:text-lg" /> Print Badge
                                 </button>
                             </div>
-                        </motion.div>
+                        </div>
                     </div>      
                 )}
-            </AnimatePresence>
+            
         </>
     );
 }

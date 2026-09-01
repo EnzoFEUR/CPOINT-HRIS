@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../../utils/api';
+import PageHeader from '../../../components/ui/PageHeader';
+import Badge from '../../../components/ui/Badge';
 
 export default function AuditLogsIndex() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -23,31 +24,37 @@ export default function AuditLogsIndex() {
                 const queryParams = new URLSearchParams();
                 if (filterDate) queryParams.append('date', filterDate);
                 if (filterUserId) queryParams.append('user_id', filterUserId);
-                
-                if (queryParams.toString()) url += '?' + queryParams.toString();
+                if (queryParams.toString()) url += `?${queryParams.toString()}`;
 
                 const res = await fetchWithAuth(url);
-                const result = await res.json();
-                if (result.data) setLogs(result.data);
+                if (res.ok) {
+                    const result = await res.json();
+                    const records = Array.isArray(result) ? result : (result.data || []);
+                    setLogs(records);
+                }
             } catch (err) {
-                console.error('Failed to fetch audit logs:', err);
+                console.error(err);
             } finally {
                 setIsLoading(false);
             }
         };
-        fetchLogs();
-    }, [filterDate, filterUserId]);
 
-    useEffect(() => {
         const fetchUsers = async () => {
             try {
                 const res = await fetchWithAuth('/api/employees');
-                const result = await res.json();
-                if (result.success && result.data) setUsers(result.data);
-            } catch (err) {}
+                if (res.ok) {
+                    const result = await res.json();
+                    const userRecords = Array.isArray(result) ? result : (result.data || []);
+                    setUsers(userRecords);
+                }
+            } catch (err) {
+                console.error(err);
+            }
         };
+
+        fetchLogs();
         fetchUsers();
-    }, []);
+    }, [filterDate, filterUserId]);
 
     const handleApplyFilters = (e) => {
         e.preventDefault();
@@ -58,7 +65,7 @@ export default function AuditLogsIndex() {
         setCurrentPage(1);
     };
 
-    const handleClearFilters = () => {
+    const handleResetFilters = () => {
         setFilterDate('');
         setFilterUserId('');
         setSearchQuery('');
@@ -69,284 +76,243 @@ export default function AuditLogsIndex() {
     const filteredLogs = logs.filter(log => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
-        const actionStr = (log.event || log.action || '').toLowerCase();
-        const targetTypeStr = (log.subject_type || log.log_name || log.target_type || '').toLowerCase();
-        const detailsStr = (log.description || log.details || '').toLowerCase();
-        
-        return (actionStr.includes(q) || targetTypeStr.includes(q) || detailsStr.includes(q));
+        return (
+            (log.action && log.action.toLowerCase().includes(q)) ||
+            (log.target_type && log.target_type.toLowerCase().includes(q)) ||
+            (log.subject_type && log.subject_type.toLowerCase().includes(q)) ||
+            (log.details && String(log.details).toLowerCase().includes(q)) ||
+            (log.description && String(log.description).toLowerCase().includes(q)) ||
+            (log.target_id && String(log.target_id).toLowerCase().includes(q)) ||
+            (log.user_name && log.user_name.toLowerCase().includes(q)) ||
+            (log.causer?.name && log.causer.name.toLowerCase().includes(q)) ||
+            (log.causer?.email && log.causer.email.toLowerCase().includes(q))
+        );
     });
 
     const totalItems = filteredLogs.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-    };
-    
-    const rowVariants = {
-        hidden: { opacity: 0, y: 10 },
-        visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }
-    };
-
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading System Logs...</p>
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Audit Logs...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            
-            
-            <div className="space-y-4 sm:space-y-6">
-                
-                {/* Page header */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                    
-                    
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-8">
-                        <div>
-                            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
-                                <div className="h-9 w-9 sm:h-12 sm:w-12 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-server text-lg sm:text-2xl text-slate-300" />
-                                </div>
-                                <span className="px-2.5 sm:px-4 py-0.5 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-slate-500/20 text-slate-300 rounded-md border border-slate-500/30">System Integrity</span>
-                            </div>
-                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Audit Trail</h1>
-                            <p className="text-slate-300 font-medium mt-1 text-xs sm:text-base max-w-xl">Immutable ledger of all administrative actions and system modifications.</p>
-                        </div>
-                        
-                        {/* Summary Widget */}
-                        <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-5 rounded-xl">
-                            <div className="text-left sm:text-right">
-                                <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Total Logs</p>
-                                <p className="text-xl sm:text-3xl font-black text-white">{logs.length}</p>
-                            </div>
-                            <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-full bg-slate-500/30 flex items-center justify-center text-slate-300 border border-slate-500/50">
-                                <i className="ti ti-database-export text-lg sm:text-2xl" />
-                            </div>
-                        </div>
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'System', 'Audit Trail']}
+                title="System Audit Trail"
+                description="Immutable chronological ledger of administrative operations, security authorizations, and data modifications."
+                actions={
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Events:</span>
+                        <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{logs.length}</span>
                     </div>
-                </motion.div>
+                }
+            />
 
-                {/* 2. FILTER BAR */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
-                    <div className="flex-1 bg-white p-2 sm:p-3 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 relative">
-                        <i className="ti ti-search absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 text-base sm:text-xl" />
+            <div className="space-y-4 sm:space-y-6">
+                {/* FILTER BAR */}
+                <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
+                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200 relative">
+                        <i className="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
                         <input 
                             type="text" 
-                            placeholder="Search actions or targets..." 
+                            placeholder="Search actions, records, or admin operators..." 
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-10 sm:pl-14 pr-4 sm:pr-6 py-2.5 sm:py-3 bg-slate-50 border-none rounded-xl outline-none focus:ring-4 focus:ring-slate-500/10 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-slate-500 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
                         />
                     </div>
 
-                    <form onSubmit={handleApplyFilters} className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 w-full md:w-auto gap-2">
+                    <form onSubmit={handleApplyFilters} className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-xl shadow-xs border border-slate-200 w-full md:w-auto gap-2">
                         <input 
-                            type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-                            className="px-3 sm:px-4 py-2 sm:py-3 bg-slate-50 border-none rounded-xl font-bold text-xs sm:text-sm text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10 flex-1"
+                            type="date" 
+                            value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1"
                         />
                         <select 
                             value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}
-                            className="px-3 sm:px-4 py-2 sm:py-3 bg-slate-50 border-none rounded-xl font-bold text-xs sm:text-sm text-slate-600 outline-none focus:ring-4 focus:ring-slate-500/10 flex-1"
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1"
                         >
                             <option value="">All Admins / System</option>
                             {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                         </select>
-                        <button type="submit" className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-xl tap-active transition-all">Filter</button>
+                        <button type="submit" className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition-colors">
+                            Filter
+                        </button>
                         {(filterDate || filterUserId || searchQuery) && (
-                            <button type="button" onClick={handleClearFilters} className="w-10 sm:w-12 flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 tap-active"><i className="ti ti-x" /></button>
+                            <button type="button" onClick={handleResetFilters} className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors">
+                                <i className="ti ti-x" />
+                            </button>
                         )}
                     </form>
-                </motion.div>
+                </div>
 
-                {/* 3. DATA TABLE & MOBILE CARDS */}
-                <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
-                    
-                    {/* MOBILE CARDS VIEW (Phones) */}
-                    <div className="block md:hidden divide-y divide-slate-100">
-                        <AnimatePresence>
-                            {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
-                                const dateObj = new Date(log.created_at);
-                                const isSystem = !log.causer_id;
-                                const actionStr = (log.event || log.action || '').toUpperCase();
-                                const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
-                                const detailsStr = log.description || log.details || '';
-                                const targetIdStr = log.subject_id || log.target_id || '';
-                                const userNameStr = log.causer?.name || log.users?.first_name || 'Admin';
+                {/* DATA TABLE */}
+                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+                    {/* DESKTOP TABLE VIEW */}
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th className="px-6 py-3.5">Timestamp</th>
+                                    <th className="px-6 py-3.5">Actor</th>
+                                    <th className="px-6 py-3.5">Action Details</th>
+                                    <th className="px-6 py-3.5 text-right">Target ID</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-sm">
+                                {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
+                                    const dateObj = new Date(log.created_at);
+                                    const isSystem = !log.causer_id;
+                                    
+                                    const actionStr = (log.event || log.action || '').toUpperCase();
+                                    const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
+                                    const detailsStr = log.description || log.details || '';
+                                    const targetIdStr = log.subject_id || log.target_id || '';
+                                    const causerIdStr = log.causer_id || log.user_id || '';
+                                    const userNameStr = log.causer?.name || log.users?.first_name || 'Admin';
 
-                                return (
-                                    <motion.div 
-                                        variants={rowVariants} 
-                                        layout 
-                                        key={`mobile-${log.id}`} 
-                                        className="p-4 space-y-2.5 hover:bg-slate-50/50 transition-colors"
-                                    >
-                                        {/* Header: Actor + Timestamp */}
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
+                                    return (
+                                        <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                                            <td className="px-6 py-3.5 font-mono">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs text-slate-500">{dateObj.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                                                    <span className="text-sm font-semibold text-slate-900 tabular-nums">{dateObj.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                </div>
+                                            </td>
+
+                                            <td className="px-6 py-3.5">
                                                 {isSystem ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-slate-200 text-[10px] font-black uppercase tracking-wider">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 text-white text-[11px] font-semibold uppercase tracking-wider">
                                                         <i className="ti ti-cpu text-xs" /> System
                                                     </span>
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="h-7 w-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold text-xs shrink-0">
                                                             {userNameStr.charAt(0)}
                                                         </div>
-                                                        <span className="text-xs font-bold text-slate-700">{userNameStr}</span>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="text-xs font-semibold text-slate-900 truncate">{userNameStr}</span>
+                                                            <span className="text-[10px] text-slate-400 font-mono">ID: {String(causerIdStr).substring(0,8)}</span>
+                                                        </div>
                                                     </div>
                                                 )}
-                                            </div>
+                                            </td>
 
-                                            <span className="text-[10px] font-mono font-bold text-slate-400">
-                                                {dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-
-                                        {/* Action & Target */}
-                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
-                                                actionStr.includes('CREATED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                actionStr.includes('UPDATED') || actionStr.includes('PROCESS') ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                                actionStr.includes('DELETED') ? 'bg-red-50 text-red-600 border-red-100' :
-                                                'bg-slate-100 text-slate-600 border-slate-200'
-                                            }`}>
-                                                {actionStr}
-                                            </span>
-                                            <span className="text-[10px] font-bold text-slate-400">ON</span>
-                                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">
-                                                {targetTypeStr}
-                                            </span>
-                                        </div>
-
-                                        {/* Details & Target ID */}
-                                        {detailsStr && (
-                                            <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 leading-relaxed font-sans">
-                                                {detailsStr}
-                                            </p>
-                                        )}
-
-                                        {targetIdStr && (
-                                            <p className="text-[10px] font-mono text-slate-400">
-                                                Target: #{String(targetIdStr).substring(0, 12)}
-                                            </p>
-                                        )}
-                                    </motion.div>
-                                );
-                            }) : (
-                                <div className="p-8 text-center text-slate-400">
-                                    <p className="text-xs font-bold">No logs found</p>
-                                </div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    {/* DESKTOP TABLE VIEW */}
-                    <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
-                                <tr>
-                                    <th className="px-6 py-4">Timestamp</th>
-                                    <th className="px-6 py-4">Actor</th>
-                                    <th className="px-6 py-4">Action Details</th>
-                                    <th className="px-6 py-4 text-right">Target UUID</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50 font-mono">
-                                <AnimatePresence>
-                                    {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
-                                        const dateObj = new Date(log.created_at);
-                                        const isSystem = !log.causer_id;
-                                        
-                                        const actionStr = (log.event || log.action || '').toUpperCase();
-                                        const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
-                                        const detailsStr = log.description || log.details || '';
-                                        const targetIdStr = log.subject_id || log.target_id || '';
-                                        const causerIdStr = log.causer_id || log.user_id || '';
-                                        const userNameStr = log.causer?.name || log.users?.first_name || 'Admin';
-
-                                        return (
-                                            <motion.tr variants={rowVariants} layout key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-bold text-slate-500">{dateObj.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                                                        <span className="text-sm font-black text-slate-800">{dateObj.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                                                    </div>
-                                                </td>
-
-                                                <td className="px-6 py-4">
-                                                    {isSystem ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-widest">
-                                                            <i className="ti ti-cpu" /> System
-                                                        </span>
-                                                    ) : (
-                                                        <div className="flex items-center gap-2.5">
-                                                            <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold font-sans text-sm shrink-0">
-                                                                {userNameStr.charAt(0)}
-                                                            </div>
-                                                            <div className="flex flex-col font-sans min-w-0">
-                                                                <span className="text-sm font-bold text-slate-700 truncate">{userNameStr}</span>
-                                                                <span className="text-[10px] text-slate-400 font-bold">ID: {String(causerIdStr).substring(0,8)}</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </td>
-
-                                                <td className="px-6 py-4 font-sans">
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
-                                                        actionStr.includes('CREATED') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        actionStr.includes('UPDATED') || actionStr.includes('PROCESS') ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                                        actionStr.includes('DELETED') ? 'bg-red-50 text-red-600 border-red-100' :
-                                                        'bg-slate-100 text-slate-600 border-slate-200'
-                                                    }`}>
+                                            <td className="px-6 py-3.5">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge 
+                                                        variant={
+                                                            actionStr.includes('CREATED') ? 'present' :
+                                                            actionStr.includes('DELETED') ? 'absent' :
+                                                            'neutral'
+                                                        }
+                                                    >
                                                         {actionStr}
-                                                    </span>
-                                                    <span className="mx-1.5 text-xs font-bold text-slate-400">ON</span>
-                                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest border border-slate-200">
+                                                    </Badge>
+                                                    <span className="text-xs text-slate-400 font-medium">on</span>
+                                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-medium font-mono border border-slate-200">
                                                         {targetTypeStr}
                                                     </span>
-                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-1 max-w-sm">{detailsStr}</p>
-                                                </td>
-
-                                                <td className="px-6 py-4 text-right">
-                                                    <span className="text-xs text-slate-400 font-bold bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                                                        {targetIdStr ? String(targetIdStr).substring(0, 8) : 'N/A'}
-                                                    </span>
-                                                </td>
-                                            </motion.tr>
-                                        );
-                                    }) : (
-                                        <motion.tr variants={rowVariants}>
-                                            <td colSpan="4" className="px-8 py-20 text-center font-sans">
-                                                <div className="flex flex-col items-center justify-center text-slate-400">
-                                                    <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mb-4">
-                                                        <i className="ti ti-terminal-2 text-4xl text-slate-300" />
-                                                    </div>
-                                                    <p className="text-xl font-black text-slate-800 tracking-tight">No Logs Found</p>
-                                                    <p className="text-sm font-medium mt-1 max-w-sm">The system audit trail is empty for the specified parameters.</p>
                                                 </div>
+                                                {detailsStr && (
+                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-1 max-w-sm">{detailsStr}</p>
+                                                )}
                                             </td>
-                                        </motion.tr>
-                                    )}
-                                </AnimatePresence>
+
+                                            <td className="px-6 py-3.5 text-right">
+                                                <span className="text-xs text-slate-500 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                                                    {targetIdStr ? String(targetIdStr).substring(0, 8) : 'N/A'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
+                                    <tr>
+                                        <td colSpan="4" className="px-6 py-12 text-center text-slate-400">
+                                            <p className="text-sm font-semibold text-slate-700">No Logs Found</p>
+                                            <p className="text-xs mt-0.5">The system audit trail is empty for the specified parameters.</p>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
 
+                    {/* MOBILE CARD VIEW */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                        {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
+                            const dateObj = new Date(log.created_at);
+                            const isSystem = !log.causer_id;
+                            
+                            const actionStr = (log.event || log.action || '').toUpperCase();
+                            const targetTypeStr = log.subject_type || log.log_name || log.target_type || '';
+                            const detailsStr = log.description || log.details || '';
+                            const targetIdStr = log.subject_id || log.target_id || '';
+                            const causerIdStr = log.causer_id || log.user_id || '';
+                            const userNameStr = log.causer?.name || log.user_name || 'Admin';
+
+                            return (
+                                <div key={log.id} className="p-4 space-y-2.5 bg-white">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Badge 
+                                                variant={
+                                                    actionStr.includes('CREATED') ? 'present' :
+                                                    actionStr.includes('DELETED') ? 'absent' :
+                                                    'neutral'
+                                                }
+                                            >
+                                                {actionStr}
+                                            </Badge>
+                                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-medium font-mono border border-slate-200">
+                                                {targetTypeStr}
+                                            </span>
+                                        </div>
+                                        <span className="text-[11px] font-mono text-slate-400">
+                                            {dateObj.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </span>
+                                    </div>
+
+                                    {detailsStr && (
+                                        <p className="text-xs text-slate-600 font-medium line-clamp-2 leading-relaxed">
+                                            {detailsStr}
+                                        </p>
+                                    )}
+
+                                    <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-slate-50">
+                                        <div className="flex items-center gap-1.5">
+                                            <i className="ti ti-user text-xs" />
+                                            <span className="font-semibold text-slate-700">{isSystem ? 'System' : userNameStr}</span>
+                                        </div>
+                                        <span className="font-mono text-[10px] text-slate-400">
+                                            {dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        }) : (
+                            <div className="p-8 text-center text-slate-400">
+                                <p className="text-sm font-semibold text-slate-700">No Logs Found</p>
+                                <p className="text-xs mt-0.5">The system audit trail is empty.</p>
+                            </div>
+                        )}
+                    </div>
+
                     {/* PAGINATION BAR */}
-                    <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                    <div className="px-4 sm:px-6 py-3 border-t border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-medium">
                         <div>
                             {totalItems > 0 ? (
-                                <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                                <span>Showing <span className="font-semibold text-slate-900 font-mono tabular-nums">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="font-semibold text-slate-900 font-mono tabular-nums">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="font-semibold text-slate-900 font-mono tabular-nums">{totalItems}</span></span>
                             ) : (
-                                <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                                <span>Showing 0 of 0</span>
                             )}
                         </div>
 
@@ -354,25 +320,25 @@ export default function AuditLogsIndex() {
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={currentPage === 1}
-                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1"
                             >
-                                <i className="ti ti-chevron-left text-sm" /> Prev
+                                <i className="ti ti-chevron-left text-xs" /> Prev
                             </button>
                             
-                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                            <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono font-medium text-xs tabular-nums">
                                 {currentPage} / {totalPages}
                             </span>
 
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={currentPage >= totalPages}
-                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1"
                             >
-                                Next <i className="ti ti-chevron-right text-sm" />
+                                Next <i className="ti ti-chevron-right text-xs" />
                             </button>
                         </div>
                     </div>
-                </motion.div>
+                </div>
             </div>
         </div>
     );

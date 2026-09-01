@@ -35,6 +35,42 @@ router.patch('/', verifyToken, async (req, res) => {
     }
 });
 
+// Upload / Update Profile Avatar
+router.post('/avatar', verifyToken, async (req, res) => {
+    try {
+        const { image_base64 } = req.body;
+        if (!image_base64) {
+            return res.status(400).json({ error: 'image_base64 is required' });
+        }
+
+        const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const companyId = req.user.company_id || 'CP-MAIN';
+        const filePath = `face-baselines/${companyId}/${req.user.id}.jpg`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('public-bucket')
+            .upload(filePath, buffer, {
+                contentType: 'image/jpeg',
+                upsert: true,
+            });
+
+        if (uploadError) throw uploadError;
+
+        const publicUrl = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${filePath}?t=${Date.now()}`;
+
+        await supabase
+            .from('employees')
+            .update({ avatar_url: publicUrl, has_registered_biometrics: true })
+            .eq('id', req.user.id);
+
+        res.json({ success: true, avatar_url: publicUrl });
+    } catch (err) {
+        console.error('Avatar upload error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Delete account
 router.delete('/', verifyToken, async (req, res) => {
     try {

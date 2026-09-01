@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import PageHeader from '../../../components/ui/PageHeader';
+import Badge from '../../../components/ui/Badge';
 
 const Index = () => {
     const fetchAttendance = async () => {
@@ -58,76 +59,48 @@ const Index = () => {
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-    };
-
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-cyan-500 rounded-full animate-spin" />
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Biometrics...</p>
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Attendance Records...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            
-            
-            
-            
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'Surveillance', 'Attendance Logs']}
+                title="Real-Time Attendance"
+                description="Live employee biometric punch records, facial verification audits, and facility access history."
+                actions={
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Scans:</span>
+                        <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
+                    </div>
+                }
+            />
 
             <div className="space-y-4 sm:space-y-6">
-                
-                {/* Page header */}
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                    
-                    
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
-                        <div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="h-12 w-12 bg-white/10 backdrop-blur-xl rounded-lg flex items-center justify-center border border-white/20 shadow-inner">
-                                    <i className="ti ti-scan text-2xl text-cyan-400" />
-                                </div>
-                                <span className="px-4 py-1.5 text-xs font-black tracking-widest uppercase bg-cyan-500/20 text-cyan-300 rounded-md border border-cyan-500/30">Biometric Surveillance</span>
-                            </div>
-                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Real-Time Attendance</h1>
-                            <p className="text-sm sm:text-base text-white/70 mt-1 max-w-xl">Monitor live clock-ins, verify Face-AI proofs, and track daily facility access.</p>
-                        </div>
-                        
-                        {/* Summary Widget */}
-                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-4 rounded-xl">
-                            <div className="text-right">
-                                <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Today's Scans</p>
-                                <p className="text-xl sm:text-2xl font-black text-white">{todaysCount}</p>
-                            </div>
-                            <div className="hidden sm:flex h-14 w-14 rounded-full bg-cyan-500/30 items-center justify-center text-cyan-300 border border-cyan-500/50">
-                                <i className="ti ti-radar text-2xl animate-pulse" />
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
-
-                {/* Search */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-2 sm:p-3 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
+                {/* Search & Filter Bar */}
+                <div className="flex bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200">
                     <div className="relative flex-1">
-                        <i className="ti ti-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
+                        <i className="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
                         <input 
                             type="text" 
-                            placeholder="Search by employee name or date (YYYY-MM-DD)..." 
+                            placeholder="Search by employee name, ID, or date (YYYY-MM-DD)..." 
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
-                                setCurrentPage(1); // Reset pagination on search
+                                setCurrentPage(1);
                             }}
-                            className="w-full pl-14 pr-6 py-2.5 sm:py-3 bg-slate-50 border-none rounded-xl text-sm outline-none focus:ring-4 focus:ring-cyan-500/10 font-bold text-slate-700 transition-all placeholder:text-slate-400 placeholder:font-medium"
+                            className="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
                         />
                     </div>
-                </motion.div>
+                </div>
 
-                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                     
                     {/* MOBILE LIST VIEW (Visible on phones only) */}
                     <div className="block md:hidden divide-y divide-slate-100">
@@ -193,7 +166,7 @@ const Index = () => {
                                                     {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider animate-pulse">
+                                                <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider">
                                                     Active
                                                 </span>
                                             ) : (
@@ -222,13 +195,15 @@ const Index = () => {
 
                                 {/* Card Footer: Status */}
                                 <div className="flex items-center justify-between pt-1">
-                                    <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
-                                        log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-600 border-red-200' :
-                                        log.status?.toLowerCase().includes('late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                        'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                    }`}>
+                                    <Badge 
+                                        variant={
+                                            log.status?.toLowerCase().includes('absent') ? 'absent' :
+                                            log.status?.toLowerCase().includes('late') ? 'late' : 
+                                            'present'
+                                        }
+                                    >
                                         {log.status}
-                                    </span>
+                                    </Badge>
                                 </div>
                             </div>
                         )) : (
@@ -241,52 +216,53 @@ const Index = () => {
                     {/* DESKTOP TABLE VIEW (Visible on tablet & desktop) */}
                     <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-widest font-black border-b border-slate-100">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-4">Employee</th>
-                                    <th className="px-6 py-4">Date</th>
-                                    <th className="px-6 py-4 text-center">Time In</th>
-                                    <th className="px-6 py-4 text-center">Time Out</th>
-                                    <th className="px-6 py-4 text-center">Status</th>
+                                    <th className="px-6 py-3.5">Employee</th>
+                                    <th className="px-6 py-3.5">Date</th>
+                                    <th className="px-6 py-3.5 text-center">Time In</th>
+                                    <th className="px-6 py-3.5 text-center">Time Out</th>
+                                    <th className="px-6 py-3.5 text-center">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-50">
+                            <tbody className="divide-y divide-slate-100 text-sm">
                                 {paginatedLogs.length > 0 ? paginatedLogs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-cyan-50/30 transition-colors group">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-4">
-                                                <EmployeeAvatar employee={log.employees} employeeId={log.employee_id} size="h-12 w-12" />
+                                    <tr key={log.id} className="hover:bg-slate-50/70 transition-colors duration-100">
+                                        <td className="px-6 py-3.5">
+                                            <div className="flex items-center gap-3">
+                                                <EmployeeAvatar employee={log.employees} employeeId={log.employee_id} size="h-10 w-10" />
                                                 <div>
-                                                    <p className="text-base font-black text-slate-800 group-hover:text-cyan-600 transition-colors">
+                                                    <p className="text-sm font-semibold text-slate-900">
                                                         {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
                                                     </p>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">ID: #{String(log.employee_id).substring(0,8)}</p>
+                                                    <p className="text-[11px] text-slate-400 font-mono">ID: #{String(log.employee_id).substring(0,8)}</p>
                                                 </div>
                                             </div>
                                         </td>
 
                                         {/* Date Column */}
-                                        <td className="px-6 py-4">
-                                            <p className="text-sm font-bold text-slate-600">
+                                        <td className="px-6 py-3.5">
+                                            <p className="text-sm font-medium text-slate-600 font-mono tabular-nums">
                                                 {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </p>
                                         </td>
                                         
                                         {/* Time In Column */}
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg text-sm border border-emerald-100">
-                                                    {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                                {log.time_in_photo ? (
+                                        <td className="px-6 py-3.5 text-center">
+                                            <div className="flex flex-col items-center gap-1.5">
+                                                {log.time_in ? (
+                                                    <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 tabular-nums">
+                                                        {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-slate-300 font-mono">--:--</span>
+                                                )}
+                                                {log.time_in_photo && (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded overflow-hidden border border-slate-200 shadow-xs hover:border-blue-500 transition-all cursor-zoom-in group/img select-none"
                                                     >
-                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <i className="ti ti-maximize text-white" />
-                                                        </div>
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
                                                             onContextMenu={(e) => e.preventDefault()}
@@ -295,25 +271,23 @@ const Index = () => {
                                                             alt="Proof" 
                                                         />
                                                     </button>
-                                                ) : (
-                                                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Proof</span>
                                                 )}
                                             </div>
                                         </td>
 
                                         {/* Time Out Column */}
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex flex-col items-center gap-2">
+                                        <td className="px-6 py-3.5 text-center">
+                                            <div className="flex flex-col items-center gap-1.5">
                                                 {log.time_out ? (
-                                                    <span className="font-mono text-slate-600 font-bold bg-slate-100 px-3 py-1 rounded-lg text-sm border border-slate-200">
+                                                    <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
                                                         {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                    <span className="bg-amber-50 text-amber-600 border border-amber-100 px-3 py-1 rounded-lg text-sm font-bold animate-pulse">
+                                                    <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                         Active
                                                     </span>
                                                 ) : (
-                                                    <span className="bg-red-50 text-red-600 border border-red-100 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                                    <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                         Missed Punch
                                                     </span>
                                                 )}
@@ -321,11 +295,8 @@ const Index = () => {
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-12 h-12 rounded-md overflow-hidden border-2 border-white shadow-md hover:scale-110 hover:shadow-lg transition-all cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded overflow-hidden border border-slate-200 shadow-xs hover:border-blue-500 transition-all cursor-zoom-in group/img select-none"
                                                     >
-                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <i className="ti ti-maximize text-white" />
-                                                        </div>
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
                                                             onContextMenu={(e) => e.preventDefault()}
@@ -339,14 +310,16 @@ const Index = () => {
                                         </td>
 
                                         {/* Status Column */}
-                                        <td className="px-6 py-4 text-center">
-                                            <span className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md border ${
-                                                log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-600 border-red-200' :
-                                                log.status?.toLowerCase().includes('late') ? 'bg-orange-50 text-orange-600 border-orange-200' : 
-                                                'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                            }`}>
+                                        <td className="px-6 py-3.5 text-center">
+                                            <Badge 
+                                                variant={
+                                                    log.status?.toLowerCase().includes('absent') ? 'absent' :
+                                                    log.status?.toLowerCase().includes('late') ? 'late' : 
+                                                    'present'
+                                                }
+                                            >
                                                 {log.status}
-                                            </span>
+                                            </Badge>
                                         </td>
                                     </tr>
                                 )) : (
@@ -402,15 +375,15 @@ const Index = () => {
             </div>
 
             {/* Image modal */}
-            <AnimatePresence>
+            
                 {isModalOpen && selectedImage && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
                             onClick={closeImageModal}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 15, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 15, opacity: 0 }}
@@ -451,10 +424,10 @@ const Index = () => {
                                     className="w-full h-auto object-contain max-h-[65vh] rounded-[2px] pointer-events-none select-none" 
                                 />
                             </div>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
         </div>
     );

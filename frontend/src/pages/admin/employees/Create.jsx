@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -41,6 +40,38 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplayPieceRate(formatSalary(value));
     };
 
+    const [createdEmployee, setCreatedEmployee] = useState(null);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [copiedField, setCopiedField] = useState(null);
+    const [copiedAll, setCopiedAll] = useState(false);
+    const [showPassword, setShowPassword] = useState(true);
+
+    const copyToClipboard = (text, fieldName) => {
+        if (!text) return;
+        navigator.clipboard.writeText(String(text));
+        setCopiedField(fieldName);
+        toast.success(`${fieldName} copied!`);
+        setTimeout(() => setCopiedField(null), 2000);
+    };
+
+    const copyAllCredentials = () => {
+        if (!createdEmployee) return;
+        const text = `C-POINT HRIS Account Credentials\nName: ${createdEmployee.first_name || ''} ${createdEmployee.last_name || ''}\nCompany ID: ${createdEmployee.company_id || ''}\nEmail: ${createdEmployee.email || ''}\nTemporary Password: ${createdEmployee.temp_password || ''}\nLogin Portal: ${window.location.origin}/login`;
+        navigator.clipboard.writeText(text);
+        setCopiedAll(true);
+        toast.success('All credentials copied to clipboard!');
+        setTimeout(() => setCopiedAll(false), 2000);
+    };
+
+    const handleCreateAnother = () => {
+        setShowSuccessModal(false);
+        setCreatedEmployee(null);
+        setDisplaySalary('');
+        setRawSalary('');
+        setDisplayPieceRate('');
+        setRawPieceRate('');
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -54,7 +85,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
         data.piece_rate = isFactory ? parseFloat(rawPieceRate || 0) : 0;
 
         setIsSubmitting(true);
-        await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
             const res = await fetchWithAuth('/api/employees', {
@@ -67,14 +97,14 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? [result.data, ...oldData] : [result.data];
                 });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
 
-                navigate('/admin/employees', {
-                    state: {
-                        success: 'Account Created Successfully!',
-                        temp_password: result.temp_password,
-                        company_id: result.data.company_id
-                    }
+                setCreatedEmployee({
+                    ...result.data,
+                    temp_password: result.temp_password
                 });
+                setShowSuccessModal(true);
+                setIsSubmitting(false);
             } else {
                 toast.error('Error: ' + result.error);
                 setIsSubmitting(false);
@@ -87,11 +117,11 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                 <Link to="/admin/employees" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-xs sm:shadow-sm border border-slate-200 flex items-center gap-1.5 sm:gap-2 tap-active">
                     <i className="ti ti-arrow-left text-base sm:text-lg" /> Back to Directory
                 </Link>
-            </motion.div>
+            </div>
 
             {errors && errors.length > 0 && (
                 <div className="bg-red-500 text-white p-4 sm:p-6 rounded-2xl shadow-lg flex items-start gap-3 sm:gap-4">
@@ -107,7 +137,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 </div>
             )}
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
+            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
                 <div className="mb-6 sm:mb-10 text-center">
                     <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-800 tracking-tight">Onboard Personnel</h2>
                     <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">Create a new employee profile and system account.</p>
@@ -267,7 +297,134 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         </button>
                     </div>
                 </form>
-            </motion.div>
+            </div>
+
+            {/* Account Created & Temporary Password Modal */}
+            
+                {showSuccessModal && createdEmployee && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-xs">
+                        <div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            className="bg-white rounded-2xl p-5 sm:p-7 max-w-md w-full shadow-2xl border border-slate-200 space-y-5"
+                        >
+                            {/* Header */}
+                            <div className="text-center space-y-2">
+                                <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
+                                    <i className="ti ti-check text-2xl font-bold" />
+                                </div>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                    Account Created Successfully!
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    Provide these temporary login credentials to the employee.
+                                </p>
+                            </div>
+
+                            {/* Credentials Card */}
+                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                                
+                                {/* Name */}
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Employee</span>
+                                    <span className="text-xs font-black text-slate-800">
+                                        {createdEmployee.first_name} {createdEmployee.last_name}
+                                    </span>
+                                </div>
+
+                                {/* Company ID */}
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Company ID</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(createdEmployee.company_id, 'Company ID')}
+                                        className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer"
+                                    >
+                                        <span>{createdEmployee.company_id}</span>
+                                        <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs`} />
+                                    </button>
+                                </div>
+
+                                {/* Email Address */}
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Login Email</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(createdEmployee.email, 'Email')}
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer max-w-[200px] truncate"
+                                    >
+                                        <span className="truncate">{createdEmployee.email}</span>
+                                        <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
+                                    </button>
+                                </div>
+
+                                {/* Temporary Password Highlight Box */}
+                                <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                                            <i className="ti ti-key text-xs" /> Temporary Password
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1"
+                                        >
+                                            <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-xs`} />
+                                            {showPassword ? 'Hide' : 'Show'}
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="font-mono text-base sm:text-lg font-black tracking-wider text-white">
+                                            {showPassword ? (createdEmployee.temp_password || 'Emp-1234') : '••••••••'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyToClipboard(createdEmployee.temp_password, 'Password')}
+                                            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                                        >
+                                            <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy'} text-xs`} />
+                                            {copiedField === 'Password' ? 'Copied' : 'Copy'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Copy All Button */}
+                            <button
+                                type="button"
+                                onClick={copyAllCredentials}
+                                className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 cursor-pointer"
+                            >
+                                <i className={`ti ${copiedAll ? 'ti-check text-emerald-600' : 'ti-clipboard-check'} text-sm`} />
+                                {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
+                            </button>
+
+                            <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
+                                <i className="ti ti-info-circle mr-1" />
+                                The employee will be required to change this password upon their first sign-in.
+                            </p>
+
+                            {/* Modal Actions */}
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={handleCreateAnother}
+                                    className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors text-center cursor-pointer"
+                                >
+                                    + Add Another
+                                </button>
+                                <Link
+                                    to={`/admin/employees/${createdEmployee.id}`}
+                                    className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors text-center flex items-center justify-center gap-1"
+                                >
+                                    View Profile <i className="ti ti-arrow-right text-xs" />
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            
         </div>
     );
 }

@@ -3,7 +3,6 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
-import { motion } from 'framer-motion';
 
 export default function ForcePasswordChange() {
     const [password, setPassword] = useState('');
@@ -78,24 +77,8 @@ export default function ForcePasswordChange() {
     if (!user) return null;
 
     return (
-        <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.8 }}
-            className="bg-slate-50 min-h-screen flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-blue-500 selection:text-white"
-        >
-            <style dangerouslySetInnerHTML={{__html: `
-                @keyframes float-1 { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } }
-                @keyframes float-2 { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(-30px, 50px) scale(1.2); } 66% { transform: translate(20px, -20px) scale(0.8); } }
-                .animate-float-1 { animation: float-1 15s ease-in-out infinite; }
-                .animate-float-2 { animation: float-2 18s ease-in-out infinite; animation-delay: -5s; }
-            `}} />
-
-            <div className="absolute top-[-10%] left-[-10%] w-[40rem] h-[40rem] bg-blue-500/20 rounded-full blur-3xl pointer-events-none animate-float-1 mix-blend-multiply"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-indigo-500/20 rounded-full blur-3xl pointer-events-none animate-float-2 mix-blend-multiply"></div>
-
-            <div className="w-full max-w-lg relative z-10 bg-white/60 backdrop-blur-3xl border border-white p-8 sm:p-10 rounded-[2.5rem] shadow-2xl shadow-blue-900/5">
+        <div className="bg-slate-50 min-h-screen flex items-center justify-center p-4 relative overflow-hidden font-sans">
+            <div className="w-full max-w-lg relative z-10 bg-white border border-slate-200 p-8 sm:p-10 rounded-3xl shadow-xl">
                 
                 <div className="text-center mb-8">
                             <div className="h-16 w-16 bg-blue-600 rounded-[1.25rem] flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30 transform rotate-3">
@@ -106,7 +89,7 @@ export default function ForcePasswordChange() {
                         </div>
 
                         {error && (
-                            <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold flex items-center gap-3 border border-red-100 animate-fade-in">
+                            <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold flex items-center gap-3 border border-red-100">
                                 <i className="ti ti-alert-circle text-lg"></i>
                                 {error}
                             </div>
@@ -179,6 +162,6 @@ export default function ForcePasswordChange() {
                     </button>
                 </div>
             </div>
-        </motion.div>
+        </div>
     );
 }

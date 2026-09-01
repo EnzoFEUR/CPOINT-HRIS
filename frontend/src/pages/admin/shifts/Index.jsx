@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import PageHeader from '../../../components/ui/PageHeader';
 
 const SHIFT_TYPES = [
     { 
@@ -122,40 +122,27 @@ export default function ShiftsIndex() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Shift Control...</p>
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Shift Assignments...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
-                    <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-                                <i className="ti ti-calendar-time text-2xl text-blue-400" />
-                            </div>
-                            <span className="px-2.5 sm:px-4 py-0.5 sm:py-1 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Workforce Control</span>
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Shift Deployment</h1>
-                        <p className="text-blue-100/70 font-medium mt-1 text-xs sm:text-base max-w-xl">Assign operating schedules and manage 24/7 coverage for all facility staff in real-time.</p>
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'Operations', 'Shift Deployment']}
+                title="Shift Deployment"
+                description="Assign operating schedules, track facility coverage, and manage rotational shifts in real-time."
+                actions={
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Staff:</span>
+                        <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{employees.length}</span>
                     </div>
-                    
-                    <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-4 rounded-xl shrink-0">
-                        <div className="text-left sm:text-right">
-                            <p className="text-[10px] sm:text-xs font-bold text-white/60 uppercase tracking-widest">Total Staff</p>
-                            <p className="text-xl sm:text-3xl font-black text-white">{employees.length}</p>
-                        </div>
-                        <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-white/20 flex items-center justify-center text-white border border-white/30">
-                            <i className="ti ti-users text-lg sm:text-xl" />
-                        </div>
-                    </div>
-                </div>
-            </motion.div>
+                }
+            />
+
+            <div className="space-y-4 sm:space-y-6">
 
             {/* Filter toolbar */}
             <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3 bg-white p-2 sm:p-3 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
@@ -205,9 +192,8 @@ export default function ShiftsIndex() {
                             </div>
 
                             <div className="mt-4 mb-4">
-                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${activeShift.styles.lightBg} ${activeShift.styles.text} ${activeShift.styles.border}`}>
-                                    <div className={`w-2 h-2 rounded-full ${activeShift.styles.bg} animate-pulse`} />
-                                    <span className="text-xs font-black uppercase tracking-widest">{activeShift.id}</span>
+                                <div className={`inline-flex items-center px-2.5 py-1 rounded-lg border ${activeShift.styles.lightBg} ${activeShift.styles.text} ${activeShift.styles.border}`}>
+                                    <span className="text-xs font-black uppercase tracking-widest">{activeShift.name || activeShift.id}</span>
                                 </div>
                                 <p className="text-xs font-bold text-slate-400 mt-1.5 ml-1">
                                     {activeShift.time}
@@ -242,14 +228,15 @@ export default function ShiftsIndex() {
 
             {/* Empty state */}
             {filteredEmployees.length === 0 && (
-                <div className="flex flex-col items-center justify-center p-8 sm:p-16 bg-white rounded-2xl border border-slate-100 shadow-xs sm:shadow-sm text-center">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-50 rounded-2xl flex items-center justify-center mb-3 sm:mb-4">
-                        <i className="ti ti-ghost text-3xl sm:text-4xl text-slate-300" />
+                <div className="flex flex-col items-center justify-center p-8 sm:p-16 bg-white rounded-xl border border-slate-200 shadow-xs text-center">
+                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center mb-3">
+                        <i className="ti ti-users-minus text-2xl text-slate-400" />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">No staff found</h3>
-                    <p className="text-slate-400 font-medium text-xs sm:text-sm mt-1">Try adjusting your search or filters.</p>
+                    <h3 className="text-base font-semibold text-slate-800">No staff found</h3>
+                    <p className="text-slate-500 font-medium text-xs mt-0.5">Try adjusting your search query or department filter.</p>
                 </div>
             )}
+            </div>
         </div>
     );
 }

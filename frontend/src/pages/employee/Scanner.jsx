@@ -126,7 +126,7 @@ const Scanner = () => {
                     setLockProgress(Math.min((lockFrames.current / REQUIRED_LOCK_FRAMES) * 100, 100));
 
                     if (lockFrames.current >= REQUIRED_LOCK_FRAMES) {
-                        // FACE LOCKED IN! Trigger Capture.
+                        // Trigger capture when face is aligned
                         clearInterval(detectionInterval.current);
                         setFaceLockedIn(true);
                         setAiStatus("Verifying Identity...");
@@ -270,7 +270,7 @@ const Scanner = () => {
     return (
         <div className="max-w-md mx-auto py-10 px-6 min-h-screen flex flex-col justify-center">
             
-            {/* HEADER */}
+            {/* Header */}
             <div className="text-center mb-10 space-y-3">
                 <div className="flex mx-auto items-center justify-center h-16 w-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-2 relative overflow-hidden">
                     <i className="ti ti-scan text-3xl relative z-10"></i>
@@ -278,15 +278,15 @@ const Scanner = () => {
                 </div>
                 <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Security Terminal</h2>
                 <p className="text-slate-500 font-medium text-sm flex items-center justify-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}></span>
+                    <span className={`w-2 h-2 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-amber-500'}`}></span>
                     {modelsLoaded ? 'AI Models Loaded' : 'Loading AI Models...'}
                 </p>
             </div>
 
-            {/* MAIN INTERFACE */}
-            <div className={`relative w-full bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden transition-all duration-500 ease-out ${isScanning ? 'h-[500px]' : 'h-[300px]'}`}>
+            {/* Scanner interface */}
+            <div className={`relative w-full bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden ${isScanning ? 'h-[500px]' : 'h-[300px]'}`}>
                 
-                {/* STATE 1: IDLE */}
+                {/* Idle state */}
                 {!isScanning && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
                         <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner">
@@ -297,9 +297,9 @@ const Scanner = () => {
                             <p className="text-slate-400 text-sm max-w-[200px] mx-auto">Activate the camera to begin checking in employees.</p>
                         </div>
                         <button 
-                            onClick={startScanner}
+                            onClick={startScanner} 
                             disabled={!modelsLoaded}
-                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 ios-btn flex items-center justify-center gap-2"
+                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             <i className="ti ti-power text-xl"></i>
                             Launch Camera
@@ -307,29 +307,29 @@ const Scanner = () => {
                     </div>
                 )}
 
-                {/* STATE 2: SCANNING & CAMERA VIEW */}
+                {/* Camera view */}
                 <div className={`absolute inset-0 bg-black flex flex-col items-center justify-between p-6 ${isScanning ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                     
-                    {/* TOP BAR OVERLAY */}
+                    {/* Top overlay */}
                     <div className="w-full flex items-center justify-between z-20 text-white">
                         <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> Live
+                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Live
                         </span>
                         <button 
                             onClick={stopScanner} 
-                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/30 ios-btn"
+                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/30"
                         >
                             <i className="ti ti-x"></i>
                         </button>
                     </div>
 
-                    {/* QR SCANNER ELEMENT */}
+                    {/* QR scanner */}
                     <div className="absolute inset-0 z-0">
                         <div id="reader" className="w-full h-full"></div>
                         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
                     </div>
 
-                    {/* TARGET LOCK OVERLAY (When Face Detection is Active) */}
+                    {/* Face target overlay */}
                     {scannedData && (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
                             <div className="relative w-64 h-64 border-2 border-dashed border-white/40 rounded-full flex items-center justify-center">
@@ -347,7 +347,7 @@ const Scanner = () => {
                                         cx="128"
                                         cy="128"
                                         r="120"
-                                        className="stroke-current text-blue-500 transition-all duration-100 ease-linear"
+                                        className="stroke-current text-blue-500"
                                         strokeWidth="8"
                                         strokeDasharray={2 * Math.PI * 120}
                                         strokeDashoffset={(2 * Math.PI * 120) * (1 - lockProgress / 100)}
@@ -355,17 +355,17 @@ const Scanner = () => {
                                         fill="transparent"
                                     />
                                 </svg>
-                                <i className={`ti ti-user text-6xl transition-colors duration-300 ${faceLockedIn ? 'text-green-400' : 'text-white/40'}`}></i>
+                                <i className={`ti ti-user text-6xl ${faceLockedIn ? 'text-green-400' : 'text-white/40'}`}></i>
                             </div>
                         </div>
                     )}
 
-                    {/* BOTTOM STATUS CARD OVERLAY */}
+                    {/* Status card */}
                     <div className="w-full z-20 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex items-center justify-between text-white">
                         <div className="space-y-0.5">
                             <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">AI Subsystem</p>
                             <p className="text-sm font-bold flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${faceLockedIn ? 'bg-green-400' : 'bg-blue-400 animate-pulse'}`}></span>
+                                <span className={`w-2 h-2 rounded-full ${faceLockedIn ? 'bg-green-400' : 'bg-blue-400'}`}></span>
                                 {aiStatus}
                             </p>
                         </div>
@@ -377,9 +377,9 @@ const Scanner = () => {
                     </div>
                 </div>
 
-                {/* STATE 3: FEEDBACK MODAL (Success/Error) */}
+                {/* Feedback modal */}
                 {feedback.show && (
-                    <div className="absolute inset-0 z-30 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4 animate-fade-in">
+                    <div className="absolute inset-0 z-30 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4">
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl shadow-lg ${
                             feedback.type === 'success' 
                                 ? 'bg-green-100 text-green-600 shadow-green-500/20' 
@@ -395,7 +395,7 @@ const Scanner = () => {
                 )}
             </div>
 
-            {/* FOOTER CONTROLS */}
+            {/* Controls */}
             <div className="mt-8 text-center">
                 <button 
                     onClick={handleLogout}

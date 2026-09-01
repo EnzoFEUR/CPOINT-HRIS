@@ -43,7 +43,7 @@ export const saveSubscription = async (userId, subscription, userAgent = '') => 
         updated_at: new Date().toISOString()
     };
 
-    // Store in memory for instant delivery
+    // Store subscription in memory
     memorySubscriptions.set(subscription.endpoint, payload);
 
     try {

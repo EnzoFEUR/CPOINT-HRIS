@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
+import PageHeader from '../../../components/ui/PageHeader';
+import Badge from '../../../components/ui/Badge';
 
 const formatDateKey = (dateObj) => {
     const year = dateObj.getFullYear();
@@ -45,9 +46,9 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
     return (
         <div 
             onContextMenu={(e) => e.preventDefault()}
-            className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl bg-slate-100 overflow-hidden shadow-inner shrink-0 relative border border-slate-200 flex items-center justify-center select-none"
+            className="h-14 w-14 sm:h-16 sm:w-16 rounded-lg bg-slate-100 overflow-hidden shadow-xs shrink-0 relative border border-slate-200 flex items-center justify-center select-none"
         >
-            <span className="font-black text-slate-400 text-lg sm:text-2xl select-none pointer-events-none">
+            <span className="font-bold text-slate-400 text-base sm:text-xl select-none pointer-events-none">
                 {initial}
             </span>
             {photoUrl && !isFailed && (
@@ -101,6 +102,11 @@ const Calendar = () => {
         }
     }, [calendarData]);
 
+    const activeDateSet = useMemo(() => {
+        const dates = calendarData?.activeDates || [];
+        return new Set(dates);
+    }, [calendarData]);
+
     // Supabase Realtime WebSocket Subscription
     useEffect(() => {
         const subscription = supabase
@@ -115,59 +121,77 @@ const Calendar = () => {
         };
     }, [queryClient]);
 
-    const activeDates = calendarData?.activeDates || [];
-    const dailyLogs = calendarData?.dailyLogs || [];
-
-    const onDateSelect = (newDateStr) => {
-        hasUserPicked.current = true;
-        sessionStorage.setItem('calendar_user_picked', 'true');
-        const [y, m, d] = newDateStr.split('-');
-        setSelectedDate(new Date(Number(y), Number(m) - 1, Number(d)));
-    };
-
     const onPrevMonth = () => {
-        setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
+        hasUserPicked.current = true;
+        sessionStorage.setItem('calendar_user_picked', '1');
+        setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     };
 
     const onNextMonth = () => {
-        setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1));
+        hasUserPicked.current = true;
+        sessionStorage.setItem('calendar_user_picked', '1');
+        setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
     };
 
-    const monthYearFormatted = selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const onSelectDay = (day) => {
+        hasUserPicked.current = true;
+        sessionStorage.setItem('calendar_user_picked', '1');
+        setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day));
+    };
 
-    // Day logic
-    const startOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-    const endOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
-    const startDayOfWeek = startOfMonth.getDay();
+    // Calendar grid calculations
+    const { year, month, daysInMonth, firstDayOfWeek, monthYearFormatted } = useMemo(() => {
+        const y = selectedDate.getFullYear();
+        const m = selectedDate.getMonth();
+        const days = new Date(y, m + 1, 0).getDate();
+        const first = new Date(y, m, 1).getDay();
+        const formatted = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+        return { year: y, month: m, daysInMonth: days, firstDayOfWeek: first, monthYearFormatted: formatted };
+    }, [selectedDate]);
 
-    const emptyCells = Array.from({ length: startDayOfWeek }).map((_, i) => <div key={`empty-${i}`}></div>);
+    const emptyCells = useMemo(() => {
+        return Array.from({ length: firstDayOfWeek }).map((_, i) => (
+            <div key={`empty-${i}`} className="h-9 w-9 sm:h-10 sm:w-10" />
+        ));
+    }, [firstDayOfWeek]);
 
-    const daysInMonth = endOfMonth.getDate();
-    const dayCells = Array.from({ length: daysInMonth }).map((_, i) => {
-        const day = i + 1;
-        const cellDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
-        const cellDateString = formatDateKey(cellDate);
+    const dayCells = useMemo(() => {
+        const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+        const todayKey = formatDateKey(new Date());
 
-        const isSelected = cellDateString === dateStr;
-        const hasLogs = activeDates.includes(cellDateString);
+        return Array.from({ length: daysInMonth }).map((_, i) => {
+            const dayNum = i + 1;
+            const dayKey = `${currentMonthKey}-${String(dayNum).padStart(2, '0')}`;
+            const isSelected = selectedDate.getDate() === dayNum;
+            const isToday = dayKey === todayKey;
+            const hasData = activeDateSet.has(dayKey);
 
-        return (
-            <button
-                key={cellDateString}
-                onClick={() => onDateSelect(cellDateString)}
-                className={`relative w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl transition-all duration-200 text-xs sm:text-sm font-semibold select-none ${
-                    isSelected 
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold scale-105' 
-                        : 'hover:bg-slate-100 text-slate-700 active:scale-95'
-                }`}
-            >
-                <span>{day}</span>
-                {hasLogs && (
-                    <div className={`absolute bottom-1.5 w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`}></div>
-                )}
-            </button>
-        );
-    });
+            return (
+                <button
+                    key={`day-${dayNum}`}
+                    onClick={() => onSelectDay(dayNum)}
+                    className={`h-9 w-9 sm:h-10 sm:w-10 rounded-lg text-xs font-semibold relative transition-colors flex items-center justify-center select-none ${
+                        isSelected
+                            ? 'bg-blue-600 text-white shadow-xs font-bold'
+                            : isToday
+                            ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                            : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                >
+                    {dayNum}
+                    {hasData && (
+                        <span 
+                            className={`absolute bottom-1 h-1 w-1 rounded-full ${
+                                isSelected ? 'bg-white' : 'bg-blue-500'
+                            }`}
+                        />
+                    )}
+                </button>
+            );
+        });
+    }, [daysInMonth, year, month, selectedDate, activeDateSet]);
+
+    const dailyLogs = calendarData?.dailyLogs || [];
 
     // Chronological logs
     const sortedLogs = useMemo(() => {
@@ -181,87 +205,64 @@ const Calendar = () => {
     const showInitialLoading = isLoading && !calendarData;
 
     return (
-        <div className="max-w-7xl mx-auto pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans space-y-4 sm:space-y-6">
-            
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-8">
-                    <div>
-                        <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
-                            <div className="h-9 w-9 sm:h-12 sm:w-12 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-                                <i className="ti ti-calendar-stats text-lg sm:text-2xl text-blue-400" />
-                            </div>
-                            <span className="px-2.5 sm:px-4 py-0.5 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-300 rounded-md border border-blue-500/30">Analytics Mode</span>
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Workforce Timeline</h1>
-                        <p className="text-blue-100/70 font-medium mt-1 text-xs sm:text-base max-w-xl">Visually track employee arrivals throughout the day.</p>
-                    </div>
-                </div>
-            </motion.div>
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'Attendance', 'Workforce Timeline']}
+                title="Workforce Timeline"
+                description="Chronological arrival tracking, daily punctuality distributions, and biometric verification logs."
+            />
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
                 
                 {/* Left Side: Stats & Calendar Picker */}
                 <div className="xl:col-span-1 space-y-4 sm:space-y-6">
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
-                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
-                                <i className="ti ti-thumb-up text-emerald-500 text-sm sm:text-base"></i> On Time
-                            </p>
-                            {showInitialLoading ? (
-                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
-                            ) : (
-                                <p className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">
-                                    {onTime}
-                                </p>
-                            )}
+                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                        <div className="bg-white rounded-xl p-3.5 sm:p-4 shadow-xs border border-slate-200 flex flex-col justify-between">
+                            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                <i className="ti ti-thumb-up text-emerald-600 text-sm"></i> On Time
+                            </span>
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-slate-900 tabular-nums">
+                                {onTime}
+                            </span>
                         </div>
-                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
-                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
-                                <i className="ti ti-alert-triangle text-orange-500 text-sm sm:text-base"></i> Late
-                            </p>
-                            {showInitialLoading ? (
-                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
-                            ) : (
-                                <p className="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight">
-                                    {totalLate}
-                                </p>
-                            )}
+                        <div className="bg-white rounded-xl p-3.5 sm:p-4 shadow-xs border border-slate-200 flex flex-col justify-between">
+                            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                <i className="ti ti-alert-triangle text-amber-600 text-sm"></i> Late
+                            </span>
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-slate-900 tabular-nums">
+                                {totalLate}
+                            </span>
                         </div>
-                        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs sm:shadow-sm border border-slate-200 relative overflow-hidden flex flex-col justify-between min-h-[85px] sm:min-h-[100px]">
-                            <p className="text-slate-500 text-[9px] sm:text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1">
-                                <i className="ti ti-user-x text-red-500 text-sm sm:text-base"></i> Absent
-                            </p>
-                            {showInitialLoading ? (
-                                <div className="h-6 sm:h-8 w-12 bg-slate-100 rounded-lg animate-pulse my-1" />
-                            ) : (
-                                <p className="text-2xl sm:text-4xl font-black text-red-600 tracking-tight">
-                                    {totalAbsent}
-                                </p>
-                            )}
+                        <div className="bg-white rounded-xl p-3.5 sm:p-4 shadow-xs border border-slate-200 flex flex-col justify-between">
+                            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                <i className="ti ti-user-x text-rose-600 text-sm"></i> Absent
+                            </span>
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-rose-600 tabular-nums">
+                                {totalAbsent}
+                            </span>
                         </div>
                     </div>
 
-                    <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl shadow-xs sm:shadow-sm border border-slate-200">
-                        <div className="flex justify-between items-center mb-5 sm:mb-8">
-                            <button onClick={onPrevMonth} className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors border border-slate-200 shadow-xs tap-active">
-                                <i className="ti ti-chevron-left text-base sm:text-lg"></i>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-xs border border-slate-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <button onClick={onPrevMonth} className="h-8 w-8 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors border border-slate-200">
+                                <i className="ti ti-chevron-left text-sm"></i>
                             </button>
-                            <span className="font-black text-slate-800 text-sm sm:text-base lg:text-lg uppercase tracking-wide">
+                            <span className="font-semibold text-slate-900 text-sm sm:text-base">
                                 {monthYearFormatted}
                             </span>
-                            <button onClick={onNextMonth} className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors border border-slate-200 shadow-xs tap-active">
-                                <i className="ti ti-chevron-right text-base sm:text-lg"></i>
+                            <button onClick={onNextMonth} className="h-8 w-8 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors border border-slate-200">
+                                <i className="ti ti-chevron-right text-sm"></i>
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-7 text-center mb-2 sm:mb-4">
+                        <div className="grid grid-cols-7 text-center mb-2">
                             {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-                                <span key={day} className="text-[10px] font-black text-slate-400 uppercase tracking-widest py-1.5 sm:py-2">{day}</span>
+                                <span key={day} className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider py-1">{day}</span>
                             ))}
                         </div>
 
-                        <div className="grid grid-cols-7 place-items-center gap-y-2 sm:gap-y-3 gap-x-1">
+                        <div className="grid grid-cols-7 place-items-center gap-y-1.5 gap-x-1">
                             {emptyCells}
                             {dayCells}
                         </div>
@@ -298,7 +299,7 @@ const Calendar = () => {
                             </div>
                         ) : sortedLogs.length > 0 ? (
                             <div className="relative pl-5 sm:pl-8 border-l-2 sm:border-l-[3px] border-slate-200 space-y-4 sm:space-y-6 pb-2 ml-1 sm:ml-4">
-                                <AnimatePresence>
+                                
                                     {sortedLogs.map((log, idx) => {
                                         const fullName = log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown Worker';
                                         const statusStr = String(log.status || '').toLowerCase();
@@ -371,7 +372,7 @@ const Calendar = () => {
                                             </div>
                                         );
                                     })}
-                                </AnimatePresence>
+                                
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 mt-4 sm:mt-8">
