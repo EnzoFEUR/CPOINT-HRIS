@@ -1,10 +1,11 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
-// GET notifications for a user
-router.get('/', async (req, res) => {
+// GET notifications for a user (15-second in-memory response cache)
+router.get('/', cacheResponse(15), async (req, res) => {
     try {
         const { user_id, role } = req.query;
         if (!user_id) return res.status(400).json({ error: 'User ID is required' });

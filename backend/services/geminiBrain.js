@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import NodeCache from 'node-cache';
 
-// In-memory 15-minute micro-cache for zero-latency responses and token savings
+// In-memory cache with 15-minute TTL
 const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
 // Model hierarchy with automatic fallback

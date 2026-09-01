@@ -297,7 +297,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         const todayStr = new Date().toISOString().split('T')[0];
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
-        // Execute only 3 consolidated queries in parallel
+        // Query dashboard statistics in parallel
         const [
             { data: rawEmployees, error: empErr },
             { data: rawAttendances, error: attErr },
@@ -375,7 +375,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
             }
         });
 
-        // 4. In-Memory Analytics (Instant 0ms calculation)
+        // Calculate summary metrics
         const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
@@ -400,7 +400,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
     }
 });
 
-// Consolidated BFF Endpoint for Employee Dashboard
+// Employee dashboard overview endpoint
 router.get('/employee/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;

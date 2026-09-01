@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
 
@@ -65,7 +64,7 @@ export default function Dashboard() {
             return res.json();
         },
         staleTime: 60000,
-        refetchInterval: 60000,
+        refetchInterval: 5 * 60000,
     });
 
     // Real-time synchronization
@@ -74,14 +73,12 @@ export default function Dashboard() {
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
-                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
-                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .subscribe();
 
@@ -93,7 +90,7 @@ export default function Dashboard() {
     if (isLoading || !dashboardData) {
         return (
             <div className="flex flex-col items-center justify-center h-[65vh] space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center animate-pulse">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center">
                     <i className="ti ti-chart-pie-3 text-3xl text-blue-600" />
                 </div>
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting Real-Time Telemetry...</p>

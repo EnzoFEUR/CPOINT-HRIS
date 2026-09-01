@@ -25,7 +25,7 @@ export const requestHardwareCamera = async (options = {}) => {
   const { facingMode = 'user', preferHighFps = true } = options;
   const { isMobile, isPortrait } = getDeviceCameraMetrics();
 
-  // Tier 1: Optimal Hardware Sensor Constraints (1080p/720p @ 60fps)
+  // Tier 1: 1080p/720p constraints
   const tier1Constraints = {
     video: {
       facingMode: { ideal: facingMode },
@@ -91,17 +91,17 @@ export const applyHardwareEnhancements = async (stream) => {
     const capabilities = track.getCapabilities() || {};
     const advanced = {};
 
-    // 1. Continuous Auto-Focus (Eliminates blur when moving closer)
+    // 1. Continuous auto-focus
     if (capabilities.focusMode?.includes('continuous')) {
       advanced.focusMode = 'continuous';
     }
 
-    // 2. Continuous Auto-Exposure (Prevents backlight/glare blowout)
+    // 2. Continuous auto-exposure
     if (capabilities.exposureMode?.includes('continuous')) {
       advanced.exposureMode = 'continuous';
     }
 
-    // 3. Continuous White Balance (True-tone skin landmark stability)
+    // 3. Continuous white balance
     if (capabilities.whiteBalanceMode?.includes('continuous')) {
       advanced.whiteBalanceMode = 'continuous';
     }

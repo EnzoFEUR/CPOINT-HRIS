@@ -1,30 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import QRCode from '../../components/QRCode';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: { 
-    opacity: 1, 
-    transition: { 
-      staggerChildren: 0.05 
-    } 
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { 
-    opacity: 1, 
-    y: 0, 
-    transition: { 
-      type: 'spring', 
-      stiffness: 400, 
-      damping: 30 
-    } 
-  }
-};
 
 const MyQr = () => {
   const [user] = useState(() => {
@@ -36,8 +12,6 @@ const MyQr = () => {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [avatarLoaded, setAvatarLoaded] = useState(false);
-  const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -48,7 +22,6 @@ const MyQr = () => {
   const employeeName = user.name || `${user.first_name || 'Employee'} ${user.last_name || ''}`.trim();
   const department = user.department || 'Operations';
   const jobTitle = user.job_title || user.role || 'Staff';
-  const avatarLetter = (user.first_name || employeeName || 'E').charAt(0).toUpperCase();
 
   const photoUrl = useMemo(() => {
     if (user?.avatar_url) return user.avatar_url;
@@ -56,9 +29,6 @@ const MyQr = () => {
       return user.biometric_baseline_path.startsWith('http')
         ? user.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`;
-    }
-    if (user?.has_registered_biometrics === true && user?.company_id && user?.id) {
-      return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`;
     }
     return null;
   }, [user]);
@@ -69,15 +39,10 @@ const MyQr = () => {
 
   return (
     <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-3 sm:pt-4">
-      <motion.div 
-        variants={containerVariants} 
-        initial="hidden" 
-        animate="visible" 
-        className="w-full flex flex-col will-change-transform transform-gpu"
-      >
+      <div className="w-full flex flex-col">
 
         {/* Employee identity header */}
-        <motion.div variants={itemVariants} className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1 will-change-transform transform-gpu">
+        <div className="flex items-center justify-between gap-3 w-full mb-5 sm:mb-6 px-1">
           <div className="flex items-center gap-3.5 min-w-0">
             {/* User Avatar */}
             <EmployeeAvatar
@@ -108,10 +73,10 @@ const MyQr = () => {
               {qrValue}
             </span>
           </div>
-        </motion.div>
+        </div>
 
         {/* QR Code card */}
-        <motion.div variants={itemVariants} className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs will-change-transform transform-gpu">
+        <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">
           <QRCode
             value={qrValue}
             size={260}
@@ -119,17 +84,17 @@ const MyQr = () => {
             bgColor="#ffffff"
             className="rounded-xl"
           />
-        </motion.div>
+        </div>
 
         {/* Date and time footer */}
-        <motion.div variants={itemVariants} className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2 will-change-transform transform-gpu">
+        <div className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2">
           <span>{formattedDate}</span>
           <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
-        </motion.div>
+        </div>
 
-      </motion.div>
+      </div>
     </div>
   );
 };

@@ -3,7 +3,6 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
-import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
@@ -136,7 +135,7 @@ export default function PayrollShow() {
 
     const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0) + holidayPay;
 
-    // --- CLEAN & DEDUPLICATED DEDUCTIONS PARSER ---
+    // Deductions parser
     const deductionsMap = new Map();
 
     const setDeduction = (rawName, rawAmount) => {
@@ -215,6 +214,15 @@ export default function PayrollShow() {
 
     const totalDeductions = deductionsList.reduce((sum, item) => sum + item.amount, 0);
     const netPay = grossEarnings - totalDeductions;
+
+    // Resolve employee avatar image source
+    const avatarUrl = payroll.employees?.avatar_url || (
+        payroll.employees?.biometric_baseline_path
+            ? (payroll.employees.biometric_baseline_path.startsWith('http')
+                ? payroll.employees.biometric_baseline_path
+                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${payroll.employees.biometric_baseline_path.replace(/^\/+/, '')}`)
+            : null
+    );
 
     return (
         <div className="max-w-4xl mx-auto py-10 px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
@@ -445,66 +453,57 @@ export default function PayrollShow() {
                 </div>
             </div>
 
-            {/* DESTRUCTIVE DELETE MODAL */}
-            <AnimatePresence>
-                {isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
-                            onClick={() => setIsDeleteModalOpen(false)}
-                        />
-                        <motion.div
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center"
-                        >
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
-                                <i className="ti ti-alert-triangle text-4xl text-red-500 animate-pulse" />
-                            </div>
+            {/* Delete confirmation modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+                        onClick={() => setIsDeleteModalOpen(false)}
+                    />
+                    <div className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center">
+                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
+                            <i className="ti ti-alert-triangle text-4xl text-red-500" />
+                        </div>
 
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
-                            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                                You are about to permanently delete this payroll record. This cannot be undone.
-                            </p>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
+                        <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            You are about to permanently delete this payroll record. This cannot be undone.
+                        </p>
 
-                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                    Type <span className="text-red-500 select-all">DELETE</span> to confirm
-                                </label>
-                                <input
-                                    type="text"
-                                    value={deleteConfirmText}
-                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                    placeholder="Type DELETE here..."
-                                    autoCapitalize="characters"
-                                    autoCorrect="off"
-                                    autoComplete="off"
-                                    className="w-full px-4 py-3 min-h-[44px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 text-base transition-all text-center touch-manipulation"
-                                />
-                            </div>
+                        <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                                Type <span className="text-red-500 select-all">DELETE</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                placeholder="Type DELETE here..."
+                                autoCapitalize="characters"
+                                autoCorrect="off"
+                                autoComplete="off"
+                                className="w-full px-4 py-3 min-h-[44px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 text-base transition-all text-center touch-manipulation"
+                            />
+                        </div>
 
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setIsDeleteModalOpen(false)}
-                                    className="flex-1 min-h-[44px] py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 touch-manipulation"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={confirmDelete}
-                                    disabled={deleteConfirmText !== 'DELETE'}
-                                    className="flex-1 min-h-[44px] py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 touch-manipulation"
-                                >
-                                    Delete Forever
-                                </button>
-                            </div>
-                        </motion.div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setIsDeleteModalOpen(false)}
+                                className="flex-1 min-h-[44px] py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 touch-manipulation"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleteConfirmText !== 'DELETE'}
+                                className="flex-1 min-h-[44px] py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 touch-manipulation"
+                            >
+                                Delete Forever
+                            </button>
+                        </div>
                     </div>
-                )}
-            </AnimatePresence>
+                </div>
+            )}
         </div>
     );
 }

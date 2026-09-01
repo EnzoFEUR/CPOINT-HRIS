@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -203,12 +202,7 @@ export default function Login() {
             <div className="pt-2 sm:pt-4" />
 
             {/* Login Card */}
-            <motion.div 
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="relative z-10 w-full max-w-[390px] bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xl shadow-slate-200/50 p-5 sm:p-7 transition-all"
-            >
+            <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-xl shadow-slate-200/50 p-5 sm:p-7">
                 {step === 1 && (
                     <div>
                         <div className="text-center mb-5 sm:mb-6">
@@ -385,7 +379,7 @@ export default function Login() {
                         </p>
                     </div>
                 )}
-            </motion.div>
+            </div>
 
             {/* Footer */}
             <div className="pb-2 text-center pointer-events-none">

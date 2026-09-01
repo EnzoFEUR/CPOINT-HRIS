@@ -1,6 +1,5 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
@@ -300,8 +299,6 @@ const getNotificationAvatar = (notif, employeeMap) => {
       avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
         ? matchedEmp.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
-    } else if (matchedEmp.has_registered_biometrics === true && matchedEmp.company_id && matchedEmp.id) {
-      avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
     }
 
     if (matchedEmp.first_name) {
@@ -403,7 +400,10 @@ function MainLayout({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [employeeMap, setEmployeeMap] = useState(new Map());
 
-  // Load employee directory for instant avatar photo resolution
+  const searchContainerRef = useRef(null);
+  const notificationsContainerRef = useRef(null);
+
+  // Load employee directory for avatar lookup
   useEffect(() => {
     supabase
       .from('employees')
@@ -496,7 +496,7 @@ function MainLayout({ children }) {
     setShowInstallGuide(true);
   };
 
-  // Fetch initial notifications with direct Supabase resilient fallback
+  // Fetch initial notifications with Supabase fallback
   useEffect(() => {
     if (!user?.id) return;
     let isCancelled = false;
@@ -515,7 +515,7 @@ function MainLayout({ children }) {
         console.warn('[NOTIFICATIONS] API fetch fallback to direct Supabase query:', err);
       }
 
-      // Direct Supabase Fallback (100% resilient)
+      // Supabase query fallback
       try {
         let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
         if (user.role === 'admin') {
@@ -565,9 +565,41 @@ function MainLayout({ children }) {
   const filteredSearch = searchQuery ? searchIndex.filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase())) : [];
 
   useEffect(() => {
-    setSidebarOpen(false); // close on route change
+    setSidebarOpen(false);
+    setShowSearch(false);
+    setShowNotifications(false);
+    setSearchQuery('');
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setShowSearch(false);
+      }
+      if (notificationsContainerRef.current && !notificationsContainerRef.current.contains(e.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowSearch(false);
+        setShowNotifications(false);
+        setSidebarOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const handleNotificationClick = async (notif) => {
     // Optimistically mark as read locally
@@ -610,7 +642,7 @@ function MainLayout({ children }) {
           toast.custom((t) => (
             <div
               onClick={() => { toast.dismiss(t.id); handleNotificationClick(notif); }}
-              className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 transition-all border border-slate-700/50`}
+              className="max-w-md w-full bg-slate-900 shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 border border-slate-700/50"
             >
               <NotificationAvatar
                 avatarSrc={avatar.avatarSrc}
@@ -681,8 +713,8 @@ function MainLayout({ children }) {
       >
         {/* Logo */}
         <div className="flex items-center h-24 px-8 border-b border-white/5 shrink-0">
-          <div className="flex items-center gap-4 group cursor-pointer">
-            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">CP</div>
+          <div className="flex items-center gap-4 cursor-pointer">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20">CP</div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-wide">C-Point</h1>
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">HRIS</p>
@@ -694,8 +726,8 @@ function MainLayout({ children }) {
         <nav className="flex-1 mt-6 px-4 space-y-1.5 overflow-y-auto pb-6 custom-scrollbar">
           <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
 
-          <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl group ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
-            <i className="ti ti-smart-home text-xl group-hover:scale-110 transition-transform duration-300"></i>
+          <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
+            <i className="ti ti-smart-home text-xl"></i>
             <span className="ml-3 font-medium tracking-wide">Dashboard</span>
           </Link>
 
@@ -709,23 +741,23 @@ function MainLayout({ children }) {
               <div className="space-y-1">
                 <button
                   onClick={() => setAttendanceDropdownOpen(!attendanceDropdownOpen)}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl group transition-all duration-300 ${isAttendanceActive ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl ${isAttendanceActive ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}
                 >
                   <div className="flex items-center">
-                    <i className={`ti ti-clock-hour-4 text-xl group-hover:scale-110 transition-transform duration-300 ${isAttendanceActive ? 'text-blue-400' : ''}`}></i>
+                    <i className={`ti ti-clock-hour-4 text-xl ${isAttendanceActive ? 'text-blue-400' : ''}`}></i>
                     <span className="ml-3 font-medium tracking-wide">Time & Attendance</span>
                   </div>
-                  <i className={`ti ti-chevron-down text-sm transition-transform duration-300 ${attendanceDropdownOpen ? 'rotate-180' : ''}`}></i>
+                  <i className={`ti ti-chevron-down text-sm ${attendanceDropdownOpen ? 'rotate-180' : ''}`}></i>
                 </button>
 
                 {attendanceDropdownOpen && (
-                  <div className="flex flex-col gap-1 pl-4 pr-2 pt-1 animate-fade-in-up">
-                    <Link to="/admin/attendance" className={`flex items-center px-4 py-2.5 rounded-xl group transition-all duration-300 ${location.pathname === '/admin/attendance' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                      <i className="ti ti-list-details text-lg group-hover:scale-110 transition-transform duration-300"></i>
+                  <div className="flex flex-col gap-1 pl-4 pr-2 pt-1">
+                    <Link to="/admin/attendance" className={`flex items-center px-4 py-2.5 rounded-xl ${location.pathname === '/admin/attendance' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                      <i className="ti ti-list-details text-lg"></i>
                       <span className="ml-3 text-sm font-medium">Daily Logs</span>
                     </Link>
-                    <Link to="/admin/attendance/calendar" className={`flex items-center px-4 py-2.5 rounded-xl group transition-all duration-300 ${location.pathname === '/admin/attendance/calendar' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                      <i className="ti ti-calendar text-lg group-hover:scale-110 transition-transform duration-300"></i>
+                    <Link to="/admin/attendance/calendar" className={`flex items-center px-4 py-2.5 rounded-xl ${location.pathname === '/admin/attendance/calendar' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                      <i className="ti ti-calendar text-lg"></i>
                       <span className="ml-3 text-sm font-medium">Calendar View</span>
                     </Link>
                   </div>
@@ -741,8 +773,8 @@ function MainLayout({ children }) {
                 { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
                 { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
               ].map(item => (
-                <Link key={item.label} to={item.route} className={`flex items-center px-4 py-3.5 rounded-2xl group mt-1 ${location.pathname.startsWith(item.route) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
-                  <i className={`ti ${item.icon} text-xl group-hover:scale-110 transition-transform duration-300`}></i>
+                <Link key={item.label} to={item.route} className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${location.pathname.startsWith(item.route) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
+                  <i className={`ti ${item.icon} text-xl`}></i>
                   <span className="ml-3 font-medium tracking-wide">{item.label}</span>
                 </Link>
               ))}
@@ -751,20 +783,20 @@ function MainLayout({ children }) {
             <>
               <Link 
                 to="/employee/qr" 
-                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                className={`flex items-center px-4 py-3.5 rounded-2xl ${
                   location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
-                <i className="ti ti-qrcode text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <i className="ti ti-qrcode text-xl"></i>
                 <span className="ml-3 font-medium tracking-wide">Show My ID</span>
               </Link>
               <Link 
                 to="/profile" 
-                className={`flex items-center px-4 py-3.5 rounded-2xl group transition-all duration-300 ${
+                className={`flex items-center px-4 py-3.5 rounded-2xl ${
                   location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
-                <i className="ti ti-user-circle text-xl group-hover:scale-110 transition-transform duration-300"></i>
+                <i className="ti ti-user-circle text-xl"></i>
                 <span className="ml-3 font-medium tracking-wide">My Profile</span>
               </Link>
             </>
@@ -774,7 +806,7 @@ function MainLayout({ children }) {
 
         {/* User profile */}
         <div className="p-4 mt-auto border-t border-white/5 bg-slate-900/20 rounded-b-[2rem] shrink-0">
-          <Link to="/profile" className="flex items-center p-3 rounded-2xl group mb-2 cursor-pointer hover:bg-white/5">
+          <Link to="/profile" className="flex items-center p-3 rounded-2xl mb-2 cursor-pointer hover:bg-white/5">
             <div className="relative">
               <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-lg">
                 {user.name ? user.name.charAt(0) : (user.first_name ? user.first_name.charAt(0) : '?')}
@@ -782,22 +814,22 @@ function MainLayout({ children }) {
               <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-green-500 border-2 border-[#0B132B] rounded-full"></span>
             </div>
             <div className="ml-3 overflow-hidden">
-              <p className="text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">{user.name || `${user.first_name} ${user.last_name}`}</p>
+              <p className="text-sm font-bold text-white truncate hover:text-blue-400">{user.name || `${user.first_name} ${user.last_name}`}</p>
               <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">{user.role}</p>
             </div>
           </Link>
-          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-3 text-sm font-bold text-red-400 bg-red-500/10 rounded-xl group hover:text-white hover:bg-red-500/20 transition-all">
-            <i className="ti ti-power mr-2 text-lg group-hover:animate-pulse"></i> Sign Out
+          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-3 text-sm font-bold text-red-400 bg-red-500/10 rounded-xl hover:text-white hover:bg-red-500/20">
+            <i className="ti ti-power mr-2 text-lg"></i> Sign Out
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen w-full transition-all duration-500 ease-in-out lg:pl-[320px]">
+      <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
 
           {/* Header */}
-          <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 transition-all duration-300 touch-none select-none overscroll-none">
+          <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 touch-none select-none overscroll-none">
             <div className="flex items-center gap-3">
               <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs shadow-sm">
                 CP
@@ -812,186 +844,210 @@ function MainLayout({ children }) {
 
             <div className="flex items-center gap-2 sm:gap-3 relative">
 
-              {/* Mobile Quick Search Button */}
-              <button
-                onClick={() => setShowSearch(!showSearch)}
-                className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-9 w-9 flex items-center justify-center"
-                aria-label="Search"
-              >
-                <i className="ti ti-search text-lg"></i>
-              </button>
+              {/* Search Container with click-outside Ref */}
+              <div ref={searchContainerRef} className="relative">
+                {/* Mobile Quick Search Button */}
+                <button
+                  onClick={() => setShowSearch(!showSearch)}
+                  className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-9 w-9 flex items-center justify-center"
+                  aria-label="Search"
+                >
+                  <i className="ti ti-search text-lg"></i>
+                </button>
 
-              {/* Desktop Search */}
-              <div className="relative hidden md:block">
-                <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
-                  onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
-                  placeholder="Search everywhere..."
-                  className="pl-8 pr-4 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700"
-                />
-              </div>
-
-              {/* Search dropdown (Desktop & Mobile Modal) */}
-              {showSearch && (
-                <div className="fixed inset-x-4 top-16 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-80 bg-white/95 backdrop-blur-2xl border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
-                  <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
-                    <button onClick={() => setShowSearch(false)} className="md:hidden text-slate-400 hover:text-slate-700 p-1">
-                      <i className="ti ti-x text-base"></i>
+                {/* Desktop Search */}
+                <div className="relative hidden md:block">
+                  <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); setShowNotifications(false); }}
+                    onFocus={() => { setShowSearch(true); setShowNotifications(false); }}
+                    placeholder="Search everywhere..."
+                    className="pl-8 pr-8 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearchQuery(''); setShowSearch(false); }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                      title="Clear search"
+                    >
+                      <i className="ti ti-x text-xs" />
                     </button>
-                  </div>
-                  <div className="p-2 md:hidden">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Type a page or tool..."
-                      className="w-full px-3 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-800 outline-none"
-                    />
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {filteredSearch.length > 0 ? filteredSearch.map(item => (
-                      <Link key={item.route} to={item.route} onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="flex items-center gap-3 p-2.5 hover:bg-blue-50/50 transition-colors cursor-pointer group">
-                        <div className="h-7 w-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                          <i className={`ti ${item.icon} text-sm`}></i>
-                        </div>
-                        <span className="text-xs font-bold text-slate-700">{item.label}</span>
-                      </Link>
-                    )) : (
-                      <div className="p-4 text-center text-xs text-slate-500 font-bold">
-                        {searchQuery ? `No results found for "${searchQuery}"` : 'Type above to search...'}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-              )}
 
-              {/* Notifications Bell */}
-              <button
-                onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
-                className={`relative p-2 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-9 w-9 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
-                aria-label="View Notifications"
-              >
-                <i className="ti ti-bell text-lg"></i>
-                {notifications.some(n => !n.read) && (
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border-2 border-white shadow-xs animate-pulse"></span>
-                )}
-              </button>
-
-              {/* Notification panel */}
-              {showNotifications && (
-                <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-3 sm:w-96 bg-white/95 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
-                  <div className="p-3.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</h3>
-                      {notifications.filter(n => !n.read).length > 0 && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-blue-500 text-white">
-                          {notifications.filter(n => !n.read).length} new
-                        </span>
+                {/* Search dropdown (Desktop & Mobile Modal) */}
+                {showSearch && (
+                  <div className="fixed inset-x-4 top-16 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50">
+                    <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
+                      <button
+                        onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+                        className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100"
+                        title="Close Search (Esc)"
+                      >
+                        <i className="ti ti-x text-base"></i>
+                      </button>
+                    </div>
+                    <div className="p-2 md:hidden">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Type a page or tool..."
+                        className="w-full px-3 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-800 outline-none"
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredSearch.length > 0 ? filteredSearch.map(item => (
+                        <Link
+                          key={item.route}
+                          to={item.route}
+                          onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+                          className="flex items-center gap-3 p-2.5 hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                        >
+                          <div className="h-7 w-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <i className={`ti ${item.icon} text-sm`}></i>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">{item.label}</span>
+                        </Link>
+                      )) : (
+                        <div className="p-4 text-center text-xs text-slate-500 font-bold">
+                          {searchQuery ? `No results found for "${searchQuery}"` : 'Type above to search...'}
+                        </div>
                       )}
                     </div>
-                    <button
-                      onClick={markAllRead}
-                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider"
-                    >
-                      Mark all read
-                    </button>
                   </div>
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 touch-scroll">
-                    {notifications.length > 0 ? notifications.map(notif => {
-                      const visuals = getNotificationVisuals(notif.type);
-                      const avatar = getNotificationAvatar(notif, employeeMap);
-                      return (
-                        <div
-                          key={notif.id}
-                          onClick={() => handleNotificationClick(notif)}
-                          className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
-                        >
-                          <NotificationAvatar
-                            avatarSrc={avatar.avatarSrc}
-                            initials={avatar.initials}
-                            visuals={visuals}
-                            size="h-9 w-9"
-                            textClass="text-xs"
-                            badgeClass="h-3.5 w-3.5 text-[8px] -bottom-1 -right-1"
-                            ringClass="ring-1 ring-white"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                                {visuals.label}
-                              </span>
-                              <p className="text-xs font-bold text-slate-800 truncate">{notif.title || 'System Alert'}</p>
-                            </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
-                              {notif.text}
-                            </p>
-                          </div>
-                          {!notif.read ? (
-                            <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0 shadow-xs animate-pulse" />
-                          ) : (
-                            <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 text-xs" />
-                          )}
-                        </div>
-                      );
-                    }) : (
-                      <div className="p-8 text-center flex flex-col items-center opacity-60">
-                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mb-2">
-                          <i className="ti ti-bell-off text-xl text-slate-400"></i>
-                        </div>
-                        <span className="text-xs font-bold text-slate-500">No notifications yet</span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">You're all caught up!</p>
-                      </div>
-                    )}
-                  </div>
+                )}
+              </div>
 
-                  {/* Native Phone Lock-Screen Push Notifications Banner */}
-                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                        <i className="ti ti-device-mobile-message text-sm"></i>
+              {/* Notification Container with click-outside Ref */}
+              <div ref={notificationsContainerRef} className="relative">
+                {/* Notifications Bell */}
+                <button
+                  onClick={() => { setShowNotifications(!showNotifications); setShowSearch(false); }}
+                  className={`relative p-2 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-9 w-9 flex items-center justify-center ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'}`}
+                  aria-label="View Notifications"
+                >
+                  <i className="ti ti-bell text-lg"></i>
+                  {notifications.some(n => !n.read) && (
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border-2 border-white shadow-xs"></span>
+                  )}
+                </button>
+
+                {/* Notification panel */}
+                {showNotifications && (
+                  <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-3 sm:w-96 bg-white border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50">
+                    <div className="p-3.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</h3>
+                        {notifications.filter(n => !n.read).length > 0 && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-blue-500 text-white">
+                            {notifications.filter(n => !n.read).length} new
+                          </span>
+                        )}
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
-                        <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
-                      </div>
+                      <button
+                        onClick={markAllRead}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider"
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 touch-scroll">
+                      {notifications.length > 0 ? notifications.map(notif => {
+                        const visuals = getNotificationVisuals(notif.type);
+                        const avatar = getNotificationAvatar(notif, employeeMap);
+                        return (
+                          <div
+                            key={notif.id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
+                          >
+                            <NotificationAvatar
+                              avatarSrc={avatar.avatarSrc}
+                              initials={avatar.initials}
+                              visuals={visuals}
+                              size="h-9 w-9"
+                              textClass="text-xs"
+                              badgeClass="h-3.5 w-3.5 text-[8px] -bottom-1 -right-1"
+                              ringClass="ring-1 ring-white"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                  {visuals.label}
+                                </span>
+                                <p className="text-xs font-bold text-slate-800 truncate">{notif.title || 'System Alert'}</p>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                                {notif.text}
+                              </p>
+                            </div>
+                            {!notif.read ? (
+                              <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0 shadow-xs" />
+                            ) : (
+                              <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 text-xs" />
+                            )}
+                          </div>
+                        );
+                      }) : (
+                        <div className="p-8 text-center flex flex-col items-center opacity-60">
+                          <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                            <i className="ti ti-bell-off text-xl text-slate-400"></i>
+                          </div>
+                          <span className="text-xs font-bold text-slate-500">No notifications yet</span>
+                          <p className="text-[10px] text-slate-400 mt-0.5">You're all caught up!</p>
+                        </div>
+                      )}
                     </div>
 
-                    {pushStatus === 'granted' ? (
-                      <button
-                        onClick={async () => {
-                          await sendTestPush(user.id);
-                        }}
-                        className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                        title="Send a test notification to your phone"
-                      >
-                        <i className="ti ti-bell-ringing text-blue-600"></i>
-                        Test Buzz
-                      </button>
-                    ) : (
-                      <button
-                        onClick={async () => {
-                          const res = await subscribeUserToPush(user.id);
-                          if (res.success) setPushStatus('granted');
-                        }}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg shadow-sm shadow-blue-600/30 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                      >
-                        <i className="ti ti-bell-plus"></i>
-                        Enable
-                      </button>
-                    )}
-                  </div>
+                    {/* Native Phone Lock-Screen Push Notifications Banner */}
+                    <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                          <i className="ti ti-device-mobile-message text-sm"></i>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
+                          <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
+                        </div>
+                      </div>
 
-                </div>
-              )}
+                      {pushStatus === 'granted' ? (
+                        <button
+                          onClick={async () => {
+                            await sendTestPush(user.id);
+                          }}
+                          className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                          title="Send a test notification to your phone"
+                        >
+                          <i className="ti ti-bell-ringing text-blue-600"></i>
+                          Test Buzz
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            const res = await subscribeUserToPush(user.id);
+                            if (res.success) setPushStatus('granted');
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg shadow-sm shadow-blue-600/30 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <i className="ti ti-bell-plus"></i>
+                          Enable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 
-          {/* Page Main Content — instant swap, persistent shell (eliminates flash/blank gap) */}
+          {/* Page content */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-[50vh] w-full">
@@ -1002,8 +1058,8 @@ function MainLayout({ children }) {
             </Suspense>
           </main>
 
-          {/* Modern mobile floating dock (island style) */}
-          {/* Modern dynamic mobile floating dock (multi-resolution fluid island) */}
+          {/* Mobile navigation dock */}
+          {/* Mobile navigation dock */}
           <div className="lg:hidden fixed bottom-2.5 sm:bottom-4 inset-x-0 z-40 flex justify-center px-2 sm:px-4 pointer-events-none pb-[max(0.35rem,env(safe-area-inset-bottom))]">
             <nav className="pointer-events-auto w-full max-w-[460px] bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl p-1 sm:p-1.5 flex items-center justify-between gap-0.5 sm:gap-1 shadow-slate-950/50 ring-1 ring-white/10">
               {user.role === 'admin' ? (
@@ -1024,18 +1080,16 @@ function MainLayout({ children }) {
                       <Link
                         key={tab.to}
                         to={tab.to}
-                        className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                        className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${isActive ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                           }`}
                         title={tab.label}
                       >
                         {isActive && (
-                          <motion.div
-                            layoutId="mobileActiveDockPill"
+                          <div
                             className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
                           />
                         )}
-                        <i className={`ti ${tab.icon} text-lg sm:text-xl relative z-10 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
+                        <i className={`ti ${tab.icon} text-lg sm:text-xl relative z-10 ${isActive ? 'scale-110' : ''}`} />
                         <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
                           {tab.label}
                         </span>
@@ -1046,18 +1100,16 @@ function MainLayout({ children }) {
                   {/* More Apps Trigger */}
                   <button
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-0.5 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                       }`}
                     title="More Apps"
                   >
                     {sidebarOpen && (
-                      <motion.div
-                        layoutId="mobileActiveDockPill"
+                      <div
                         className="absolute inset-0 bg-purple-600 rounded-xl sm:rounded-2xl shadow-md shadow-purple-500/40"
-                        transition={{ type: "spring", stiffness: 450, damping: 32 }}
                       />
                     )}
-                    <i className={`ti ti-grid-dots text-lg sm:text-xl relative z-10 transition-transform duration-200 ${sidebarOpen ? 'scale-110' : ''}`} />
+                    <i className={`ti ti-grid-dots text-lg sm:text-xl relative z-10 ${sidebarOpen ? 'scale-110' : ''}`} />
                     <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5">
                       More
                     </span>
@@ -1068,19 +1120,17 @@ function MainLayout({ children }) {
                   {/* Left: Portal / Home */}
                   <Link
                     to="/employee/dashboard"
-                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
                       location.pathname === '/employee/dashboard' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                     }`}
                     title="Portal Home"
                   >
                     {location.pathname === '/employee/dashboard' && (
-                      <motion.div
-                        layoutId="mobileActiveDockPill"
+                      <div
                         className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                        transition={{ type: "spring", stiffness: 450, damping: 32 }}
                       />
                     )}
-                    <i className={`ti ti-smart-home text-lg sm:text-xl relative z-10 transition-transform duration-200 ${location.pathname === '/employee/dashboard' ? 'scale-110' : ''}`} />
+                    <i className={`ti ti-smart-home text-lg sm:text-xl relative z-10 ${location.pathname === '/employee/dashboard' ? 'scale-110' : ''}`} />
                     <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
                       Home
                     </span>
@@ -1090,44 +1140,40 @@ function MainLayout({ children }) {
                   {isSecurity(user) && (
                     <Link
                       to="/scanner"
-                      className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active ${
+                      className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
                         location.pathname === '/scanner' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                       }`}
                       title="Gate Scanner"
                     >
                       {location.pathname === '/scanner' && (
-                        <motion.div
-                          layoutId="mobileActiveDockPill"
+                        <div
                           className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                          transition={{ type: "spring", stiffness: 450, damping: 32 }}
                         />
                       )}
-                      <i className={`ti ti-scan text-lg sm:text-xl relative z-10 transition-transform duration-200 ${location.pathname === '/scanner' ? 'scale-110' : ''}`} />
+                      <i className={`ti ti-scan text-lg sm:text-xl relative z-10 ${location.pathname === '/scanner' ? 'scale-110' : ''}`} />
                       <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
                         Terminal
                       </span>
                     </Link>
                   )}
 
-                  {/* RAISED / ELEVATED CENTER ACTION: QR CODE ID PASS (Solid Modern iOS Design) */}
+                  {/* Center QR code button */}
                   <div className="relative flex-1 flex flex-col items-center justify-center -mt-5 sm:-mt-6 group">
                     <Link
                       to="/employee/qr"
                       className="relative flex flex-col items-center justify-center tap-active"
                       title="My QR ID Pass"
                     >
-                      {/* Elevated Solid Circular Action Button */}
-                      <motion.div
-                        whileTap={{ scale: 0.90 }}
-                        whileHover={{ scale: 1.05 }}
-                        className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 transition-all duration-200 ${
+                      {/* Circular action button */}
+                      <div
+                        className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 ${
                           location.pathname === '/employee/qr'
                             ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40 border border-white/30'
                             : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 shadow-md border border-white/10'
                         }`}
                       >
-                        <i className={`ti ti-qrcode text-xl sm:text-2xl transition-transform duration-200 ${location.pathname === '/employee/qr' ? 'scale-110' : ''}`} />
-                      </motion.div>
+                        <i className={`ti ti-qrcode text-xl sm:text-2xl ${location.pathname === '/employee/qr' ? 'scale-110' : ''}`} />
+                      </div>
 
                       {/* Micro Label */}
                       <span className={`text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-1 font-bold ${
@@ -1138,64 +1184,55 @@ function MainLayout({ children }) {
                     </Link>
                   </div>
 
-                  {/* Right: Sign Out */}
-                  <button
-                    onClick={handleLogout}
-                    className="relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl transition-all select-none tap-active text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                    title="Sign Out"
+                  {/* Profile Tab */}
+                  <Link
+                    to="/employee/profile"
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
+                      location.pathname === '/employee/profile' || location.pathname === '/profile' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="My Profile"
                   >
-                    <i className="ti ti-power text-lg sm:text-xl relative z-10" />
+                    {(location.pathname === '/employee/profile' || location.pathname === '/profile') && (
+                      <div
+                        className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
+                      />
+                    )}
+                    <i className={`ti ti-user text-lg sm:text-xl relative z-10 ${location.pathname === '/employee/profile' || location.pathname === '/profile' ? 'scale-110' : ''}`} />
                     <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
-                      Logout
+                      Profile
                     </span>
-                  </button>
+                  </Link>
                 </div>
               )}
             </nav>
           </div>
 
-          {/* MOBILE FLOATING DOCK: "MORE APPS" SHEET MODAL (With Drag Gestures) */}
-          <AnimatePresence>
-            {sidebarOpen && (
-              <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-slate-950/75 backdrop-blur-md"
-                  onClick={() => setSidebarOpen(false)}
-                />
-                <motion.div
-                  initial={{ y: "100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "100%" }}
-                  drag="y"
-                  dragConstraints={{ top: 0, bottom: 0 }}
-                  dragElastic={{ top: 0.05, bottom: 0.5 }}
-                  onDragEnd={(e, info) => {
-                    if (info.offset.y > 100 || info.velocity.y > 500) {
-                      setSidebarOpen(false);
-                    }
-                  }}
-                  transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                  className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl p-5 text-white shadow-2xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24"
-                >
-                  {/* Drag Pill Handle */}
-                  <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
+          {/* More apps sheet modal */}
+          {sidebarOpen && (
+            <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+              <div
+                className="absolute inset-0 bg-slate-950/75 backdrop-blur-md"
+                onClick={() => setSidebarOpen(false)}
+              />
+              <div
+                className="relative w-full max-w-lg bg-slate-900 border-t border-white/15 rounded-t-3xl p-5 text-white shadow-2xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24"
+              >
+                {/* Drag Pill Handle */}
+                <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto mb-4" />
 
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Center</p>
-                    </div>
-                    <button
-                      onClick={() => setSidebarOpen(false)}
-                      className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
-                      aria-label="Close Sheet"
-                    >
-                      <i className="ti ti-x text-sm" />
-                    </button>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Center</p>
                   </div>
+                  <button
+                    onClick={() => setSidebarOpen(false)}
+                    className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
+                    aria-label="Close Sheet"
+                  >
+                    <i className="ti ti-x text-sm" />
+                  </button>
+                </div>
 
                   {/* PWA Install Banner (Discreetly visible for Admins only when not installed) */}
                   {user?.role === 'admin' && !isStandalone && (
@@ -1307,178 +1344,169 @@ function MainLayout({ children }) {
                       <i className="ti ti-power" /> Sign Out
                     </button>
                   </div>
-                </motion.div>
+                </div>
               </div>
             )}
-          </AnimatePresence>
 
           {/* Universal PWA Installation Guide Modal (Samsung Internet, Chrome, iOS Safari, Desktop) */}
-          <AnimatePresence>
-            {showInstallGuide && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
-                  onClick={() => setShowInstallGuide(false)}
-                />
-                <motion.div
-                  initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                  className="relative w-full max-w-md bg-slate-900 border border-white/15 rounded-3xl p-5 sm:p-6 text-white shadow-2xl z-10 space-y-4 max-h-[90vh] overflow-y-auto"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-base text-white shadow-lg shadow-blue-500/30 shrink-0">
-                        CP
-                      </div>
-                      <div>
-                        <h4 className="text-sm sm:text-base font-black tracking-tight">Install C-Point HRIS</h4>
-                        <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Fast Fullscreen App</p>
-                      </div>
+          {showInstallGuide && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+                onClick={() => setShowInstallGuide(false)}
+              />
+              <div
+                className="relative w-full max-w-md bg-slate-900 border border-white/15 rounded-3xl p-5 sm:p-6 text-white shadow-2xl z-10 space-y-4 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center font-black text-base text-white shadow-lg shadow-blue-500/30 shrink-0">
+                      CP
                     </div>
-                    <button
-                      onClick={() => setShowInstallGuide(false)}
-                      className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
-                      aria-label="Close modal"
-                    >
-                      <i className="ti ti-x text-base" />
-                    </button>
+                    <div>
+                      <h4 className="text-sm sm:text-base font-black tracking-tight">Install C-Point HRIS</h4>
+                      <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Fast Fullscreen App</p>
+                    </div>
                   </div>
-
-                  {/* Direct Native Install Prompt (If available) */}
-                  {deferredPrompt && (
-                    <button
-                      onClick={handleInstallApp}
-                      className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2"
-                    >
-                      <i className="ti ti-download text-base" /> 1-Tap Quick Install
-                    </button>
-                  )}
-
-                  {/* Browser Selector Tabs */}
-                  <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
-                    <button
-                      onClick={() => setBrowserType('samsung')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'samsung' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                      Samsung
-                    </button>
-                    <button
-                      onClick={() => setBrowserType('chrome_android')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'chrome_android' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                      Chrome
-                    </button>
-                    <button
-                      onClick={() => setBrowserType('ios')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'ios' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                      iPhone / iPad
-                    </button>
-                    <button
-                      onClick={() => setBrowserType('desktop')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${browserType === 'desktop' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                      PC / Mac
-                    </button>
-                  </div>
-
-                  {/* Step Instructions by Browser */}
-                  <div className="space-y-2.5 bg-white/5 p-4 rounded-2xl border border-white/5 text-xs text-slate-300">
-                    {browserType === 'samsung' && (
-                      <>
-                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
-                          <i className="ti ti-brand-android text-base" /> Samsung Internet Browser Steps:
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-menu-2 inline text-sm text-blue-400" /> Menu (☰)</span> button at the bottom right corner.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                          <p>Tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> + Add page to</span> (or the Install icon).</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                          <p>Select <span className="font-bold text-white">Home screen</span> and tap <span className="font-bold text-white">Add</span>.</p>
-                        </div>
-                      </>
-                    )}
-
-                    {browserType === 'chrome_android' && (
-                      <>
-                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
-                          <i className="ti ti-brand-chrome text-base" /> Google Chrome Android Steps:
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-dots-vertical inline text-sm text-blue-400" /> Three Dots (⋮)</span> at the top right.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                          <p>Tap <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-emerald-400" /> Install app</span> or <span className="font-bold text-white">Add to Home screen</span>.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                          <p>Confirm by tapping <span className="font-bold text-white">Install</span>.</p>
-                        </div>
-                      </>
-                    )}
-
-                    {browserType === 'ios' && (
-                      <>
-                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
-                          <i className="ti ti-brand-apple text-base" /> Safari on iPhone / iPad Steps:
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                          <p>Tap the <span className="font-bold text-white"><i className="ti ti-share inline text-sm text-blue-400" /> Share</span> button at the bottom of Safari.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                          <p>Scroll down and tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home Screen</span>.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                          <p>Tap <span className="font-bold text-white">Add</span> in the top right corner.</p>
-                        </div>
-                      </>
-                    )}
-
-                    {browserType === 'desktop' && (
-                      <>
-                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
-                          <i className="ti ti-device-desktop text-base" /> Desktop (Chrome / Edge) Steps:
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                          <p>Look in the browser address bar on the right.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                          <p>Click the <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-blue-400" /> Install C-Point HRIS</span> icon.</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                          <p>Click <span className="font-bold text-white">Install</span> to launch standalone window.</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
                   <button
                     onClick={() => setShowInstallGuide(false)}
-                    className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl tap-active transition-all"
+                    className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white tap-active"
+                    aria-label="Close modal"
                   >
-                    Close Guide
+                    <i className="ti ti-x text-base" />
                   </button>
-                </motion.div>
+                </div>
+
+                {/* Direct Native Install Prompt (If available) */}
+                {deferredPrompt && (
+                  <button
+                    onClick={handleInstallApp}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2"
+                  >
+                    <i className="ti ti-download text-base" /> 1-Tap Quick Install
+                  </button>
+                )}
+
+                {/* Browser Selector Tabs */}
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                  <button
+                    onClick={() => setBrowserType('samsung')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold ${browserType === 'samsung' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Samsung
+                  </button>
+                  <button
+                    onClick={() => setBrowserType('chrome_android')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold ${browserType === 'chrome_android' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Chrome
+                  </button>
+                  <button
+                    onClick={() => setBrowserType('ios')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold ${browserType === 'ios' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    iPhone / iPad
+                  </button>
+                  <button
+                    onClick={() => setBrowserType('desktop')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] sm:text-xs font-bold ${browserType === 'desktop' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    PC / Mac
+                  </button>
+                </div>
+
+                {/* Step Instructions by Browser */}
+                <div className="space-y-2.5 bg-white/5 p-4 rounded-2xl border border-white/5 text-xs text-slate-300">
+                  {browserType === 'samsung' && (
+                    <>
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                        <i className="ti ti-brand-android text-base" /> Samsung Internet Browser Steps:
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                        <p>Tap the <span className="font-bold text-white inline-flex items-center gap-1"><i className="ti ti-menu-2 inline text-sm text-blue-400" /> Menu</span> button at the bottom right corner.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                        <p>Tap <span className="font-bold text-white inline-flex items-center gap-1"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home screen</span> (or Install app).</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                        <p>Select <span className="font-bold text-white">Home screen</span> and tap <span className="font-bold text-white">Add</span>.</p>
+                      </div>
+                    </>
+                  )}
+
+                  {browserType === 'chrome_android' && (
+                    <>
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                        <i className="ti ti-brand-chrome text-base" /> Google Chrome Android Steps:
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                        <p>Tap the <span className="font-bold text-white"><i className="ti ti-dots-vertical inline text-sm text-blue-400" /> Three Dots (⋮)</span> at the top right.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                        <p>Tap <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-emerald-400" /> Install app</span> or <span className="font-bold text-white">Add to Home screen</span>.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                        <p>Confirm by tapping <span className="font-bold text-white">Install</span>.</p>
+                      </div>
+                    </>
+                  )}
+
+                  {browserType === 'ios' && (
+                    <>
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                        <i className="ti ti-brand-apple text-base" /> Safari on iPhone / iPad Steps:
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                        <p>Tap the <span className="font-bold text-white"><i className="ti ti-share inline text-sm text-blue-400" /> Share</span> button at the bottom of Safari.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                        <p>Scroll down and tap <span className="font-bold text-white"><i className="ti ti-plus inline text-sm text-emerald-400" /> Add to Home Screen</span>.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                        <p>Tap <span className="font-bold text-white">Add</span> in the top right corner.</p>
+                      </div>
+                    </>
+                  )}
+
+                  {browserType === 'desktop' && (
+                    <>
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10 text-blue-400 font-bold">
+                        <i className="ti ti-device-desktop text-base" /> Desktop (Chrome / Edge) Steps:
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                        <p>Look in the browser address bar on the right.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                        <p>Click the <span className="font-bold text-white"><i className="ti ti-download inline text-sm text-blue-400" /> Install C-Point HRIS</span> icon.</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                        <p>Click <span className="font-bold text-white">Install</span> to launch standalone window.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setShowInstallGuide(false)}
+                  className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl tap-active transition-all"
+                >
+                  Close Guide
+                </button>
               </div>
-            )}
-          </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1605,6 +1633,7 @@ function App() {
           <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
           <Route path="/employee/qr" element={<MyQr />} />
           <Route path="/employee/scanner" element={<EmployeeScanner />} />
+          <Route path="/employee/profile" element={<MyProfile />} />
           <Route path="/profile" element={<MyProfile />} />
         </Route>
       </Routes>

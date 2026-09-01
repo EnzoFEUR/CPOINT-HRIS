@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCodeLib from 'qrcode';
 
-// Module-level memoization cache for instant, zero-flicker synchronous renders
+// Cache for generated QR codes
 const qrCache = new Map();
 
 export default function QRCode({ 
@@ -29,7 +29,7 @@ export default function QRCode({
     }
 
     QRCodeLib.toDataURL(String(value), {
-      width: size * 2, // 2x retina supersampling for ultra-crisp optical edge detection
+      width: size * 2, // 2x scale for clear scanning
       margin: margin,
       color: {
         dark: fgColor,
@@ -61,12 +61,12 @@ export default function QRCode({
           alt={`QR Code for ${value}`} 
           width={size} 
           height={size} 
-          className="w-full h-full object-contain select-none will-change-transform" 
+          className="w-full h-full object-contain select-none" 
           style={{ width: `${size}px`, height: `${size}px` }}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300 rounded-xl">
-          <i className="ti ti-qrcode text-3xl animate-pulse" />
+          <i className="ti ti-qrcode text-3xl" />
         </div>
       )}
     </div>

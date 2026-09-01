@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 import api from '../../../utils/api';
 
@@ -154,7 +153,7 @@ export default function DocumentVault() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {documents.map((doc) => (
-            <motion.div
+            <div
               key={doc.id}
               layout
               initial={{ opacity: 0, y: 10 }}
@@ -208,16 +207,16 @@ export default function DocumentVault() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
       )}
 
       {/* Upload Modal */}
-      <AnimatePresence>
+      
         {isUploadOpen && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full p-6">
+            <div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full p-6">
               <h2 className="text-lg font-bold text-white mb-4">Upload 201 Document</h2>
               <form onSubmit={handleUploadSubmit} className="space-y-4">
                 <div>
@@ -274,13 +273,13 @@ export default function DocumentVault() {
                   <button type="submit" className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium">Upload File</button>
                 </div>
               </form>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+      
 
       {/* Preview Modal */}
-      <AnimatePresence>
+      
         {previewDoc && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-3xl w-full h-[80vh] flex flex-col p-4">
@@ -296,7 +295,7 @@ export default function DocumentVault() {
             </div>
           </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 }

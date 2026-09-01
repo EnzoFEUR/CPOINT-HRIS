@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
@@ -184,9 +183,7 @@ const EmployeeDashboard = () => {
             ? (user.biometric_baseline_path.startsWith('http')
                 ? user.biometric_baseline_path
                 : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
-            : (user?.has_registered_biometrics === true && user?.company_id && user?.id
-                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-                : null);
+            : null;
 
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -221,67 +218,85 @@ const EmployeeDashboard = () => {
         }
     };
 
+    const handleLogout = () => {
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+    };
+
     return (
-        <div className="max-w-5xl mx-auto pb-6 font-sans">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 px-4 sm:px-6 font-sans">
             
-            {/* Alerts */}
-            <AnimatePresence>
+            {/* Infraction Alert Banner */}
+            
                 {infractions.length > 0 && (
-                    <motion.div 
-                        initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                        className="mb-4 sm:mb-6 bg-red-500 text-white p-4 sm:p-5 rounded-2xl shadow-xl shadow-red-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
+                    <div 
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="bg-red-500 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-red-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                     >
-                        <div className="flex items-center gap-3 sm:gap-4">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-                                <i className="ti ti-alert-triangle text-xl sm:text-2xl" />
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                                <i className="ti ti-alert-triangle text-2xl" />
                             </div>
                             <div>
-                                <h4 className="text-base sm:text-lg font-black tracking-tight">Action Required</h4>
+                                <h3 className="font-black text-sm sm:text-base tracking-tight">Attention Required: Disciplinary Notice</h3>
                                 <p className="text-red-100 text-xs sm:text-sm font-medium">You have {infractions.length} active disciplinary memo(s). Please see HR.</p>
                             </div>
                         </div>
                         <button onClick={() => setShowInfractionsModal(true)} className="px-5 py-2.5 sm:px-6 sm:py-3 bg-white text-red-600 font-bold rounded-xl shadow-sm tap-active shrink-0 text-sm">
                             View Details
                         </button>
-                    </motion.div>
+                    </div>
                 )}
-            </AnimatePresence>
+            
 
-            <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-5 sm:space-y-8">
+            <div className="space-y-5 sm:space-y-8">
                 
-                {/* Welcome header */}
-                <motion.div variants={itemVariants} className="flex items-end justify-between gap-4 pt-2 sm:pt-4">
+                {/* Welcome header with Profile & Logout */}
+                <div className="flex items-start justify-between gap-4 pt-2 sm:pt-4">
                     <div>
-                        <p className="text-blue-600 font-bold tracking-widest uppercase text-xs sm:text-sm mb-1 sm:mb-2">{formattedToday}</p>
-                        <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-slate-800 tracking-tight leading-tight">
+                        <p className="text-blue-600 font-bold tracking-widest uppercase text-xs sm:text-sm mb-1">{formattedToday}</p>
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
                             Good day,<br/><span className="text-blue-600">{getFirstName(user.name)}!</span>
                         </h1>
-                        <p className="text-slate-500 font-medium mt-1 sm:mt-2 text-sm sm:text-lg">
+                        <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">
                             {user.job_title || 'Staff'} • {user.department}
                         </p>
                     </div>
                     
-                    {/* User Avatar */}
-                    <EmployeeAvatar
-                        employee={user}
-                        photoUrl={photoUrl}
-                        size="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24"
-                        rounded="rounded-full"
-                        border="border-4 border-white"
-                        shadow="shadow-xl shadow-slate-950/20"
-                        theme="dark"
-                        textSize="text-2xl sm:text-3xl md:text-4xl"
-                    />
-                </motion.div>
+                    {/* User Avatar & Logout Action */}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                        <Link to="/employee/profile" title="View 201 Profile" className="tap-active group">
+                            <EmployeeAvatar
+                                employee={user}
+                                photoUrl={photoUrl}
+                                size="w-14 h-14 sm:w-16 sm:h-16"
+                                rounded="rounded-xl"
+                                border="border-2 border-slate-200"
+                                shadow="shadow-xs"
+                                theme="dark"
+                                textSize="text-xl sm:text-2xl"
+                            />
+                        </Link>
+                        <button
+                            onClick={handleLogout}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                            title="Sign out of HRIS"
+                        >
+                            <i className="ti ti-power text-xs" />
+                            <span>Logout</span>
+                        </button>
+                    </div>
+                </div>
 
                 {/* Primary actions */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
                     {/* Payroll */}
-                    <motion.div 
-                        whileTap={{ scale: 0.97 }}
+                    <div 
                         onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip available yet.'); }}
-                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active"
+                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active select-none"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
@@ -300,10 +315,10 @@ const EmployeeDashboard = () => {
                                 <p className="text-emerald-50 text-xs sm:text-sm mt-1 font-medium">Tap to view full payslip</p>
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
 
                     {/* Today's shift */}
-                    <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group">
+                    <div className="relative overflow-hidden bg-slate-900 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group select-none">
                         <div className="relative z-10 flex justify-between items-start">
                             <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-blue-400 mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors">
                                 <i className="ti ti-calendar-time text-2xl sm:text-3xl" />
@@ -324,16 +339,15 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
 
-                </motion.div>
+                </div>
 
                 {/* Secondary actions */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
                     
                     {/* Leave request */}
-                    <motion.div 
-                        whileTap={{ scale: 0.97 }}
+                    <div 
                         onClick={() => setShowLeaveModal(true)}
-                        className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between cursor-pointer group hover:border-blue-200 transition-colors tap-active"
+                        className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between cursor-pointer group hover:border-blue-200 active:scale-[0.98] transition-all tap-active select-none"
                     >
                         <div className="flex items-center gap-4 sm:gap-5">
                             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 text-2xl sm:text-3xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -347,10 +361,10 @@ const EmployeeDashboard = () => {
                         <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors shrink-0">
                             <i className="ti ti-plus text-base" />
                         </div>
-                    </motion.div>
+                    </div>
 
                     {/* Leave overview */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between select-none">
                         <div className="flex items-center gap-4 sm:gap-5">
                             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
                                 <i className="ti ti-clipboard-check" />
@@ -366,11 +380,11 @@ const EmployeeDashboard = () => {
                             {myLeaves.filter(l => l.status === 'Pending').length} Pending
                         </span>
                     </div>
-                </motion.div>
+                </div>
 
                 {/* HR records */}
                 {unresolvedInfractions.length > 0 && (
-                    <motion.div variants={itemVariants} className="bg-white rounded-2xl p-5 sm:p-8 shadow-xs sm:shadow-sm border border-slate-100">
+                    <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-xs sm:shadow-sm border border-slate-100">
                         <div className="flex justify-between items-center mb-4 sm:mb-6">
                             <div>
                                 <h3 className="text-lg sm:text-xl font-black text-slate-800">HR Records</h3>
@@ -408,12 +422,12 @@ const EmployeeDashboard = () => {
                                 </div>
                             ))}
                         </div>
-                    </motion.div>
+                    </div>
                 )}
 
 
                 {/* Activity timelines */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
                     
                     {/* Recent attendance */}
                     <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-xs sm:shadow-sm border border-slate-100">
@@ -429,64 +443,49 @@ const EmployeeDashboard = () => {
                                 const logDate = new Date(log.date || log.created_at);
                                 const statusStr = String(log.status || '').toLowerCase();
                                 const isAbsent = statusStr === 'absent';
-                                const isLate = statusStr === 'late';
                                 return (
-                                    <div key={log.id} className="flex gap-3 sm:gap-4">
-                                        <div className="flex flex-col items-center">
-                                            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1.5 ${
-                                                isAbsent ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' :
-                                                isLate ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 
-                                                'bg-emerald-500 shadow-[0_0_10px_#10b981]'
-                                            }`} />
-                                            <div className="w-[2px] h-full bg-slate-100 mt-2 rounded-full" />
-                                        </div>
-                                        <div className="pb-4 sm:pb-6">
-                                            <p className="text-slate-800 font-bold text-sm sm:text-lg">{logDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-                                            <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-                                                {isAbsent ? (
-                                                    <span className="bg-red-100 text-red-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                        <i className="ti ti-user-x text-red-500" />
-                                                        Absent
-                                                    </span>
-                                                ) : (
-                                                    <>
-                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                            <i className="ti ti-login text-slate-400" />
-                                                            {log.time_in ? new Date(log.time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
-                                                        </span>
-                                                        <span className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5">
-                                                            <i className="ti ti-logout text-slate-400" />
-                                                            {log.time_out ? new Date(log.time_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Active'}
-                                                        </span>
-                                                        {isLate && <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Late</span>}
-                                                    </>
-                                                )}
+                                    <div key={log.id || log.created_at} className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                                isAbsent ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                                            }`}>
+                                                <i className={`ti ${isAbsent ? 'ti-x' : 'ti-check'}`} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs sm:text-sm font-bold text-slate-800">
+                                                    {logDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                </p>
+                                                <p className="text-[10px] sm:text-xs text-slate-400 font-mono">
+                                                    {log.time_in ? new Date(`1970-01-01T${log.time_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'} - {log.time_out ? new Date(`1970-01-01T${log.time_out}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                </p>
                                             </div>
                                         </div>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                                        }`}>
+                                            {log.status || 'Present'}
+                                        </span>
                                     </div>
                                 );
                             }) : (
-                                <div className="text-center py-6 sm:py-8">
-                                    <i className="ti ti-ghost text-3xl sm:text-4xl text-slate-300 mb-2 sm:mb-3" />
-                                    <p className="text-slate-500 font-medium text-sm">No recent logs found.</p>
-                                </div>
+                                <p className="text-xs text-slate-400">No recent logs</p>
                             )}
                         </div>
                     </div>
 
-                    {/* Leave history */}
+                    {/* Leave requests */}
                     <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-xs sm:shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-5 sm:mb-8">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
-                                <i className="ti ti-calendar-event text-lg sm:text-xl" />
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                                <i className="ti ti-plane-departure text-lg sm:text-xl" />
                             </div>
-                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Leave Requests</h3>
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Recent Leave Requests</h3>
                         </div>
 
-                        <div className="space-y-3 sm:space-y-4">
-                            {myLeaves.length > 0 ? myLeaves.map((leave) => {
+                        <div className="space-y-4">
+                            {myLeaves.length > 0 ? myLeaves.slice(0, 4).map((leave) => {
                                 const statusColors = {
-                                    'New': 'bg-amber-100 text-amber-700',
+                                    'Pending': 'bg-amber-100 text-amber-700',
                                     'Approved': 'bg-emerald-100 text-emerald-700',
                                     'Rejected': 'bg-red-100 text-red-700'
                                 };
@@ -504,27 +503,24 @@ const EmployeeDashboard = () => {
                                     </div>
                                 );
                             }) : (
-                                <div className="text-center py-6 sm:py-8">
-                                    <i className="ti ti-coffee text-3xl sm:text-4xl text-slate-300 mb-2 sm:mb-3" />
-                                    <p className="text-slate-500 font-medium text-sm">No leave requests found.</p>
-                                </div>
+                                <p className="text-xs text-slate-400">No leave requests</p>
                             )}
                         </div>
                     </div>
 
-                </motion.div>
-            </motion.div>
+                </div>
+            </div>
 
             {/* QR modal */}
-            <AnimatePresence>
+            
                 {showQrModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
                             onClick={() => setShowQrModal(false)}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 40, opacity: 0 }}
@@ -548,21 +544,21 @@ const EmployeeDashboard = () => {
                             <button onClick={() => setShowQrModal(false)} className="w-full py-3.5 sm:py-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl tap-active text-base sm:text-lg">
                                 Close ID
                             </button>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* Payslip modal */}
-            <AnimatePresence>
+            
                 {showPayslipModal && latestPayroll && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
                             onClick={() => setShowPayslipModal(false)}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 40, opacity: 0 }}
@@ -603,21 +599,21 @@ const EmployeeDashboard = () => {
                                     Done
                                 </button>
                             </div>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* Leave request modal */}
-            <AnimatePresence>
+            
                 {showLeaveModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
                             onClick={() => setShowLeaveModal(false)}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 40, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 40, opacity: 0 }}
@@ -689,21 +685,21 @@ const EmployeeDashboard = () => {
                                     </button>
                                 </div>
                             </form>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
             {/* Infractions modal */}
-            <AnimatePresence>
+            
                 {showInfractionsModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div 
+                        <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
                             onClick={() => setShowInfractionsModal(false)}
                         />
-                        <motion.div 
+                        <div 
                             initial={{ scale: 0.95, y: 20, opacity: 0 }}
                             animate={{ scale: 1, y: 0, opacity: 1 }}
                             exit={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -744,10 +740,10 @@ const EmployeeDashboard = () => {
                                     I Understand & Acknowledge
                                 </button>
                             </div>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
+            
 
         </div>
     );
