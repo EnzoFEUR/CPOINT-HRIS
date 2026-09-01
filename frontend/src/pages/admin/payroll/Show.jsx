@@ -13,13 +13,34 @@ const HOLIDAY_LABELS = {
     special_non_working: 'Special Non-Working Day',
 };
 
+const cleanDeductionName = (rawName) => {
+    if (!rawName) return '';
+    let name = rawName.trim();
+
+    // Strip long/verbose system prefixes before hyphens (e.g., "End of Month Deductions Applied - SSS" -> "SSS")
+    if (name.includes('-')) {
+        const parts = name.split('-');
+        const lastPart = parts[parts.length - 1].trim();
+        if (lastPart) name = lastPart;
+    }
+
+    // Normalize names for consistent display
+    const lower = name.toLowerCase();
+    if (lower === 'tax' || lower.includes('withholding tax')) return 'Withholding Tax';
+    if (lower === 'sss' || lower.includes('sss contribution')) return 'SSS Contribution';
+    if (lower === 'philhealth' || lower === 'ph') return 'PhilHealth';
+    if (lower === 'pag-ibig' || lower === 'hdmf' || lower.includes('pagibig')) return 'Pag-IBIG';
+    if (lower.includes('late') || lower.includes('tardiness')) return 'Late / Tardiness';
+    if (lower.includes('absence') || lower.includes('undertime')) return 'Absences / Undertime';
+    return name;
+};
+
 export default function PayrollShow() {
     const { id } = useParams();
     const navigate = useNavigate();
     const [payroll, setPayroll] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState(null);
-    const [imgError, setImgError] = useState(false);
 
     useEffect(() => {
         if (!id || id === 'undefined' || !isValidUUID(id)) {
@@ -31,7 +52,6 @@ export default function PayrollShow() {
         const fetchPayroll = async () => {
             setIsLoading(true);
             setErrorMessage(null);
-            setImgError(false);
             try {
                 const res = await fetchWithAuth(`/api/payroll/${id}`);
                 const result = await res.json();
@@ -123,10 +143,10 @@ export default function PayrollShow() {
         const amount = Number(rawAmount || 0);
         if (isNaN(amount)) return;
 
-        const displayName = rawName.trim();
+        const displayName = cleanDeductionName(rawName);
         const normKey = displayName.toLowerCase();
 
-        // Check if an existing key matches to prevent duplicates
+        // Prevent duplicates
         let targetKey = normKey;
         for (const existingKey of deductionsMap.keys()) {
             if (
@@ -139,7 +159,6 @@ export default function PayrollShow() {
             }
         }
 
-        // Update map value
         deductionsMap.set(targetKey, { name: displayName, amount });
     };
 
@@ -189,7 +208,6 @@ export default function PayrollShow() {
 
     const deductionsList = Array.from(deductionsMap.values());
 
-    // Fallback if empty but payroll.deductions exists
     if (deductionsList.length === 0 && Number(payroll.deductions || 0) > 0) {
         deductionsList.push({ name: 'Total Deductions', amount: Number(payroll.deductions) });
     }
@@ -243,11 +261,11 @@ export default function PayrollShow() {
                     {/* Employee & Period Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100">
                         <div className="flex items-center gap-4">
-                            <EmployeeAvatar 
-                                employee={payroll.employees} 
-                                size="h-14 w-14" 
-                                rounded="rounded-2xl" 
-                                border="border border-slate-200" 
+                            <EmployeeAvatar
+                                employee={payroll.employees}
+                                size="h-14 w-14"
+                                rounded="rounded-2xl"
+                                border="border border-slate-200"
                                 shadow="shadow-xs"
                                 theme="emerald"
                             />
@@ -311,41 +329,59 @@ export default function PayrollShow() {
                     )}
 
                     {/* Financial Breakdown */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 mb-8">
 
                         {/* Earnings Column */}
-                        <div>
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Earnings</h3>
+                        <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-100">
+                            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200/80">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                    <i className="ti ti-wallet text-emerald-600 text-base" /> Earnings
+                                </h3>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Amount</span>
+                            </div>
                             <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-slate-600 font-medium">Basic Pay</span>
-                                    <span className="text-sm font-mono font-medium text-slate-800">₱{Number(payroll.basic_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <div className="flex justify-between items-center gap-3">
+                                    <span className="text-sm text-slate-600 font-medium truncate">Basic Pay</span>
+                                    <span className="text-sm font-mono font-semibold text-slate-800 shrink-0">
+                                        ₱{Number(payroll.basic_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-slate-600 font-medium">Overtime Pay</span>
-                                    <span className="text-sm font-mono font-medium text-slate-800">₱{Number(payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <div className="flex justify-between items-center gap-3">
+                                    <span className="text-sm text-slate-600 font-medium truncate">Overtime Pay</span>
+                                    <span className="text-sm font-mono font-semibold text-slate-800 shrink-0">
+                                        ₱{Number(payroll.overtime_pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
                                 </div>
                                 {hasHolidayPay && (
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-slate-600 font-medium flex items-center gap-1.5">
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-sm text-slate-600 font-medium flex items-center gap-1.5 truncate">
                                             Holiday Pay
-                                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
+                                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wide shrink-0">
                                                 DOLE
                                             </span>
                                         </span>
-                                        <span className="text-sm font-mono font-medium text-slate-800">₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-sm font-mono font-semibold text-slate-800 shrink-0">
+                                            ₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
                                     </div>
                                 )}
                             </div>
-                            <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
+                            <div className="mt-6 pt-3 border-t border-slate-200/80 flex justify-between items-center gap-3">
                                 <span className="text-sm font-bold text-slate-800">Gross Earnings</span>
-                                <span className="text-base font-mono font-bold text-slate-800">₱{grossEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-base font-mono font-bold text-slate-900 shrink-0">
+                                    ₱{grossEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                             </div>
                         </div>
 
                         {/* Deductions Column */}
-                        <div>
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">Deductions</h3>
+                        <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-100">
+                            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200/80">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                    <i className="ti ti-receipt-tax text-rose-600 text-base" /> Deductions
+                                </h3>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Amount</span>
+                            </div>
                             <div className="space-y-3">
                                 {deductionsList.length > 0 ? (
                                     deductionsList.map((ded, index) => {
@@ -353,34 +389,38 @@ export default function PayrollShow() {
                                         if (grossEarnings > 0 && ded.amount > 0) {
                                             const percentage = ((ded.amount / grossEarnings) * 100).toFixed(2);
                                             percentageDisplay = (
-                                                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md ml-2 tracking-wide uppercase">
+                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-md shrink-0 font-mono">
                                                     {percentage}%
                                                 </span>
                                             );
                                         }
 
                                         return (
-                                            <div key={index} className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-600 font-medium flex items-center">
-                                                    {ded.name}
+                                            <div key={index} className="flex justify-between items-center gap-3">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="text-sm text-slate-600 font-medium truncate" title={ded.name}>
+                                                        {ded.name}
+                                                    </span>
                                                     {percentageDisplay}
-                                                </span>
-                                                <span className="text-sm font-mono font-medium text-red-600">
+                                                </div>
+                                                <span className="text-sm font-mono font-semibold text-rose-600 shrink-0">
                                                     -₱{ded.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </span>
                                             </div>
                                         );
                                     })
                                 ) : (
-                                    <div className="flex justify-between items-center">
+                                    <div className="flex justify-between items-center gap-3">
                                         <span className="text-sm text-slate-600 font-medium">No Deductions</span>
                                         <span className="text-sm font-mono font-medium text-slate-400">₱0.00</span>
                                     </div>
                                 )}
                             </div>
-                            <div className="mt-6 pt-3 border-t border-slate-100 flex justify-between items-center">
+                            <div className="mt-6 pt-3 border-t border-slate-200/80 flex justify-between items-center gap-3">
                                 <span className="text-sm font-bold text-slate-800">Total Deductions</span>
-                                <span className="text-base font-mono font-bold text-red-600">-₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-base font-mono font-bold text-rose-600 shrink-0">
+                                    -₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -414,56 +454,56 @@ export default function PayrollShow() {
             </div>
 
             {/* Delete confirmation modal */}
-                {isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <div
-                            className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
-                            onClick={() => setIsDeleteModalOpen(false)}
-                        />
-                        <div className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center">
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
-                                <i className="ti ti-alert-triangle text-4xl text-red-500" />
-                            </div>
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+                        onClick={() => setIsDeleteModalOpen(false)}
+                    />
+                    <div className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center">
+                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
+                            <i className="ti ti-alert-triangle text-4xl text-red-500" />
+                        </div>
 
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
-                            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                                You are about to permanently delete this payroll record. This cannot be undone.
-                            </p>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
+                        <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            You are about to permanently delete this payroll record. This cannot be undone.
+                        </p>
 
-                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                    Type <span className="text-red-500 select-all">DELETE</span> to confirm
-                                </label>
-                                <input
-                                    type="text"
-                                    value={deleteConfirmText}
-                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                    placeholder="Type DELETE here..."
-                                    autoCapitalize="characters"
-                                    autoCorrect="off"
-                                    autoComplete="off"
-                                    className="w-full px-4 py-3 min-h-[44px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 text-base transition-all text-center touch-manipulation"
-                                />
-                            </div>
+                        <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-left">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                                Type <span className="text-red-500 select-all">DELETE</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                placeholder="Type DELETE here..."
+                                autoCapitalize="characters"
+                                autoCorrect="off"
+                                autoComplete="off"
+                                className="w-full px-4 py-3 min-h-[44px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-red-500/20 focus:border-red-500 font-bold text-slate-700 text-base transition-all text-center touch-manipulation"
+                            />
+                        </div>
 
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setIsDeleteModalOpen(false)}
-                                    className="flex-1 min-h-[44px] py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 touch-manipulation"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={confirmDelete}
-                                    disabled={deleteConfirmText !== 'DELETE'}
-                                    className="flex-1 min-h-[44px] py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 touch-manipulation"
-                                >
-                                    Delete Forever
-                                </button>
-                            </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setIsDeleteModalOpen(false)}
+                                className="flex-1 min-h-[44px] py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-colors active:scale-95 touch-manipulation"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleteConfirmText !== 'DELETE'}
+                                className="flex-1 min-h-[44px] py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 transition-all active:scale-95 touch-manipulation"
+                            >
+                                Delete Forever
+                            </button>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
         </div>
     );
 }

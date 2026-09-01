@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
@@ -48,12 +48,28 @@ const HOLIDAY_LABELS = {
 
 const PayrollCreate = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
     const queryClient = useQueryClient();
     const [employees, setEmployees] = useState([]);
+
+    // Seamless hand-off from the Payroll Ledger's "Pending" list: HR may
+    // arrive here via React Router state (rich object, set on click) or via
+    // URL search params (survives a direct page reload / shared link).
+    // Captured once on mount — subsequent edits to the form should not be
+    // clobbered by a stale location.state on re-render.
+    const initialPrefillRef = useRef({
+        employee_id: location.state?.employee_id ?? searchParams.get('employee_id') ?? '',
+        period_start: location.state?.period_start ?? searchParams.get('period_start') ?? '',
+        period_end: location.state?.period_end ?? searchParams.get('period_end') ?? '',
+    });
+    const initialPrefill = initialPrefillRef.current;
+    const hasPrefilledPeriod = Boolean(initialPrefill.period_start && initialPrefill.period_end);
+
     const [formData, setFormData] = useState({
-        employee_id: '',
-        period_start: '',
-        period_end: '',
+        employee_id: initialPrefill.employee_id,
+        period_start: initialPrefill.period_start,
+        period_end: initialPrefill.period_end,
         days_worked: 0,
         overtime_hours: 0,
         pieces_produced: '',
@@ -72,7 +88,7 @@ const PayrollCreate = () => {
     const [isCalculating, setIsCalculating] = useState(false);
 
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
-    const calcAbortController = useRef(null);
+    const [prefillEmployeeMissing, setPrefillEmployeeMissing] = useState(false);
 
     useEffect(() => {
         fetchWithAuth('/api/employees')
@@ -84,6 +100,25 @@ const PayrollCreate = () => {
                     return roleStr !== 'admin' && roleStr !== 'security';
                 });
                 setEmployees(payableList);
+
+                // Edge case: a pending employee_id was handed off from the
+                // ledger (via state or URL) but doesn't resolve against the
+                // eligible roster — e.g. the employee was deactivated
+                // between the ledger view and this page load, or the query
+                // param was malformed. Clear it so HR isn't left with a
+                // dead selection, and surface a notice instead of silently
+                // reverting to the blank picker.
+                if (initialPrefill.employee_id) {
+                    const stillValid = payableList.some(e => String(e.id) === String(initialPrefill.employee_id));
+                    if (!stillValid) {
+                        setPrefillEmployeeMissing(true);
+                        setFormData(prev => (
+                            String(prev.employee_id) === String(initialPrefill.employee_id)
+                                ? { ...prev, employee_id: '' }
+                                : prev
+                        ));
+                    }
+                }
             })
             .catch(err => console.error('Failed to load employees:', err));
 
@@ -124,7 +159,15 @@ const PayrollCreate = () => {
     }, []);
 
     useEffect(() => {
+        // Don't stomp on a period passed in from the Payroll Ledger — only
+        // fall back to the default current-week cutoff when nothing was
+        // pre-filled (fresh, direct visit to the Create page).
+        if (hasPrefilledPeriod) {
+            setActivePreset('custom');
+            return;
+        }
         applyCutoffPreset('current_week', includeWeekends);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const applyCutoffPreset = (presetKey = 'current_week', withWeekends = includeWeekends) => {
@@ -237,6 +280,19 @@ const PayrollCreate = () => {
     const employeeRate = useMemo(() => {
         return getEmployeeRate(selectedEmployee);
     }, [selectedEmployee]);
+
+    // Check if the selected employee has no worked days, overtime, or pieces produced
+    const hasNoWorkedTime = useMemo(() => {
+        if (!formData.employee_id || isCalculating) return false;
+        const days = parseFloat(formData.days_worked || 0);
+        const ot = parseFloat(formData.overtime_hours || 0);
+        const pieces = parseFloat(formData.pieces_produced || 0);
+
+        if (isFactoryEmployee) {
+            return days === 0 && ot === 0 && pieces === 0;
+        }
+        return days === 0 && ot === 0;
+    }, [formData.employee_id, formData.days_worked, formData.overtime_hours, formData.pieces_produced, isFactoryEmployee, isCalculating]);
 
     const availableDepartments = useMemo(() => {
         const depts = new Set(employees.map(getEmployeeDept));
@@ -378,6 +434,11 @@ const PayrollCreate = () => {
             return;
         }
 
+        if (hasNoWorkedTime) {
+            setError('Cannot compute payroll for an employee with 0 worked days and 0 overtime hours.');
+            return;
+        }
+
         setError(null);
         setSuccess(null);
         setIsSubmitting(true);
@@ -457,6 +518,18 @@ const PayrollCreate = () => {
                         <div className="min-w-0">
                             <h4 className="text-xs sm:text-sm font-bold text-emerald-800">Success</h4>
                             <p className="text-xs sm:text-sm text-emerald-600 mt-0.5 break-words">{success}</p>
+                        </div>
+                    </div>
+                )}
+
+                {prefillEmployeeMissing && (
+                    <div className="mb-6 sm:mb-8 p-3.5 sm:p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl shadow-sm flex items-start gap-3">
+                        <i className="ti ti-alert-triangle text-amber-500 mt-0.5 text-lg sm:text-xl"></i>
+                        <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-bold text-amber-800">Employee Not Found</h4>
+                            <p className="text-xs sm:text-sm text-amber-700 mt-0.5 break-words">
+                                The employee passed in from the Payroll Ledger could no longer be located in the active roster. Please select them manually below.
+                            </p>
                         </div>
                     </div>
                 )}
@@ -758,6 +831,16 @@ const PayrollCreate = () => {
                                 </p>
                             </div>
                         </div>
+
+                        {/* Zero Work Warning Banner */}
+                        {hasNoWorkedTime && (
+                            <div className="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                                <i className="ti ti-alert-circle text-amber-600 text-xl shrink-0"></i>
+                                <p className="text-xs sm:text-sm text-amber-800 font-bold">
+                                    Employee has 0 worked days and 0 overtime hours for this cutoff period. Payroll cannot be generated.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {holidayPreview.items.length > 0 && (
@@ -844,7 +927,7 @@ const PayrollCreate = () => {
                     <div className="pt-2 sm:pt-4">
                         <button
                             type="submit"
-                            disabled={isSubmitting || !formData.employee_id || isInvalidDateRange}
+                            disabled={isSubmitting || !formData.employee_id || isInvalidDateRange || hasNoWorkedTime}
                             className="w-full min-h-[52px] sm:min-h-[56px] py-4 sm:py-5 bg-slate-900 hover:bg-blue-600 text-white font-black text-base sm:text-lg rounded-2xl shadow-xl shadow-slate-900/10 hover:shadow-blue-500/20 transition-colors flex items-center justify-center gap-2.5 sm:gap-3 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation cursor-pointer"
                         >
                             {!isSubmitting ? (
@@ -864,144 +947,144 @@ const PayrollCreate = () => {
             </div>
 
             {/* Searchable Employee Modal */}
-            
-                {isEmpModalOpen && (
+
+            {isEmpModalOpen && (
+                <div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+                >
                     <div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+                        onClick={() => setIsEmpModalOpen(false)}
+                        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+                    />
+
+                    <div
+                        initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 24, scale: 0.96 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
                     >
-                        <div
-                            onClick={() => setIsEmpModalOpen(false)}
-                            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
-                        />
-
-                        <div
-                            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 24, scale: 0.96 }}
-                            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                            className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 pb-[env(safe-area-inset-bottom)]"
-                        >
-                            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-sm sm:text-base font-bold shrink-0">
-                                        <i className="ti ti-users"></i>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h3 className="text-sm sm:text-base font-extrabold text-slate-800 truncate">Select Employee</h3>
-                                        <p className="text-[10px] sm:text-xs text-slate-400 truncate">Choose workforce member for payroll computation</p>
-                                    </div>
+                        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-sm sm:text-base font-bold shrink-0">
+                                    <i className="ti ti-users"></i>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsEmpModalOpen(false)}
-                                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-base sm:text-lg transition-colors touch-manipulation shrink-0 ml-2 cursor-pointer"
-                                >
-                                    <i className="ti ti-x"></i>
-                                </button>
-                            </div>
-
-                            <div className="p-3.5 sm:p-4 border-b border-slate-100 space-y-3 bg-white">
-                                <div className="relative">
-                                    <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
-                                    <input
-                                        type="text"
-                                        value={empSearch}
-                                        onChange={(e) => setEmpSearch(e.target.value)}
-                                        placeholder="Search by name or department..."
-                                        className="w-full pl-10 pr-9 py-2.5 sm:py-3 bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-sm sm:text-base font-medium text-slate-800 outline-none transition-all"
-                                    />
-                                    {empSearch && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setEmpSearch('')}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                                        >
-                                            <i className="ti ti-x text-sm"></i>
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                    {availableDepartments.map((dept) => (
-                                        <button
-                                            key={dept}
-                                            type="button"
-                                            onClick={() => setSelectedDeptFilter(dept)}
-                                            className={`shrink-0 min-h-[34px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation cursor-pointer ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                        >
-                                            {dept}
-                                        </button>
-                                    ))}
+                                <div className="min-w-0">
+                                    <h3 className="text-sm sm:text-base font-extrabold text-slate-800 truncate">Select Employee</h3>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 truncate">Choose workforce member for payroll computation</p>
                                 </div>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsEmpModalOpen(false)}
+                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-base sm:text-lg transition-colors touch-manipulation shrink-0 ml-2 cursor-pointer"
+                            >
+                                <i className="ti ti-x"></i>
+                            </button>
+                        </div>
 
-                            <div className="overflow-y-auto p-2.5 sm:p-3 space-y-1.5 sm:space-y-2 divide-y divide-slate-100">
-                                {filteredEmployees.length === 0 ? (
-                                    <div className="py-12 text-center text-slate-400 space-y-2">
-                                        <i className="ti ti-search-off text-3xl block"></i>
-                                        <p className="text-xs sm:text-sm font-semibold">No employees match your search</p>
-                                    </div>
-                                ) : (
-                                    filteredEmployees.map((emp) => {
-                                        const isEmpFactory = isFactoryDept(emp.department);
-                                        const rate = getEmployeeRate(emp);
-                                        const isSelected = String(formData.employee_id) === String(emp.id);
-
-                                        return (
-                                            <button
-                                                key={emp.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setFormData(prev => ({ ...prev, employee_id: emp.id }));
-                                                    setIsEmpModalOpen(false);
-                                                }}
-                                                className={`w-full min-h-[52px] p-2.5 sm:p-3 rounded-2xl flex items-center justify-between text-left transition-colors touch-manipulation cursor-pointer ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
-                                            >
-                                                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                                    <EmployeeAvatar
-                                                        employee={emp}
-                                                        size="h-10 w-10 sm:h-11 sm:w-11"
-                                                        rounded="rounded-xl"
-                                                        textSize="text-xs sm:text-sm"
-                                                    />
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">
-                                                            {emp.first_name} {emp.last_name}
-                                                        </p>
-                                                        <div className="flex items-center gap-1.5 mt-0.5">
-                                                            <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 uppercase truncate">
-                                                                {getEmployeeDept(emp)}
-                                                            </span>
-                                                            <span className="text-slate-300">&middot;</span>
-                                                            <span className="text-[10px] sm:text-[11px] font-mono font-bold text-emerald-600 truncate">
-                                                                ₱{rate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / {isEmpFactory ? 'PC' : 'MO'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="shrink-0 ml-2">
-                                                    {isSelected ? (
-                                                        <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">
-                                                            <i className="ti ti-check"></i>
-                                                        </span>
-                                                    ) : (
-                                                        <i className="ti ti-chevron-right text-slate-300"></i>
-                                                    )}
-                                                </div>
-                                            </button>
-                                        );
-                                    })
+                        <div className="p-3.5 sm:p-4 border-b border-slate-100 space-y-3 bg-white">
+                            <div className="relative">
+                                <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                                <input
+                                    type="text"
+                                    value={empSearch}
+                                    onChange={(e) => setEmpSearch(e.target.value)}
+                                    placeholder="Search by name or department..."
+                                    className="w-full pl-10 pr-9 py-2.5 sm:py-3 bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-sm sm:text-base font-medium text-slate-800 outline-none transition-all"
+                                />
+                                {empSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setEmpSearch('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                    >
+                                        <i className="ti ti-x text-sm"></i>
+                                    </button>
                                 )}
                             </div>
+
+                            <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                {availableDepartments.map((dept) => (
+                                    <button
+                                        key={dept}
+                                        type="button"
+                                        onClick={() => setSelectedDeptFilter(dept)}
+                                        className={`shrink-0 min-h-[34px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all touch-manipulation cursor-pointer ${selectedDeptFilter === dept ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                    >
+                                        {dept}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="overflow-y-auto p-2.5 sm:p-3 space-y-1.5 sm:space-y-2 divide-y divide-slate-100">
+                            {filteredEmployees.length === 0 ? (
+                                <div className="py-12 text-center text-slate-400 space-y-2">
+                                    <i className="ti ti-search-off text-3xl block"></i>
+                                    <p className="text-xs sm:text-sm font-semibold">No employees match your search</p>
+                                </div>
+                            ) : (
+                                filteredEmployees.map((emp) => {
+                                    const isEmpFactory = isFactoryDept(emp.department);
+                                    const rate = getEmployeeRate(emp);
+                                    const isSelected = String(formData.employee_id) === String(emp.id);
+
+                                    return (
+                                        <button
+                                            key={emp.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setFormData(prev => ({ ...prev, employee_id: emp.id }));
+                                                setIsEmpModalOpen(false);
+                                            }}
+                                            className={`w-full min-h-[52px] p-2.5 sm:p-3 rounded-2xl flex items-center justify-between text-left transition-colors touch-manipulation cursor-pointer ${isSelected ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                        >
+                                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                                <EmployeeAvatar
+                                                    employee={emp}
+                                                    size="h-10 w-10 sm:h-11 sm:w-11"
+                                                    rounded="rounded-xl"
+                                                    textSize="text-xs sm:text-sm"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">
+                                                        {emp.first_name} {emp.last_name}
+                                                    </p>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500 uppercase truncate">
+                                                            {getEmployeeDept(emp)}
+                                                        </span>
+                                                        <span className="text-slate-300">&middot;</span>
+                                                        <span className="text-[10px] sm:text-[11px] font-mono font-bold text-emerald-600 truncate">
+                                                            ₱{rate.toLocaleString('en-US', { minimumFractionDigits: 2 })} / {isEmpFactory ? 'PC' : 'MO'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="shrink-0 ml-2">
+                                                {isSelected ? (
+                                                    <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">
+                                                        <i className="ti ti-check"></i>
+                                                    </span>
+                                                ) : (
+                                                    <i className="ti ti-chevron-right text-slate-300"></i>
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })
+                            )}
                         </div>
                     </div>
-                )}
-            
+                </div>
+            )}
+
         </div>
     );
 };
