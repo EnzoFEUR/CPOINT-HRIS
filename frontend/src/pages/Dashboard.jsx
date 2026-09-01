@@ -56,6 +56,17 @@ export default function Dashboard() {
         refetchInterval: 5 * 60000,
     });
 
+    // Payroll forecast
+    const { data: payrollData, isLoading: isPayrollLoading } = useQuery({
+        queryKey: ['payrollForecast'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/dashboard/payroll-forecast');
+            return res.json();
+        },
+        staleTime: 60000,
+        refetchInterval: 5 * 60000,
+    });
+
     // Real-time synchronization
     useEffect(() => {
         const liveChannel = supabase
