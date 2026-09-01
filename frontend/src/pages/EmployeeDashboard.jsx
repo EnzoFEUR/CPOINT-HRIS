@@ -183,9 +183,7 @@ const EmployeeDashboard = () => {
             ? (user.biometric_baseline_path.startsWith('http')
                 ? user.biometric_baseline_path
                 : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${user.biometric_baseline_path.replace(/^\/+/, '')}`)
-            : (user?.has_registered_biometrics === true && user?.company_id && user?.id
-                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${user.company_id}/${user.id}.jpg`
-                : null);
+            : null;
 
     const shiftDetails = {
         'Morning': { time: '06:00 AM - 02:00 PM', color: 'text-amber-500', bg: 'bg-amber-500/10' },

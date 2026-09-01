@@ -299,8 +299,6 @@ const getNotificationAvatar = (notif, employeeMap) => {
       avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
         ? matchedEmp.biometric_baseline_path
         : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
-    } else if (matchedEmp.has_registered_biometrics === true && matchedEmp.company_id && matchedEmp.id) {
-      avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
     }
 
     if (matchedEmp.first_name) {

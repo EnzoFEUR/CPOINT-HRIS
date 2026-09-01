@@ -644,7 +644,7 @@ const Scanner = () => {
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
       // Proceed if employee has no biometrics registered
-      if (!emp.has_registered_biometrics) {
+      if (!emp.has_registered_biometrics || !emp.biometric_baseline_path) {
         vault.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
         dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
@@ -653,7 +653,7 @@ const Scanner = () => {
       }
 
       // Load baseline biometrics with timeout
-      const storagePath = emp.biometric_baseline_path || `face-baselines/${emp.company_id}/${emp.id}.jpg`;
+      const storagePath = emp.biometric_baseline_path;
       const { data: urlData } = supabase.storage
         .from('public-bucket')
         .getPublicUrl(storagePath);

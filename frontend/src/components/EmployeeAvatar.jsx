@@ -62,17 +62,8 @@ export const EmployeeAvatar = ({
             }
             return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${rawPhoto.replace(/^\/+/, '')}`;
         }
-
-        // Fallback: check face-baselines bucket if employee has company_id and id
-        const compId = companyId || employee?.company_id || employee?.companyId;
-        const empId = employeeId || employee?.id || employee?.employee_id;
-
-        if (compId && empId) {
-            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${compId}/${empId}.jpg`;
-        }
-
         return null;
-    }, [photoUrl, avatarUrl, employee, companyId, employeeId]);
+    }, [photoUrl, avatarUrl, employee]);
 
     // 3. Resolve Loading State from Global Cache
     const initialStatus = resolvedAvatarSrc ? urlStatusCache.get(resolvedAvatarSrc) : null;
