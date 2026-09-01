@@ -67,9 +67,8 @@ export default function EmployeesIndex() {
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: fetchEmployees,
-        staleTime: 30_000,
+        staleTime: 60_000,
         gcTime: 300_000,
-        refetchOnMount: 'always',
     });
 
     // Extract unique departments dynamically
