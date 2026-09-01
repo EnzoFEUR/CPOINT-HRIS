@@ -613,6 +613,12 @@ router.get(
     }
 
     const [year, month] = date.split('-');
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const lastDayStr = String(lastDay).padStart(2, '0');
+    const startDate = `${year}-${month}-01`;
+    const endDate = `${year}-${month}-${lastDayStr}`;
 
     const [dailyLogsResult, activeDatesResult] = await Promise.all([
       supabase
@@ -622,8 +628,8 @@ router.get(
       supabase
         .from('attendances')
         .select('date')
-        .gte('date', `${year}-${month}-01`)
-        .lte('date', `${year}-${month}-31`),
+        .gte('date', startDate)
+        .lte('date', endDate),
     ]);
 
     if (dailyLogsResult.error) throw new AppError(`Database error: ${dailyLogsResult.error.message}`, 500, 'DB_ERROR');

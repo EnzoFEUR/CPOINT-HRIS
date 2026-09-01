@@ -2,7 +2,6 @@ import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
@@ -247,7 +246,7 @@ const Scanner = () => {
   const sessionTimerRef = useRef(null);
   const debugHoldTimerRef = useRef(null);
 
-  // Detection vault (immune to React re-renders)
+  // Mutable detection state
   const vault = useRef({
     processing: false,
     submitLock: false,
@@ -468,7 +467,7 @@ const Scanner = () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // TinyFaceDetector for speed
+      // Face detection using TinyFaceDetector
       const det = await faceapi
         .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
           inputSize: ENV.DETECTION_INPUT_SIZE,
@@ -644,7 +643,7 @@ const Scanner = () => {
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // Fast-path: If employee has no registered biometrics, immediately proceed with zero delay
+      // Proceed if employee has no biometrics registered
       if (!emp.has_registered_biometrics) {
         vault.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
@@ -653,7 +652,7 @@ const Scanner = () => {
         return;
       }
 
-      // 2. High-speed baseline load with 3.5s timeout protection
+      // Load baseline biometrics with timeout
       const storagePath = emp.biometric_baseline_path || `face-baselines/${emp.company_id}/${emp.id}.jpg`;
       const { data: urlData } = supabase.storage
         .from('public-bucket')
@@ -675,7 +674,7 @@ const Scanner = () => {
         const url = URL.createObjectURL(blob);
         dispatch({ type: 'SET_PHOTO', payload: url });
 
-        // 3. Fast face descriptor extraction using lightweight TinyFaceDetector (15x faster)
+        // Extract face descriptor using TinyFaceDetector
         dispatch({ type: 'SET_LOADING', payload: 'Loading facial profile...' });
         const img = await loadImage(url);
 
@@ -800,7 +799,7 @@ const Scanner = () => {
       try { qrRef.current?.clear(); } catch {}
       qrRef.current = null;
       dispatch({ type: 'SET_LOADING', payload: '' });
-      // Transition to clean permission prompt screen for mobile devices
+      // Show permission prompt screen on mobile
       dispatch({ type: 'SET_MODE', payload: MODES.CAMERA_PROMPT });
     }
   }, [onQrSuccess, dispatch]);
@@ -943,7 +942,7 @@ const Scanner = () => {
         onTouchEnd={handleDebugTouchEnd}
       />
 
-      {/* MODE: QR */}
+      {/* QR mode */}
       <div className={`absolute inset-0 transition-opacity duration-500 ${state.mode === MODES.QR ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'}`}>
         <div id="qr-reader" className="w-full h-full" />
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center overflow-hidden px-4">
@@ -961,16 +960,16 @@ const Scanner = () => {
         </div>
       </div>
 
-      {/* MODE: CAMERA PROMPT (Mobile User Gesture Activation) */}
-      <AnimatePresence>
+      {/* Camera permission prompt */}
+      
         {state.mode === MODES.CAMERA_PROMPT && (
-          <motion.div
+          <div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-5 select-none"
           >
-            <motion.div
+            <div
               initial={{ scale: 0.95, y: 10 }}
               animate={{ scale: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 350, damping: 25 }}
@@ -1002,21 +1001,21 @@ const Scanner = () => {
               >
                 <i className="ti ti-help-circle" /> Troubleshooting Guide
               </button>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* PERMISSION INSTRUCTIONS MODAL (iOS & Android) */}
-      <AnimatePresence>
+      {/* Permission instructions modal */}
+      
         {showPermHelp && (
-          <motion.div
+          <div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-[60] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4"
           >
-            <motion.div
+            <div
               initial={{ scale: 0.94, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-md p-6 sm:p-8 flex flex-col text-left shadow-2xl max-h-[90vh] overflow-y-auto"
@@ -1086,7 +1085,7 @@ const Scanner = () => {
                 <div className="space-y-3.5 text-xs text-slate-300">
                   <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
                     <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded">🔒 Lock</span> icon next to the URL.</p>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1"><i className="ti ti-lock text-blue-400" /> Lock</span> icon next to the URL.</p>
                   </div>
                   <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
                     <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
@@ -1112,19 +1111,19 @@ const Scanner = () => {
               >
                 <i className="ti ti-refresh" /> Retry Connection
               </button>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* MODE: PREP */}
-      <AnimatePresence>
+      {/* Prep mode */}
+      
         {state.mode === MODES.PREP && (
-          <motion.div
+          <div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="absolute inset-0 z-40 bg-black/80 flex items-center justify-center p-4"
           >
-            <motion.div
+            <div
               initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 350, damping: 25 }}
               className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center w-full max-w-sm p-7 text-center"
@@ -1160,15 +1159,15 @@ const Scanner = () => {
               >
                 Cancel
               </button>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* MODE: FACE */}
-      <AnimatePresence>
+      {/* Face verification mode */}
+      
         {state.mode === MODES.FACE && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-20 bg-black overflow-hidden">
+          <div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-20 bg-black overflow-hidden">
             <video 
               ref={videoRef} 
               className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
@@ -1251,18 +1250,18 @@ const Scanner = () => {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* MODE: FEEDBACK */}
-      <AnimatePresence>
+      {/* Feedback state */}
+      
         {state.mode === MODES.FEEDBACK && state.feedback.title && (
-          <motion.div
+          <div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className={`absolute inset-0 z-50 flex items-center justify-center p-4 ${state.feedback.type === 'success' ? 'bg-black/85' : 'bg-black/90'}`}
           >
-            <motion.div
+            <div
               initial={{ scale: 0.95, y: 15 }} animate={{ scale: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 350, damping: 25 }}
               className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 p-6 sm:p-8 w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl"
@@ -1293,15 +1292,15 @@ const Scanner = () => {
                   )}
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* MODE: ERROR */}
-      <AnimatePresence>
+      {/* Error state */}
+      
         {state.mode === MODES.ERROR && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+          <div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-sm w-full text-center">
               <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-2xl mx-auto mb-3">
                 <i className="ti ti-alert-circle" />
@@ -1312,9 +1311,9 @@ const Scanner = () => {
                 Return to Scanner
               </button>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
       {/* Top HUD (QR Mode Header) */}
       {state.mode === MODES.QR && (
@@ -1367,10 +1366,10 @@ const Scanner = () => {
         </div>
       )}
 
-      {/* Initial System Boot Loader */}
-      <AnimatePresence>
+      {/* Camera loading state */}
+      
         {state.mode === MODES.BOOT && (
-          <motion.div
+          <div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1384,45 +1383,35 @@ const Scanner = () => {
             <p className="text-xs text-slate-400">
               Loading facial recognition models...
             </p>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
-      {/* Subtle Runtime Status Pill */}
-      <AnimatePresence>
-        {state.mode !== MODES.BOOT && state.loadingMsg && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-1.5 bg-slate-900 border border-slate-700 rounded-full shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none"
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-            <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Status indicator */}
+      {state.mode !== MODES.BOOT && state.loadingMsg && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-1.5 bg-slate-900 border border-slate-700 rounded-full shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+          <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
+        </div>
+      )}
 
       {/* Debug panel */}
-      <AnimatePresence>
-        {state.debugMode && (
-          <motion.div initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} className="absolute top-20 left-4 z-[55] bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 w-64 text-[10px] font-mono text-slate-300">
-            <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Telemetry</h3>
-            <div className="space-y-1">
-              <p>Mode: {state.mode}</p>
-              <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>
-              <p>Baseline: {vault.baseline ? 'Loaded' : 'None'}</p>
-              <p>Match: {state.matchScore ?? '—'}%</p>
-              <p>Blinks: {state.liveness.blinkCount}</p>
-              <p>EAR: {state.liveness.ear?.toFixed(3) ?? '—'}</p>
-              <p>Lock: {vault.lockFrames}/{ENV.REQUIRED_LOCK_FRAMES}</p>
-              <p>Online: {state.isOnline ? 'Yes' : 'No'}</p>
-              <p>Net: {navigator.connection?.effectiveType || '—'}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {state.debugMode && (
+        <div className="absolute top-20 left-4 z-[55] bg-black/80 border border-white/10 rounded-xl p-4 w-64 text-[10px] font-mono text-slate-300">
+          <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Telemetry</h3>
+          <div className="space-y-1">
+            <p>Mode: {state.mode}</p>
+            <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>
+            <p>Baseline: {vault.baseline ? 'Loaded' : 'None'}</p>
+            <p>Match: {state.matchScore ?? '—'}%</p>
+            <p>Blinks: {state.liveness.blinkCount}</p>
+            <p>EAR: {state.liveness.ear?.toFixed(3) ?? '—'}</p>
+            <p>Lock: {vault.lockFrames}/{ENV.REQUIRED_LOCK_FRAMES}</p>
+            <p>Online: {state.isOnline ? 'Yes' : 'No'}</p>
+            <p>Net: {navigator.connection?.effectiveType || '—'}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

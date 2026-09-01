@@ -3,7 +3,6 @@ import { supabase } from '../supabaseClient';
 import { useNavigate, Navigate } from 'react-router-dom';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
@@ -775,7 +774,7 @@ export default function BiometricSetup() {
           <>
             {/* Direction Hint Badge */}
             {activePhase && state.mode === MODES.ENROLLING && (
-              <motion.div 
+              <div 
                 key={activePhase.id} 
                 initial={{ opacity: 0, scale: 0.9 }} 
                 animate={{ opacity: 1, scale: 1 }}
@@ -789,7 +788,7 @@ export default function BiometricSetup() {
                 <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-bold shadow-lg">
                   {activePhase.id === 0 ? '◉' : activePhase.id === 1 ? '←' : activePhase.id === 2 ? '→' : activePhase.id === 3 ? '↑' : '↓'}
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* Circular Progress Ring */}
@@ -834,7 +833,7 @@ export default function BiometricSetup() {
 
         {/* Success State */}
         {state.mode === MODES.SUCCESS && (
-          <motion.div 
+          <div 
             initial={{ opacity: 0, scale: 0.95 }} 
             animate={{ opacity: 1, scale: 1 }}
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center"
@@ -844,12 +843,12 @@ export default function BiometricSetup() {
             </div>
             <h3 className="text-base font-bold text-white">Registration Complete</h3>
             <p className="text-slate-400 text-xs mt-0.5">Redirecting to your workspace...</p>
-          </motion.div>
+          </div>
         )}
 
         {/* Error State */}
         {state.mode === MODES.ERROR && (
-          <motion.div 
+          <div 
             initial={{ opacity: 0, scale: 0.95 }} 
             animate={{ opacity: 1, scale: 1 }}
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-5 text-center"
@@ -865,7 +864,7 @@ export default function BiometricSetup() {
             >
               Try Again
             </button>
-          </motion.div>
+          </div>
         )}
       </div>
 

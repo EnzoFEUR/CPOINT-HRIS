@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
-import { motion, AnimatePresence } from 'framer-motion';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 const parseDate = (dStr) => {
@@ -865,9 +864,9 @@ const PayrollCreate = () => {
             </div>
 
             {/* Searchable Employee Modal */}
-            <AnimatePresence>
+            
                 {isEmpModalOpen && (
-                    <motion.div
+                    <div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -879,7 +878,7 @@ const PayrollCreate = () => {
                             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
                         />
 
-                        <motion.div
+                        <div
                             initial={{ opacity: 0, y: 24, scale: 0.96 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 24, scale: 0.96 }}
@@ -999,10 +998,10 @@ const PayrollCreate = () => {
                                     })
                                 )}
                             </div>
-                        </motion.div>
-                    </motion.div>
+                        </div>
+                    </div>
                 )}
-            </AnimatePresence>
+            
         </div>
     );
 };

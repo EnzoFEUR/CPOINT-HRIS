@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -134,13 +133,13 @@ export default function Edit() {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                 <Link to={`/admin/employees/${id}`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
                     <i className="ti ti-arrow-left text-base sm:text-lg" /> Cancel Edit
                 </Link>
-            </motion.div>
+            </div>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
+            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
                 <div className="mb-6 sm:mb-10 flex items-center gap-3 sm:gap-5">
                     <div className="h-12 w-12 sm:h-16 sm:w-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100 shrink-0">
                         <i className="ti ti-pencil-code text-2xl sm:text-3xl" />
@@ -272,7 +271,7 @@ export default function Edit() {
                         </button>
                     </div>
                 </form>
-            </motion.div>
+            </div>
         </div>
     );
 }

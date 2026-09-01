@@ -55,7 +55,7 @@ export const EmployeeAvatar = ({
 
     // 2. Resolve Avatar Image Source URL
     const resolvedAvatarSrc = useMemo(() => {
-        const rawPhoto = photoUrl || avatarUrl || employee?.avatar_url || employee?.biometric_baseline_path;
+        const rawPhoto = photoUrl || avatarUrl || employee?.avatar_url || employee?.photo_url || employee?.photo || employee?.profile_picture || employee?.image_url || employee?.biometric_baseline_path;
         if (rawPhoto) {
             if (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:')) {
                 return rawPhoto;
@@ -63,14 +63,12 @@ export const EmployeeAvatar = ({
             return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${rawPhoto.replace(/^\/+/, '')}`;
         }
 
-        // Only attempt storage fetch if employee explicitly has registered biometrics
-        if (employee?.has_registered_biometrics === true) {
-            const compId = companyId || employee?.company_id || employee?.companyId;
-            const empId = employeeId || employee?.id || employee?.employee_id;
+        // Fallback: check face-baselines bucket if employee has company_id and id
+        const compId = companyId || employee?.company_id || employee?.companyId;
+        const empId = employeeId || employee?.id || employee?.employee_id;
 
-            if (compId && empId) {
-                return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${compId}/${empId}.jpg`;
-            }
+        if (compId && empId) {
+            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${compId}/${empId}.jpg`;
         }
 
         return null;
@@ -146,7 +144,8 @@ export const EmployeeAvatar = ({
 
     return (
         <div 
-            onContextMenu={(e) => e.preventDefault()}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); return false; }}
+            style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
             className={`relative ${size} ${rounded} overflow-hidden shrink-0 ${border} ${shadow} ${themeClass} flex items-center justify-center select-none ${className}`}
         >
             {/* Fallback initial letters - always present at paint time to eliminate pop */}
@@ -160,9 +159,10 @@ export const EmployeeAvatar = ({
                     src={resolvedAvatarSrc}
                     onLoad={handleLoad}
                     onError={handleError}
-                    onContextMenu={(e) => e.preventDefault()}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); return false; }}
                     draggable={false}
                     alt={resolvedName || 'Employee'}
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', pointerEvents: 'none' }}
                     className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none ${
                         isLoaded ? 'opacity-100' : 'opacity-0'
                     } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
@@ -170,12 +170,12 @@ export const EmployeeAvatar = ({
                 />
             )}
 
-            {/* Optional online indicator badge */}
-            {showOnlineStatus && (
-                <span className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
-                    isOnline ? 'bg-emerald-500' : 'bg-slate-300'
-                }`} />
-            )}
+            {/* Transparent security overlay to block image dragging/saving/inspection */}
+            <div 
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); return false; }}
+                onDragStart={(e) => e.preventDefault()}
+                className="absolute inset-0 z-10 pointer-events-auto bg-transparent select-none"
+            />
         </div>
     );
 };

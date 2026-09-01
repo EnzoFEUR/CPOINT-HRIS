@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import PageHeader from '../../../components/ui/PageHeader';
 
 const toSafeNumber = (val) => {
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -153,54 +153,43 @@ export default function PayrollIndex() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Payroll Ledger...</p>
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Payroll Ledger...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
-                    <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-                                <i className="ti ti-cash text-2xl text-emerald-400" />
-                            </div>
-                            <span className="px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-emerald-500/20 text-emerald-300 rounded-md border border-emerald-500/30">Financial Center</span>
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Payroll Ledger</h1>
-                        <p className="text-sm sm:text-base text-white/70 mt-1 max-w-xl">Review, audit, and distribute DOLE-compliant digital payslips to your entire workforce.</p>
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'Finance', 'Payroll Ledger']}
+                title="Payroll Ledger"
+                description="Review, audit, and distribute DOLE-compliant digital payslips to your entire workforce."
+                actions={
+                    <div className="flex items-center gap-2.5 flex-wrap">
                         <Link
                             to="/admin/payroll/statutory-settings"
-                            className="px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 border border-slate-700 shadow-md tap-active"
+                            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg font-semibold text-xs sm:text-sm transition-colors flex items-center gap-1.5 border border-slate-200 shadow-xs"
                         >
-                            <i className="ti ti-adjustments-horizontal text-lg text-emerald-400" />
+                            <i className="ti ti-adjustments-horizontal text-base text-slate-500" />
                             <span>Statutory Settings</span>
                         </Link>
 
                         <Link
                             to="/admin/payroll/process"
-                            className="px-5 sm:px-6 py-3 sm:py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-xl font-black text-xs sm:text-sm transition-all shadow-xs flex items-center gap-2 tap-active border border-emerald-400"
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs sm:text-sm transition-colors shadow-xs flex items-center gap-1.5"
                         >
-                            <i className="ti ti-calculator text-lg" />
+                            <i className="ti ti-calculator text-base" />
                             <span>Compute Payroll</span>
                         </Link>
                     </div>
-                </div>
-            </motion.div>
+                }
+            />
+
+            <div className="space-y-4 sm:space-y-6">
 
             {/* Filter toolbar */}
-            <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-100 space-y-3"
-            >
+            <div className="bg-white p-3 sm:p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
                 <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                     <div className="relative flex-1 min-w-[240px]">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
@@ -307,10 +296,10 @@ export default function PayrollIndex() {
                         )}
                     </div>
                 </div>
-            </motion.div>
+            </div>
 
             {/* Table container */}
-            <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 {/* Mobile view */}
                 <div className="block md:hidden divide-y divide-slate-100">
                     {paginatedPayrolls.length > 0 ? paginatedPayrolls.map((payroll) => {
@@ -516,7 +505,8 @@ export default function PayrollIndex() {
                         </button>
                     </div>
                 </div>
-            </motion.div>
+            </div>
+            </div>
         </div>
     );
 }

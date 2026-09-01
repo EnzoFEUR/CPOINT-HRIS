@@ -3,7 +3,6 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
-import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
@@ -116,7 +115,7 @@ export default function PayrollShow() {
 
     const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0) + holidayPay;
 
-    // --- CLEAN & DEDUPLICATED DEDUCTIONS PARSER ---
+    // Deductions parser
     const deductionsMap = new Map();
 
     const setDeduction = (rawName, rawAmount) => {
@@ -412,24 +411,16 @@ export default function PayrollShow() {
                 </div>
             </div>
 
-            {/* DESTRUCTIVE DELETE MODAL */}
-            <AnimatePresence>
+            {/* Delete confirmation modal */}
                 {isDeleteModalOpen && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        <div
                             className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
                             onClick={() => setIsDeleteModalOpen(false)}
                         />
-                        <motion.div
-                            initial={{ scale: 0.9, y: 20, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center"
-                        >
+                        <div className="relative bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl p-8 text-center">
                             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border-8 border-white shadow-lg relative z-10">
-                                <i className="ti ti-alert-triangle text-4xl text-red-500 animate-pulse" />
+                                <i className="ti ti-alert-triangle text-4xl text-red-500" />
                             </div>
 
                             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Delete Payslip?</h2>
@@ -468,10 +459,9 @@ export default function PayrollShow() {
                                     Delete Forever
                                 </button>
                             </div>
-                        </motion.div>
+                        </div>
                     </div>
                 )}
-            </AnimatePresence>
         </div>
     );
 }

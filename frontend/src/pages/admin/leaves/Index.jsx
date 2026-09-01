@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import PageHeader from '../../../components/ui/PageHeader';
+import Badge from '../../../components/ui/Badge';
 
 export default function LeavesIndex() {
     const queryClient = useQueryClient();
@@ -81,82 +82,63 @@ export default function LeavesIndex() {
         }
     };
 
-    const pendingCount = leaves.filter(l => l.status === 'New').length;
+    const pendingCount = leaves.filter(l => l.status === 'New' || l.status === 'Pending').length;
 
     const filteredLeaves = leaves.filter(l => {
         if (filterStatus === 'All') return true;
-        if (filterStatus === 'Pending') return l.status === 'New';
-        return l.status === filterStatus;
+        if (filterStatus === 'Pending') return l.status === 'New' || l.status === 'Pending';
+        return l.status?.toLowerCase() === filterStatus.toLowerCase();
     });
 
     const totalItems = filteredLeaves.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedLeaves = filteredLeaves.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-    };
-
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-purple-600 rounded-full animate-spin" />
-                <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Requests...</p>
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Leave Requests...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans">
-            
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="relative bg-slate-900 rounded-2xl p-5 sm:p-8 lg:p-10 shadow-xs sm:shadow-sm group">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 sm:gap-8">
-                    <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-                                <i className="ti ti-plane-departure text-2xl text-purple-400" />
-                            </div>
-                            <span className="px-3 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase bg-purple-500/20 text-purple-300 rounded-md border border-purple-500/30">Time Off Management</span>
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">Leave Approvals</h1>
-                        <p className="text-sm sm:text-base text-white/70 mt-1 max-w-xl">Review, approve, and manage paid time off and sick leave requests for the entire staff.</p>
+        <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
+            <PageHeader
+                breadcrumbs={['Admin', 'Time Off', 'Leave Approvals']}
+                title="Leave Approvals"
+                description="Review, audit, and authorize paid time off, medical leaves, and vacation requests across all departments."
+                actions={
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pending Action:</span>
+                        <span className="font-mono text-sm font-bold text-amber-600 tabular-nums">{pendingCount}</span>
                     </div>
-                    
-                    <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/20 p-3 sm:p-4 rounded-xl shrink-0">
-                        <div className="text-left sm:text-right">
-                            <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Pending Action</p>
-                            <p className="text-xl sm:text-3xl font-black text-white">{pendingCount}</p>
-                        </div>
-                        <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 border border-purple-500/50">
-                            <i className={`ti ti-bell text-lg sm:text-xl ${pendingCount > 0 ? 'animate-[ringing_2s_ease-in-out_infinite]' : ''}`} />
-                        </div>
+                }
+            />
+
+            <div className="space-y-4 sm:space-y-6">
+                {/* Filter tabs */}
+                <div className="flex bg-white p-1 sm:p-1.5 rounded-xl shadow-xs border border-slate-200 overflow-x-auto touch-scroll no-scrollbar w-full sm:w-max">
+                    <div className="flex gap-1 min-w-max">
+                        {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
+                            <button
+                                key={status}
+                                onClick={() => handleFilterChange(status)}
+                                className={`px-3.5 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                                    filterStatus === status 
+                                    ? 'bg-blue-600 text-white shadow-xs' 
+                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
                     </div>
                 </div>
-            </motion.div>
 
-            {/* Filter tabs */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex bg-white p-1 sm:p-1.5 rounded-xl shadow-xs border border-slate-100 overflow-x-auto touch-scroll no-scrollbar w-full sm:w-max">
-                <div className="flex gap-1 min-w-max">
-                    {['All', 'Pending', 'Approved', 'Rejected'].map(status => (
-                        <button
-                            key={status}
-                            onClick={() => handleFilterChange(status)}
-                            className={`px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-bold tap-active transition-all whitespace-nowrap ${
-                                filterStatus === status 
-                                ? 'bg-slate-900 text-white shadow-xs' 
-                                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                            }`}
-                        >
-                            {status}
-                        </button>
-                    ))}
-                </div>
-            </motion.div>
-
-            {/* Table container */}
-            <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 overflow-hidden">
+                {/* Table container */}
+                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
                 
                 {/* Mobile view */}
                 <div className="block md:hidden divide-y divide-slate-100">
@@ -184,7 +166,7 @@ export default function LeavesIndex() {
 
                                     {leave.status === 'New' && (
                                         <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-amber-50 text-amber-600 border border-amber-200 flex items-center gap-1 shrink-0">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Pending
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Pending
                                         </span>
                                     )}
                                     {leave.status === 'Approved' && (
@@ -305,7 +287,7 @@ export default function LeavesIndex() {
                                         <td className="px-6 lg:px-8 py-4 text-center">
                                             {leave.status === 'New' && (
                                                 <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-xs flex w-max items-center gap-1.5 mx-auto">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Pending
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Pending
                                                 </span>
                                             )}
                                             {leave.status === 'Approved' && (
@@ -397,7 +379,8 @@ export default function LeavesIndex() {
                         </button>
                     </div>
                 </div>
-            </motion.div>
+            </div>
+            </div>
             
             <style dangerouslySetInnerHTML={{__html: `
                 @keyframes ringing {
