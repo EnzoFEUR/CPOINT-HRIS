@@ -36,8 +36,14 @@ app.use(compression({
     threshold: 1024
 }));
 
-// Core Middleware
-app.use(cors());
+// Core Middleware with 24-hour CORS Preflight Cache
+app.use(cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-user-id'],
+    maxAge: 86400 // Cache OPTIONS preflight for 24 hours to eliminate 200ms preflight latency
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
