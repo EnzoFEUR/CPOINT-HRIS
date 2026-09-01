@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { checkRole } from '../middleware/authMiddleware.js';
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
+import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
 
 const router = express.Router();
 
@@ -276,6 +277,154 @@ async function computePayrollForecast() {
         generatedAt: new Date().toISOString()
     };
 }
+
+/**
+ * Unified Composite Dashboard Overview BFF Endpoint
+ * Consolidates Admin Telemetry, Payroll Forecast, Daily Briefing, and Anomalies
+ * into a single high-speed parallel response with server-side micro-caching.
+ */
+router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) => {
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
+
+        // 1. Fetch core telemetry, payroll calculations in parallel
+        const [
+            { data: rawEmployees, error: empErr },
+            { data: rawAttendances, error: attErr },
+            { data: rawLeaves, error: leaveErr },
+            forecast
+        ] = await Promise.all([
+            supabase
+                .from('employees')
+                .select('id, department, role, shift, company_id')
+                .not('company_id', 'is', null)
+                .neq('role', 'admin')
+                .neq('role', 'security'),
+            supabase
+                .from('attendances')
+                .select('id, employee_id, date, status, created_at, time_in, time_out, employees:employee_id(id, company_id, first_name, last_name, department, shift)')
+                .gte('date', thirtyFiveDaysAgo)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('leave_requests')
+                .select('status, start_date, end_date'),
+            computePayrollForecast().catch(() => null)
+        ]);
+
+        if (empErr) throw empErr;
+        if (attErr) throw attErr;
+        if (leaveErr) throw leaveErr;
+
+        const employees = rawEmployees || [];
+        const attendances = rawAttendances || [];
+        const leaves = rawLeaves || [];
+
+        // 2. In-Memory Calculations
+        const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
+        const empMap = new Map();
+        let nightShiftCount = 0;
+
+        employees.forEach(emp => {
+            empMap.set(emp.id, emp);
+            const dept = emp.department || 'Other';
+            if (dept === 'Factory') deptBreakdown.Factory++;
+            else if (dept === 'Retail') deptBreakdown.Retail++;
+            else if (dept === 'IT') deptBreakdown.IT++;
+            else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
+
+            if ((emp.shift || '').toLowerCase().includes('night')) {
+                nightShiftCount++;
+            }
+        });
+
+        let presentTodayCount = 0;
+        let lateTodayCount = 0;
+        const recentLogs = [];
+
+        attendances.forEach(att => {
+            if (att.date === todayStr) {
+                presentTodayCount++;
+                if ((att.status || '').toLowerCase().includes('late')) {
+                    lateTodayCount++;
+                }
+                if (recentLogs.length < 5) {
+                    recentLogs.push(att);
+                }
+            }
+        });
+
+        let onLeaveCount = 0;
+        let pendingLeavesCount = 0;
+
+        leaves.forEach(l => {
+            if (l.status === 'New') pendingLeavesCount++;
+            if (l.status === 'Approved' && l.start_date <= todayStr && l.end_date >= todayStr) {
+                onLeaveCount++;
+            }
+        });
+
+        const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
+        const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
+        const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances, nightShiftCount);
+
+        // 3. Anomaly Signals & Briefing Metrics (deterministic in-memory)
+        const signals = computeAttendanceSignals(attendances);
+        const general_health_assessment = signals.anomalies_detected_count === 0
+            ? 'All attendance patterns are within acceptable organizational thresholds.'
+            : `${signals.anomalies_detected_count} attendance pattern(s) flagged across ${signals.sample_size} active employees in the last 30 days.`;
+
+        const totalEmployees = employees.length || 1;
+        const absentCount = Math.max(0, totalEmployees - presentTodayCount - onLeaveCount);
+        const attendanceRate = Math.round((presentTodayCount / totalEmployees) * 100);
+
+        const briefingData = {
+            totalEmployees,
+            presentCount: presentTodayCount,
+            lateCount: lateTodayCount,
+            onLeaveCount,
+            absentCount,
+            attendanceRate,
+            departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
+        };
+
+        // Asynchronous AI enhancements (falls back gracefully if cold)
+        const [briefing, payrollNarrative] = await Promise.all([
+            Brain.Analytics.generateWorkforceBriefing(briefingData, false).catch(() => null),
+            forecast ? Brain.Analytics.generatePayrollInsight(forecast).catch(() => null) : null
+        ]);
+
+        const payrollData = forecast ? { ...forecast, insight: payrollNarrative?.insight || null } : null;
+
+        res.json({
+            admin: {
+                totalStaff: employees.length,
+                deptBreakdown,
+                presentTodayCount,
+                lateTodayCount,
+                onLeaveCount,
+                pendingLeavesCount,
+                recentLogs,
+                weeklyTrends,
+                monthlyTrends,
+                deptPunctuality,
+                doleCompliance
+            },
+            payrollData,
+            aiData: briefing ? { briefing } : null,
+            anomalyData: {
+                report: {
+                    ...signals,
+                    general_health_assessment
+                }
+            }
+        });
+    } catch (err) {
+        console.error('[DASHBOARD_ROUTE] Overview error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (req, res) => {
     try {
