@@ -30,7 +30,7 @@ export default function Show() {
         if (!id || id === 'undefined') return;
 
         let isMounted = true;
-        fetchWithAuth(`/api/employees/${id}?t=${Date.now()}`)
+        fetchWithAuth(`/api/employees/${id}`)
             .then(res => res.json())
             .then(data => {
                 if (!isMounted) return;

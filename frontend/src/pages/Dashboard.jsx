@@ -56,31 +56,18 @@ export default function Dashboard() {
         refetchInterval: 5 * 60000,
     });
 
-    // Payroll forecast
-    const { data: payrollData, isLoading: isPayrollLoading } = useQuery({
-        queryKey: ['payrollForecast'],
-        queryFn: async () => {
-            const res = await fetchWithAuth('/api/dashboard/payroll-forecast');
-            return res.json();
-        },
-        staleTime: 60000,
-        refetchInterval: 60000,
-    });
-
     // Real-time synchronization
     useEffect(() => {
         const liveChannel = supabase
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
-                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
-                queryClient.invalidateQueries({ queryKey: ['payrollForecast'] });
             })
             .subscribe();
 

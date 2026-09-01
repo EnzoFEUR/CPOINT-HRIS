@@ -1,5 +1,5 @@
 // C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
-const CACHE_NAME = 'cpoint-hris-v2.6.5';
+const CACHE_NAME = 'cpoint-hris-v2.7.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -45,20 +45,14 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Skip non-GET and browser-extension requests
-  if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
-    return;
-  }
-
-  // 2. Network-First for API and Database endpoints
+  // 1. Pass API, Database, non-GET, and non-HTTP requests directly to the native network stack
   if (
+    request.method !== 'GET' || 
+    !url.protocol.startsWith('http') ||
     url.pathname.startsWith('/api') || 
     url.hostname.includes('onrender.com') || 
     url.hostname.includes('supabase.co')
   ) {
-    event.respondWith(
-      fetch(request).catch(() => caches.match(request))
-    );
     return;
   }
 
