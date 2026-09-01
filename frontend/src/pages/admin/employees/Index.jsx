@@ -58,7 +58,7 @@ export default function EmployeesIndex() {
     };
 
     const fetchEmployees = async () => {
-        const res = await fetchWithAuth(`/api/employees?t=${Date.now()}`);
+        const res = await fetchWithAuth('/api/employees');
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
         return Array.isArray(result) ? result : (result.data || []);

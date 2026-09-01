@@ -23,7 +23,7 @@ export default function Edit() {
     const [rawPieceRate, setRawPieceRate] = useState('');
 
     useEffect(() => {
-        fetchWithAuth(`/api/employees/${id}?t=${Date.now()}`)
+        fetchWithAuth(`/api/employees/${id}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success || data.data) {

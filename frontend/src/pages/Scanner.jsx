@@ -662,8 +662,7 @@ const Scanner = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-        const imgRes = await fetch(`${urlData.publicUrl}?t=${Date.now()}`, { 
-          cache: 'no-store',
+        const imgRes = await fetch(urlData.publicUrl, { 
           signal: controller.signal 
         });
         clearTimeout(timeoutId);
