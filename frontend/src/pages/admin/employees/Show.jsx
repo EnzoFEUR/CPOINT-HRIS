@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
@@ -11,96 +11,50 @@ export default function Show() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
-    // Employee State
-    const [employee, setEmployee] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-
     // Modals State
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // 201 Documents State
-    const [documents, setDocuments] = useState([]);
-    const [isDocsLoading, setIsDocsLoading] = useState(true);
-
-    // Fetch Employee Details
-    useEffect(() => {
-        if (!id || id === 'undefined') return;
-
-        let isMounted = true;
-        fetchWithAuth(`/api/employees/${id}`)
-            .then(res => res.json())
-            .then(data => {
-                if (!isMounted) return;
-                if (data.success) {
-                    const emp = data.data;
-                    emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
-                    setEmployee(emp);
-                } else {
-                    toast.error('Employee not found');
-                    navigate('/admin/employees');
-                }
-            })
-            .catch(() => {
-                if (isMounted) toast.error('Failed to load employee');
-            })
-            .finally(() => {
-                if (isMounted) setIsLoading(false);
-            });
-
-        return () => { isMounted = false; };
-    }, [id, navigate]);
-
-    // Fetch 201 Documents
-    useEffect(() => {
-        if (!id || id === 'undefined') return;
-
-        let isMounted = true;
-        setIsDocsLoading(true);
-
-        const safeParseJson = async (res) => {
-            if (!res.ok) return null;
-            const text = await res.text();
-            if (!text) return null;
-            try {
-                return JSON.parse(text);
-            } catch {
-                return null;
+    // Pre-populate employee data from staff directory on Frame 0 (0ms)
+    const cachedEmp = useMemo(() => {
+        const cachedList = queryClient.getQueryData(['adminEmployees']);
+        if (Array.isArray(cachedList)) {
+            const found = cachedList.find(e => String(e.id) === String(id));
+            if (found) {
+                return {
+                    ...found,
+                    name: found.name || `${found.first_name || ''} ${found.last_name || ''}`.trim()
+                };
             }
-        };
+        }
+        return null;
+    }, [queryClient, id]);
 
-        const loadDocuments = async () => {
-            try {
-                let res = await fetchWithAuth(`/api/employee-documents?employee_id=${id}`);
-                let data = await safeParseJson(res);
+    // Single unified query for employee profile and 201 documents
+    const { data: employeeData, isLoading: isEmpLoading } = useQuery({
+        queryKey: ['employeeDetails', id],
+        queryFn: async () => {
+            const res = await fetchWithAuth(`/api/employees/${id}`);
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load employee');
+            const emp = data.data;
+            emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+            return {
+                ...data,
+                data: emp
+            };
+        },
+        initialData: cachedEmp ? { success: true, data: cachedEmp, documents: [] } : undefined,
+        staleTime: 60000,
+        enabled: !!id && id !== 'undefined',
+    });
 
-                // Fallback route check
-                if (!data || res.status === 404) {
-                    res = await fetchWithAuth(`/api/documents?employee_id=${id}`);
-                    data = await safeParseJson(res);
-                }
-
-                if (!isMounted) return;
-
-                if (data && data.success) {
-                    const docsList = data.documents || data.data || [];
-                    setDocuments(Array.isArray(docsList) ? docsList : []);
-                } else {
-                    setDocuments([]);
-                }
-            } catch (err) {
-                if (isMounted) setDocuments([]);
-            } finally {
-                if (isMounted) setIsDocsLoading(false);
-            }
-        };
-
-        loadDocuments();
-
-        return () => { isMounted = false; };
-    }, [id]);
+    const employee = employeeData?.data || cachedEmp || null;
+    const documents = employeeData?.documents || [];
+    const isLoading = isEmpLoading && !employee;
+    const isDocsLoading = isEmpLoading && documents.length === 0;
 
     const getFileMeta = (fileName = '') => {
         const ext = (fileName.split('.').pop() || '').toLowerCase();
