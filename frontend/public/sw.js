@@ -1,6 +1,8 @@
-// C-Point HRIS Progressive Web App Service Worker (Network-First Navigation Strategy)
-const CACHE_NAME = 'cpoint-hris-v2.7.0';
-const STATIC_ASSETS = [
+const CACHE_VERSION = 'v2.8.0';
+const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
+
+// Pre-cached static assets
+const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -12,86 +14,98 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css'
 ];
 
-// Install Event - Pre-cache core assets & activate immediately
+// Fallback timeout helper for network-first strategy
+const timeoutPromise = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), ms));
+
+// Install: Cache app shell and activate immediately
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('[PWA SW] Pre-caching non-fatal asset issue:', err);
+      return cache.addAll(APP_SHELL).catch((err) => {
+        console.warn('[SW] Pre-caching asset issue:', err);
       });
     })
   );
 });
 
-// Activate Event - Purge old cache versions and claim all clients immediately
+// Activate: Delete outdated caches and claim clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log('[PWA SW] Deleting outdated cache:', key);
+          if (key.startsWith('cpoint-hris-') && key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      return self.clients.claim();
+    }).then(() => {
+      return self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION });
+        });
+      });
+    })
   );
 });
 
-// Fetch Event
+// Fetch handler
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Pass API, Database, non-GET, and non-HTTP requests directly to the native network stack
+  // Bypass worker for dynamic APIs, Supabase, and external services
   if (
-    request.method !== 'GET' || 
+    request.method !== 'GET' ||
     !url.protocol.startsWith('http') ||
-    url.pathname.startsWith('/api') || 
-    url.hostname.includes('onrender.com') || 
-    url.hostname.includes('supabase.co')
+    url.pathname.startsWith('/api') ||
+    url.hostname.includes('onrender.com') ||
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('googleapis.com')
   ) {
     return;
   }
 
-  // 3. Navigation Requests (HTML / Page Routes) -> ALWAYS NETWORK-FIRST
-  // This prevents mobile white screens by ensuring fresh index.html with valid JS hashes is always loaded
+  // HTML page navigation: Network-first with fast timeout fallback
   if (request.mode === 'navigate' || request.destination === 'document') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+      Promise.race([
+        fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
           }
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match('/index.html') || await caches.match('/');
-          if (cached) return cached;
-          return new Response('<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body style="background:#090d16;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><p>Connecting to C-Point HRIS...</p><script>window.location.reload();</script></body></html>', {
-            headers: { 'Content-Type': 'text/html' }
-          });
-        })
+          return networkResponse;
+        }),
+        timeoutPromise(1200)
+      ]).catch(async () => {
+        const cached = await caches.match('/index.html') || await caches.match('/');
+        if (cached) return cached;
+        return new Response(
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body style="background:#090d16;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><p>Reconnecting to C-Point HRIS...</p><script>setTimeout(()=>window.location.reload(), 2000);</script></body></html>',
+          { headers: { 'Content-Type': 'text/html' } }
+        );
+      })
     );
     return;
   }
 
-  // 4. Static Hashed Assets (/assets/...) -> Cache-First with Network fallback
+  // Immutable hashed assets: Cache-first
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-        return fetch(request).then((response) => {
-          if (response && response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
-          return response;
+          return networkResponse;
         }).catch((err) => {
-          console.warn('[PWA SW] Asset fetch failed:', url.pathname, err);
+          console.warn('[SW] Asset fetch error:', url.pathname, err);
           return cached;
         });
       })
@@ -99,13 +113,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 5. All Other Static Assets -> Stale-While-Revalidate
+  // Other static assets: Stale-while-revalidate
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const copy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return networkResponse;
       }).catch(() => cachedResponse);
@@ -115,20 +129,20 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Message listener for skip waiting
+// Skip waiting message listener
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-// 6. Native Web Push Event (OS Lock-Screen Notifications)
+// Web Push notifications
 self.addEventListener('push', (event) => {
   let data = {
     title: 'C-Point HRIS',
     body: 'You have a new update in your HR portal.',
-    icon: '/icon-192.png',
-    badge: '/badge-72.png',
+    icon: '/pwa-192x192.png',
+    badge: '/favicon.svg',
     url: '/employee/dashboard',
     tag: 'cpoint-notification'
   };
@@ -143,9 +157,9 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/icon-192.png',
-    badge: data.badge || '/badge-72.png',
-    vibrate: [200, 100, 200, 100, 200],
+    icon: data.icon || '/pwa-192x192.png',
+    badge: data.badge || '/favicon.svg',
+    vibrate: [100, 50, 100],
     data: {
       url: data.url || '/employee/dashboard',
       timestamp: data.timestamp || Date.now()
@@ -163,7 +177,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// 7. Notification Click Handler -> Focus or Open Window
+// Notification click handler
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -171,14 +185,12 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // If an HRIS tab/window is already open, focus it and navigate
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           client.navigate(targetUrl);
           return client.focus();
         }
       }
-      // Otherwise open a new window
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }

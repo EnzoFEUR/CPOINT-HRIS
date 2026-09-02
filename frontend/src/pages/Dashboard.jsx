@@ -23,7 +23,7 @@ export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
 
-    // Master Unified Dashboard Overview (1 single composite network request)
+    // Dashboard overview query
     const { data: overviewData, isLoading, isFetching } = useQuery({
         queryKey: ['adminDashboardOverview'],
         queryFn: async () => {
