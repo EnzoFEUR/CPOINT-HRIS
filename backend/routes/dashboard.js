@@ -452,7 +452,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .maybeSingle(),
             supabase
                 .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, avatar_url, biometric_baseline_path, monthly_salary, piece_rate')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, biometric_baseline_path, monthly_salary, piece_rate')
                 .eq('id', id)
                 .single(),
             supabase
