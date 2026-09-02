@@ -19,12 +19,16 @@ router.get('/', cacheResponse(30), async (req, res) => {
     }
 });
 
+// Get employee details and 201 documents in a single parallel batch
 router.get('/:id', cacheResponse(30), async (req, res) => {
     try {
         const { id } = req.params;
-        const { data, error } = await supabase.from('employees').select('*').eq('id', id).single();
-        if (error) throw error;
-        res.json({ success: true, data });
+        const [empRes, docsRes] = await Promise.all([
+            supabase.from('employees').select('*').eq('id', id).single(),
+            supabase.from('documents').select('*').eq('employee_id', id).order('created_at', { ascending: false })
+        ]);
+        if (empRes.error) throw empRes.error;
+        res.json({ success: true, data: empRes.data, documents: docsRes.data || [] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

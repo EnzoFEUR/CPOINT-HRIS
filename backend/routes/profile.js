@@ -2,11 +2,31 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+
 const router = express.Router();
 
-// Get profile
-router.get('/', verifyToken, async (req, res) => {
-    res.json({ user: req.user });
+// Get profile and 201 documents in a single parallel batch
+router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [empRes, docsRes] = await Promise.all([
+            supabase.from('employees').select('*').eq('id', userId).single(),
+            supabase.from('documents').select('*').eq('employee_id', userId).order('created_at', { ascending: false })
+        ]);
+
+        const employee = empRes.data || req.user;
+        const documents = docsRes.data || [];
+
+        res.json({
+            success: true,
+            user: employee,
+            employee,
+            documents
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message, user: req.user, documents: [] });
+    }
 });
 
 // Update profile

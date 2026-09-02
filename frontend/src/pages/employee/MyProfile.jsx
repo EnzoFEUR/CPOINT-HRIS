@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 
@@ -8,6 +9,7 @@ const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
 const EXPIRY_WARNING_DAYS = 30;
 
 export default function MyProfile() {
+    const queryClient = useQueryClient();
     const initialUser = (() => {
         try {
             const raw = localStorage.getItem('user');
@@ -35,9 +37,43 @@ export default function MyProfile() {
         return null;
     })();
 
-    const [profile, setProfile] = useState(initialUser);
-    const [documents, setDocuments] = useState([]);
-    const [isLoading, setIsLoading] = useState(!initialUser);
+    // Single unified profile & 201 documents query with Frame-0 initialData
+    const { data: profileResponse, isLoading: isQueryLoading } = useQuery({
+        queryKey: ['myProfile'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/profile');
+            const data = await res.json();
+            return data;
+        },
+        initialData: initialUser ? { success: true, user: initialUser, documents: [] } : undefined,
+        staleTime: 60000,
+    });
+
+    const raw = profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {};
+    
+    const profile = useMemo(() => {
+        if (!raw || typeof raw !== 'object' || !raw.id) return initialUser;
+        return {
+            id: raw.id || raw.user_id,
+            company_id: raw.company_id || raw.employee_id || raw.emp_id || raw.id || 'CP-MAIN',
+            first_name: raw.first_name || raw.firstname || (raw.name ? raw.name.split(' ')[0] : ''),
+            last_name: raw.last_name || raw.lastname || (raw.name ? raw.name.split(' ').slice(1).join(' ') : ''),
+            email: raw.email || raw.user?.email || 'N/A',
+            phone: raw.phone || raw.contact_no || raw.phone_number || raw.mobile || '',
+            gender: raw.gender || raw.sex || 'N/A',
+            birth_date: raw.birth_date || raw.dob || raw.birthdate || null,
+            address: raw.address || raw.home_address || raw.present_address || '',
+            department: raw.department?.name || raw.department || raw.dept || 'Operations',
+            job_title: raw.job_title || raw.position || raw.designation || raw.role || 'Staff Member',
+            created_at: raw.created_at || raw.hire_date || raw.date_joined || null,
+            avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
+            photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
+            has_registered_biometrics: raw.has_registered_biometrics ?? true,
+        };
+    }, [raw, initialUser]);
+
+    const documents = profileResponse?.documents || [];
+    const isLoading = isQueryLoading && !profile;
     const [docSearch, setDocSearch] = useState('');
     const fileInputRef = useRef(null);
     const dragCounter = useRef(0);
@@ -52,63 +88,6 @@ export default function MyProfile() {
         expiryDate: '',
         file: null
     });
-
-    const loadProfileData = async () => {
-        try {
-            const profileRes = await fetchWithAuth('/api/profile');
-            const profileData = await profileRes.json();
-
-            const raw = profileData.employee || profileData.user || profileData.data?.employee || profileData.data?.user || profileData.data || profileData;
-
-            if (raw && typeof raw === 'object') {
-                const mappedProfile = {
-                    id: raw.id || raw.user_id,
-                    company_id: raw.company_id || raw.employee_id || raw.emp_id || raw.id || 'CP-MAIN',
-                    first_name: raw.first_name || raw.firstname || (raw.name ? raw.name.split(' ')[0] : ''),
-                    last_name: raw.last_name || raw.lastname || (raw.name ? raw.name.split(' ').slice(1).join(' ') : ''),
-                    email: raw.email || raw.user?.email || 'N/A',
-                    phone: raw.phone || raw.contact_no || raw.phone_number || raw.mobile || '',
-                    gender: raw.gender || raw.sex || 'N/A',
-                    birth_date: raw.birth_date || raw.dob || raw.birthdate || null,
-                    address: raw.address || raw.home_address || raw.present_address || '',
-                    department: raw.department?.name || raw.department || raw.dept || 'Operations',
-                    job_title: raw.job_title || raw.position || raw.designation || raw.role || 'Staff Member',
-                    created_at: raw.created_at || raw.hire_date || raw.date_joined || null,
-                    avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
-                    photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
-                    has_registered_biometrics: raw.has_registered_biometrics ?? true,
-                };
-
-                setProfile(mappedProfile);
-
-                if (mappedProfile.id) {
-                    await fetchDocuments(mappedProfile.id);
-                }
-            } else {
-                toast.error('Failed to parse profile payload');
-            }
-        } catch (err) {
-            toast.error('Error connecting to profile server');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const fetchDocuments = async (employeeId) => {
-        try {
-            const docsRes = await fetchWithAuth(`/api/employee-documents?employee_id=${employeeId}`);
-            const docsData = await docsRes.json();
-            if (docsData.success || Array.isArray(docsData.documents)) {
-                setDocuments(docsData.documents || docsData.data || []);
-            }
-        } catch (err) {
-            console.warn('Could not fetch documents:', err);
-        }
-    };
-
-    useEffect(() => {
-        loadProfileData();
-    }, []);
 
     const resetUploadForm = () => {
         setUploadForm({ title: '', category: 'General', expiryDate: '', file: null });
@@ -146,7 +125,6 @@ export default function MyProfile() {
                 body: formData
             });
 
-            // Parse response body safely
             const rawText = await res.text();
             let data = {};
             try {
@@ -159,7 +137,7 @@ export default function MyProfile() {
                 toast.success('Document uploaded successfully!');
                 setShowUploadModal(false);
                 resetUploadForm();
-                if (profile?.id) await fetchDocuments(profile.id);
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
             } else {
                 toast.error(data.message || data.error || `Upload failed with status ${res.status}`);
             }
