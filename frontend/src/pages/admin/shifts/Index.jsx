@@ -56,8 +56,9 @@ export default function ShiftsIndex() {
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterDept, setFilterDept] = useState('All');
+    const [pendingEmployeeId, setPendingEmployeeId] = useState(null);
 
-    // Fetch employees
+    // Fetch workforce directory
     const { data: rawEmployees = [], isLoading } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: async () => {
@@ -66,14 +67,14 @@ export default function ShiftsIndex() {
             if (!res.ok) throw new Error(data.error || 'Failed to fetch workforce');
             return Array.isArray(data) ? data : (data?.data || []);
         },
-        staleTime: 30000,
+        staleTime: 60000,
     });
 
     const employees = useMemo(() => {
         return Array.isArray(rawEmployees) ? rawEmployees : (rawEmployees?.data || []);
     }, [rawEmployees]);
 
-    // Mutation for shift assignment
+    // Optimistic shift assignment mutation
     const assignShiftMutation = useMutation({
         mutationFn: async ({ employeeId, shift }) => {
             const res = await fetchWithAuth('/api/shifts/assign', {
@@ -84,17 +85,42 @@ export default function ShiftsIndex() {
             if (!res.ok) throw new Error(data.error || 'Failed to assign schedule');
             return data;
         },
-        onSuccess: (data, variables) => {
-            toast.success(`Schedule assigned: ${variables.shift}`);
-            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        // Instant Frame-0 cache update
+        onMutate: async ({ employeeId, shift }) => {
+            await queryClient.cancelQueries({ queryKey: ['adminEmployees'] });
+            const previousEmployees = queryClient.getQueryData(['adminEmployees']);
+
+            queryClient.setQueryData(['adminEmployees'], (old) => {
+                if (!old) return old;
+                const list = Array.isArray(old) ? old : (old.data || []);
+                const updated = list.map(emp => emp.id === employeeId ? { ...emp, shift } : emp);
+                return Array.isArray(old) ? updated : { ...old, data: updated };
+            });
+
+            return { previousEmployees };
         },
-        onError: (err) => {
+        onError: (err, variables, context) => {
+            if (context?.previousEmployees) {
+                queryClient.setQueryData(['adminEmployees'], context.previousEmployees);
+            }
             toast.error(err.message || 'Error assigning shift');
+        },
+        onSuccess: (_, variables) => {
+            toast.success(`Schedule assigned: ${variables.shift}`);
+        },
+        onSettled: () => {
+            setPendingEmployeeId(null);
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
         }
     });
 
-    const handleAssignShift = (employeeId, shiftId) => {
-        assignShiftMutation.mutate({ employeeId, shift: shiftId });
+    // Handle button click with anti-spam check
+    const handleAssignShift = (employeeId, currentShift, newShiftId) => {
+        if (currentShift === newShiftId) return;
+        if (assignShiftMutation.isPending && pendingEmployeeId === employeeId) return;
+
+        setPendingEmployeeId(employeeId);
+        assignShiftMutation.mutate({ employeeId, shift: newShiftId });
     };
 
     const departments = useMemo(() => {
@@ -107,7 +133,6 @@ export default function ShiftsIndex() {
             const matchesSearch = fullName.includes(searchQuery.toLowerCase());
             const matchesDept = filterDept === 'All' || emp.department === filterDept;
             
-            // Exclude system technical accounts
             const isExcluded = fullName.includes('terminal guard') || 
                                fullName.includes('system admin') || 
                                emp.email === 'guard@c-point.com' || 
@@ -173,6 +198,7 @@ export default function ShiftsIndex() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-5">
                 {filteredEmployees.map(employee => {
                     const activeShift = SHIFT_TYPES.find(s => s.id === employee.shift) || SHIFT_TYPES[3];
+                    const isCardPending = assignShiftMutation.isPending && pendingEmployeeId === employee.id;
                     
                     return (
                         <div 
@@ -208,12 +234,13 @@ export default function ShiftsIndex() {
                                         return (
                                             <button 
                                                 key={shift.id}
-                                                onClick={() => handleAssignShift(employee.id, shift.id)}
-                                                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all duration-200 tap-active relative ${
+                                                disabled={isCardPending}
+                                                onClick={() => handleAssignShift(employee.id, employee.shift, shift.id)}
+                                                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
                                                     isSelected 
                                                         ? `${shift.styles.bg} text-white shadow-xs` 
                                                         : 'text-slate-500 hover:bg-white hover:text-slate-800'
-                                                }`}
+                                                } ${isCardPending ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             >
                                                 {shift.id}
                                             </button>

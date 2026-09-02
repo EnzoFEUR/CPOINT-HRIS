@@ -6,6 +6,7 @@ import { applyWorkforceFilter } from '../utils/workforce.js';
 
 const router = express.Router();
 
+// Get employee shift roster
 router.get('/', cacheResponse(30), async (req, res) => {
     try {
         let query = applyWorkforceFilter(supabase.from('employees').select('*')).order('first_name', { ascending: true });
@@ -15,11 +16,9 @@ router.get('/', cacheResponse(30), async (req, res) => {
         }
 
         const { data: employees, error } = await query;
-
         if (error) throw error;
         
-        // Ensure every employee object returns 'Unassigned' if shift is null, for frontend consistency
-        const employeesWithShifts = employees.map(emp => ({
+        const employeesWithShifts = (employees || []).map(emp => ({
             ...emp,
             shift: emp.shift || 'Unassigned'
         }));
@@ -30,57 +29,65 @@ router.get('/', cacheResponse(30), async (req, res) => {
     }
 });
 
+// Assign shift with single-pass update and async notifications
 router.post('/assign', async (req, res) => {
     try {
         const { employee_id, shift } = req.body;
+        if (!employee_id || !shift) {
+            return res.status(400).json({ error: 'Missing employee_id or shift' });
+        }
         
-        const { error } = await supabase
+        // Single-pass database update and select
+        const { data: emp, error } = await supabase
             .from('employees')
             .update({ shift })
-            .eq('id', employee_id);
+            .eq('id', employee_id)
+            .select('id, company_id, first_name, last_name, shift')
+            .single();
             
         if (error) throw error;
 
-        const { data: emp } = await supabase
-            .from('employees')
-            .select('id, company_id, first_name, last_name')
-            .eq('id', employee_id)
-            .maybeSingle();
+        // Invalidate cache immediately
+        invalidateCache(['/api/shifts', '/api/employees', '/api/dashboard/overview']);
 
-        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
+        // Return instant response to client
+        res.json({ success: true, message: 'Shift assigned successfully.', data: emp });
+
+        // Non-blocking background notification and audit log
+        const empName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() : 'Employee';
         const avatarUrl = emp?.company_id && emp?.id 
             ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
             : null;
 
-        await createNotification({
-            target: employee_id,
-            title: `Shift Schedule: ${shift}`,
-            text: `Shift schedule for ${empName} updated to ${shift}.`,
-            type: 'shift',
-            sender_id: emp?.id,
-            company_id: emp?.company_id,
-            sender_name: empName,
-            sender_avatar: avatarUrl
-        });
+        Promise.allSettled([
+            createNotification({
+                target: employee_id,
+                title: `Shift Schedule: ${shift}`,
+                text: `Shift schedule for ${empName} updated to ${shift}.`,
+                type: 'shift',
+                sender_id: emp?.id,
+                company_id: emp?.company_id,
+                sender_name: empName,
+                sender_avatar: avatarUrl
+            }),
+            (async () => {
+                if (req.user && req.user.role === 'admin') {
+                    const { createAuditLog } = await import('./auditLogs.js');
+                    await createAuditLog({
+                        log_name: 'shifts',
+                        description: `Reassigned shift for employee ${employee_id} to ${shift}`,
+                        subject_type: 'App\\Models\\Employee',
+                        subject_id: employee_id,
+                        event: 'updated',
+                        causer_id: req.user.id,
+                        properties: { new_shift: shift }
+                    });
+                }
+            })()
+        ]).catch(err => console.warn('[SHIFTS] Background logging note:', err));
 
-        // Optional Audit Logging
-        if (req.user && req.user.role === 'admin') {
-            const { createAuditLog } = await import('./auditLogs.js');
-            await createAuditLog({
-                log_name: 'shifts',
-                description: `Reassigned shift for employee ${employee_id} to ${shift}`,
-                subject_type: 'App\\Models\\Employee',
-                subject_id: employee_id,
-                event: 'updated',
-                causer_id: req.user.id,
-                properties: { new_shift: shift }
-            });
-        }
-
-        invalidateCache(['/api/shifts', '/api/employees']);
-
-        res.json({ success: true, message: 'Shift assigned successfully.' });
     } catch (err) {
+        console.error('[SHIFTS] Shift assign error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
