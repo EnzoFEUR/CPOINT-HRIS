@@ -1,6 +1,6 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
-import { checkRole } from '../middleware/authMiddleware.js';
+import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
@@ -418,6 +418,70 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         });
     } catch (err) {
         console.error('[DASHBOARD_ROUTE] Overview error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Composite Employee Dashboard BFF Endpoint
+router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
+
+        // Fetch employee attendance, latest payroll, profile, infractions, and leaves in parallel
+        const [
+            { data: attendanceData, error: attErr },
+            { data: payrollData, error: payErr },
+            { data: employee, error: empErr },
+            { data: discData, error: discErr },
+            { data: leaveData, error: leaveErr }
+        ] = await Promise.all([
+            supabase
+                .from('attendances')
+                .select('*')
+                .eq('employee_id', id)
+                .gte('date', thirtyDaysAgo)
+                .order('created_at', { ascending: false })
+                .limit(20),
+            supabase
+                .from('payrolls')
+                .select('*')
+                .eq('employee_id', id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            supabase
+                .from('employees')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, avatar_url, biometric_baseline_path, monthly_salary, piece_rate')
+                .eq('id', id)
+                .single(),
+            supabase
+                .from('disciplinary_logs')
+                .select('*')
+                .eq('employee_id', id)
+                .order('created_at', { ascending: false })
+                .limit(10),
+            supabase
+                .from('leave_requests')
+                .select('*')
+                .eq('employee_id', id)
+                .order('created_at', { ascending: false })
+                .limit(10)
+        ]);
+
+        if (attErr) throw attErr;
+        if (payErr) throw payErr;
+        if (empErr) throw empErr;
+
+        res.json({
+            attendanceData: attendanceData || [],
+            payrollData: payrollData || null,
+            shiftData: employee ? [{ ...employee }] : [],
+            discData: discData || [],
+            leaveData: leaveData || []
+        });
+    } catch (err) {
+        console.error('[DASHBOARD_ROUTE] Employee dashboard error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
