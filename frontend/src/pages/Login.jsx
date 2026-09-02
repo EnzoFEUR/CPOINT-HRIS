@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { fetchWithAuth } from '../utils/api';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -55,20 +56,57 @@ export default function Login() {
         }
     };
 
-    const sendOtp = (method) => {
+    const [previewOtp, setPreviewOtp] = useState(null);
+    const [timer, setTimer] = useState(300);
+
+    // Countdown timer for OTP expiry
+    useEffect(() => {
+        if (step !== 3 || timer <= 0) return;
+        const interval = setInterval(() => {
+            setTimer(prev => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [step, timer]);
+
+    const sendOtp = async (method) => {
         setOtpMethod(method);
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOtp(code);
+        setLoading(true);
+        setError(null);
         
-        if (method === 'sms') {
-            toast.success(`Verification code sent via SMS`);
-            console.log(`[SMS Mock] Security code sent to ${employeeData?.phone || 'registered number'}: ${code}`);
-        } else {
-            toast.success(`Verification code sent to ${email}`);
-            console.log(`[Email Mock] Security code sent to ${email}: ${code}`);
+        try {
+            const res = await fetchWithAuth('/api/auth/otp/send', {
+                method: 'POST',
+                body: JSON.stringify({
+                    email,
+                    phone: employeeData?.phone,
+                    user_id: employeeData?.id,
+                    method
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to dispatch verification code');
+            }
+
+            if (data.simulated && data.previewCode) {
+                setGeneratedOtp(data.previewCode);
+                setPreviewOtp(data.previewCode);
+                toast.success(`Demo code: ${data.previewCode}`, { duration: 5000 });
+            } else {
+                setGeneratedOtp(null);
+                setPreviewOtp(null);
+                toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
+            }
+
+            setTimer(300);
+            setStep(3);
+        } catch (err) {
+            setError(err.message || 'Error sending verification code');
+            toast.error(err.message || 'Failed to send verification code');
+        } finally {
+            setLoading(false);
         }
-        
-        setStep(3);
     };
 
     const handleOtpChange = (index, e) => {
@@ -150,49 +188,75 @@ export default function Login() {
     const verifyOtp = async (e) => {
         e.preventDefault();
         const enteredOtp = otpCode.join('');
-        if (enteredOtp !== generatedOtp && enteredOtp !== '000000') {
-            return setError("Invalid verification code. Please try again.");
+        if (enteredOtp.length < 6) {
+            return setError("Please enter the complete 6-digit code.");
         }
 
-        const { data: dbData, error: dbError } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('id', employeeData.id)
-            .single();
+        setLoading(true);
+        setError(null);
 
-        if (dbError) {
-            return setError("Failed to verify user profile.");
-        }
+        try {
+            const res = await fetchWithAuth('/api/auth/otp/verify', {
+                method: 'POST',
+                body: JSON.stringify({
+                    email,
+                    phone: employeeData?.phone,
+                    identifier: otpMethod === 'sms' ? employeeData?.phone : email,
+                    otp: enteredOtp
+                })
+            });
 
-        const userData = { 
-            ...employeeData, 
-            ...dbData,
-            has_registered_biometrics: employeeData._auth_metadata?.has_registered_biometrics || false,
-            name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
-        };
-        
-        delete userData._auth_metadata;
-        localStorage.setItem('user', JSON.stringify(userData));
-
-        const role = (userData.role || '').toLowerCase();
-        const isSecurityRole = role === 'security' || role === 'guard' || role === 'security_guard';
-        const isAdminRole = role === 'admin' || role === 'superadmin' || role === 'hr';
-
-        if (userData.requires_password_change) {
-            toast.success('Please update your password.');
-            navigate('/force-password-change');
-        } else if (!userData.has_registered_biometrics && !isSecurityRole && !isAdminRole) {
-            toast.success('Please complete your biometric enrollment.');
-            navigate('/biometric-setup');
-        } else {
-            toast.success('Signed in successfully');
-            if (isAdminRole) {
-                navigate('/');
-            } else if (isSecurityRole) {
-                navigate('/scanner');
-            } else {
-                navigate('/employee/dashboard');
+            const verifyData = await res.json();
+            if (!res.ok || !verifyData.success) {
+                setLoading(false);
+                return setError(verifyData.error || "Invalid verification code. Please try again.");
             }
+
+            const { data: dbData, error: dbError } = await supabase
+                .from('employees')
+                .select('*')
+                .eq('id', employeeData.id)
+                .single();
+
+            if (dbError) {
+                setLoading(false);
+                return setError("Failed to verify user profile.");
+            }
+
+            const userData = { 
+                ...employeeData, 
+                ...dbData,
+                has_registered_biometrics: employeeData._auth_metadata?.has_registered_biometrics || false,
+                name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
+            };
+            
+            delete userData._auth_metadata;
+            localStorage.setItem('user', JSON.stringify(userData));
+
+            const role = (userData.role || '').toLowerCase();
+            const isSecurityRole = role === 'security' || role === 'guard' || role === 'security_guard';
+            const isAdminRole = role === 'admin' || role === 'superadmin' || role === 'hr';
+
+            if (userData.requires_password_change) {
+                toast.success('Please update your password.');
+                navigate('/force-password-change');
+            } else if (!userData.has_registered_biometrics && !isSecurityRole && !isAdminRole) {
+                toast.success('Please complete your biometric enrollment.');
+                navigate('/biometric-setup');
+            } else {
+                toast.success('Signed in successfully');
+                if (isAdminRole) {
+                    navigate('/');
+                } else if (isSecurityRole) {
+                    navigate('/scanner');
+                } else {
+                    navigate('/employee/dashboard');
+                }
+            }
+        } catch (err) {
+            setError(err.message || "Failed to verify code.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -374,8 +438,21 @@ export default function Login() {
                             </button>
                         </form>
                         
-                        <p className="mt-3.5 text-xs text-slate-500">
-                            Didn't receive code? <button onClick={() => sendOtp(otpMethod)} className="text-blue-600 hover:underline font-semibold">Resend</button>
+                        <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
+                            {timer > 0 ? (
+                                <span>Code expires in <strong className="font-mono text-slate-700">{Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</strong></span>
+                            ) : (
+                                <span className="text-red-500 font-semibold">Code expired.</span>
+                            )}
+                            <span className="mx-1 text-slate-300">•</span>
+                            <button 
+                                type="button"
+                                disabled={loading}
+                                onClick={() => sendOtp(otpMethod)} 
+                                className="text-blue-600 hover:underline font-semibold disabled:opacity-40 cursor-pointer"
+                            >
+                                Resend
+                            </button>
                         </p>
                     </div>
                 )}
