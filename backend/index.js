@@ -18,6 +18,7 @@ import notificationRoutes from './routes/notifications.js';
 import pushRoutes from './routes/push.js';
 import aiRoutes from './routes/ai.js';
 import employeeDocumentRoutes from './routes/employeeDocuments.js';
+import otpRoutes from './routes/otp.js';
 
 // Middleware & Utilities
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
@@ -68,6 +69,7 @@ app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/ai', verifyToken, aiRoutes);
 app.use('/api/employee-documents', verifyToken, employeeDocumentRoutes);
+app.use('/api/auth/otp', otpRoutes);
 
 // Root Status
 app.get('/', (req, res) => {
