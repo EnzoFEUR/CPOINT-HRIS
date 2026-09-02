@@ -76,8 +76,8 @@ const EmployeeDashboard = () => {
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
         enabled: !!user.id && user.role !== 'security',
-        staleTime: 0,
-        refetchOnWindowFocus: true,
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
     });
 
     // Real-time synchronization
