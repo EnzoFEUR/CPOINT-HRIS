@@ -278,17 +278,13 @@ async function computePayrollForecast() {
     };
 }
 
-/**
- * Unified Composite Dashboard Overview BFF Endpoint
- * Consolidates Admin Telemetry, Payroll Forecast, Daily Briefing, and Anomalies
- * into a single high-speed parallel response with server-side micro-caching.
- */
+// Consolidated admin dashboard overview
 router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = new Date().toISOString().split('T')[0];
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
-        // 1. Fetch core telemetry, payroll calculations in parallel
+        // Fetch core metrics and forecast in parallel
         const [
             { data: rawEmployees, error: empErr },
             { data: rawAttendances, error: attErr },
