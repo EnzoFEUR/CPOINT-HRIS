@@ -143,31 +143,36 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
     </html>
     `;
 
-    // Resend REST API integration
-    if (process.env.RESEND_API_KEY) {
+    // 1. Primary Enterprise Dispatcher: Brevo REST API v3 (Sub-200ms, Unrestricted Recipients)
+    if (process.env.BREVO_API_KEY) {
         try {
-            const res = await fetch('https://api.resend.com/emails', {
+            const senderEmail = process.env.BREVO_SENDER_EMAIL || 'marikinahris2026@gmail.com';
+            const senderName = process.env.BREVO_SENDER_NAME || 'C-Point HRIS Security';
+
+            const res = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-                    'Content-Type': 'application/json'
+                    'api-key': process.env.BREVO_API_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
-                    from: process.env.RESEND_FROM || 'C-Point HRIS <onboarding@resend.dev>',
-                    to: [email],
+                    sender: { name: senderName, email: senderEmail },
+                    to: [{ email: email.trim().toLowerCase(), name: userName }],
                     subject: `${code} is your C-Point HRIS Verification Code`,
-                    html: htmlContent
+                    htmlContent: htmlContent,
+                    textContent: `Your C-Point HRIS verification code is ${code}. It expires in 5 minutes. Never share this code with anyone.`
                 })
             });
 
             const data = await res.json();
-            if (res.ok && data.id) {
-                console.log(`[OTP_RESEND_SUCCESS] Dispatched to ${email}: ID ${data.id}`);
-                return { success: true, provider: 'resend', messageId: data.id };
+            if (res.ok && data.messageId) {
+                console.log(`[OTP_BREVO_SUCCESS] Dispatched to ${email}: MessageID ${data.messageId}`);
+                return { success: true, provider: 'brevo', messageId: data.messageId };
             }
-            console.warn(`[OTP_RESEND_WARN] Resend response:`, data);
+            console.warn(`[OTP_BREVO_WARN] Brevo response:`, data);
         } catch (err) {
-            console.warn(`[OTP_RESEND_ERROR] Resend error (${err.message}).`);
+            console.warn(`[OTP_BREVO_ERROR] Brevo dispatch error (${err.message}).`);
         }
     }
 
