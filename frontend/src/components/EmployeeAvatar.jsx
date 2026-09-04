@@ -4,10 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 const urlStatusCache = new Map();
 
 /**
- * Enterprise-grade EmployeeAvatar Component
- * - Zero Pop: Stylized fallback initials are rendered immediately at paint frame 0.
- * - Zero Flicker: In-memory URL cache preserves loaded status across component re-renders.
- * - Stable Identity: Module-scoped component prevents unmounting on parent state updates.
+ * Employee avatar component with photo support and initials fallback.
  */
 export const EmployeeAvatar = ({
     employee = null,
@@ -139,12 +136,12 @@ export const EmployeeAvatar = ({
             style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
             className={`relative ${size} ${rounded} overflow-hidden shrink-0 ${border} ${shadow} ${themeClass} flex items-center justify-center select-none ${className}`}
         >
-            {/* Fallback initial letters - always present at paint time to eliminate pop */}
+            {/* Initials fallback */}
             <span className={`font-black ${resolvedTextSize} tracking-wide select-none pointer-events-none`}>
                 {initials}
             </span>
 
-            {/* Photo overlay with zero-flash cache resolution & anti-save protections */}
+            {/* Photo */}
             {resolvedAvatarSrc && !isFailed && (
                 <img
                     src={resolvedAvatarSrc}
@@ -161,7 +158,7 @@ export const EmployeeAvatar = ({
                 />
             )}
 
-            {/* Transparent security overlay to block image dragging/saving/inspection */}
+            {/* Overlay to prevent drag */}
             <div 
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); return false; }}
                 onDragStart={(e) => e.preventDefault()}

@@ -31,6 +31,46 @@ router.post('/record', authMiddleware, async (req, res) => {
   try {
     const { employee_id, title, category, file_name, file_path } = req.body;
 
+    if (!employee_id) {
+      return res.status(400).json({ success: false, message: 'employee_id is required.' });
+    }
+
+    // Verify employee separation status
+    const [
+      { data: employee, error: empErr },
+      { data: termLog }
+    ] = await Promise.all([
+      supabase
+        .from('employees')
+        .select('id, first_name, last_name, status, is_active')
+        .eq('id', employee_id)
+        .single(),
+      supabase
+        .from('disciplinary_logs')
+        .select('id')
+        .eq('employee_id', employee_id)
+        .eq('type', 'Termination')
+        .limit(1)
+    ]);
+
+    if (empErr || !employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found.' });
+    }
+
+    const isTerminated = 
+      employee.status === 'inactive' || 
+      employee.status === 'terminated' || 
+      employee.is_active === false || 
+      Boolean(termLog && termLog.length > 0);
+
+    if (isTerminated) {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_TERMINATED',
+        message: 'Document records cannot be added for separated or terminated employee accounts.'
+      });
+    }
+
     const { data, error } = await supabase
       .from('employee_documents')
       .insert([{

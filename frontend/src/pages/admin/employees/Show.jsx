@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
 export default function Show() {
@@ -17,7 +18,7 @@ export default function Show() {
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Pre-populate employee data from staff directory on Frame 0 (0ms)
+    // Pre-populate employee from cache if available
     const cachedEmp = useMemo(() => {
         const cachedList = queryClient.getQueryData(['adminEmployees']);
         if (Array.isArray(cachedList)) {
@@ -32,7 +33,7 @@ export default function Show() {
         return null;
     }, [queryClient, id]);
 
-    // Single unified query for employee profile and 201 documents
+    // Query employee details and 201 documents
     const { data: employeeData, isLoading: isEmpLoading } = useQuery({
         queryKey: ['employeeDetails', id],
         queryFn: async () => {
@@ -42,19 +43,42 @@ export default function Show() {
             const emp = data.data;
             emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
             return {
-                ...data,
-                data: emp
+                data: emp,
+                documents: data.documents || []
             };
         },
-        initialData: cachedEmp ? { success: true, data: cachedEmp, documents: [] } : undefined,
-        staleTime: 60000,
-        enabled: !!id && id !== 'undefined',
+        enabled: Boolean(id && id !== 'undefined'),
+        staleTime: 30_000,
+        gcTime: 300_000,
     });
 
     const employee = employeeData?.data || cachedEmp || null;
     const documents = employeeData?.documents || [];
     const isLoading = isEmpLoading && !employee;
     const isDocsLoading = isEmpLoading && documents.length === 0;
+
+    // Subscribe to live employee and disciplinary changes
+    useEffect(() => {
+        if (!id || id === 'undefined') return;
+        const channel = supabase
+            .channel(`admin-live-employee-${id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents', filter: `employee_id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [id, queryClient]);
 
     const getFileMeta = (fileName = '') => {
         const ext = (fileName.split('.').pop() || '').toLowerCase();
@@ -151,6 +175,8 @@ export default function Show() {
             ? (employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? employee.monthly_salary ?? 0)
             : (employee.monthly_salary ?? employee.salary ?? 0)
     );
+    const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
+    const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
 
     return (
         <>
@@ -194,7 +220,7 @@ export default function Show() {
                     </div>
                 </div>
 
-                {/* Unified Enterprise Employee Profile Banner */}
+                {/* Profile banner */}
                 <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                         <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
@@ -207,6 +233,17 @@ export default function Show() {
                                 theme="dark"
                                 textSize="text-3xl sm:text-4xl"
                             />
+                            {isTerminated ? (
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                    <i className="ti ti-x" /> Terminated
+                                </span>
+                            ) : isSuspended ? (
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                    <i className="ti ti-clock-pause" /> Suspended
+                                </span>
+                            ) : (
+                                <span className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Active Personnel" />
+                            )}
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -214,17 +251,43 @@ export default function Show() {
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
                                     <i className="ti ti-id text-slate-400" /> {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-EMPLOYEE')}
                                 </span>
+
+                                {/* Status badge */}
+                                {isTerminated ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-bold rounded border border-rose-500/40">
+                                        <i className="ti ti-circle-x text-sm text-rose-400" /> Terminated / Separated
+                                    </span>
+                                ) : isSuspended ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded border border-amber-500/40">
+                                        <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active Personnel
+                                    </span>
+                                )}
+
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
                                     {employee.department || 'General'}
                                 </span>
                                 {isFactory ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
-                                        Piece-Rate Production
-                                    </span>
+                                    <>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                            Factory (08:00 - 17:00 • No OT)
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                            Piece-Rate Production
+                                        </span>
+                                    </>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
-                                        Salaried Monthly
-                                    </span>
+                                    <>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                            Regular (08:00 - 20:00 • OT Eligible)
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                            Salaried Monthly
+                                        </span>
+                                    </>
                                 )}
                             </div>
 
@@ -248,6 +311,106 @@ export default function Show() {
                         </div>
                     </div>
                 </div>
+
+                {/* Status alert banner */}
+                {isTerminated && (
+                    <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
+                                <i className="ti ti-ban text-xl" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
+                                    <span className="px-2 py-0.5 bg-rose-200/80 text-rose-900 text-[10px] font-extrabold uppercase rounded">DOLE Separated</span>
+                                </div>
+                                <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                                    {employee.termination_record?.reason || 'This employee account has been officially separated from active roster. Portal access and attendance permissions are deactivated.'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-rose-700 font-medium">
+                                    {employee.termination_record?.date && (
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900">{employee.termination_record.date}</strong>
+                                        </span>
+                                    )}
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-lock" /> Biometric Pass Revoked
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-file-off" /> Document Vault Uploads Locked (Audit-Only)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="shrink-0 self-stretch sm:self-center">
+                            <Link
+                                to={`/admin/documents?employee_id=${employee.id}`}
+                                className="px-3.5 py-2 bg-white hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg border border-rose-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                <i className="ti ti-folders text-sm" /> Review 201 Vault
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {isSuspended && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                                <i className="ti ti-alert-triangle text-xl" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-amber-900 text-sm sm:text-base">Active Disciplinary Suspension</h4>
+                                    <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-extrabold uppercase rounded">Operational Hold</span>
+                                </div>
+                                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                    {employee.active_suspension?.reason || 'This employee is currently serving an active disciplinary suspension.'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-amber-700 font-medium">
+                                    {employee.active_suspension?.date && (
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-amber-900">{employee.active_suspension.date}</strong>
+                                        </span>
+                                    )}
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-qrcode" /> QR Scanner Attendance Locked
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-shield-half" /> Auto-Restores Upon Expiry
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="shrink-0 self-stretch sm:self-center">
+                            <Link
+                                to="/admin/disciplinary"
+                                className="px-3.5 py-2 bg-white hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                <i className="ti ti-gavel text-sm" /> Disciplinary Logs
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {!isTerminated && !isSuspended && employee?.past_suspensions_count > 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                                <i className="ti ti-history text-sm" />
+                            </div>
+                            <div>
+                                <span className="font-bold text-slate-800">Prior Disciplinary History:</span>{' '}
+                                <span className="text-slate-600">
+                                    This employee has previously served <strong>{employee.past_suspensions_count}</strong> {employee.past_suspensions_count === 1 ? 'suspension' : 'suspensions'}. All terms have concluded and account is currently in <strong>Good Standing</strong>.
+                                </span>
+                            </div>
+                        </div>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded shrink-0 border border-emerald-200">
+                            Active / Cleared
+                        </span>
+                    </div>
+                )}
 
                 {/* Personal and payroll details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
@@ -312,6 +475,20 @@ export default function Show() {
                                 <div>
                                     <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Job Title</p>
                                     <p className="font-extrabold text-slate-800 text-sm">{employee.job_title || 'N/A'}</p>
+                                </div>
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Work Schedule</p>
+                                    <p className="font-mono font-extrabold text-slate-800 text-xs">
+                                        {isFactory ? '08:00 AM – 05:00 PM' : '08:00 AM – 08:00 PM'}
+                                    </p>
+                                </div>
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Overtime Status</p>
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                        isFactory ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    }`}>
+                                        {isFactory ? 'No Overtime (Prohibited)' : 'Overtime Eligible'}
+                                    </span>
                                 </div>
                             </div>
 

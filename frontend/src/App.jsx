@@ -44,9 +44,6 @@ const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 // Admin / Leaves
 const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 
-// Admin / Shifts
-const ShiftsIndex = lazy(() => import('./pages/admin/shifts/Index'));
-
 // Admin / Disciplinary
 const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 
@@ -154,7 +151,6 @@ const getPageTitle = (pathname) => {
 
   // Other Admin Routes
   if (pathname === '/admin/leaves') return 'Leave Requests';
-  if (pathname === '/admin/shifts') return 'Shift Schedules';
   if (pathname === '/admin/disciplinary') return 'Disciplinary Records';
   if (pathname === '/admin/audit-logs') return 'Audit Trail';
 
@@ -235,7 +231,7 @@ const getNotificationVisuals = (type) => {
         bg: 'bg-purple-50 text-purple-600 border-purple-200/80',
         badge: 'bg-purple-500',
         label: 'Schedule',
-        path: '/admin/shifts'
+        path: '/employee/dashboard'
       };
     case 'disciplinary':
     case 'warning':
@@ -542,7 +538,6 @@ function MainLayout({ children }) {
   const searchIndex = isAdmin(user) ? [
     { label: 'Admin Dashboard', route: '/', icon: 'ti-smart-home' },
     { label: 'Employees Directory', route: '/admin/employees', icon: 'ti-users-group' },
-    { label: 'Shift Deployment', route: '/admin/shifts', icon: 'ti-calendar-time' },
     { label: 'Payroll Ledger', route: '/admin/payroll', icon: 'ti-wallet' },
     { label: 'Compute Payroll', route: '/admin/payroll/process', icon: 'ti-calculator' },
     { label: 'Statutory Settings', route: '/admin/payroll/statutory-settings', icon: 'ti-adjustments-horizontal' },
@@ -618,8 +613,15 @@ function MainLayout({ children }) {
     const visuals = getNotificationVisuals(notif.type);
     let targetPath = visuals.path;
 
-    if (user?.role !== 'admin') {
-      targetPath = '/employee/dashboard';
+    const isAdmin = ['admin', 'superadmin', 'hr'].includes((user?.role || '').toLowerCase());
+
+    if (!isAdmin) {
+      if (notif.type === 'disciplinary' || notif.type === 'warning') {
+        targetPath = '/employee/dashboard?view=disciplinary';
+        window.dispatchEvent(new CustomEvent('open_disciplinary_modal', { detail: notif }));
+      } else {
+        targetPath = '/employee/dashboard';
+      }
     }
 
     navigate(targetPath);
@@ -726,16 +728,44 @@ function MainLayout({ children }) {
         <nav className="flex-1 mt-6 px-4 space-y-1.5 overflow-y-auto pb-6 custom-scrollbar">
           <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Overview</p>
 
-          <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
-            <i className="ti ti-smart-home text-xl"></i>
-            <span className="ml-3 font-medium tracking-wide">Dashboard</span>
-          </Link>
+          {isAdmin(user) ? (
+            <Link to="/" className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${location.pathname === '/' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'}`}>
+              <i className="ti ti-smart-home text-xl"></i>
+              <span className="ml-3 font-medium tracking-wide">Dashboard</span>
+            </Link>
+          ) : (
+            <>
+              <Link 
+                to="/employee/dashboard" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+                  location.pathname === '/employee/dashboard' || location.pathname === '/' 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-smart-home text-xl"></i>
+                <span className="ml-3 font-medium tracking-wide">My Portal</span>
+              </Link>
 
-          <div className="pt-6 pb-2">
+              <Link 
+                to="/employee/qr" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors mt-1 ${
+                  location.pathname === '/employee/qr' 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className="ti ti-qrcode text-xl"></i>
+                <span className="ml-3 font-medium tracking-wide">Digital Pass (QR)</span>
+              </Link>
+            </>
+          )}
+
+          <div className="pt-5 pb-2">
             <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Workspace</p>
           </div>
 
-          {user.role === 'admin' ? (
+          {isAdmin(user) ? (
             <>
               {/* Attendance submenu */}
               <div className="space-y-1">
@@ -767,7 +797,6 @@ function MainLayout({ children }) {
               {/* Nav links */}
               {[
                 { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
-                { route: '/admin/shifts', icon: 'ti-calendar-time', label: 'Shift Deployment' },
                 { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
                 { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
                 { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
@@ -780,46 +809,53 @@ function MainLayout({ children }) {
               ))}
             </>
           ) : (
-            <>
+            <div className="space-y-1">
               <Link 
-                to="/employee/qr" 
-                className={`flex items-center px-4 py-3.5 rounded-2xl ${
-                  location.pathname === '/employee/qr' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
-                }`}
-              >
-                <i className="ti ti-qrcode text-xl"></i>
-                <span className="ml-3 font-medium tracking-wide">Show My ID</span>
-              </Link>
-              <Link 
-                to="/profile" 
-                className={`flex items-center px-4 py-3.5 rounded-2xl ${
-                  location.pathname === '/profile' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                to="/employee/profile" 
+                className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+                  location.pathname === '/employee/profile' || location.pathname === '/profile' 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
                 <i className="ti ti-user-circle text-xl"></i>
-                <span className="ml-3 font-medium tracking-wide">My Profile</span>
+                <span className="ml-3 font-medium tracking-wide">Profile</span>
               </Link>
-            </>
+
+              {isSecurity(user) && (
+                <Link 
+                  to="/scanner" 
+                  className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+                    location.pathname === '/scanner' 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold' 
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                  }`}
+                >
+                  <i className="ti ti-scan text-xl"></i>
+                  <span className="ml-3 font-medium tracking-wide">Gate Scanner</span>
+                </Link>
+              )}
+            </div>
           )}
 
         </nav>
 
         {/* User profile */}
-        <div className="p-4 mt-auto border-t border-white/5 bg-slate-900/20 rounded-b-[2rem] shrink-0">
-          <Link to="/profile" className="flex items-center p-3 rounded-2xl mb-2 cursor-pointer hover:bg-white/5">
-            <div className="relative">
-              <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-lg">
-                {user.name ? user.name.charAt(0) : (user.first_name ? user.first_name.charAt(0) : '?')}
+        <div className="p-4 mt-auto border-t border-white/5 bg-slate-900/40 rounded-b-[2rem] shrink-0">
+          <Link to={isAdmin(user) ? "/profile" : "/employee/profile"} className="flex items-center p-3 rounded-2xl mb-2 cursor-pointer hover:bg-white/5 transition-colors">
+            <div className="relative shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
+                {user.name ? user.name.charAt(0).toUpperCase() : (user.first_name ? user.first_name.charAt(0).toUpperCase() : '?')}
               </div>
-              <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-green-500 border-2 border-[#0B132B] rounded-full"></span>
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
             </div>
-            <div className="ml-3 overflow-hidden">
-              <p className="text-sm font-bold text-white truncate hover:text-blue-400">{user.name || `${user.first_name} ${user.last_name}`}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">{user.role}</p>
+            <div className="ml-3 overflow-hidden min-w-0 flex-1">
+              <p className="text-xs font-bold text-white truncate hover:text-blue-400">{user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Employee'}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold truncate mt-0.5">{user.job_title || user.department || user.role || 'Staff'}</p>
             </div>
           </Link>
-          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-3 text-sm font-bold text-red-400 bg-red-500/10 rounded-xl hover:text-white hover:bg-red-500/20">
-            <i className="ti ti-power mr-2 text-lg"></i> Sign Out
+          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-2.5 text-xs font-bold text-rose-400 bg-rose-500/10 rounded-xl hover:text-white hover:bg-rose-600 transition-all cursor-pointer">
+            <i className="ti ti-power mr-2 text-base"></i> Sign Out
           </button>
         </div>
       </aside>
@@ -831,9 +867,15 @@ function MainLayout({ children }) {
           {/* Header */}
           <header className="flex items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 sm:py-3.5 sticky top-0 sm:top-4 z-30 bg-white/90 sm:bg-white/70 backdrop-blur-xl shadow-xs sm:shadow-sm border-b sm:border border-slate-200/70 sm:border-slate-200/60 sm:rounded-2xl sm:mx-4 lg:mx-8 touch-none select-none overscroll-none">
             <div className="flex items-center gap-3">
-              <div className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs shadow-sm">
-                CP
-              </div>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900 text-white shadow-xs tap-active cursor-pointer hover:bg-slate-800 transition-colors"
+                title="Open Navigation"
+                aria-label="Open Navigation"
+              >
+                <i className="ti ti-menu-2 text-base" />
+              </button>
               <div>
                 <h2 className="text-base sm:text-2xl font-black text-slate-800 tracking-tight capitalize leading-tight">
                   {getPageTitle(location.pathname)}
@@ -1059,16 +1101,14 @@ function MainLayout({ children }) {
           </main>
 
           {/* Mobile navigation dock */}
-          {/* Mobile navigation dock */}
           <div className="lg:hidden fixed bottom-2.5 sm:bottom-4 inset-x-0 z-40 flex justify-center px-2 sm:px-4 pointer-events-none pb-[max(0.35rem,env(safe-area-inset-bottom))]">
-            <nav className="pointer-events-auto w-full max-w-[460px] bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl p-1 sm:p-1.5 flex items-center justify-between gap-0.5 sm:gap-1 shadow-slate-950/50 ring-1 ring-white/10">
+            <nav className={`pointer-events-auto w-full ${user.role === 'admin' ? 'max-w-[460px]' : 'max-w-[320px] sm:max-w-[340px]'} bg-slate-900/90 backdrop-blur-2xl text-slate-400 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl p-1 sm:p-1.5 flex items-center justify-between gap-0.5 sm:gap-1 shadow-slate-950/50 ring-1 ring-white/10`}>
               {user.role === 'admin' ? (
                 <>
                   {[
                     { to: '/', label: 'Home', icon: 'ti-smart-home', exact: true },
                     { to: '/admin/employees', label: 'Staff', icon: 'ti-users-group' },
                     { to: '/admin/attendance', label: 'Logs', icon: 'ti-clock-hour-4' },
-                    { to: '/admin/shifts', label: 'Shifts', icon: 'ti-calendar-time' },
                     { to: '/admin/payroll', label: 'Payroll', icon: 'ti-wallet' },
                     { to: '/admin/leaves', label: 'Leaves', icon: 'ti-plane-departure' }
                   ].map(tab => {
@@ -1117,10 +1157,10 @@ function MainLayout({ children }) {
                 </>
               ) : (
                 <div className="flex items-center justify-between w-full relative">
-                  {/* Left: Portal / Home */}
+                  {/* Left: Portal Home */}
                   <Link
                     to="/employee/dashboard"
-                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active transition-all ${
                       location.pathname === '/employee/dashboard' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                     }`}
                     title="Portal Home"
@@ -1136,28 +1176,7 @@ function MainLayout({ children }) {
                     </span>
                   </Link>
 
-                  {/* Optional for Security: Terminal Scan */}
-                  {isSecurity(user) && (
-                    <Link
-                      to="/scanner"
-                      className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
-                        location.pathname === '/scanner' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Gate Scanner"
-                    >
-                      {location.pathname === '/scanner' && (
-                        <div
-                          className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                        />
-                      )}
-                      <i className={`ti ti-scan text-lg sm:text-xl relative z-10 ${location.pathname === '/scanner' ? 'scale-110' : ''}`} />
-                      <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
-                        Terminal
-                      </span>
-                    </Link>
-                  )}
-
-                  {/* Center QR code button */}
+                  {/* Middle: Centered Elevated QR Code Button */}
                   <div className="relative flex-1 flex flex-col items-center justify-center -mt-5 sm:-mt-6 group">
                     <Link
                       to="/employee/qr"
@@ -1166,7 +1185,7 @@ function MainLayout({ children }) {
                     >
                       {/* Circular action button */}
                       <div
-                        className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 ${
+                        className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 transition-transform active:scale-95 ${
                           location.pathname === '/employee/qr'
                             ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40 border border-white/30'
                             : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 shadow-md border border-white/10'
@@ -1179,29 +1198,27 @@ function MainLayout({ children }) {
                       <span className={`text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-1 font-bold ${
                         location.pathname === '/employee/qr' ? 'text-white font-black' : 'text-slate-400 group-hover:text-slate-200'
                       }`}>
-                        QR Pass
+                        QR Code
                       </span>
                     </Link>
                   </div>
 
-                  {/* Profile Tab */}
-                  <Link
-                    to="/employee/profile"
-                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active ${
-                      location.pathname === '/employee/profile' || location.pathname === '/profile' ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
+                  {/* Right: Quick Navigation Menu */}
+                  <button
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className={`relative flex-1 min-w-0 py-1.5 sm:py-2 px-1 flex flex-col items-center justify-center rounded-xl sm:rounded-2xl select-none tap-active transition-all ${
+                      sidebarOpen ? 'text-white font-black' : 'text-slate-400 hover:text-slate-200'
                     }`}
-                    title="My Profile"
+                    title="Quick Navigation Menu"
                   >
-                    {(location.pathname === '/employee/profile' || location.pathname === '/profile') && (
-                      <div
-                        className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40"
-                      />
+                    {sidebarOpen && (
+                      <div className="absolute inset-0 bg-blue-600 rounded-xl sm:rounded-2xl shadow-md shadow-blue-500/40" />
                     )}
-                    <i className={`ti ti-user text-lg sm:text-xl relative z-10 ${location.pathname === '/employee/profile' || location.pathname === '/profile' ? 'scale-110' : ''}`} />
+                    <i className={`ti ti-grid-dots text-lg sm:text-xl relative z-10 ${sidebarOpen ? 'scale-110' : ''}`} />
                     <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-bold">
-                      Profile
+                      Menu
                     </span>
-                  </Link>
+                  </button>
                 </div>
               )}
             </nav>
@@ -1256,61 +1273,109 @@ function MainLayout({ children }) {
                   )}
 
                   <div className="grid grid-cols-2 gap-2.5 mb-5">
-                    <Link
-                      to="/admin/payroll/statutory-settings"
-                      onClick={() => setSidebarOpen(false)}
-                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
-                        <i className="ti ti-adjustments-horizontal text-xl" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">Statutory Settings</p>
-                        <p className="text-[9px] text-slate-400 truncate">SSS, PhilHealth, Pag-IBIG rates</p>
-                      </div>
-                    </Link>
+                    {isAdmin(user) ? (
+                      <>
+                        <Link
+                          to="/admin/payroll/statutory-settings"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-adjustments-horizontal text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Statutory Settings</p>
+                            <p className="text-[9px] text-slate-400 truncate">SSS, PhilHealth rates</p>
+                          </div>
+                        </Link>
 
-                    <Link
-                      to="/admin/disciplinary"
-                      onClick={() => setSidebarOpen(false)}
-                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0">
-                        <i className="ti ti-gavel text-xl" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">Disciplinary</p>
-                        <p className="text-[9px] text-slate-400 truncate">Notices & infractions</p>
-                      </div>
-                    </Link>
+                        <Link
+                          to="/admin/disciplinary"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-gavel text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Disciplinary</p>
+                            <p className="text-[9px] text-slate-400 truncate">Notices & infractions</p>
+                          </div>
+                        </Link>
 
-                    <Link
-                      to="/admin/audit-logs"
-                      onClick={() => setSidebarOpen(false)}
-                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
-                        <i className="ti ti-history text-xl" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">Audit Trail</p>
-                        <p className="text-[9px] text-slate-400 truncate">Security history</p>
-                      </div>
-                    </Link>
+                        <Link
+                          to="/admin/audit-logs"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-history text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Audit Trail</p>
+                            <p className="text-[9px] text-slate-400 truncate">Security history</p>
+                          </div>
+                        </Link>
 
-                    <Link
-                      to="/admin/attendance/calendar"
-                      onClick={() => setSidebarOpen(false)}
-                      className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                        <i className="ti ti-calendar text-xl" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">Calendar</p>
-                        <p className="text-[9px] text-slate-400 truncate">Workforce roster</p>
-                      </div>
-                    </Link>
+                        <Link
+                          to="/admin/attendance/calendar"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-calendar text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Calendar</p>
+                            <p className="text-[9px] text-slate-400 truncate">Workforce roster</p>
+                          </div>
+                        </Link>
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          to="/employee/dashboard"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-smart-home text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">My Portal</p>
+                            <p className="text-[9px] text-slate-400 truncate">Home & Shifts</p>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/employee/qr"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-qrcode text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Digital Pass</p>
+                            <p className="text-[9px] text-slate-400 truncate">Premise attendance QR</p>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/employee/profile"
+                          onClick={() => setSidebarOpen(false)}
+                          className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                            <i className="ti ti-user-circle text-xl" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">Profile</p>
+                            <p className="text-[9px] text-slate-400 truncate">Personnel Record</p>
+                          </div>
+                        </Link>
+                      </>
+                    )}
 
                     {(isAdmin(user) || isSecurity(user)) && (
                       <Link
@@ -1318,7 +1383,7 @@ function MainLayout({ children }) {
                         onClick={() => setSidebarOpen(false)}
                         className="p-3.5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 flex items-center gap-3 tap-active transition-all"
                       >
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
                           <i className="ti ti-scan text-xl" />
                         </div>
                         <div className="min-w-0">
@@ -1331,7 +1396,7 @@ function MainLayout({ children }) {
 
                   <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
                     <Link
-                      to="/profile"
+                      to={isAdmin(user) ? "/profile" : "/employee/profile"}
                       onClick={() => setSidebarOpen(false)}
                       className="flex-1 py-3 px-4 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-center text-slate-300 tap-active"
                     >
@@ -1339,7 +1404,7 @@ function MainLayout({ children }) {
                     </Link>
                     <button
                       onClick={handleLogout}
-                      className="flex-1 py-3 px-4 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl text-xs font-bold text-center tap-active flex items-center justify-center gap-1.5"
+                      className="flex-1 py-3 px-4 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 rounded-xl text-xs font-bold text-center tap-active flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <i className="ti ti-power" /> Sign Out
                     </button>
@@ -1622,9 +1687,6 @@ function App() {
 
           {/* Admin - Leaves */}
           <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
-
-          {/* Admin - Shifts */}
-          <Route path="/admin/shifts" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ShiftsIndex /></ProtectedRoute>} />
 
           {/* Admin - Disciplinary */}
           <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />

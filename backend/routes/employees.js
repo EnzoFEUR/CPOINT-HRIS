@@ -5,30 +5,117 @@ import { createNotification } from './notifications.js';
 
 const router = express.Router();
 
-router.get('/', cacheResponse(30), async (req, res) => {
+/**
+ * Determines employee operational status (Terminated, Suspended, or Active)
+ * based on employee account status and disciplinary records.
+ */
+function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
+    const termLog = logs.find(l => l.type === 'Termination');
+    const isDeactivated = emp.status === 'inactive' || emp.status === 'terminated' || emp.is_active === false;
+
+    // 1. Termination Evaluation
+    const isTerminated = Boolean(
+        (termLog && isDeactivated) || 
+        emp.status === 'terminated'
+    );
+
+    // 2. Suspension Evaluation
+    const activeSuspension = logs.find(l => {
+        if (l.type !== 'Suspension') return false;
+
+        const logStatus = (l.status || '').toLowerCase();
+        // If HR marked it Resolved, Closed, Dismissed, or Cancelled, it is lifted
+        if (logStatus === 'resolved' || logStatus === 'dismissed' || logStatus === 'cancelled' || logStatus === 'closed') {
+            return false;
+        }
+
+        // If an expiration date is present, ensure it hasn't expired
+        const match = (l.reason || '').match(/Until\s+(\d{4}-\d{2}-\d{2})/i);
+        if (match) {
+            const endDate = new Date(match[1] + 'T23:59:59');
+            if (endDate < now) return false;
+        }
+
+        return l.status === 'Active' || l.status === 'Under Review';
+    });
+
+    const isSuspended = !isTerminated && Boolean(
+        (activeSuspension && isDeactivated) ||
+        emp.status === 'suspended'
+    );
+
+    let operational_status = 'Active';
+    if (isTerminated) operational_status = 'Terminated';
+    else if (isSuspended) operational_status = 'Suspended';
+
+    return {
+        is_terminated: isTerminated,
+        is_suspended: isSuspended,
+        operational_status,
+        active_suspension: activeSuspension || null,
+        termination_record: termLog || null,
+        past_suspensions_count: logs.filter(l => l.type === 'Suspension').length,
+        disciplinary_count: logs.length
+    };
+}
+
+router.get('/', cacheResponse(15), async (req, res) => {
     try {
-        let query = supabase.from('employees').select('*').order('created_at', { ascending: false });
+        let query = supabase
+            .from('employees')
+            .select(`
+                *,
+                disciplinary_logs (
+                    id, type, reason, status, date, created_at
+                )
+            `)
+            .order('created_at', { ascending: false });
+
         if (req.query.employee_id) {
             query = query.eq('id', req.query.employee_id);
         }
         const { data, error } = await query;
         if (error) throw error;
-        res.json({ success: true, data });
+
+        const now = new Date();
+        const enriched = (data || []).map(emp => {
+            const logs = emp.disciplinary_logs || [];
+            const standing = evaluateOperationalStanding(emp, logs, now);
+            return {
+                ...emp,
+                ...standing
+            };
+        });
+
+        res.json({ success: true, data: enriched });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // Get employee details and 201 documents in a single parallel batch
-router.get('/:id', cacheResponse(30), async (req, res) => {
+router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
-        const [empRes, docsRes] = await Promise.all([
+        const [empRes, docsRes, discRes] = await Promise.all([
             supabase.from('employees').select('*').eq('id', id).single(),
-            supabase.from('documents').select('*').eq('employee_id', id).order('created_at', { ascending: false })
+            supabase.from('employee_documents').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
+            supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false })
         ]);
         if (empRes.error) throw empRes.error;
-        res.json({ success: true, data: empRes.data, documents: docsRes.data || [] });
+
+        const emp = empRes.data;
+        const logs = discRes.data || [];
+        const now = new Date();
+        const standing = evaluateOperationalStanding(emp, logs, now);
+
+        const enrichedEmp = {
+            ...emp,
+            ...standing,
+            disciplinary_logs: logs
+        };
+
+        res.json({ success: true, data: enrichedEmp, documents: docsRes.data || [] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -235,7 +322,7 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        invalidateCache(['/api/employees', '/api/dashboard', '/api/shifts']);
+        invalidateCache(['/api/employees', '/api/dashboard']);
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');

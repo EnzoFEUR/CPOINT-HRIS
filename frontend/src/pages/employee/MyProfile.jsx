@@ -1,8 +1,10 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
+import { supabase } from '../../supabaseClient';
+import { getDisciplinaryCache } from '../../utils/disciplinaryCache';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -27,6 +29,8 @@ export default function MyProfile() {
                     address: u.address || '',
                     department: u.department || 'Operations',
                     job_title: u.job_title || u.position || 'Staff Member',
+                    status: u.status || 'active',
+                    is_active: u.is_active ?? true,
                     created_at: u.created_at || null,
                     avatar_url: u.avatar_url || u.photo_url || null,
                     photo_url: u.photo_url || u.avatar_url || null,
@@ -37,7 +41,7 @@ export default function MyProfile() {
         return null;
     })();
 
-    // Single unified profile & 201 documents query with Frame-0 initialData
+    // Query profile and documents
     const { data: profileResponse, isLoading: isQueryLoading } = useQuery({
         queryKey: ['myProfile'],
         queryFn: async () => {
@@ -65,6 +69,8 @@ export default function MyProfile() {
             address: raw.address || raw.home_address || raw.present_address || '',
             department: raw.department?.name || raw.department || raw.dept || 'Operations',
             job_title: raw.job_title || raw.position || raw.designation || raw.role || 'Staff Member',
+            status: raw.status || initialUser?.status || 'active',
+            is_active: raw.is_active ?? initialUser?.is_active ?? true,
             created_at: raw.created_at || raw.hire_date || raw.date_joined || null,
             avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
             photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
@@ -78,6 +84,42 @@ export default function MyProfile() {
     const fileInputRef = useRef(null);
     const dragCounter = useRef(0);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+    // Disciplinary status and sync
+    const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(initialUser?.id));
+
+    useEffect(() => {
+        const handleSync = (e) => {
+            if (!profile?.id || e.detail?.userId === profile.id) {
+                setDisciplinaryState(getDisciplinaryCache(profile?.id));
+            }
+        };
+        window.addEventListener('hris_disciplinary_sync', handleSync);
+        return () => window.removeEventListener('hris_disciplinary_sync', handleSync);
+    }, [profile?.id]);
+
+    useEffect(() => {
+        if (!profile?.id) return;
+        const channel = supabase
+            .channel(`myprofile-realtime-${profile.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${profile.id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${profile.id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [profile?.id, queryClient]);
+
+    const isTerminated = 
+        profile?.status === 'inactive' || 
+        profile?.status === 'terminated' || 
+        profile?.is_active === false || 
+        Boolean(disciplinaryState?.isTerminated);
 
     // Modal & Upload States
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -94,12 +136,21 @@ export default function MyProfile() {
     };
 
     const openUploadModal = (file = null) => {
+        if (isTerminated) {
+            toast.error('Document uploads are disabled for separated/terminated accounts.');
+            return;
+        }
         if (file) setUploadForm((prev) => ({ ...prev, file, title: prev.title || file.name.replace(/\.[^/.]+$/, '') }));
         setShowUploadModal(true);
     };
 
     const handleUploadSubmit = async (e) => {
         e.preventDefault();
+
+        if (isTerminated) {
+            toast.error('Document uploads are disabled for separated/terminated accounts.');
+            return;
+        }
 
         if (!profile?.id) {
             toast.error('User profile not loaded properly. Please refresh.');
@@ -225,6 +276,7 @@ export default function MyProfile() {
 
     const handleDragEnter = (e) => {
         e.preventDefault();
+        if (isTerminated) return;
         if (e.dataTransfer.types?.includes('Files')) {
             dragCounter.current += 1;
             setIsDraggingFile(true);
@@ -243,6 +295,10 @@ export default function MyProfile() {
         e.preventDefault();
         dragCounter.current = 0;
         setIsDraggingFile(false);
+        if (isTerminated) {
+            toast.error('Document uploads are disabled for separated/terminated accounts.');
+            return;
+        }
         const file = e.dataTransfer.files?.[0];
         if (file) openUploadModal(file);
     };
@@ -281,7 +337,7 @@ export default function MyProfile() {
                 )}
             
 
-            {/* Enterprise Profile Header Card (Consistent with Admin Show.jsx) */}
+            {/* Profile header */}
             <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                     <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
@@ -298,6 +354,11 @@ export default function MyProfile() {
 
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+                            {isTerminated && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-semibold rounded border border-rose-500/30">
+                                    <i className="ti ti-circle-x" /> Separated
+                                </span>
+                            )}
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
                                 <i className="ti ti-id text-slate-400" /> {profile?.company_id || 'EMPLOYEE'}
                             </span>
@@ -305,13 +366,23 @@ export default function MyProfile() {
                                 {profile?.department || 'Operations'}
                             </span>
                             {(profile?.department || '').toLowerCase().includes('factory') ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
-                                    Piece-Rate Production
-                                </span>
+                                <>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                        Factory (08:00 - 17:00 • No OT)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                        Piece-Rate Production
+                                    </span>
+                                </>
                             ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
-                                    Salaried Monthly
-                                </span>
+                                <>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                        Regular (08:00 - 20:00 • OT Eligible)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        Salaried Monthly
+                                    </span>
+                                </>
                             )}
                         </div>
 
@@ -340,17 +411,23 @@ export default function MyProfile() {
                                 <i className="ti ti-alert-triangle text-amber-400 text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
                             </div>
                         )}
-                        <button
-                            onClick={() => openUploadModal()}
-                            className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                            <i className="ti ti-upload text-sm" /> Upload Document
-                        </button>
+                        {isTerminated ? (
+                            <span className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 text-slate-400 border border-slate-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                                <i className="ti ti-lock text-sm" /> Uploads Disabled
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => openUploadModal()}
+                                className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <i className="ti ti-upload text-sm" /> Upload Document
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Personal and Employment Details Grid (Aligned with Admin Show.jsx) */}
+            {/* Personal and employment details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 
                 {/* Personal Information */}
@@ -432,7 +509,7 @@ export default function MyProfile() {
                 </div>
             </div>
 
-            {/* 201 Personnel Document Vault Section (Directly Aligned Below) */}
+            {/* 201 documents */}
             <div className="space-y-4">
                 
                     {alerts.length > 0 && (
@@ -469,6 +546,21 @@ export default function MyProfile() {
                 
 
                 <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200">
+                    {/* Separation notice */}
+                    {isTerminated && (
+                        <div className="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3.5">
+                            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                                <i className="ti ti-lock text-base font-bold" />
+                            </div>
+                            <div className="text-xs">
+                                <p className="font-bold text-rose-950 uppercase tracking-wide">Personnel Vault Locked · Read-Only Access</p>
+                                <p className="text-rose-800/90 mt-0.5 leading-relaxed font-medium">
+                                    Official employment contract has concluded. Document uploads and file modifications are disabled. Historical 201 records remain preserved below for your personal reference and clearance requirements.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
                         <div className="flex items-center gap-3">
                             <div className="h-9 w-9 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
@@ -499,22 +591,32 @@ export default function MyProfile() {
                     </div>
 
                         {documents.length === 0 ? (
-                            <div
-                                onClick={() => openUploadModal()}
-                                className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-blue-300 hover:bg-blue-50/20 transition-colors"
-                            >
-                                <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
-                                <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents uploaded yet</p>
-                                    <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
+                            isTerminated ? (
+                                <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                                    <i className="ti ti-folder-off text-3xl text-slate-400 block" />
+                                    <div>
+                                        <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents on file</p>
+                                        <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
-                                    className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                            ) : (
+                                <div
+                                    onClick={() => openUploadModal()}
+                                    className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-blue-300 hover:bg-blue-50/20 transition-colors"
                                 >
-                                    <i className="ti ti-upload" /> Upload First Document
-                                </button>
-                            </div>
+                                    <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
+                                    <div>
+                                        <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents uploaded yet</p>
+                                        <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
+                                        className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <i className="ti ti-upload" /> Upload First Document
+                                    </button>
+                                </div>
+                            )
                         ) : filteredDocuments.length === 0 ? (
                             <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                                 <i className="ti ti-file-search text-3xl text-slate-400 block mb-1" />
@@ -572,7 +674,7 @@ export default function MyProfile() {
                 </div>
 
             
-                {showUploadModal && (
+                {showUploadModal && !isTerminated && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
                         <div
                             initial={{ opacity: 0, scale: 0.96 }}

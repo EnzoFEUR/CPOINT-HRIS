@@ -440,8 +440,24 @@ router.post(
     }
 
     if (!employee.is_active) {
-      await auditLog(reqId, { employee_id, action: 'SCAN_BLOCKED_INACTIVE', details: {}, ip_address: req.ip });
-      throw new AuthorizationError('Employee account is deactivated. Contact HR.');
+      const { data: discLog } = await supabase
+        .from('disciplinary_logs')
+        .select('type, reason, date')
+        .eq('employee_id', employee_id)
+        .in('type', ['Suspension', 'Termination'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const discType = discLog?.type || 'Deactivated';
+      const errorMessage = discType === 'Suspension'
+        ? 'ACCESS DENIED: Attendance prohibited. Personnel account is currently under disciplinary suspension.'
+        : discType === 'Termination'
+        ? 'ACCESS DENIED: Attendance pass revoked. Personnel employment has been terminated.'
+        : 'Employee account is deactivated. Contact HR.';
+
+      await auditLog(reqId, { employee_id, action: `SCAN_BLOCKED_${discType.toUpperCase()}`, details: { reason: discLog?.reason }, ip_address: req.ip });
+      throw new AuthorizationError(errorMessage);
     }
 
     // Biometric Enforcement

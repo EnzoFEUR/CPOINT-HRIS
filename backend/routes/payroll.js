@@ -218,6 +218,10 @@ router.post('/preview', async (req, res) => {
             ? employee.rest_days
             : [0];
 
+        const empDept = (employee.department || '').toLowerCase();
+        const empShift = (employee.shift || '').toLowerCase();
+        const isFactoryWorker = empDept.includes('factory') || empShift.includes('factory');
+
         const preview = computeHolidayPayForPeriod({
             periodStart: pStart,
             periodEnd: pEnd,
@@ -225,9 +229,15 @@ router.post('/preview', async (req, res) => {
             holidayList: holidayList || [],
             attendanceLogs: attendanceLogs || [],
             restDays,
+            canOvertime: !isFactoryWorker,
         });
 
-        res.json(preview);
+        res.json({
+            ...preview,
+            isFactoryWorker,
+            canOvertime: !isFactoryWorker,
+            policyNotice: isFactoryWorker ? 'Factory Worker: Fixed schedule 8:00 AM - 5:00 PM. Overtime prohibited per HR policy.' : 'Regular Worker: Fixed schedule 8:00 AM - 8:00 PM. Overtime eligible.'
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -303,8 +313,23 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Employee not found.' });
         }
 
+        // 1. Check if employee is Terminated - standard payroll cannot be processed
+        const { data: terminationLog } = await supabase
+            .from('disciplinary_logs')
+            .select('id, date, reason')
+            .eq('employee_id', employee_id)
+            .eq('type', 'Termination')
+            .maybeSingle();
+
+        if (terminationLog) {
+            return res.status(400).json({ 
+                error: `Standard payroll cannot be processed for separated/terminated personnel (Terminated on ${terminationLog.date}). Use Final Pay / Clearance processing.` 
+            });
+        }
+
         const department = (employee.department || '').toLowerCase();
-        const isFactory = department.includes('factory');
+        const shiftStr = (employee.shift || '').toLowerCase();
+        const isFactory = department.includes('factory') || shiftStr.includes('factory');
         const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
 
         if (effectiveMonthlySalary <= 0 && !isFactory) {
@@ -324,7 +349,46 @@ router.post('/', async (req, res) => {
             basicPay = weeklySalary;
         }
 
-        const overtimePay = round2(toSafeNumber(overtime_hours) * hourlyRate * 1.25);
+        // 2. DOLE Policy: Suspension = No Work, No Pay
+        // Check if employee has active suspension overlapping pay period
+        let suspensionDeduction = 0;
+        let suspensionNote = '';
+        const { data: suspensionLogs } = await supabase
+            .from('disciplinary_logs')
+            .select('id, date, reason, status')
+            .eq('employee_id', employee_id)
+            .eq('type', 'Suspension');
+
+        if (suspensionLogs && suspensionLogs.length > 0) {
+            for (const susp of suspensionLogs) {
+                const sStart = susp.date;
+                const match = (susp.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+                const sEnd = match ? match[1] : susp.date;
+
+                // Check overlap with [pStart, pEnd]
+                const oStart = sStart > pStart ? sStart : pStart;
+                const oEnd = sEnd < pEnd ? sEnd : pEnd;
+
+                if (oStart <= oEnd) {
+                    const days = Math.round((new Date(oEnd) - new Date(oStart)) / (1000 * 60 * 60 * 24)) + 1;
+                    if (days >= 7 || (pStart >= sStart && pEnd <= sEnd)) {
+                        // Entire period covered by suspension -> 0 basic pay
+                        basicPay = 0;
+                        suspensionNote = ` [FULL SUSPENSION: Unpaid period (${sStart} to ${sEnd})]`;
+                    } else if (days > 0) {
+                        suspensionDeduction = round2(dailyRate * days);
+                        basicPay = Math.max(0, round2(basicPay - suspensionDeduction));
+                        suspensionNote = ` [SUSPENSION: ${days} unpaid day(s) (-₱${suspensionDeduction.toFixed(2)})]`;
+                    }
+                }
+            }
+        }
+
+        // Strict Company HR Policy:
+        // - Factory Worker (8:00 AM - 5:00 PM): STRICTLY NO OVERTIME ALLOWED (0 OT hours / 0 OT pay).
+        // - Regular Worker (8:00 AM - 8:00 PM): OVERTIME ELIGIBLE.
+        const effectiveOtHours = isFactory ? 0 : toSafeNumber(overtime_hours);
+        const overtimePay = round2(effectiveOtHours * hourlyRate * 1.25);
 
         // Fetch Statutory Settings
         const { data: statutory } = await supabase
@@ -366,6 +430,7 @@ router.post('/', async (req, res) => {
             holidayList: holidayList || [],
             attendanceLogs: attendanceLogs || [],
             restDays,
+            canOvertime: !isFactory,
         });
 
         // Compute Leave Payments
@@ -441,16 +506,20 @@ router.post('/', async (req, res) => {
         const totalDeductions = round2(totalStatutoryContributions + tax + lateDed);
         const netPay = round2(grossPay - totalDeductions);
 
-        const remarks = isEndOfMonthCutoff
+        const baseRemarks = isEndOfMonthCutoff
             ? `End of Month Deductions Applied - SSS: ${sss.toFixed(2)}, PhilHealth: ${philHealth.toFixed(2)}, Pag-IBIG: ${pagIbig.toFixed(2)}, Tax: ${tax.toFixed(2)}`
             : `Weekly Period (No Statutory Deductions) - Tax: ${tax.toFixed(2)}, Late: ${lateDed.toFixed(2)}`;
+        const otPolicyNote = isFactory && toSafeNumber(overtime_hours) > 0
+            ? ' [Factory Worker: Overtime disallowed per HR policy (₱0.00)]'
+            : '';
+        const remarks = `${baseRemarks}${suspensionNote}${otPolicyNote}`;
 
         let insertPayload = {
             employee_id,
             period_start: pStart,
             period_end: pEnd,
             basic_pay: safeBasic,
-            overtime_pay: safeOt,
+            overtime_pay: isFactory ? 0 : safeOt,
             holiday_pay: safeHoliday,
             holiday_breakdown: holidayBreakdown,
             deductions: totalDeductions,
