@@ -30,6 +30,8 @@ export default function Documents() {
 
     // Document & Loading states
     const [documents, setDocuments] = useState([]);
+    const [employee, setEmployee] = useState(null);
+    const [isTerminated, setIsTerminated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     // Filter, search & sort states
@@ -47,7 +49,7 @@ export default function Documents() {
     const [isDraggingPage, setIsDraggingPage] = useState(false);
     const dragCounter = useRef(0);
 
-    // 1. FETCH DOCUMENTS FROM SUPABASE ON COMPONENT MOUNT
+    // 1. FETCH DOCUMENTS & EMPLOYEE DETAILS ON COMPONENT MOUNT
     useEffect(() => {
         if (employeeId) {
             fetchDocuments();
@@ -56,17 +58,66 @@ export default function Documents() {
         }
     }, [employeeId]);
 
+    // Real-time synchronization for instant status changes
+    useEffect(() => {
+        if (!employeeId) return;
+        const channel = supabase
+            .channel(`admin-docs-${employeeId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${employeeId}` }, () => {
+                fetchDocuments();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${employeeId}` }, () => {
+                fetchDocuments();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents', filter: `employee_id=eq.${employeeId}` }, () => {
+                fetchDocuments();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [employeeId]);
+
     const fetchDocuments = async () => {
         try {
             setIsLoading(true);
-            const { data, error } = await supabase
-                .from('employee_documents')
-                .select('*')
-                .eq('employee_id', employeeId)
-                .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            setDocuments(data || []);
+            const [
+                { data: docData, error: docError },
+                { data: empData, error: empError },
+                { data: termLogs }
+            ] = await Promise.all([
+                supabase
+                    .from('employee_documents')
+                    .select('*')
+                    .eq('employee_id', employeeId)
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('employees')
+                    .select('id, first_name, last_name, company_id, department, job_title, status, is_active')
+                    .eq('id', employeeId)
+                    .maybeSingle(),
+                supabase
+                    .from('disciplinary_logs')
+                    .select('id, type, reason, created_at')
+                    .eq('employee_id', employeeId)
+                    .eq('type', 'Termination')
+                    .limit(1)
+            ]);
+
+            if (docError) throw docError;
+            setDocuments(docData || []);
+
+            if (empData) {
+                setEmployee(empData);
+                const terminated = 
+                    empData.status === 'inactive' || 
+                    empData.status === 'terminated' || 
+                    empData.is_active === false || 
+                    Boolean(termLogs && termLogs.length > 0);
+                setIsTerminated(terminated);
+            }
         } catch (error) {
             console.error('Error fetching documents:', error);
             toast.error('Failed to load documents from database.');
@@ -141,6 +192,10 @@ export default function Documents() {
     };
 
     const openModalWithFile = (file) => {
+        if (isTerminated) {
+            toast.error('Cannot upload documents: Employee account is separated/terminated.');
+            return;
+        }
         setSelectedFile(file);
         setIsUploadModalOpen(true);
     };
@@ -154,6 +209,7 @@ export default function Documents() {
     // Page-wide drag & drop handlers
     const handleDragEnter = (e) => {
         e.preventDefault();
+        if (isTerminated) return;
         if (e.dataTransfer.types?.includes('Files')) {
             dragCounter.current += 1;
             setIsDraggingPage(true);
@@ -172,6 +228,10 @@ export default function Documents() {
         e.preventDefault();
         dragCounter.current = 0;
         setIsDraggingPage(false);
+        if (isTerminated) {
+            toast.error('Cannot upload documents: Employee account is separated/terminated.');
+            return;
+        }
         const file = e.dataTransfer.files?.[0];
         if (file) openModalWithFile(file);
     };
@@ -179,6 +239,11 @@ export default function Documents() {
     // 2. UPLOAD TO SUPABASE STORAGE 'documents' BUCKET & DATABASE
     const handleUploadSubmit = async (e) => {
         e.preventDefault();
+
+        if (isTerminated) {
+            toast.error('Document uploads are disabled for separated/terminated employee accounts.');
+            return;
+        }
 
         if (!selectedFile) {
             toast.error('Please select a file to upload.');
@@ -332,28 +397,74 @@ export default function Documents() {
                     <i className="ti ti-arrow-left text-lg" /> Back to Profile
                 </Link>
 
-                <button
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
-                >
-                    <i className="ti ti-upload text-lg" /> Upload Document
-                </button>
+                {isTerminated ? (
+                    <button
+                        type="button"
+                        disabled
+                        title="Uploads disabled: Employee account is separated/terminated."
+                        className="px-4 py-2.5 bg-slate-100 text-slate-400 border border-slate-200 font-bold text-xs uppercase tracking-widest rounded-xl shadow-xs flex items-center gap-2 cursor-not-allowed select-none"
+                    >
+                        <i className="ti ti-lock text-base" /> Uploads Disabled
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                    >
+                        <i className="ti ti-upload text-lg" /> Upload Document
+                    </button>
+                )}
             </div>
 
             {/* Header */}
-            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8">
+            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`bg-white rounded-2xl shadow-sm border ${isTerminated ? 'border-rose-200' : 'border-slate-100'} p-6 sm:p-8`}>
                 <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center border border-sky-100">
-                        <i className="ti ti-folders text-2xl" />
+                    <div className={`h-12 w-12 ${isTerminated ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-sky-50 text-sky-600 border-sky-100'} rounded-2xl flex items-center justify-center border`}>
+                        <i className={`ti ${isTerminated ? 'ti-file-off' : 'ti-folders'} text-2xl`} />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">201 Documents</h1>
-                        <p className="text-slate-500 text-sm font-medium">
-                            {employeeId ? `Managing files for Employee ID: ${employeeId}` : 'Managing company files'}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">201 Documents</h1>
+                            {isTerminated && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                                    <i className="ti ti-lock text-xs" /> Separated · Read-Only Audit
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-slate-500 text-sm font-medium mt-0.5">
+                            {employee 
+                                ? `${employee.first_name} ${employee.last_name} (${employee.company_id || 'No ID'}) · ${employee.department || 'Staff'}` 
+                                : employeeId 
+                                ? `Managing files for Employee ID: ${employeeId}` 
+                                : 'Managing company files'}
                         </p>
                     </div>
                 </div>
             </div>
+
+            {/* TERMINATED AUDIT BANNER */}
+            {isTerminated && (
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+                    <div className="flex items-start gap-3.5">
+                        <div className="h-10 w-10 shrink-0 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center border border-rose-200">
+                            <i className="ti ti-lock text-xl font-bold" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <h4 className="text-sm font-black text-rose-950 uppercase tracking-wide">
+                                    Document Uploads Disabled (Separated Account)
+                                </h4>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 text-rose-800">
+                                    Read-Only Audit Mode
+                                </span>
+                            </div>
+                            <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
+                                This employee account is officially separated / terminated. In compliance with Philippine DOLE labor standards and audit governance, new document uploads and file edits are locked. All historical 201 records remain accessible below for review and compliance export.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* COMPLIANCE ALERTS */}
             
@@ -459,15 +570,17 @@ export default function Documents() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    onClick={() => documents.length === 0 && setIsUploadModalOpen(true)}
-                    className={`border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 bg-white shadow-sm ${documents.length === 0 ? 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors' : ''}`}
+                    onClick={() => !isTerminated && documents.length === 0 && setIsUploadModalOpen(true)}
+                    className={`border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 bg-white shadow-sm ${!isTerminated && documents.length === 0 ? 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors' : ''}`}
                 >
                     <i className="ti ti-file-x text-5xl mb-3 text-slate-300" />
                     <p className="text-sm font-bold uppercase tracking-widest text-slate-500">
-                        {documents.length === 0 ? 'No Documents Yet' : 'No Matching Documents Found'}
+                        {documents.length === 0 ? (isTerminated ? 'No Archived Documents on Record' : 'No Documents Yet') : 'No Matching Documents Found'}
                     </p>
                     <p className="text-xs text-slate-400 font-medium mt-1 text-center">
-                        {documents.length === 0 ? 'Click here, or drag & drop a file anywhere on this page.' : 'Try adjusting your search query or selected category filter.'}
+                        {documents.length === 0 
+                            ? (isTerminated ? 'This separated account has no archived 201 documents. File uploads are locked.' : 'Click here, or drag & drop a file anywhere on this page.') 
+                            : 'Try adjusting your search query or selected category filter.'}
                     </p>
                 </div>
             ) : (

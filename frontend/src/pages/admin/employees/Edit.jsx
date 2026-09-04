@@ -95,6 +95,7 @@ export default function Edit() {
             pay_type: isFactory ? 'piece_rate' : 'monthly',
             monthly_salary: isFactory ? null : cleanSalary,
             piece_rate: isFactory ? cleanPiece : null,
+            shift: isFactory ? 'Factory Worker (8-5)' : 'Regular Worker (8-8)',
         };
 
         try {
@@ -216,6 +217,29 @@ export default function Edit() {
                                     <option value="IT">IT Department</option>
                                     <option value="Logistics">Logistics</option>
                                 </select>
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                    isFactory ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                }`}>
+                                    <div className="flex items-center gap-2.5">
+                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
+                                        <div>
+                                            <p className="text-xs font-bold">
+                                                {isFactory ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
+                                            </p>
+                                            <p className="text-[11px] opacity-80 mt-0.5">
+                                                {isFactory ? 'Fixed shift. Strictly NO overtime allowed per company policy.' : 'Extended shift. Overtime eligible for excess rendered hours.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                        isFactory ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                    }`}>
+                                        {isFactory ? 'No OT' : 'OT Eligible'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>

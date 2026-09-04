@@ -119,30 +119,36 @@ export default function AdminDashboard() {
         {/* Operational Schedule Overview */}
         <div className="lg:col-span-1 bg-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-200">
           <div className="border-b border-slate-200 pb-3 mb-4">
-            <h3 className="text-sm font-semibold text-slate-900">Shift Coverage Summary</h3>
-            <p className="text-xs text-slate-500">Real-time facility allocations</p>
+            <h3 className="text-sm font-semibold text-slate-900">Workforce Schedule Policy</h3>
+            <p className="text-xs text-slate-500">Facility operating standards</p>
           </div>
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex items-center gap-2.5">
-                <div className="h-2 w-2 rounded-full bg-amber-500" />
-                <span className="text-xs font-medium text-slate-700">Morning Shift (06:00 - 14:00)</span>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  <span className="text-xs font-bold text-slate-800">Factory Worker Schedule</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase">No OT</span>
               </div>
-              <span className="font-mono text-xs font-bold text-slate-900">62 Staff</span>
+              <div className="flex items-center justify-between text-xs text-slate-500 pl-4.5">
+                <span>08:00 AM – 05:00 PM</span>
+                <span className="text-[11px] font-medium text-slate-600">Strict Shift (0 OT)</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex items-center gap-2.5">
-                <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-xs font-medium text-slate-700">Mid Shift (14:00 - 22:00)</span>
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-2 w-2 rounded-full bg-blue-600" />
+                  <span className="text-xs font-bold text-slate-800">Regular Worker Schedule</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase">OT Eligible</span>
               </div>
-              <span className="font-mono text-xs font-bold text-slate-900">48 Staff</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex items-center gap-2.5">
-                <div className="h-2 w-2 rounded-full bg-indigo-500" />
-                <span className="text-xs font-medium text-slate-700">Night Shift (22:00 - 06:00)</span>
+              <div className="flex items-center justify-between text-xs text-slate-500 pl-4.5">
+                <span>08:00 AM – 08:00 PM</span>
+                <span className="text-[11px] font-medium text-slate-600">Extended Shift</span>
               </div>
-              <span className="font-mono text-xs font-bold text-slate-900">32 Staff</span>
             </div>
           </div>
         </div>

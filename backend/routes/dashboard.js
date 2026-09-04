@@ -452,7 +452,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .maybeSingle(),
             supabase
                 .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, biometric_baseline_path, monthly_salary, piece_rate')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, monthly_salary, piece_rate')
                 .eq('id', id)
                 .single(),
             supabase
@@ -460,7 +460,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .select('*')
                 .eq('employee_id', id)
                 .order('created_at', { ascending: false })
-                .limit(10),
+                .limit(50),
             supabase
                 .from('leave_requests')
                 .select('*')
@@ -477,6 +477,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
             attendanceData: attendanceData || [],
             payrollData: payrollData || null,
             shiftData: employee ? [{ ...employee }] : [],
+            employee: employee || null,
             discData: discData || [],
             leaveData: leaveData || []
         });
@@ -622,9 +623,9 @@ router.get('/employee/:id', cacheResponse(15), async (req, res) => {
             { data: leaveData, error: leaveErr }
         ] = await Promise.all([
             supabase.from('attendances').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(10),
-            supabase.from('payrolls').select('*').eq('employee_id', id).order('period_start', { ascending: false }).limit(1),
-            supabase.from('employees').select('id, shift, department, job_title, first_name, last_name, company_id').eq('id', id).limit(1),
-            supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(10),
+            supabase.from('payrolls').select('*').eq('employee_id', id).order('period_start', { ascending: false }).limit(12),
+            supabase.from('employees').select('id, shift, department, job_title, first_name, last_name, company_id, status, is_active').eq('id', id).limit(1),
+            supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(50),
             supabase.from('leave_requests').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(10)
         ]);
 
@@ -637,6 +638,7 @@ router.get('/employee/:id', cacheResponse(15), async (req, res) => {
             attendanceData: attendanceData || [],
             payrollData: payrollData || [],
             shiftData: shiftData || [],
+            employee: shiftData?.[0] || null,
             discData: discData || [],
             leaveData: leaveData || []
         });

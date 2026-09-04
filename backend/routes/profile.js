@@ -63,6 +63,17 @@ router.post('/avatar', verifyToken, async (req, res) => {
             return res.status(400).json({ error: 'image_base64 is required' });
         }
 
+        // Check if user is terminated
+        const { data: empCheck } = await supabase
+            .from('employees')
+            .select('id, status, is_active')
+            .eq('id', req.user.id)
+            .single();
+
+        if (empCheck && (empCheck.status === 'inactive' || empCheck.status === 'terminated' || empCheck.is_active === false)) {
+            return res.status(403).json({ error: 'Profile modifications are disabled for separated/terminated accounts.' });
+        }
+
         const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, '');
         const buffer = Buffer.from(base64Data, 'base64');
         const companyId = req.user.company_id || 'CP-MAIN';

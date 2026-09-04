@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
+import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -41,6 +42,33 @@ export default function Login() {
                 if (empError) {
                     setLoading(false);
                     return setError("Unable to retrieve employee account details.");
+                }
+
+                // Auto-reinstatement check for expired suspensions
+                if (employee.role !== 'admin') {
+                    const { data: discLogs } = await supabase
+                        .from('disciplinary_logs')
+                        .select('*')
+                        .eq('employee_id', employee.id)
+                        .eq('type', 'Suspension')
+                        .eq('status', 'Active')
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (discLogs && discLogs.length > 0) {
+                        const disc = discLogs[0];
+                        const match = (disc.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+                        const endDateStr = match ? match[1] : null;
+                        const todayStr = new Date().toISOString().split('T')[0];
+
+                        if (endDateStr && todayStr > endDateStr) {
+                            // Expired: auto reinstate
+                            await supabase.from('disciplinary_logs').update({ status: 'Resolved' }).eq('id', disc.id);
+                            await supabase.from('employees').update({ status: 'active', is_active: true }).eq('id', employee.id);
+                            employee.status = 'active';
+                            employee.is_active = true;
+                        }
+                    }
                 }
 
                 setEmployeeData({ 
@@ -232,6 +260,16 @@ export default function Login() {
             
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
+
+            // Prime disciplinary cache synchronously for instant zero-flash screen loading
+            if (userData.status === 'inactive' || userData.is_active === false) {
+                setDisciplinaryCache(userData.id, {
+                    type: userData.is_terminated ? 'Termination' : 'Suspension',
+                    record: null
+                });
+            } else {
+                clearDisciplinaryCache(userData.id);
+            }
 
             const role = (userData.role || '').toLowerCase();
             const isSecurityRole = role === 'security' || role === 'guard' || role === 'security_guard';

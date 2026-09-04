@@ -19,7 +19,7 @@ router.post('/send', async (req, res) => {
         let targetName = 'Employee';
 
         if (user_id || email) {
-            const query = supabase.from('employees').select('id, first_name, last_name, email, phone');
+            const query = supabase.from('employees').select('id, first_name, last_name, email, phone, role, status, is_active');
             const { data: emp } = user_id 
                 ? await query.eq('id', user_id).maybeSingle()
                 : await query.eq('email', email).maybeSingle();
@@ -28,6 +28,32 @@ router.post('/send', async (req, res) => {
                 targetName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
                 targetEmail = emp.email || targetEmail;
                 targetPhone = emp.phone || targetPhone;
+
+                // Auto-reinstatement check for expired suspensions
+                if (emp.role !== 'admin') {
+                    const { data: activeDisciplinary } = await supabase
+                        .from('disciplinary_logs')
+                        .select('*')
+                        .eq('employee_id', emp.id)
+                        .eq('type', 'Suspension')
+                        .eq('status', 'Active')
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (activeDisciplinary && activeDisciplinary.length > 0) {
+                        const disc = activeDisciplinary[0];
+                        const match = (disc.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+                        const endDateStr = match ? match[1] : null;
+                        const todayStr = new Date().toISOString().split('T')[0];
+
+                        if (endDateStr && todayStr > endDateStr) {
+                            // Suspension duration expired: Auto-reinstatement to active
+                            await supabase.from('disciplinary_logs').update({ status: 'Resolved' }).eq('id', disc.id);
+                            await supabase.from('employees').update({ status: 'active', is_active: true }).eq('id', emp.id);
+                            console.log(`[AUTO_REINSTATE] Suspension for ${emp.id} ended on ${endDateStr}. Reinstated to active.`);
+                        }
+                    }
+                }
             }
         }
 

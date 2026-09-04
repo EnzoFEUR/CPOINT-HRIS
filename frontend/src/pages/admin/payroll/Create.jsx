@@ -363,8 +363,11 @@ const PayrollCreate = () => {
 
                     if (timeIn && timeOut) {
                         const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
-                        if (hoursWorked > 9) {
-                            totalOvertime += (hoursWorked - 9);
+                        // Strict HR Policy:
+                        // Factory Worker (8:00 AM - 5:00 PM): STRICTLY CANNOT OVERTIME (0h).
+                        // Regular Worker (8:00 AM - 8:00 PM): CAN OVERTIME.
+                        if (!isFactoryEmployee && hoursWorked > 8) {
+                            totalOvertime += (hoursWorked - 8);
                         }
                     }
                 });
@@ -392,7 +395,7 @@ const PayrollCreate = () => {
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
-                        overtime_hours: parseFloat(totalOvertime.toFixed(2)),
+                        overtime_hours: isFactoryEmployee ? 0 : parseFloat(totalOvertime.toFixed(2)),
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : ''
                     }));
 
@@ -817,17 +820,33 @@ const PayrollCreate = () => {
                                 </p>
                             </div>
                             <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 sm:mb-2">Overtime Hours (&gt;9h shifts)</label>
+                                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase">
+                                        {isFactoryEmployee ? 'Overtime (Strictly Prohibited)' : 'Overtime Hours (Eligible)'}
+                                    </label>
+                                    {isFactoryEmployee ? (
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                                            No OT Allowed
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-blue-100 text-blue-800 border border-blue-200">
+                                            OT Eligible
+                                        </span>
+                                    )}
+                                </div>
                                 <input
                                     type="number"
                                     step="0.5"
                                     name="overtime_hours"
-                                    value={formData.overtime_hours}
+                                    value={isFactoryEmployee ? 0 : formData.overtime_hours}
                                     readOnly
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black text-slate-800 outline-none shadow-inner"
+                                    className={`w-full p-3 bg-white border border-slate-200 rounded-xl font-mono text-lg sm:text-xl font-black ${isFactoryEmployee ? 'text-slate-400 bg-slate-100/80' : 'text-slate-800'} outline-none shadow-inner`}
                                 />
                                 <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
-                                    <i className="ti ti-clock text-blue-500 shrink-0"></i> Computed per standard shift
+                                    <i className={`ti ${isFactoryEmployee ? 'ti-ban text-rose-500' : 'ti-clock text-blue-500'} shrink-0`}></i>
+                                    {isFactoryEmployee 
+                                        ? 'Factory Worker (8-5): Overtime prohibited per HR policy' 
+                                        : 'Regular Worker (8-8): Overtime computed per standard shift'}
                                 </p>
                             </div>
                         </div>

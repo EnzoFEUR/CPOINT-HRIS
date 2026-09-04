@@ -77,12 +77,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
-        // Attach pay type and numerical rates based on department
+        // Attach pay type, numerical rates, and fixed schedule based on department
         const isFactory = department === 'Factory';
         data.department = department;
         data.pay_type = isFactory ? 'piece_rate' : 'monthly';
         data.monthly_salary = isFactory ? 0 : parseFloat(rawSalary || 0);
         data.piece_rate = isFactory ? parseFloat(rawPieceRate || 0) : 0;
+        data.shift = isFactory ? 'Factory Worker (8-5)' : 'Regular Worker (8-8)';
 
         setIsSubmitting(true);
 
@@ -222,6 +223,29 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     <option value="Logistics">Logistics</option>
                                 </select>
                             </div>
+
+                            <div className="md:col-span-2">
+                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                    department === 'Factory' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                }`}>
+                                    <div className="flex items-center gap-2.5">
+                                        <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
+                                        <div>
+                                            <p className="text-xs font-bold">
+                                                {department === 'Factory' ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
+                                            </p>
+                                            <p className="text-[11px] opacity-80 mt-0.5">
+                                                {department === 'Factory' ? 'Fixed shift. Strictly NO overtime allowed per company policy.' : 'Extended shift. Overtime eligible for excess rendered hours.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                        department === 'Factory' ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                    }`}>
+                                        {department === 'Factory' ? 'No OT' : 'OT Eligible'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -359,7 +383,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     </button>
                                 </div>
 
-                                {/* Temporary Password Highlight Box */}
+                                {/* Temporary password */}
                                 <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
                                     <div className="flex items-center justify-between">
                                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
