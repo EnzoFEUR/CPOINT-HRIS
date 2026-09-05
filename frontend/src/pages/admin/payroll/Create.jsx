@@ -53,11 +53,7 @@ const PayrollCreate = () => {
     const queryClient = useQueryClient();
     const [employees, setEmployees] = useState([]);
 
-    // Seamless hand-off from the Payroll Ledger's "Pending" list: HR may
-    // arrive here via React Router state (rich object, set on click) or via
-    // URL search params (survives a direct page reload / shared link).
-    // Captured once on mount — subsequent edits to the form should not be
-    // clobbered by a stale location.state on re-render.
+    // Prefill form values from location state or URL params on initial mount
     const initialPrefillRef = useRef({
         employee_id: location.state?.employee_id ?? searchParams.get('employee_id') ?? '',
         period_start: location.state?.period_start ?? searchParams.get('period_start') ?? '',

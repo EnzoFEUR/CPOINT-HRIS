@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 export default function Show() {
     const { id } = useParams();
@@ -169,7 +170,9 @@ export default function Show() {
         );
     }
 
-    const isFactory = employee.department?.toLowerCase().includes('factory');
+    const isFactory = employee?.department?.toLowerCase().includes('factory');
+    const shoeRole = isFactory ? getShoeRoleDetails(employee?.job_title) : null;
+    const prodGroup = isFactory ? parseProductionGroup(employee?.shift) : null;
     const rateAmount = Number(
         isFactory
             ? (employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? employee.monthly_salary ?? 0)
@@ -273,10 +276,15 @@ export default function Show() {
                                 {isFactory ? (
                                     <>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
-                                            Factory (08:00 - 17:00 • No OT)
+                                            <i className={`ti ${shoeRole?.icon || 'ti-shoe'}`} />
+                                            {shoeRole ? shoeRole.label : (employee.job_title || 'Shoe Craft')}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                            <i className="ti ti-users" />
+                                            {prodGroup}
                                         </span>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
-                                            Piece-Rate Production
+                                            Group Piece-Rate (Pool)
                                         </span>
                                     </>
                                 ) : (
@@ -473,13 +481,18 @@ export default function Show() {
                                     </span>
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Job Title</p>
-                                    <p className="font-extrabold text-slate-800 text-sm">{employee.job_title || 'N/A'}</p>
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
+                                    <p className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
+                                        {employee.job_title || 'N/A'}
+                                    </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Work Schedule</p>
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                        {isFactory ? 'Line / Group Assignment' : 'Work Schedule'}
+                                    </p>
                                     <p className="font-mono font-extrabold text-slate-800 text-xs">
-                                        {isFactory ? '08:00 AM – 05:00 PM' : '08:00 AM – 08:00 PM'}
+                                        {isFactory ? `${prodGroup} (Shoe Craft)` : '08:00 AM – 08:00 PM'}
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
@@ -495,21 +508,33 @@ export default function Show() {
                             <div className={`p-4 rounded-xl border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
                                 <div className="flex items-center justify-between mb-1">
                                     <span className={`text-[11px] font-black uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
-                                        {isFactory ? 'Factory Piece-Rate' : 'Monthly Base Salary'}
+                                        {isFactory ? 'Factory Compensation Model' : 'Monthly Base Salary'}
                                     </span>
                                     <span className={`text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         }`}>
-                                        {isFactory ? 'Piece Rate' : 'Fixed Monthly'}
+                                        {isFactory ? 'Group Piece-Rate' : 'Fixed Monthly'}
                                     </span>
                                 </div>
 
-                                <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-                                    <span className={isFactory ? 'text-amber-600 text-2xl' : 'text-emerald-600 text-2xl'}>₱</span>
-                                    {rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    <span className="text-xs font-bold text-slate-400 uppercase">
-                                        {isFactory ? '/ piece completed' : '/ month'}
-                                    </span>
-                                </div>
+                                {isFactory ? (
+                                    <div className="space-y-1.5 pt-1">
+                                        <div className="text-lg sm:text-xl font-black text-amber-900 tracking-tight flex items-center gap-1.5">
+                                            <i className="ti ti-box-multiple text-amber-600 text-xl" />
+                                            Group Production Batch Pool
+                                        </div>
+                                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                                            Compensation is calculated based on completed pairs of shoes produced by the 6-worker team ({shoeRole?.stage || 'Assembly'}) upon QA inspection.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
+                                        <span className="text-emerald-600 text-2xl">₱</span>
+                                        {rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        <span className="text-xs font-bold text-slate-400 uppercase">
+                                            / month
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 text-[11px] pt-1">

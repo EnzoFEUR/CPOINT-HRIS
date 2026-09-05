@@ -7,6 +7,7 @@ import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
+import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -147,7 +148,9 @@ const EmployeeDashboard = () => {
     
     const isFactoryWorker = (user?.department || '').toLowerCase().includes('factory') || 
                             (user?.shift || '').toLowerCase().includes('factory');
-    const workerClassification = isFactoryWorker ? 'Factory Worker' : 'Regular Worker';
+    const shoeRole = isFactoryWorker ? getShoeRoleDetails(user?.job_title) : null;
+    const prodGroup = isFactoryWorker ? parseProductionGroup(user?.shift) : null;
+    const workerClassification = isFactoryWorker ? (shoeRole ? shoeRole.label : (user?.job_title || 'Shoe Craft')) : 'Regular Worker';
     const workerSchedule = isFactoryWorker ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM';
     const overtimePolicy = isFactoryWorker ? 'Strict Shift · No Overtime' : 'Extended Shift · OT Eligible';
 
@@ -412,10 +415,26 @@ const EmployeeDashboard = () => {
                         <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
                             Good day,<br/><span className="text-blue-600">{getFirstName(user.name)}!</span>
                         </h1>
-                        <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">
-                            {user.job_title || 'Staff'} • {user.department}
-                            {isTerminated && <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Separated</span>}
-                            {isSuspended && <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">Suspended</span>}
+                        <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm flex flex-wrap items-center gap-1.5">
+                            {isFactoryWorker ? (
+                                <>
+                                    <span className="font-bold text-slate-700">{user.job_title || 'Shoe Craft'}</span>
+                                    {prodGroup && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                            {prodGroup}
+                                        </span>
+                                    )}
+                                    <span>• Factory Division</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span>{user.job_title || 'Staff'}</span>
+                                    <span>•</span>
+                                    <span>{user.department}</span>
+                                </>
+                            )}
+                            {isTerminated && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Separated</span>}
+                            {isSuspended && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">Suspended</span>}
                         </p>
                     </div>
                     
@@ -449,7 +468,15 @@ const EmployeeDashboard = () => {
                     
                     {/* Payroll - Always Available */}
                     <div 
-                        onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslips on record.'); }}
+                        onClick={() => { 
+                            if (latestPayroll) {
+                                setShowPayslipModal(true); 
+                            } else if (isFactoryWorker) {
+                                toast('Factory piece-rate pool payouts are distributed per completed production batch.', { icon: 'ℹ️' });
+                            } else {
+                                toast.error('No payslips on record.'); 
+                            }
+                        }}
                         className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active select-none"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
@@ -468,6 +495,11 @@ const EmployeeDashboard = () => {
                                             Compensation
                                         </span>
                                     )}
+                                    {isFactoryWorker && !isTerminated && !isSuspended && (
+                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                            Pakyawan Pool
+                                        </span>
+                                    )}
                                     <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
                                         <i className="ti ti-arrow-right text-lg sm:text-xl" />
                                     </div>
@@ -475,14 +507,20 @@ const EmployeeDashboard = () => {
                             </div>
                             <div>
                                 <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
-                                    {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : 'Latest Net Pay'}
+                                    {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : isFactoryWorker && !latestPayroll ? 'Compensation Model' : 'Latest Net Pay'}
                                 </p>
                                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
-                                    ₱{latestPayroll ? parseFloat(latestPayroll.net_pay).toFixed(2) : '0.00'}
+                                    {latestPayroll ? `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}` : (isFactoryWorker ? 'Batch Pool' : '₱0.00')}
                                 </h2>
                                 <p className="text-emerald-50 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
                                     <i className="ti ti-file-text" />
-                                    <span>Tap to view full payslip ({allPayrolls.length} available)</span>
+                                    <span>
+                                        {latestPayroll 
+                                            ? `Tap to view full payslip (${allPayrolls.length} available)` 
+                                            : (isFactoryWorker 
+                                                ? 'Earnings calculated per completed shoe batch in your production line.' 
+                                                : 'No payslip records generated yet.')}
+                                    </span>
                                 </p>
                             </div>
                         </div>
@@ -500,21 +538,23 @@ const EmployeeDashboard = () => {
                             <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center ${
                                 isTerminated ? 'text-rose-400' : isSuspended ? 'text-orange-400' : 'text-blue-400'
                             } mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors`}>
-                                <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : 'ti-calendar-time'} text-2xl sm:text-3xl`} />
+                                <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
-                            <span className={`px-3 py-1 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-wider ${
-                                isTerminated 
-                                    ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300' 
-                                    : isSuspended 
-                                    ? 'bg-orange-500/20 border border-orange-500/40 text-orange-300' 
-                                    : 'bg-blue-500/20 border border-blue-500/30 text-blue-300'
-                            }`}>
-                                {isTerminated ? 'Separated' : isSuspended ? 'Suspended' : "Today's Schedule"}
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                                <span className={`px-3 py-1 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-wider ${
+                                    isTerminated 
+                                        ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300' 
+                                        : isSuspended 
+                                        ? 'bg-orange-500/20 border border-orange-500/40 text-orange-300' 
+                                        : 'bg-blue-500/20 border border-blue-500/30 text-blue-300'
+                                }`}>
+                                    {isTerminated ? 'Separated' : isSuspended ? 'Suspended' : (isFactoryWorker ? (prodGroup || "Factory Line") : "Today's Schedule")}
+                                </span>
+                            </div>
                         </div>
                         <div className="relative z-10">
                             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
-                                {isTerminated ? 'Separation Status' : isSuspended ? 'Work Schedule' : 'Official Work Schedule'}
+                                {isTerminated ? 'Separation Status' : isSuspended ? 'Work Schedule' : (isFactoryWorker ? `Craft Station · Stage ${shoeRole?.stage || '1-6'}` : 'Official Work Schedule')}
                             </p>
                             <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
                                 {isTerminated ? 'Inactive' : isSuspended ? 'On Hold' : workerClassification}

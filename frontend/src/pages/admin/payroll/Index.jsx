@@ -48,8 +48,7 @@ const getStatusVisuals = (status) => {
 };
 
 /**
- * Enterprise Payroll Ledger & Financial Hub
- * Supports instant search, multi-parameter filtering, responsive card/table views, and DOLE audit summaries.
+ * Payroll ledger overview and management.
  */
 export default function PayrollIndex() {
     const [searchParams, setSearchParams] = useSearchParams();
