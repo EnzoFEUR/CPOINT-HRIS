@@ -795,6 +795,16 @@ router.post(
 
     if (error) throw new AppError(`Database error: ${error.message}`, 500, 'DB_ERROR');
 
+    try {
+      await supabase.auth.admin.updateUserById(employee_id, {
+        user_metadata: { temp_password: null }
+      });
+    } catch {
+      // Continue silently if auth metadata update fails
+    }
+
+    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard']);
+
     logger.info(reqId, 'Password change status cleared', { employee_id });
 
     await auditLog(reqId, { employee_id, action: 'PASSWORD_CHANGED_ACK', details: {}, ip_address: req.ip });

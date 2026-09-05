@@ -16,8 +16,62 @@ export default function Show() {
     // Modals State
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+    // Temporary credentials state for unregistered accounts
+    const [showTempPassword, setShowTempPassword] = useState(true);
+    const [copiedKey, setCopiedKey] = useState(null);
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+    const copyToClipboard = (text, key) => {
+        if (!text) return;
+        navigator.clipboard.writeText(String(text));
+        setCopiedKey(key);
+        toast.success(`${key === 'password' ? 'Password' : key === 'email' ? 'Email' : 'Company ID'} copied!`);
+        setTimeout(() => setCopiedKey(null), 2000);
+    };
+
+    const copyAllCredentials = () => {
+        if (!employee) return;
+        const text = `C-POINT HRIS Account Credentials\nName: ${employee.first_name || ''} ${employee.last_name || ''}\nCompany ID: ${employee.company_id || ''}\nEmail: ${employee.email || ''}\nTemporary Password: ${employee.temp_password || 'Emp-1234'}\nLogin Portal: ${window.location.origin}/login`;
+        navigator.clipboard.writeText(text);
+        setCopiedKey('all');
+        toast.success('Onboarding credentials copied to clipboard!');
+        setTimeout(() => setCopiedKey(null), 2000);
+    };
+
+    const handleResetTempPassword = async () => {
+        if (!window.confirm('Generate a new temporary password for this unregistered employee?')) return;
+        setIsResettingPassword(true);
+        try {
+            const res = await fetchWithAuth(`/api/employees/${id}/reset-temp-password`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                queryClient.setQueryData(['employeeDetails', id], (old) => {
+                    if (!old) return old;
+                    return {
+                        ...old,
+                        data: {
+                            ...old.data,
+                            temp_password: data.temp_password,
+                            requires_password_change: true
+                        }
+                    };
+                });
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                toast.success('New temporary password generated!');
+            } else {
+                toast.error(data.error || 'Failed to generate temporary password');
+            }
+        } catch {
+            toast.error('Network error. Failed to generate temporary password');
+        } finally {
+            setIsResettingPassword(false);
+        }
+    };
 
     // Pre-populate employee from cache if available
     const cachedEmp = useMemo(() => {
@@ -180,6 +234,11 @@ export default function Show() {
     );
     const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
     const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+    const isPendingRegistration = Boolean(
+        employee?.requires_password_change && 
+        !isTerminated
+    );
+    const employeeFullName = employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
 
     return (
         <>
@@ -217,7 +276,7 @@ export default function Show() {
                             <i className="ti ti-pencil text-base" /> Edit Profile
                         </Link>
 
-                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
+                        <button onClick={() => { setDeleteConfirmText(''); setIsDeleteModalOpen(true); }} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
                             <i className="ti ti-trash text-base" /> Delete
                         </button>
                     </div>
@@ -281,7 +340,8 @@ export default function Show() {
                                         </span>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
                                             <i className="ti ti-users" />
-                                            {prodGroup}
+                                            {employee?.production_groups?.name || prodGroup}
+                                            {employee?.production_groups?.code ? ` (${employee.production_groups.code})` : ''}
                                         </span>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
                                             Group Piece-Rate (Pool)
@@ -319,6 +379,125 @@ export default function Show() {
                         </div>
                     </div>
                 </div>
+
+                {/* Temporary credentials for unregistered accounts */}
+                {isPendingRegistration && (
+                    <div className="bg-amber-500/10 border-2 border-amber-300 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    <i className="ti ti-key text-xl" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-extrabold text-amber-950 text-base sm:text-lg">
+                                            Account Pending Initial Registration
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 border border-amber-300">
+                                            Unregistered
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-800/90 font-medium mt-0.5">
+                                        This employee has not signed in yet. Their temporary password remains preserved below until first login.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={copyAllCredentials}
+                                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'all' ? 'ti-check' : 'ti-copy'} text-sm`} />
+                                    <span>{copiedKey === 'all' ? 'Credentials Copied!' : 'Copy Onboarding Info'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleResetTempPassword}
+                                    disabled={isResettingPassword}
+                                    title="Generate a fresh temporary password"
+                                    className="px-3 py-2 bg-white hover:bg-amber-50 active:scale-95 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    <i className={`ti ${isResettingPassword ? 'ti-loader animate-spin' : 'ti-refresh'} text-sm text-amber-700`} />
+                                    <span className="hidden sm:inline">New Temp Pass</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                            {/* Email */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Login Email</p>
+                                    <p className="font-bold text-xs text-slate-800 truncate mt-0.5" title={employee.email}>
+                                        {employee.email}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(employee.email, 'email')}
+                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'email' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <span>{copiedKey === 'email' ? 'Copied' : 'Copy Email'}</span>
+                                </button>
+                            </div>
+
+                            {/* Company ID */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Company ID</p>
+                                    <p className="font-mono font-black text-sm text-slate-900 mt-0.5">
+                                        {employee.company_id || employee.id}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(employee.company_id || employee.id, 'company_id')}
+                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'company_id' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <span>{copiedKey === 'company_id' ? 'Copied' : 'Copy ID'}</span>
+                                </button>
+                            </div>
+
+                            {/* Temporary Password */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 flex flex-col justify-between space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Temporary Password</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTempPassword(!showTempPassword)}
+                                        className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                        title={showTempPassword ? 'Hide Password' : 'Show Password'}
+                                    >
+                                        <i className={`ti ${showTempPassword ? 'ti-eye-off' : 'ti-eye'} text-sm`} />
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono font-black text-base text-amber-950 tracking-wider">
+                                        {showTempPassword ? (employee.temp_password || 'Emp-1234') : '••••••••'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(employee.temp_password || 'Emp-1234', 'password')}
+                                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <i className={`ti ${copiedKey === 'password' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                        <span>{copiedKey === 'password' ? 'Copied' : 'Copy'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-amber-200/60 flex items-center gap-2 text-[11px] text-amber-800/80 font-medium">
+                            <i className="ti ti-info-circle text-amber-700 shrink-0 text-sm" />
+                            <span>
+                                Once the employee registers by logging in and configuring their personal password, this temporary password will be wiped and will automatically disappear from this profile.
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Status alert banner */}
                 {isTerminated && (
@@ -457,6 +636,21 @@ export default function Show() {
                                 <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Company ID</p>
                                 <p className="font-mono font-extrabold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
                             </div>
+                            <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Account Status</p>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        {isPendingRegistration ? 'Awaiting initial employee login & password setup' : 'Account active and personal password configured'}
+                                    </p>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-black uppercase border ${
+                                    isPendingRegistration 
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                    {isPendingRegistration ? 'Pending Setup' : 'Registered'}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -492,7 +686,9 @@ export default function Show() {
                                         {isFactory ? 'Line / Group Assignment' : 'Work Schedule'}
                                     </p>
                                     <p className="font-mono font-extrabold text-slate-800 text-xs">
-                                        {isFactory ? `${prodGroup} (Shoe Craft)` : '08:00 AM – 08:00 PM'}
+                                        {isFactory
+                                            ? `${employee?.production_groups?.name || prodGroup}${employee?.production_groups?.target_output_pairs ? ` · ${employee.production_groups.target_output_pairs} pairs/day quota` : ' (Shoe Craft)'}`
+                                            : '08:00 AM – 08:00 PM'}
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
@@ -639,7 +835,7 @@ export default function Show() {
                             </div>
                             <h2 className="text-xl font-black text-slate-800">Delete Employee Profile?</h2>
                             <p className="text-xs text-slate-500">
-                                Type <strong className="text-slate-800">{employee.name}</strong> to confirm deletion.
+                                Type <strong className="text-slate-800">{employeeFullName}</strong> to confirm deletion.
                             </p>
                             <input
                                 type="text"
@@ -649,13 +845,13 @@ export default function Show() {
                                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-xs"
                             />
                             <div className="flex gap-2">
-                                <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs">
+                                <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs cursor-pointer">
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleDelete}
-                                    disabled={deleteConfirmText !== employee.name || isDeleting}
-                                    className="flex-1 py-2.5 bg-red-600 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs"
+                                    disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
+                                    className="flex-1 py-2.5 bg-red-600 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs cursor-pointer disabled:cursor-not-allowed transition-colors"
                                 >
                                     {isDeleting ? 'Deleting...' : 'Confirm Delete'}
                                 </button>

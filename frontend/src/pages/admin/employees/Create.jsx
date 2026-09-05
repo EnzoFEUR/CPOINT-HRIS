@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,9 +14,36 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [department, setDepartment] = useState(defaultValues.department || 'Factory');
     const [selectedCraft, setSelectedCraft] = useState(defaultValues.job_title || 'Sapatero (Lapat/Swelas)');
     const [selectedGroup, setSelectedGroup] = useState('Line A');
+    const [selectedGroupId, setSelectedGroupId] = useState('');
     const [isCustomLine, setIsCustomLine] = useState(false);
 
-    // Existing production lines from workforce cache
+    // Fetch real production groups from the dedicated database table
+    const { data: productionGroupsData } = useQuery({
+        queryKey: ['productionGroups'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/production-groups');
+            const result = await res.json();
+            return result?.data || [];
+        },
+        staleTime: 60_000,
+        gcTime: 300_000
+    });
+
+    const productionGroups = useMemo(() => {
+        return Array.isArray(productionGroupsData) ? productionGroupsData : [];
+    }, [productionGroupsData]);
+
+    useEffect(() => {
+        if (!selectedGroupId && productionGroups.length > 0) {
+            const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+            if (defaultLine) {
+                setSelectedGroupId(defaultLine.id);
+                setSelectedGroup(defaultLine.name);
+            }
+        }
+    }, [productionGroups, selectedGroupId]);
+
+    // Existing production lines from workforce cache (fallback)
     const { data: workforceData } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: async () => {
@@ -91,7 +118,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplaySalary('');
         setRawSalary('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
-        setSelectedGroup(existingLines[0] || 'Line A');
+        const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+        setSelectedGroupId(defaultLine?.id || '');
+        setSelectedGroup(defaultLine?.name || 'Line A');
         setIsCustomLine(false);
     };
 
@@ -104,13 +133,27 @@ export default function Create({ errors = [], defaultValues = {} }) {
         data.department = department;
 
         if (isFactory) {
-            const lineName = (selectedGroup || 'Line A').trim();
             data.job_title = selectedCraft;
             data.pay_type = 'piece_rate';
             data.monthly_salary = null;
             data.piece_rate = null;
-            data.shift = `${lineName} · Factory (08:00 AM - 05:00 PM)`;
+
+            if (isCustomLine) {
+                const customName = (selectedGroup || '').trim();
+                data.production_group_name = customName;
+                data.production_group_id = null;
+                data.shift = `${customName} · Factory (08:00 AM - 05:00 PM)`;
+            } else {
+                const activeGroup = productionGroups.find(g => g.id === selectedGroupId) ||
+                                   productionGroups.find(g => g.name === selectedGroup);
+                const resolvedId = activeGroup?.id || selectedGroupId || null;
+                const resolvedName = activeGroup?.name || selectedGroup || 'Line A';
+                data.production_group_id = resolvedId;
+                data.production_group_name = resolvedName;
+                data.shift = `${resolvedName} · Factory (08:00 AM - 05:00 PM)`;
+            }
         } else {
+            data.production_group_id = null;
             data.pay_type = 'monthly';
             data.monthly_salary = parseFloat(rawSalary || 0);
             data.piece_rate = null;
@@ -127,16 +170,24 @@ export default function Create({ errors = [], defaultValues = {} }) {
             const result = await res.json();
 
             if (result.success) {
-                queryClient.setQueryData(['adminEmployees'], (oldData) => {
-                    return oldData ? [result.data, ...oldData] : [result.data];
-                });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                queryClient.invalidateQueries({ queryKey: ['employees'] });
-
-                setCreatedEmployee({
+                const createdRecord = {
                     ...result.data,
-                    temp_password: result.temp_password
+                    temp_password: result.temp_password,
+                    requires_password_change: true
+                };
+                queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                    return oldData ? [createdRecord, ...oldData] : [createdRecord];
                 });
+                if (result.data?.id) {
+                    queryClient.setQueryData(['employeeDetails', String(result.data.id)], {
+                        data: createdRecord,
+                        documents: []
+                    });
+                }
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['productionGroups'] });
+
+                setCreatedEmployee(createdRecord);
                 setShowSuccessModal(true);
                 setIsSubmitting(false);
             } else {
@@ -234,13 +285,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             </div>
 
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
-                                <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                    placeholder="e.g. Machine Operator" />
-                            </div>
-
-                            <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>
                                 <select
                                     name="department"
@@ -326,7 +370,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                     Assigned Production Line / Group
                                                 </label>
                                                 <p className="text-[11px] text-slate-400 font-medium">
-                                                    Assigns the worker to a distinct shoe production line (e.g. Line A, Line B, Line 7).
+                                                    Assigns the worker to a database-tracked production group (e.g. Line A, Line B).
                                                 </p>
                                             </div>
                                             <button
@@ -335,15 +379,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                     const nextState = !isCustomLine;
                                                     setIsCustomLine(nextState);
                                                     if (nextState) {
+                                                        setSelectedGroupId('');
                                                         setSelectedGroup('');
                                                     } else {
-                                                        setSelectedGroup(existingLines[0] || 'Line A');
+                                                        const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+                                                        setSelectedGroupId(defaultLine?.id || '');
+                                                        setSelectedGroup(defaultLine?.name || 'Line A');
                                                     }
                                                 }}
                                                 className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
                                             >
                                                 <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
-                                                <span>{isCustomLine ? 'Choose from existing' : '+ Create new line'}</span>
+                                                <span>{isCustomLine ? 'Choose from existing lines' : '+ Create new line'}</span>
                                             </button>
                                         </div>
 
@@ -359,30 +406,39 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                 />
                                                 <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
                                                     <i className="ti ti-sparkles text-xs" />
-                                                    <span>This new production line will be saved and available for other workers.</span>
+                                                    <span>This new line will be created in Supabase production_groups table.</span>
                                                 </p>
                                             </div>
                                         ) : (
                                             <div>
                                                 <select
-                                                    value={selectedGroup}
+                                                    value={selectedGroupId || (productionGroups.find(g => g.name === selectedGroup)?.id || '')}
                                                     onChange={(e) => {
                                                         if (e.target.value === '__NEW__') {
                                                             setIsCustomLine(true);
+                                                            setSelectedGroupId('');
                                                             setSelectedGroup('');
                                                         } else {
-                                                            setSelectedGroup(e.target.value);
+                                                            setSelectedGroupId(e.target.value);
+                                                            const found = productionGroups.find(g => g.id === e.target.value);
+                                                            if (found) setSelectedGroup(found.name);
                                                         }
                                                     }}
                                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
                                                 >
-                                                    {existingLines.map(line => (
-                                                        <option key={line} value={line}>{line}</option>
-                                                    ))}
+                                                    {productionGroups.length > 0 ? (
+                                                        productionGroups.map(group => (
+                                                            <option key={group.id} value={group.id}>
+                                                                {group.name} ({group.code}) {group.member_count !== undefined ? `· ${group.member_count} active workers` : ''}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <option value="">Loading production lines...</option>
+                                                    )}
                                                     <option value="__NEW__">+ Create new production line...</option>
                                                 </select>
                                                 <p className="text-[10px] text-slate-400 mt-1">
-                                                    Select an existing production line or create a custom one to organize separate teams.
+                                                    Connected to Supabase <code className="text-amber-700 font-mono">production_groups</code> table with target quota tracking.
                                                 </p>
                                             </div>
                                         )}

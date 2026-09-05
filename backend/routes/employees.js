@@ -65,6 +65,9 @@ router.get('/', cacheResponse(15), async (req, res) => {
             .from('employees')
             .select(`
                 *,
+                production_groups (
+                    id, code, name, target_output_pairs, is_active
+                ),
                 disciplinary_logs (
                     id, type, reason, status, date, created_at
                 )
@@ -98,7 +101,7 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
         const [empRes, docsRes, discRes] = await Promise.all([
-            supabase.from('employees').select('*').eq('id', id).single(),
+            supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', id).single(),
             supabase.from('employee_documents').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
             supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false })
         ]);
@@ -109,9 +112,21 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
         const now = new Date();
         const standing = evaluateOperationalStanding(emp, logs, now);
 
+        let tempPassword = null;
+        if (emp.requires_password_change) {
+            try {
+                const { data: authUser } = await supabase.auth.admin.getUserById(id);
+                tempPassword = authUser?.user?.user_metadata?.temp_password || null;
+            } catch {
+                // Ignore auth fetch failure
+            }
+        }
+
         const enrichedEmp = {
             ...emp,
             ...standing,
+            temp_password: tempPassword,
+            is_registered: !emp.requires_password_change,
             disciplinary_logs: logs
         };
 
@@ -129,6 +144,9 @@ router.post('/', async (req, res) => {
             email,
             department,
             job_title,
+            shift,
+            production_group_id,
+            production_group_name,
             monthly_salary,
             piece_rate,
             role = 'employee'
@@ -156,84 +174,233 @@ router.post('/', async (req, res) => {
         const APP_KEY = process.env.APP_KEY || 'default_fallback_key';
         const lookupHash = crypto.createHash('sha256').update(normalizedEmail + APP_KEY).digest('hex');
 
-        // Check duplicate hash
-        const { data: existingUser } = await supabase
+        // Check if an employee record already exists with this email or hash
+        const { data: existingEmp } = await supabase
             .from('employees')
-            .select('id')
-            .eq('email_hash', lookupHash)
+            .select('id, company_id')
+            .or(`email_hash.eq.${lookupHash},email.eq.${normalizedEmail}`)
             .maybeSingle();
 
-        if (existingUser) {
-            return res.status(400).json({ success: false, error: 'This email is already registered.' });
+        if (existingEmp) {
+            return res.status(400).json({
+                success: false,
+                error: `This email is already registered to employee (${existingEmp.company_id || existingEmp.id}).`
+            });
         }
 
-        // Create auth user
+        // Generate initial temporary password
         const defaultPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
 
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        // Attempt creating the auth user
+        let authData;
+        const { data: createdAuth, error: authError } = await supabase.auth.admin.createUser({
             email: normalizedEmail,
             password: defaultPassword,
             email_confirm: true,
-            user_metadata: { first_name, last_name, role }
+            user_metadata: { first_name, last_name, role, temp_password: defaultPassword }
         });
 
         if (authError) {
-            return res.status(400).json({ success: false, error: authError.message });
-        }
+            // Check if this error is caused by an orphaned auth user not present in the employees table
+            const isDuplicate = authError.message?.toLowerCase().includes('already') || authError.status === 422;
+            if (isDuplicate) {
+                // Find and reconcile orphaned auth account
+                const { data: userList } = await supabase.auth.admin.listUsers();
+                const orphanUser = userList?.users?.find(u => u.email?.toLowerCase() === normalizedEmail);
 
-        // Generate Company ID (e.g., CP-2026-001)
-        const currentYear = new Date().getFullYear();
+                if (orphanUser) {
+                    // Verify that no employee row is bound to this orphan user
+                    const { data: boundEmp } = await supabase
+                        .from('employees')
+                        .select('id')
+                        .eq('id', orphanUser.id)
+                        .maybeSingle();
 
-        const { data: latestEmp } = await supabase
-            .from('employees')
-            .select('company_id')
-            .like('company_id', `CP-${currentYear}-%`)
-            .order('company_id', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+                    if (!boundEmp) {
+                        // Purge orphan and recreate
+                        await supabase.auth.admin.deleteUser(orphanUser.id);
+                        const retry = await supabase.auth.admin.createUser({
+                            email: normalizedEmail,
+                            password: defaultPassword,
+                            email_confirm: true,
+                            user_metadata: { first_name, last_name, role, temp_password: defaultPassword }
+                        });
 
-        let newIdNum = 1;
-        if (latestEmp && latestEmp.company_id) {
-            const parts = latestEmp.company_id.split('-');
-            if (parts.length === 3) {
-                const lastNum = parseInt(parts[2], 10);
-                if (!isNaN(lastNum)) newIdNum = lastNum + 1;
+                        if (retry.error) {
+                            return res.status(400).json({ success: false, error: retry.error.message });
+                        }
+                        authData = retry.data;
+                    } else {
+                        return res.status(400).json({ success: false, error: 'This email is already registered.' });
+                    }
+                } else {
+                    return res.status(400).json({ success: false, error: authError.message });
+                }
+            } else {
+                return res.status(400).json({ success: false, error: authError.message });
             }
+        } else {
+            authData = createdAuth;
         }
 
-        const company_id = `CP-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
+        // Insert into employees table with rollback protection
+        try {
+            // Generate next Company ID (e.g., CP-2026-001)
+            const currentYear = new Date().getFullYear();
 
-        // Insert into employees table
-        const { data: empData, error: empError } = await supabase
+            const { data: latestEmp } = await supabase
+                .from('employees')
+                .select('company_id')
+                .like('company_id', `CP-${currentYear}-%`)
+                .order('company_id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            let newIdNum = 1;
+            if (latestEmp && latestEmp.company_id) {
+                const parts = latestEmp.company_id.split('-');
+                if (parts.length === 3) {
+                    const lastNum = parseInt(parts[2], 10);
+                    if (!isNaN(lastNum)) newIdNum = lastNum + 1;
+                }
+            }
+
+            const company_id = `CP-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
+
+            // Resolve production group for factory workers
+            let resolvedGroupId = null;
+            let resolvedGroupName = 'Line A';
+
+            if (department === 'Factory') {
+                if (production_group_id) {
+                    const { data: groupById } = await supabase
+                        .from('production_groups')
+                        .select('id, name')
+                        .eq('id', production_group_id)
+                        .maybeSingle();
+
+                    if (groupById) {
+                        resolvedGroupId = groupById.id;
+                        resolvedGroupName = groupById.name;
+                    }
+                }
+
+                if (!resolvedGroupId) {
+                    const candidateName = (production_group_name || (shift ? shift.split('·')[0].trim() : 'Line A')).trim();
+                    const generatedCode = candidateName.toUpperCase().replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+                    const { data: matchedGroup } = await supabase
+                        .from('production_groups')
+                        .select('id, name')
+                        .or(`name.ilike.${candidateName},code.ilike.${generatedCode}`)
+                        .maybeSingle();
+
+                    if (matchedGroup) {
+                        resolvedGroupId = matchedGroup.id;
+                        resolvedGroupName = matchedGroup.name;
+                    } else if (candidateName) {
+                        const { data: createdGroup } = await supabase
+                            .from('production_groups')
+                            .insert({
+                                code: generatedCode || `LINE-${Date.now()}`,
+                                name: candidateName,
+                                target_output_pairs: 100,
+                                is_active: true
+                            })
+                            .select('id, name')
+                            .single();
+
+                        if (createdGroup) {
+                            resolvedGroupId = createdGroup.id;
+                            resolvedGroupName = createdGroup.name;
+                        }
+                    }
+                }
+            }
+
+            const resolvedShift = shift || (
+                department === 'Factory'
+                    ? `${resolvedGroupName} · Factory (08:00 AM - 05:00 PM)`
+                    : 'Regular Worker (08:00 AM - 08:00 PM)'
+            );
+
+            const { data: empData, error: empError } = await supabase
+                .from('employees')
+                .insert({
+                    id: authData.user.id,
+                    auth_user_id: authData.user.id,
+                    company_id: company_id,
+                    first_name,
+                    last_name,
+                    email: normalizedEmail,
+                    role,
+                    department,
+                    job_title,
+                    shift: resolvedShift,
+                    production_group_id: resolvedGroupId,
+                    monthly_salary: parsedSalary,
+                    piece_rate: parsedPieceRate,
+                    email_hash: lookupHash,
+                    status: 'active',
+                    requires_password_change: true
+                })
+                .select(`
+                    *,
+                    production_groups (
+                        id, code, name, target_output_pairs, is_active
+                    )
+                `)
+                .single();
+
+            if (empError) throw empError;
+
+            invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    ...empData,
+                    temp_password: defaultPassword
+                },
+                message: 'Employee created successfully!',
+                temp_password: defaultPassword
+            });
+        } catch (dbError) {
+            // Atomic rollback: clean up newly created auth user if database insert fails
+            if (authData?.user?.id) {
+                await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+            }
+            throw dbError;
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Reset or issue a new temporary password for unregistered employee
+router.post('/:id/reset-temp-password', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const newTempPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
+
+        const { error: authError } = await supabase.auth.admin.updateUserById(id, {
+            password: newTempPassword,
+            user_metadata: { temp_password: newTempPassword }
+        });
+        if (authError) throw authError;
+
+        const { error: empError } = await supabase
             .from('employees')
-            .insert({
-                id: authData.user.id,
-                auth_user_id: authData.user.id,
-                company_id: company_id,
-                first_name,
-                last_name,
-                email: normalizedEmail,
-                role,
-                department,
-                job_title,
-                monthly_salary: parsedSalary,
-                piece_rate: parsedPieceRate,
-                email_hash: lookupHash,
-                status: 'active',
-                requires_password_change: true
-            })
-            .select()
-            .single();
-
+            .update({ requires_password_change: true, password_changed_at: null })
+            .eq('id', id);
         if (empError) throw empError;
 
-        invalidateCache(['/api/employees', '/api/dashboard']);
+        invalidateCache([`/api/employees/${id}`, '/api/employees']);
 
-        res.status(201).json({
+        res.json({
             success: true,
-            data: empData,
-            message: 'Employee created successfully!',
-            temp_password: defaultPassword
+            temp_password: newTempPassword,
+            message: 'Temporary password generated successfully!'
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -251,7 +418,8 @@ router.put('/:id', async (req, res) => {
             job_title,
             monthly_salary,
             piece_rate,
-            shift
+            shift,
+            production_group_id
         } = req.body;
 
         const parsedSalary = monthly_salary !== undefined && monthly_salary !== null && !isNaN(monthly_salary)
@@ -274,6 +442,7 @@ router.put('/:id', async (req, res) => {
         if (email) updatePayload.email = email;
         if (role) updatePayload.role = role;
         if (shift) updatePayload.shift = shift;
+        if (production_group_id !== undefined) updatePayload.production_group_id = production_group_id;
 
         const { error } = await supabase
             .from('employees')
@@ -322,7 +491,7 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        invalidateCache(['/api/employees', '/api/dashboard']);
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
@@ -376,12 +545,14 @@ router.delete('/:id', async (req, res) => {
             'leave_requests',
             'payrolls',
             'audit_logs',
-            'disciplinary_logs'
+            'disciplinary_logs',
+            'employees'
         ];
 
         for (const table of tablesToClean) {
             await supabase.from(table).delete().eq('employee_id', req.params.id);
             await supabase.from(table).delete().eq('user_id', req.params.id);
+            await supabase.from(table).delete().eq('id', req.params.id);
         }
 
         const { error } = await supabase.auth.admin.deleteUser(req.params.id);
@@ -400,7 +571,7 @@ router.delete('/:id', async (req, res) => {
             });
         }
 
-        invalidateCache(['/api/employees', '/api/dashboard']);
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
 
         res.json({ success: true, message: `Employee deleted permanently. Shredded ${photosToShred.length} orphaned files.` });
     } catch (error) {
