@@ -216,7 +216,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         console.warn('[PWA] Service Worker registration note:', error);
       });
 
-    // Seamlessly swap to new service worker controller without jarring reloads
+    // Handle service worker updates
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!refreshing) {

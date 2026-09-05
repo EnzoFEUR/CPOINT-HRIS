@@ -1,24 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
 
 export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Controlled department state to drive dynamic payroll fields
+    // Form state
     const [department, setDepartment] = useState(defaultValues.department || 'Factory');
+    const [selectedCraft, setSelectedCraft] = useState(defaultValues.job_title || 'Sapatero (Lapat/Swelas)');
+    const [selectedGroup, setSelectedGroup] = useState('Line A');
+    const [isCustomLine, setIsCustomLine] = useState(false);
 
-    // Monthly Salary State
+    // Existing production lines from workforce cache
+    const { data: workforceData } = useQuery({
+        queryKey: ['adminEmployees'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/employees');
+            const result = await res.json();
+            return Array.isArray(result) ? result : (result.data || []);
+        },
+        initialData: () => queryClient.getQueryData(['adminEmployees']),
+        staleTime: 60_000,
+        gcTime: 300_000
+    });
+
+    const existingLines = useMemo(() => {
+        const raw = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
+        const lines = extractProductionLines(raw);
+        if (selectedGroup && !lines.includes(selectedGroup) && !isCustomLine) {
+            lines.push(selectedGroup);
+        }
+        return lines;
+    }, [workforceData, selectedGroup, isCustomLine]);
+
+    // Regular salary state
     const [displaySalary, setDisplaySalary] = useState(defaultValues.monthly_salary ? formatSalary(defaultValues.monthly_salary) : '');
     const [rawSalary, setRawSalary] = useState(defaultValues.monthly_salary || '');
-
-    // Piece Rate State
-    const [displayPieceRate, setDisplayPieceRate] = useState(defaultValues.piece_rate ? formatSalary(defaultValues.piece_rate) : '');
-    const [rawPieceRate, setRawPieceRate] = useState(defaultValues.piece_rate || '');
 
     function formatSalary(value) {
         let strVal = String(value);
@@ -68,8 +90,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setCreatedEmployee(null);
         setDisplaySalary('');
         setRawSalary('');
-        setDisplayPieceRate('');
-        setRawPieceRate('');
+        setSelectedCraft('Sapatero (Lapat/Swelas)');
+        setSelectedGroup(existingLines[0] || 'Line A');
+        setIsCustomLine(false);
     };
 
     const handleSubmit = async (e) => {
@@ -77,13 +100,22 @@ export default function Create({ errors = [], defaultValues = {} }) {
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
-        // Attach pay type, numerical rates, and fixed schedule based on department
         const isFactory = department === 'Factory';
         data.department = department;
-        data.pay_type = isFactory ? 'piece_rate' : 'monthly';
-        data.monthly_salary = isFactory ? 0 : parseFloat(rawSalary || 0);
-        data.piece_rate = isFactory ? parseFloat(rawPieceRate || 0) : 0;
-        data.shift = isFactory ? 'Factory Worker (8-5)' : 'Regular Worker (8-8)';
+
+        if (isFactory) {
+            const lineName = (selectedGroup || 'Line A').trim();
+            data.job_title = selectedCraft;
+            data.pay_type = 'piece_rate';
+            data.monthly_salary = null;
+            data.piece_rate = null;
+            data.shift = `${lineName} · Factory (08:00 AM - 05:00 PM)`;
+        } else {
+            data.pay_type = 'monthly';
+            data.monthly_salary = parseFloat(rawSalary || 0);
+            data.piece_rate = null;
+            data.shift = 'Regular Worker (08:00 AM - 08:00 PM)';
+        }
 
         setIsSubmitting(true);
 
@@ -99,6 +131,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     return oldData ? [result.data, ...oldData] : [result.data];
                 });
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['employees'] });
 
                 setCreatedEmployee({
                     ...result.data,
@@ -215,7 +248,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     onChange={(e) => setDepartment(e.target.value)}
                                     className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer"
                                 >
-                                    <option value="Factory">Factory Floor</option>
+                                    <option value="Factory">Factory Floor (Shoe Production)</option>
                                     <option value="Retail">Retail Store</option>
                                     <option value="Security">Security</option>
                                     <option value="HR/Admin">HR & Admin</option>
@@ -223,6 +256,139 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     <option value="Logistics">Logistics</option>
                                 </select>
                             </div>
+
+                            {department !== 'Factory' ? (
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
+                                    <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
+                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                        placeholder="e.g. Sales Associate, HR Officer" />
+                                </div>
+                            ) : null}
+
+                            {/* FACTORY SHOE PRODUCTION CRAFT & GROUP SELECTION */}
+                            {department === 'Factory' && (
+                                <div className="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/80">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="block text-[10px] sm:text-xs font-bold text-amber-800 uppercase tracking-widest">
+                                                Shoe Production Station (Select 1 of 6 Crafts)
+                                            </label>
+                                            <span className="text-[10px] font-bold text-slate-400">
+                                                Sequential 6-Stage Assembly Line
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                            {FACTORY_SHOE_ROLES.map((craft) => {
+                                                const isSelected = selectedCraft === craft.id;
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={craft.id}
+                                                        onClick={() => setSelectedCraft(craft.id)}
+                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${
+                                                                    isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                                                                }`}>
+                                                                    <i className={`ti ${craft.icon}`} />
+                                                                </span>
+                                                                <div>
+                                                                    <p className="font-bold text-xs text-slate-800 leading-tight">{craft.label}</p>
+                                                                    <p className="text-[10px] text-slate-400 font-medium">{craft.filipino}</p>
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                                                                {craft.stage.split(':')[0]}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 leading-normal line-clamp-2">
+                                                            {craft.description}
+                                                        </p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* PRODUCTION LINE ASSIGNMENT */}
+                                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
+                                            <div>
+                                                <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
+                                                    Assigned Production Line / Group
+                                                </label>
+                                                <p className="text-[11px] text-slate-400 font-medium">
+                                                    Assigns the worker to a distinct shoe production line (e.g. Line A, Line B, Line 7).
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const nextState = !isCustomLine;
+                                                    setIsCustomLine(nextState);
+                                                    if (nextState) {
+                                                        setSelectedGroup('');
+                                                    } else {
+                                                        setSelectedGroup(existingLines[0] || 'Line A');
+                                                    }
+                                                }}
+                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                            >
+                                                <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
+                                                <span>{isCustomLine ? 'Choose from existing' : '+ Create new line'}</span>
+                                            </button>
+                                        </div>
+
+                                        {isCustomLine ? (
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={selectedGroup}
+                                                    onChange={(e) => setSelectedGroup(e.target.value)}
+                                                    placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
+                                                    autoFocus
+                                                    className="w-full px-3 py-2 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                />
+                                                <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
+                                                    <i className="ti ti-sparkles text-xs" />
+                                                    <span>This new production line will be saved and available for other workers.</span>
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <select
+                                                    value={selectedGroup}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === '__NEW__') {
+                                                            setIsCustomLine(true);
+                                                            setSelectedGroup('');
+                                                        } else {
+                                                            setSelectedGroup(e.target.value);
+                                                        }
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                                                >
+                                                    {existingLines.map(line => (
+                                                        <option key={line} value={line}>{line}</option>
+                                                    ))}
+                                                    <option value="__NEW__">+ Create new production line...</option>
+                                                </select>
+                                                <p className="text-[10px] text-slate-400 mt-1">
+                                                    Select an existing production line or create a custom one to organize separate teams.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="md:col-span-2">
                                 <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
@@ -259,31 +425,31 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         </h3>
 
                         {department === 'Factory' ? (
-                            <div className="space-y-4">
-                                <div className="inline-flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-800 rounded-xl border border-amber-200/80 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
-                                    <i className="ti ti-box text-base text-amber-600 shrink-0" />
-                                    <span>Factory Mode: Piece-Rate Compensation Selected</span>
-                                </div>
-
-                                <div className="max-w-md">
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        Rate Per Piece (₱/unit)
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={displayPieceRate}
-                                            onChange={handlePieceRateChange}
-                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-amber-300 focus:border-amber-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-amber-500/10 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
-                                            placeholder="0.00"
-                                        />
-                                        <input type="hidden" name="piece_rate" value={rawPieceRate} />
+                            <div className="space-y-3.5">
+                                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 text-amber-900 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-amber-900">
+                                            <i className="ti ti-box-multiple text-lg text-amber-600" />
+                                            Group Output Piece-Rate Model (Shoe Production Pool)
+                                        </div>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
+                                            Pakyawan Pool
+                                        </span>
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1">
-                                        <i className="ti ti-info-circle" /> Total gross pay = (Completed Output Units × Piece Rate)
+                                    <p className="text-xs text-amber-800 leading-relaxed">
+                                        Factory workers are <strong>not paid via fixed monthly salaries</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
                                     </p>
+                                    <div className="pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-3 text-[11px] text-amber-800 font-medium">
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-check text-amber-600" /> No fixed salary set at onboarding
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-users text-amber-600" /> Production line batch pool
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-clock-off text-amber-600" /> Strictly no overtime policy
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         ) : (

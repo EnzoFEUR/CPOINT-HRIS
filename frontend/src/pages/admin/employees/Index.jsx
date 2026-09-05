@@ -7,10 +7,13 @@ import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
+import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
-/**
- * Personnel directory page.
- */
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export default function EmployeesIndex() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -100,6 +103,8 @@ export default function EmployeesIndex() {
 
     // Filter employees by status, department, and search query
     const filteredEmployees = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+
         return employees.filter(emp => {
             const roleStr = (emp.role || emp.job_title || '').toLowerCase();
             const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim().toLowerCase();
@@ -130,8 +135,7 @@ export default function EmployeesIndex() {
 
             if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
 
-            if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase();
+            if (q) {
                 const companyId = (emp.company_id || '').toLowerCase();
                 const jobTitle = (emp.job_title || '').toLowerCase();
 
@@ -144,20 +148,45 @@ export default function EmployeesIndex() {
         });
     }, [employees, filterStatus, selectedDepartment, searchQuery]);
 
-    // Tab counts
+    // Tab counts in single O(N) pass
     const counts = useMemo(() => {
-        const valid = employees.filter(e => {
+        let all = 0;
+        let active = 0;
+        let suspended = 0;
+        let terminated = 0;
+        let salaried = 0;
+        let pieceRate = 0;
+
+        for (let i = 0; i < employees.length; i++) {
+            const e = employees[i];
             const r = (e.role || '').toLowerCase();
             const em = (e.email || '').toLowerCase();
             const fn = `${e.first_name || ''} ${e.last_name || ''}`.trim().toLowerCase();
-            return !r.includes('admin') && !r.includes('security') && em !== 'admin@c-point.com' && em !== 'guard@c-point.com' && !fn.includes('terminal guard') && !fn.includes('system admin');
-        });
-        const terminated = valid.filter(e => e.operational_status === 'Terminated' || e.is_terminated).length;
-        const suspended = valid.filter(e => !e.is_terminated && e.operational_status !== 'Terminated' && (e.operational_status === 'Suspended' || e.is_suspended)).length;
-        const active = valid.filter(e => (e.operational_status === 'Active' || (!e.is_terminated && !e.is_suspended))).length;
-        const salaried = valid.filter(e => !(e.department || '').toLowerCase().includes('factory')).length;
-        const pieceRate = valid.length - salaried;
-        return { all: valid.length, active, suspended, terminated, salaried, pieceRate };
+            if (r.includes('admin') || r.includes('security') || em === 'admin@c-point.com' || em === 'guard@c-point.com' || fn.includes('terminal guard') || fn.includes('system admin')) {
+                continue;
+            }
+
+            all++;
+            const isTerminated = e.operational_status === 'Terminated' || e.is_terminated;
+            const isSusp = !isTerminated && (e.operational_status === 'Suspended' || e.is_suspended);
+
+            if (isTerminated) {
+                terminated++;
+            } else if (isSusp) {
+                suspended++;
+            } else {
+                active++;
+            }
+
+            const isFactory = (e.department || '').toLowerCase().includes('factory');
+            if (isFactory) {
+                pieceRate++;
+            } else {
+                salaried++;
+            }
+        }
+
+        return { all, active, suspended, terminated, salaried, pieceRate };
     }, [employees]);
 
     const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'All');
@@ -171,11 +200,6 @@ export default function EmployeesIndex() {
         setSelectedDepartment('All');
         setFilterStatus('All');
         setCurrentPage(1);
-    };
-
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     if (isLoading) {
@@ -348,6 +372,8 @@ export default function EmployeesIndex() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                         {paginatedEmployees.map((employee) => {
                             const isFactory = (employee.department || '').toLowerCase().includes('factory');
+                            const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
+                            const prodGroup = isFactory ? parseProductionGroup(employee.shift) : null;
                             const rate = isFactory
                                 ? Number(employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? 0)
                                 : Number(employee.monthly_salary ?? employee.salary ?? 0);
@@ -389,7 +415,8 @@ export default function EmployeesIndex() {
                                                         <h3 className="font-bold text-slate-900 text-base leading-snug truncate group-hover:text-indigo-600 transition-colors">
                                                             {employee.first_name} {employee.last_name}
                                                         </h3>
-                                                        <p className="text-xs font-semibold text-slate-500 truncate">
+                                                        <p className={`text-xs font-semibold truncate flex items-center gap-1 ${isFactory ? 'text-amber-700 font-bold' : 'text-slate-500'}`}>
+                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
                                                             {employee.job_title || 'General Staff'}
                                                         </p>
                                                     </div>
@@ -402,11 +429,11 @@ export default function EmployeesIndex() {
                                                             <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
-                                                            <i className="ti ti-alert-triangle text-xs text-amber-600" /> Suspended
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                                                            <i className="ti ti-clock-pause text-xs text-amber-600" /> Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
                                                         </span>
                                                     )}
@@ -465,7 +492,7 @@ export default function EmployeesIndex() {
                                                         : 'bg-indigo-50 text-indigo-800 border-indigo-200'
                                                 }`}>
                                                     <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-building'} text-xs`} />
-                                                    {employee.department || 'Operations'}
+                                                    {isFactory ? prodGroup : (employee.department || 'Operations')}
                                                 </span>
                                             </div>
 
@@ -474,19 +501,28 @@ export default function EmployeesIndex() {
                                                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
                                                     <span className="uppercase tracking-wide text-[10px]">Wage Structure</span>
                                                     <span className="font-semibold text-slate-700">
-                                                        {isFactory ? 'Piece-Rate Basis' : 'Fixed Monthly'}
+                                                        {isFactory ? 'Group Piece-Rate' : 'Fixed Monthly'}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-baseline gap-1">
-                                                    <span className={`text-lg font-black font-mono tracking-tight ${
-                                                        isFactory ? 'text-amber-700' : 'text-emerald-700'
-                                                    }`}>
-                                                        ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </span>
-                                                    <span className="text-[11px] font-medium text-slate-400">
-                                                        {isFactory ? '/ output' : '/ month'}
-                                                    </span>
-                                                </div>
+                                                {isFactory ? (
+                                                    <div className="flex items-center justify-between pt-0.5">
+                                                        <span className="text-sm font-black font-mono text-amber-700 flex items-center gap-1">
+                                                            <i className="ti ti-box-multiple text-amber-600 text-sm" /> Batch Pool
+                                                        </span>
+                                                        <span className="text-[10px] font-bold text-slate-500">
+                                                            Pakyawan Pool
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="text-lg font-black font-mono tracking-tight text-emerald-700">
+                                                            ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </span>
+                                                        <span className="text-[11px] font-medium text-slate-400">
+                                                            / month
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Details */}
@@ -555,6 +591,8 @@ export default function EmployeesIndex() {
                                 <tbody className="divide-y divide-slate-100 text-xs">
                                     {paginatedEmployees.map((employee) => {
                                         const isFactory = (employee.department || '').toLowerCase().includes('factory');
+                                        const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
+                                        const prodGroup = isFactory ? parseProductionGroup(employee.shift) : null;
                                         const rate = isFactory
                                             ? Number(employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? 0)
                                             : Number(employee.monthly_salary ?? employee.salary ?? 0);
@@ -603,16 +641,16 @@ export default function EmployeesIndex() {
                                                                 <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
                                                             </span>
                                                             <p className="text-[10px] text-rose-700 font-semibold truncate max-w-[150px]" title={employee.termination_record?.reason}>
-                                                                DOLE Separated
+                                                                {employee.termination_record?.reason || 'Account Separated'}
                                                             </p>
                                                         </div>
                                                     ) : isSuspended ? (
                                                         <div className="space-y-0.5">
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-md border border-amber-300 shadow-2xs">
-                                                                <i className="ti ti-alert-triangle text-xs text-amber-600" /> Suspended
+                                                                <i className="ti ti-clock-pause text-xs text-amber-600" /> Suspended
                                                             </span>
-                                                            <p className="text-[10px] text-amber-700 font-semibold truncate max-w-[150px]">
-                                                                Operational Hold
+                                                            <p className="text-[10px] text-amber-800 font-semibold truncate max-w-[150px]" title={employee.active_suspension?.reason}>
+                                                                {employee.active_suspension?.reason || 'Serving Suspension'}
                                                             </p>
                                                         </div>
                                                     ) : (
@@ -631,22 +669,38 @@ export default function EmployeesIndex() {
 
                                                 <td className="px-4 sm:px-6 py-3.5">
                                                     <div>
-                                                        <p className="font-semibold text-slate-800">{employee.job_title || 'Staff'}</p>
+                                                        <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
+                                                            {employee.job_title || 'Staff'}
+                                                        </p>
                                                         <span className={`inline-block mt-0.5 px-2 py-0.2 rounded text-[10px] font-bold uppercase border ${
                                                             isFactory ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200'
                                                         }`}>
-                                                            {employee.department || 'General'}
+                                                            {isFactory ? prodGroup : (employee.department || 'General')}
                                                         </span>
                                                     </div>
                                                 </td>
 
                                                 <td className="px-4 sm:px-6 py-3.5">
-                                                    <p className={`font-mono font-bold text-sm ${isFactory ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                                        ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </p>
-                                                    <p className="text-slate-400 text-[10px] uppercase font-semibold">
-                                                        {isFactory ? 'Piece-Rate' : 'Fixed Monthly'}
-                                                    </p>
+                                                    {isFactory ? (
+                                                        <div>
+                                                            <p className="font-mono font-bold text-xs text-amber-800 flex items-center gap-1">
+                                                                <i className="ti ti-box-multiple text-amber-600" /> Batch Pool
+                                                            </p>
+                                                            <p className="text-slate-400 text-[10px] uppercase font-semibold">
+                                                                Group Piece-Rate
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <p className="font-mono font-bold text-sm text-emerald-700">
+                                                                ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            </p>
+                                                            <p className="text-slate-400 text-[10px] uppercase font-semibold">
+                                                                Fixed Monthly
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 <td className="px-4 sm:px-6 py-3.5 font-medium text-slate-600">
