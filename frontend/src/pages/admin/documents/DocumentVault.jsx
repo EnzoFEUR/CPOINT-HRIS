@@ -47,13 +47,19 @@ export default function DocumentVault() {
   };
 
   const fetchEmployees = async () => {
-    const { data } = await supabase.from('employees').select('id, first_name, last_name, company_id');
+    const { data } = await supabase.from('employees').select('id, first_name, last_name, company_id, status, is_active');
     setEmployees(data || []);
   };
 
   const handleUploadSubmit = async (e) => {
     e.preventDefault();
     if (!uploadData.file || !uploadData.employee_id) return;
+
+    const targetEmp = employees.find(e => e.id === uploadData.employee_id);
+    if (targetEmp && (targetEmp.status === 'inactive' || targetEmp.status === 'terminated' || targetEmp.is_active === false)) {
+      alert('Cannot upload document: Selected employee account is separated/terminated. 201 records are preserved in read-only audit mode.');
+      return;
+    }
 
     try {
       const file = uploadData.file;
@@ -228,9 +234,14 @@ export default function DocumentVault() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100"
                   >
                     <option value="">-- Choose Employee --</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.first_name} {emp.last_name} ({emp.company_id})</option>
-                    ))}
+                    {employees.map(emp => {
+                      const isTerm = emp.status === 'inactive' || emp.status === 'terminated' || emp.is_active === false;
+                      return (
+                        <option key={emp.id} value={emp.id} disabled={isTerm}>
+                          {emp.first_name} {emp.last_name} ({emp.company_id}){isTerm ? ' — [Separated · Upload Disabled]' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 

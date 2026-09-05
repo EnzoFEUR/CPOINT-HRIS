@@ -1,53 +1,121 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 export default function Edit() {
     const { id } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
-    const [employee, setEmployee] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const cachedEmp = useMemo(() => {
+        const details = queryClient.getQueryData(['employeeDetails', id])?.data;
+        if (details) return details;
+        const list = queryClient.getQueryData(['adminEmployees']);
+        if (Array.isArray(list)) {
+            return list.find(e => String(e.id) === String(id)) || null;
+        }
+        return null;
+    }, [queryClient, id]);
 
-    const [department, setDepartment] = useState('Factory');
+    const [employee, setEmployee] = useState(cachedEmp);
+    const [isLoading, setIsLoading] = useState(!cachedEmp);
 
-    // Monthly Salary State
-    const [displaySalary, setDisplaySalary] = useState('');
-    const [rawSalary, setRawSalary] = useState('');
+    const [department, setDepartment] = useState(cachedEmp?.department || 'Factory');
+    const [selectedCraft, setSelectedCraft] = useState(() => {
+        const match = getShoeRoleDetails(cachedEmp?.job_title);
+        return match ? match.id : 'Sapatero (Lapat/Swelas)';
+    });
+    const [selectedGroup, setSelectedGroup] = useState(() => {
+        return parseProductionGroup(cachedEmp?.shift) || 'Line A';
+    });
+    const [selectedGroupId, setSelectedGroupId] = useState(cachedEmp?.production_group_id || '');
+    const [isCustomLine, setIsCustomLine] = useState(false);
 
-    // Piece Rate State
-    const [displayPieceRate, setDisplayPieceRate] = useState('');
-    const [rawPieceRate, setRawPieceRate] = useState('');
+    // Fetch real production groups from the dedicated database table
+    const { data: productionGroupsData } = useQuery({
+        queryKey: ['productionGroups'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/production-groups');
+            const result = await res.json();
+            return result?.data || [];
+        },
+        staleTime: 60_000,
+        gcTime: 300_000
+    });
+
+    const productionGroups = useMemo(() => {
+        return Array.isArray(productionGroupsData) ? productionGroupsData : [];
+    }, [productionGroupsData]);
+
+    // Existing production lines from workforce cache
+    const { data: workforceData } = useQuery({
+        queryKey: ['adminEmployees'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/employees');
+            const result = await res.json();
+            return Array.isArray(result) ? result : (result.data || []);
+        },
+        initialData: () => queryClient.getQueryData(['adminEmployees']),
+        staleTime: 60_000,
+        gcTime: 300_000
+    });
+
+    const existingLines = useMemo(() => {
+        const raw = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
+        const lines = extractProductionLines(raw);
+        if (selectedGroup && !lines.includes(selectedGroup) && !isCustomLine) {
+            lines.push(selectedGroup);
+        }
+        return lines;
+    }, [workforceData, selectedGroup, isCustomLine]);
+
+    const [displaySalary, setDisplaySalary] = useState(() => {
+        return cachedEmp?.monthly_salary ? formatSalary(cachedEmp.monthly_salary) : '';
+    });
+    const [rawSalary, setRawSalary] = useState(() => {
+        return cachedEmp?.monthly_salary ? String(cachedEmp.monthly_salary) : '';
+    });
 
     useEffect(() => {
+        let isMounted = true;
         fetchWithAuth(`/api/employees/${id}`)
             .then(res => res.json())
             .then(data => {
+                if (!isMounted) return;
                 if (data.success || data.data) {
                     const emp = data.data || data;
                     setEmployee(emp);
                     if (emp.department) setDepartment(emp.department);
 
+                    const craftMatch = getShoeRoleDetails(emp.job_title);
+                    if (craftMatch) setSelectedCraft(craftMatch.id);
+
+                    const parsedGroup = parseProductionGroup(emp.shift);
+                    if (parsedGroup) setSelectedGroup(parsedGroup);
+
                     if (emp.monthly_salary !== null && emp.monthly_salary !== undefined) {
                         setDisplaySalary(formatSalary(emp.monthly_salary));
                         setRawSalary(String(emp.monthly_salary));
                     }
-
-                    if (emp.piece_rate !== null && emp.piece_rate !== undefined) {
-                        setDisplayPieceRate(formatSalary(emp.piece_rate));
-                        setRawPieceRate(String(emp.piece_rate));
-                    }
-                } else {
+                } else if (!cachedEmp) {
                     toast.error('Employee not found');
                     navigate('/admin/employees');
                 }
             })
-            .catch(() => toast.error('Failed to load employee'))
-            .finally(() => setIsLoading(false));
-    }, [id, navigate]);
+            .catch(() => {
+                if (!cachedEmp && isMounted) toast.error('Failed to load employee');
+            })
+            .finally(() => {
+                if (isMounted) setIsLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [id, navigate, cachedEmp]);
 
     function formatSalary(value) {
         if (value === null || value === undefined || value === '') return '';
@@ -59,15 +127,9 @@ export default function Edit() {
     }
 
     const handleSalaryChange = (e) => {
-        const val = e.target.value.replace(/[^0-9.]/g, '');
-        setRawSalary(val);
-        setDisplaySalary(formatSalary(val));
-    };
-
-    const handlePieceRateChange = (e) => {
-        const val = e.target.value.replace(/[^0-9.]/g, '');
-        setRawPieceRate(val);
-        setDisplayPieceRate(formatSalary(val));
+        const value = e.target.value.replace(/[^0-9.]/g, '');
+        setRawSalary(value);
+        setDisplaySalary(formatSalary(value));
     };
 
     const isFactory = department?.toLowerCase().includes('factory');
@@ -79,22 +141,34 @@ export default function Edit() {
 
         // Parse numerical values safely
         const numSalary = parseFloat(String(rawSalary).replace(/[^0-9.]/g, ''));
-        const numPiece = parseFloat(String(rawPieceRate).replace(/[^0-9.]/g, ''));
-
         const cleanSalary = !isNaN(numSalary) ? numSalary : null;
-        const cleanPiece = !isNaN(numPiece) ? numPiece : null;
 
-        // Build precise payload aligned directly with Supabase schema columns
+        const lineName = (selectedGroup || 'Line A').trim();
+
+        let groupId = null;
+        if (isFactory) {
+            if (!isCustomLine) {
+                const found = productionGroups.find(g => g.id === selectedGroupId) ||
+                              productionGroups.find(g => g.name === selectedGroup);
+                groupId = found?.id || selectedGroupId || null;
+            }
+        }
+
+        // Form payload
         const payload = {
             email: data.email,
             role: data.role,
             first_name: data.first_name,
             last_name: data.last_name,
-            job_title: data.job_title,
+            job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
+            production_group_id: isFactory ? groupId : null,
             pay_type: isFactory ? 'piece_rate' : 'monthly',
             monthly_salary: isFactory ? null : cleanSalary,
-            piece_rate: isFactory ? cleanPiece : null,
+            piece_rate: null,
+            shift: isFactory 
+                ? `${lineName} · Factory (08:00 AM - 05:00 PM)` 
+                : 'Regular Worker (08:00 AM - 08:00 PM)',
         };
 
         try {
@@ -109,8 +183,19 @@ export default function Edit() {
             const result = await res.json();
 
             if (res.ok && (result.success || !result.error)) {
+                const updated = result.data || { ...employee, ...payload };
+                queryClient.setQueryData(['adminEmployees'], (old) => {
+                    if (!Array.isArray(old)) return old;
+                    return old.map(e => String(e.id) === String(id) ? { ...e, ...updated } : e);
+                });
+                queryClient.setQueryData(['employeeDetails', id], (old) => {
+                    if (!old) return old;
+                    return { ...old, data: { ...old.data, ...updated } };
+                });
+
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                queryClient.invalidateQueries({ queryKey: ['employee', id] });
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['productionGroups'] });
 
                 toast.success('Profile updated successfully!');
                 navigate(`/admin/employees/${id}`);
@@ -196,12 +281,6 @@ export default function Edit() {
                             </div>
 
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
-                                <input type="text" name="job_title" required defaultValue={employee.job_title || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
-                            </div>
-
-                            <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>
                                 <select
                                     name="department"
@@ -209,13 +288,177 @@ export default function Edit() {
                                     onChange={(e) => setDepartment(e.target.value)}
                                     className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer"
                                 >
-                                    <option value="Factory">Factory Floor</option>
+                                    <option value="Factory">Factory Floor (Shoe Production)</option>
                                     <option value="Retail">Retail Store</option>
                                     <option value="Security">Security</option>
                                     <option value="HR/Admin">HR & Admin</option>
                                     <option value="IT">IT Department</option>
                                     <option value="Logistics">Logistics</option>
                                 </select>
+                            </div>
+
+                            {!isFactory ? (
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
+                                    <input type="text" name="job_title" required defaultValue={employee.job_title || ''}
+                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
+                                </div>
+                            ) : null}
+
+                            {/* FACTORY SHOE PRODUCTION CRAFT & GROUP SELECTION */}
+                            {isFactory && (
+                                <div className="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/80">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="block text-[10px] sm:text-xs font-bold text-amber-800 uppercase tracking-widest">
+                                                Shoe Production Station (Select 1 of 6 Crafts)
+                                            </label>
+                                            <span className="text-[10px] font-bold text-slate-400">
+                                                Sequential 6-Stage Assembly Line
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                            {FACTORY_SHOE_ROLES.map((craft) => {
+                                                const isSelected = selectedCraft === craft.id;
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={craft.id}
+                                                        onClick={() => setSelectedCraft(craft.id)}
+                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${
+                                                                    isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                                                                }`}>
+                                                                    <i className={`ti ${craft.icon}`} />
+                                                                </span>
+                                                                <div>
+                                                                    <p className="font-bold text-xs text-slate-800 leading-tight">{craft.label}</p>
+                                                                    <p className="text-[10px] text-slate-400 font-medium">{craft.filipino}</p>
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                                                                {craft.stage.split(':')[0]}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 leading-normal line-clamp-2">
+                                                            {craft.description}
+                                                        </p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* PRODUCTION LINE ASSIGNMENT */}
+                                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
+                                            <div>
+                                                <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
+                                                    Assigned Production Line / Group
+                                                </label>
+                                                <p className="text-[11px] text-slate-400 font-medium">
+                                                    Assigns the worker to a distinct shoe production line (e.g. Line A, Line B, Line 7).
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const nextState = !isCustomLine;
+                                                    setIsCustomLine(nextState);
+                                                    if (nextState) {
+                                                        setSelectedGroup('');
+                                                    } else {
+                                                        setSelectedGroup(existingLines[0] || 'Line A');
+                                                    }
+                                                }}
+                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                            >
+                                                <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
+                                                <span>{isCustomLine ? 'Choose from existing' : '+ Create new line'}</span>
+                                            </button>
+                                        </div>
+
+                                        {isCustomLine ? (
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={selectedGroup}
+                                                    onChange={(e) => setSelectedGroup(e.target.value)}
+                                                    placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
+                                                    autoFocus
+                                                    className="w-full px-3 py-2 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                />
+                                                <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
+                                                    <i className="ti ti-sparkles text-xs" />
+                                                    <span>This new production line will be saved and available for other workers.</span>
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <select
+                                                    value={selectedGroupId || (productionGroups.find(g => g.name === selectedGroup)?.id || '')}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === '__NEW__') {
+                                                            setIsCustomLine(true);
+                                                            setSelectedGroupId('');
+                                                            setSelectedGroup('');
+                                                        } else {
+                                                            setSelectedGroupId(e.target.value);
+                                                            const found = productionGroups.find(g => g.id === e.target.value);
+                                                            if (found) setSelectedGroup(found.name);
+                                                        }
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                                                >
+                                                    {productionGroups.length > 0 ? (
+                                                        productionGroups.map(group => (
+                                                            <option key={group.id} value={group.id}>
+                                                                {group.name} ({group.code}) {group.member_count !== undefined ? `· ${group.member_count} active workers` : ''}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <option value="">Loading production lines...</option>
+                                                    )}
+                                                    <option value="__NEW__">+ Create new production line...</option>
+                                                </select>
+                                                <p className="text-[10px] text-slate-400 mt-1">
+                                                    Connected to Supabase <code className="text-amber-700 font-mono">production_groups</code> table with target quota tracking.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="md:col-span-2">
+                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                    isFactory ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                }`}>
+                                    <div className="flex items-center gap-2.5">
+                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
+                                        <div>
+                                            <p className="text-xs font-bold">
+                                                {isFactory ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
+                                            </p>
+                                            <p className="text-[11px] opacity-80 mt-0.5">
+                                                {isFactory ? 'Fixed shift. Strictly NO overtime allowed per company policy.' : 'Extended shift. Overtime eligible for excess rendered hours.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                        isFactory ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                    }`}>
+                                        {isFactory ? 'No OT' : 'OT Eligible'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -226,23 +469,35 @@ export default function Edit() {
                             <span className={`w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-xl flex items-center justify-center shadow-xs ${isFactory ? 'text-amber-600' : 'text-emerald-600'}`}>
                                 <i className={`ti ${isFactory ? 'ti-file-barcode' : 'ti-cash-banknote'} text-lg sm:text-xl`} />
                             </span>
-                            Payroll Configuration {isFactory && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-800 font-black tracking-wider uppercase ml-auto">Piece Rate Mode</span>}
+                            Payroll Configuration {isFactory && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-800 font-black tracking-wider uppercase ml-auto">Pakyawan Pool Mode</span>}
                         </h3>
 
                         {isFactory ? (
-                            <div className="max-w-md">
-                                <label className="block text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1.5 text-amber-800">Rate Per Piece (₱/unit)</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg text-amber-600">₱</span>
-                                    <input
-                                        type="text"
-                                        name="piece_rate"
-                                        required
-                                        value={displayPieceRate}
-                                        onChange={handlePieceRateChange}
-                                        className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border-2 border-amber-300 focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 rounded-xl focus:outline-none font-black text-base sm:text-lg text-slate-800 transition-all"
-                                        placeholder="0.00"
-                                    />
+                            <div className="space-y-3.5">
+                                <div className="p-4 rounded-xl border border-amber-200 bg-white text-amber-900 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-amber-900">
+                                            <i className="ti ti-box-multiple text-lg text-amber-600" />
+                                            Group Output Piece-Rate Model (Shoe Production Pool)
+                                        </div>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
+                                            Pakyawan Pool
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-800 leading-relaxed">
+                                        Factory workers are <strong>not paid via fixed monthly salaries</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
+                                    </p>
+                                    <div className="pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-3 text-[11px] text-amber-800 font-medium">
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-check text-amber-600" /> No arbitrary monthly base salary
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-users text-amber-600" /> Batch piece-rate distribution
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-clock-off text-amber-600" /> Strictly no overtime policy
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         ) : (

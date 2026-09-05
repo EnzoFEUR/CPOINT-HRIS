@@ -1,106 +1,139 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
-    // Employee State
-    const [employee, setEmployee] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-
     // Modals State
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-    // 201 Documents State
-    const [documents, setDocuments] = useState([]);
-    const [isDocsLoading, setIsDocsLoading] = useState(true);
+    // Temporary credentials state for unregistered accounts
+    const [showTempPassword, setShowTempPassword] = useState(true);
+    const [copiedKey, setCopiedKey] = useState(null);
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
 
-    // Fetch Employee Details
-    useEffect(() => {
-        if (!id || id === 'undefined') return;
+    const copyToClipboard = (text, key) => {
+        if (!text) return;
+        navigator.clipboard.writeText(String(text));
+        setCopiedKey(key);
+        toast.success(`${key === 'password' ? 'Password' : key === 'email' ? 'Email' : 'Company ID'} copied!`);
+        setTimeout(() => setCopiedKey(null), 2000);
+    };
 
-        let isMounted = true;
-        fetchWithAuth(`/api/employees/${id}`)
-            .then(res => res.json())
-            .then(data => {
-                if (!isMounted) return;
-                if (data.success) {
-                    const emp = data.data;
-                    emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
-                    setEmployee(emp);
-                } else {
-                    toast.error('Employee not found');
-                    navigate('/admin/employees');
-                }
-            })
-            .catch(() => {
-                if (isMounted) toast.error('Failed to load employee');
-            })
-            .finally(() => {
-                if (isMounted) setIsLoading(false);
+    const copyAllCredentials = () => {
+        if (!employee) return;
+        const text = `C-POINT HRIS Account Credentials\nName: ${employee.first_name || ''} ${employee.last_name || ''}\nCompany ID: ${employee.company_id || ''}\nEmail: ${employee.email || ''}\nTemporary Password: ${employee.temp_password || 'Emp-1234'}\nLogin Portal: ${window.location.origin}/login`;
+        navigator.clipboard.writeText(text);
+        setCopiedKey('all');
+        toast.success('Onboarding credentials copied to clipboard!');
+        setTimeout(() => setCopiedKey(null), 2000);
+    };
+
+    const handleResetTempPassword = async () => {
+        if (!window.confirm('Generate a new temporary password for this unregistered employee?')) return;
+        setIsResettingPassword(true);
+        try {
+            const res = await fetchWithAuth(`/api/employees/${id}/reset-temp-password`, {
+                method: 'POST'
             });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                queryClient.setQueryData(['employeeDetails', id], (old) => {
+                    if (!old) return old;
+                    return {
+                        ...old,
+                        data: {
+                            ...old.data,
+                            temp_password: data.temp_password,
+                            requires_password_change: true
+                        }
+                    };
+                });
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                toast.success('New temporary password generated!');
+            } else {
+                toast.error(data.error || 'Failed to generate temporary password');
+            }
+        } catch {
+            toast.error('Network error. Failed to generate temporary password');
+        } finally {
+            setIsResettingPassword(false);
+        }
+    };
 
-        return () => { isMounted = false; };
-    }, [id, navigate]);
+    // Pre-populate employee from cache if available
+    const cachedEmp = useMemo(() => {
+        const cachedList = queryClient.getQueryData(['adminEmployees']);
+        if (Array.isArray(cachedList)) {
+            const found = cachedList.find(e => String(e.id) === String(id));
+            if (found) {
+                return {
+                    ...found,
+                    name: found.name || `${found.first_name || ''} ${found.last_name || ''}`.trim()
+                };
+            }
+        }
+        return null;
+    }, [queryClient, id]);
 
-    // Fetch 201 Documents
+    // Query employee details and 201 documents
+    const { data: employeeData, isLoading: isEmpLoading } = useQuery({
+        queryKey: ['employeeDetails', id],
+        queryFn: async () => {
+            const res = await fetchWithAuth(`/api/employees/${id}`);
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load employee');
+            const emp = data.data;
+            emp.name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+            return {
+                data: emp,
+                documents: data.documents || []
+            };
+        },
+        enabled: Boolean(id && id !== 'undefined'),
+        staleTime: 30_000,
+        gcTime: 300_000,
+    });
+
+    const employee = employeeData?.data || cachedEmp || null;
+    const documents = employeeData?.documents || [];
+    const isLoading = isEmpLoading && !employee;
+    const isDocsLoading = isEmpLoading && documents.length === 0;
+
+    // Subscribe to live employee and disciplinary changes
     useEffect(() => {
         if (!id || id === 'undefined') return;
+        const channel = supabase
+            .channel(`admin-live-employee-${id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents', filter: `employee_id=eq.${id}` }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            })
+            .subscribe();
 
-        let isMounted = true;
-        setIsDocsLoading(true);
-
-        const safeParseJson = async (res) => {
-            if (!res.ok) return null;
-            const text = await res.text();
-            if (!text) return null;
-            try {
-                return JSON.parse(text);
-            } catch {
-                return null;
-            }
+        return () => {
+            supabase.removeChannel(channel);
         };
-
-        const loadDocuments = async () => {
-            try {
-                let res = await fetchWithAuth(`/api/employee-documents?employee_id=${id}`);
-                let data = await safeParseJson(res);
-
-                // Fallback route check
-                if (!data || res.status === 404) {
-                    res = await fetchWithAuth(`/api/documents?employee_id=${id}`);
-                    data = await safeParseJson(res);
-                }
-
-                if (!isMounted) return;
-
-                if (data && data.success) {
-                    const docsList = data.documents || data.data || [];
-                    setDocuments(Array.isArray(docsList) ? docsList : []);
-                } else {
-                    setDocuments([]);
-                }
-            } catch (err) {
-                if (isMounted) setDocuments([]);
-            } finally {
-                if (isMounted) setIsDocsLoading(false);
-            }
-        };
-
-        loadDocuments();
-
-        return () => { isMounted = false; };
-    }, [id]);
+    }, [id, queryClient]);
 
     const getFileMeta = (fileName = '') => {
         const ext = (fileName.split('.').pop() || '').toLowerCase();
@@ -191,12 +224,21 @@ export default function Show() {
         );
     }
 
-    const isFactory = employee.department?.toLowerCase().includes('factory');
+    const isFactory = employee?.department?.toLowerCase().includes('factory');
+    const shoeRole = isFactory ? getShoeRoleDetails(employee?.job_title) : null;
+    const prodGroup = isFactory ? parseProductionGroup(employee?.shift) : null;
     const rateAmount = Number(
         isFactory
             ? (employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? employee.monthly_salary ?? 0)
             : (employee.monthly_salary ?? employee.salary ?? 0)
     );
+    const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
+    const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+    const isPendingRegistration = Boolean(
+        employee?.requires_password_change && 
+        !isTerminated
+    );
+    const employeeFullName = employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
 
     return (
         <>
@@ -234,13 +276,13 @@ export default function Show() {
                             <i className="ti ti-pencil text-base" /> Edit Profile
                         </Link>
 
-                        <button onClick={() => setIsDeleteModalOpen(true)} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
+                        <button onClick={() => { setDeleteConfirmText(''); setIsDeleteModalOpen(true); }} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
                             <i className="ti ti-trash text-base" /> Delete
                         </button>
                     </div>
                 </div>
 
-                {/* Unified Enterprise Employee Profile Banner */}
+                {/* Profile banner */}
                 <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                         <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
@@ -253,6 +295,17 @@ export default function Show() {
                                 theme="dark"
                                 textSize="text-3xl sm:text-4xl"
                             />
+                            {isTerminated ? (
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                    <i className="ti ti-x" /> Terminated
+                                </span>
+                            ) : isSuspended ? (
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                    <i className="ti ti-clock-pause" /> Suspended
+                                </span>
+                            ) : (
+                                <span className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Active Personnel" />
+                            )}
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -260,17 +313,49 @@ export default function Show() {
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
                                     <i className="ti ti-id text-slate-400" /> {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-EMPLOYEE')}
                                 </span>
+
+                                {/* Status badge */}
+                                {isTerminated ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-bold rounded border border-rose-500/40">
+                                        <i className="ti ti-circle-x text-sm text-rose-400" /> Terminated / Separated
+                                    </span>
+                                ) : isSuspended ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded border border-amber-500/40">
+                                        <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active Personnel
+                                    </span>
+                                )}
+
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
                                     {employee.department || 'General'}
                                 </span>
                                 {isFactory ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
-                                        Piece-Rate Production
-                                    </span>
+                                    <>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                            <i className={`ti ${shoeRole?.icon || 'ti-shoe'}`} />
+                                            {shoeRole ? shoeRole.label : (employee.job_title || 'Shoe Craft')}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                            <i className="ti ti-users" />
+                                            {employee?.production_groups?.name || prodGroup}
+                                            {employee?.production_groups?.code ? ` (${employee.production_groups.code})` : ''}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                            Group Piece-Rate (Pool)
+                                        </span>
+                                    </>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
-                                        Salaried Monthly
-                                    </span>
+                                    <>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                            Regular (08:00 - 20:00 • OT Eligible)
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                            Salaried Monthly
+                                        </span>
+                                    </>
                                 )}
                             </div>
 
@@ -294,6 +379,225 @@ export default function Show() {
                         </div>
                     </div>
                 </div>
+
+                {/* Temporary credentials for unregistered accounts */}
+                {isPendingRegistration && (
+                    <div className="bg-amber-500/10 border-2 border-amber-300 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    <i className="ti ti-key text-xl" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-extrabold text-amber-950 text-base sm:text-lg">
+                                            Account Pending Initial Registration
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 border border-amber-300">
+                                            Unregistered
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-800/90 font-medium mt-0.5">
+                                        This employee has not signed in yet. Their temporary password remains preserved below until first login.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={copyAllCredentials}
+                                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'all' ? 'ti-check' : 'ti-copy'} text-sm`} />
+                                    <span>{copiedKey === 'all' ? 'Credentials Copied!' : 'Copy Onboarding Info'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleResetTempPassword}
+                                    disabled={isResettingPassword}
+                                    title="Generate a fresh temporary password"
+                                    className="px-3 py-2 bg-white hover:bg-amber-50 active:scale-95 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    <i className={`ti ${isResettingPassword ? 'ti-loader animate-spin' : 'ti-refresh'} text-sm text-amber-700`} />
+                                    <span className="hidden sm:inline">New Temp Pass</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                            {/* Email */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Login Email</p>
+                                    <p className="font-bold text-xs text-slate-800 truncate mt-0.5" title={employee.email}>
+                                        {employee.email}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(employee.email, 'email')}
+                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'email' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <span>{copiedKey === 'email' ? 'Copied' : 'Copy Email'}</span>
+                                </button>
+                            </div>
+
+                            {/* Company ID */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Company ID</p>
+                                    <p className="font-mono font-black text-sm text-slate-900 mt-0.5">
+                                        {employee.company_id || employee.id}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(employee.company_id || employee.id, 'company_id')}
+                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                >
+                                    <i className={`ti ${copiedKey === 'company_id' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <span>{copiedKey === 'company_id' ? 'Copied' : 'Copy ID'}</span>
+                                </button>
+                            </div>
+
+                            {/* Temporary Password */}
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 flex flex-col justify-between space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Temporary Password</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTempPassword(!showTempPassword)}
+                                        className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                        title={showTempPassword ? 'Hide Password' : 'Show Password'}
+                                    >
+                                        <i className={`ti ${showTempPassword ? 'ti-eye-off' : 'ti-eye'} text-sm`} />
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono font-black text-base text-amber-950 tracking-wider">
+                                        {showTempPassword ? (employee.temp_password || 'Emp-1234') : '••••••••'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(employee.temp_password || 'Emp-1234', 'password')}
+                                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <i className={`ti ${copiedKey === 'password' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                        <span>{copiedKey === 'password' ? 'Copied' : 'Copy'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-amber-200/60 flex items-center gap-2 text-[11px] text-amber-800/80 font-medium">
+                            <i className="ti ti-info-circle text-amber-700 shrink-0 text-sm" />
+                            <span>
+                                Once the employee registers by logging in and configuring their personal password, this temporary password will be wiped and will automatically disappear from this profile.
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Status alert banner */}
+                {isTerminated && (
+                    <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
+                                <i className="ti ti-ban text-xl" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
+                                    <span className="px-2 py-0.5 bg-rose-200/80 text-rose-900 text-[10px] font-extrabold uppercase rounded">DOLE Separated</span>
+                                </div>
+                                <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                                    {employee.termination_record?.reason || 'This employee account has been officially separated from active roster. Portal access and attendance permissions are deactivated.'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-rose-700 font-medium">
+                                    {employee.termination_record?.date && (
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900">{employee.termination_record.date}</strong>
+                                        </span>
+                                    )}
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-lock" /> Biometric Pass Revoked
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-file-off" /> Document Vault Uploads Locked (Audit-Only)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="shrink-0 self-stretch sm:self-center">
+                            <Link
+                                to={`/admin/documents?employee_id=${employee.id}`}
+                                className="px-3.5 py-2 bg-white hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg border border-rose-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                <i className="ti ti-folders text-sm" /> Review 201 Vault
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {isSuspended && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                                <i className="ti ti-alert-triangle text-xl" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-amber-900 text-sm sm:text-base">Active Disciplinary Suspension</h4>
+                                    <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-extrabold uppercase rounded">Operational Hold</span>
+                                </div>
+                                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                    {employee.active_suspension?.reason || 'This employee is currently serving an active disciplinary suspension.'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-amber-700 font-medium">
+                                    {employee.active_suspension?.date && (
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-amber-900">{employee.active_suspension.date}</strong>
+                                        </span>
+                                    )}
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-qrcode" /> QR Scanner Attendance Locked
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <i className="ti ti-shield-half" /> Auto-Restores Upon Expiry
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="shrink-0 self-stretch sm:self-center">
+                            <Link
+                                to="/admin/disciplinary"
+                                className="px-3.5 py-2 bg-white hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                <i className="ti ti-gavel text-sm" /> Disciplinary Logs
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {!isTerminated && !isSuspended && employee?.past_suspensions_count > 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                                <i className="ti ti-history text-sm" />
+                            </div>
+                            <div>
+                                <span className="font-bold text-slate-800">Prior Disciplinary History:</span>{' '}
+                                <span className="text-slate-600">
+                                    This employee has previously served <strong>{employee.past_suspensions_count}</strong> {employee.past_suspensions_count === 1 ? 'suspension' : 'suspensions'}. All terms have concluded and account is currently in <strong>Good Standing</strong>.
+                                </span>
+                            </div>
+                        </div>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded shrink-0 border border-emerald-200">
+                            Active / Cleared
+                        </span>
+                    </div>
+                )}
 
                 {/* Personal and payroll details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
@@ -332,6 +636,21 @@ export default function Show() {
                                 <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Company ID</p>
                                 <p className="font-mono font-extrabold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
                             </div>
+                            <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Account Status</p>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        {isPendingRegistration ? 'Awaiting initial employee login & password setup' : 'Account active and personal password configured'}
+                                    </p>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-black uppercase border ${
+                                    isPendingRegistration 
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                    {isPendingRegistration ? 'Pending Setup' : 'Registered'}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -356,29 +675,62 @@ export default function Show() {
                                     </span>
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Job Title</p>
-                                    <p className="font-extrabold text-slate-800 text-sm">{employee.job_title || 'N/A'}</p>
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
+                                    <p className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
+                                        {employee.job_title || 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                        {isFactory ? 'Line / Group Assignment' : 'Work Schedule'}
+                                    </p>
+                                    <p className="font-mono font-extrabold text-slate-800 text-xs">
+                                        {isFactory
+                                            ? `${employee?.production_groups?.name || prodGroup}${employee?.production_groups?.target_output_pairs ? ` · ${employee.production_groups.target_output_pairs} pairs/day quota` : ' (Shoe Craft)'}`
+                                            : '08:00 AM – 08:00 PM'}
+                                    </p>
+                                </div>
+                                <div className="pt-2 border-t border-slate-100">
+                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Overtime Status</p>
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                        isFactory ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    }`}>
+                                        {isFactory ? 'No Overtime (Prohibited)' : 'Overtime Eligible'}
+                                    </span>
                                 </div>
                             </div>
 
                             <div className={`p-4 rounded-xl border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
                                 <div className="flex items-center justify-between mb-1">
                                     <span className={`text-[11px] font-black uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
-                                        {isFactory ? 'Factory Piece-Rate' : 'Monthly Base Salary'}
+                                        {isFactory ? 'Factory Compensation Model' : 'Monthly Base Salary'}
                                     </span>
                                     <span className={`text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         }`}>
-                                        {isFactory ? 'Piece Rate' : 'Fixed Monthly'}
+                                        {isFactory ? 'Group Piece-Rate' : 'Fixed Monthly'}
                                     </span>
                                 </div>
 
-                                <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-                                    <span className={isFactory ? 'text-amber-600 text-2xl' : 'text-emerald-600 text-2xl'}>₱</span>
-                                    {rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    <span className="text-xs font-bold text-slate-400 uppercase">
-                                        {isFactory ? '/ piece completed' : '/ month'}
-                                    </span>
-                                </div>
+                                {isFactory ? (
+                                    <div className="space-y-1.5 pt-1">
+                                        <div className="text-lg sm:text-xl font-black text-amber-900 tracking-tight flex items-center gap-1.5">
+                                            <i className="ti ti-box-multiple text-amber-600 text-xl" />
+                                            Group Production Batch Pool
+                                        </div>
+                                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                                            Compensation is calculated based on completed pairs of shoes produced by the 6-worker team ({shoeRole?.stage || 'Assembly'}) upon QA inspection.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
+                                        <span className="text-emerald-600 text-2xl">₱</span>
+                                        {rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        <span className="text-xs font-bold text-slate-400 uppercase">
+                                            / month
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 text-[11px] pt-1">
@@ -483,7 +835,7 @@ export default function Show() {
                             </div>
                             <h2 className="text-xl font-black text-slate-800">Delete Employee Profile?</h2>
                             <p className="text-xs text-slate-500">
-                                Type <strong className="text-slate-800">{employee.name}</strong> to confirm deletion.
+                                Type <strong className="text-slate-800">{employeeFullName}</strong> to confirm deletion.
                             </p>
                             <input
                                 type="text"
@@ -493,13 +845,13 @@ export default function Show() {
                                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-xs"
                             />
                             <div className="flex gap-2">
-                                <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs">
+                                <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs cursor-pointer">
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleDelete}
-                                    disabled={deleteConfirmText !== employee.name || isDeleting}
-                                    className="flex-1 py-2.5 bg-red-600 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs"
+                                    disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
+                                    className="flex-1 py-2.5 bg-red-600 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs cursor-pointer disabled:cursor-not-allowed transition-colors"
                                 >
                                     {isDeleting ? 'Deleting...' : 'Confirm Delete'}
                                 </button>

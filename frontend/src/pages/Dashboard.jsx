@@ -23,62 +23,38 @@ export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
 
-    // Master dashboard telemetry
-    const { data: dashboardData, isLoading } = useQuery({
-        queryKey: ['adminDashboard'],
+    // Dashboard overview query
+    const { data: overviewData, isLoading, isFetching } = useQuery({
+        queryKey: ['adminDashboardOverview'],
         queryFn: async () => {
-            const res = await fetchWithAuth('/api/dashboard/admin');
+            const res = await fetchWithAuth('/api/dashboard/overview');
             return res.json();
         },
-        staleTime: 10000,
-        refetchInterval: 30000,
+        staleTime: 30000,
+        refetchInterval: 60000,
     });
 
-    // AI executive briefing
-    const { data: aiData, refetch: refetchAI, isFetching: isAILoading } = useQuery({
-        queryKey: ['aiDailyBriefing'],
-        queryFn: async () => {
-            const res = await fetchWithAuth('/api/ai/analytics/daily-briefing');
-            return res.json();
-        },
-        staleTime: 60000,
-        refetchInterval: 5 * 60000,
-    });
-
-    // Anomaly and burnout detection
-    const { data: anomalyData, isLoading: isAnomalyLoading } = useQuery({
-        queryKey: ['aiAnomalies'],
-        queryFn: async () => {
-            const res = await fetchWithAuth('/api/ai/analytics/anomalies');
-            return res.json();
-        },
-        staleTime: 5 * 60000,
-        refetchInterval: 5 * 60000,
-    });
-
-    // Payroll forecast
-    const { data: payrollData, isLoading: isPayrollLoading } = useQuery({
-        queryKey: ['payrollForecast'],
-        queryFn: async () => {
-            const res = await fetchWithAuth('/api/dashboard/payroll-forecast');
-            return res.json();
-        },
-        staleTime: 60000,
-        refetchInterval: 5 * 60000,
-    });
+    const dashboardData = overviewData?.admin || null;
+    const payrollData = overviewData?.payrollData || null;
+    const isPayrollLoading = isLoading && !payrollData;
+    const anomalyData = overviewData?.anomalyData || null;
+    const isAnomalyLoading = isLoading && !anomalyData;
+    const aiData = overviewData?.aiData || null;
+    const isAILoading = isFetching;
+    const refetchAI = () => queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
 
     // Real-time synchronization
     useEffect(() => {
         const liveChannel = supabase
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
             })
             .subscribe();
 

@@ -51,6 +51,42 @@ router.post('/', upload.single('file'), async (req, res) => {
             return res.status(400).json({ success: false, message: 'Employee ID and Title are required' });
         }
 
+        // Security check: Verify employee status & disciplinary separation
+        const [
+            { data: employee, error: empErr },
+            { data: termLog }
+        ] = await Promise.all([
+            supabase
+                .from('employees')
+                .select('id, first_name, last_name, status, is_active')
+                .eq('id', employee_id)
+                .single(),
+            supabase
+                .from('disciplinary_logs')
+                .select('id')
+                .eq('employee_id', employee_id)
+                .eq('type', 'Termination')
+                .limit(1)
+        ]);
+
+        if (empErr || !employee) {
+            return res.status(404).json({ success: false, message: 'Employee record not found.' });
+        }
+
+        const isTerminated = 
+            employee.status === 'inactive' || 
+            employee.status === 'terminated' || 
+            employee.is_active === false || 
+            Boolean(termLog && termLog.length > 0);
+
+        if (isTerminated) {
+            return res.status(403).json({
+                success: false,
+                code: 'ACCOUNT_TERMINATED',
+                message: 'Document uploads are disabled for separated or terminated employee accounts. Existing records remain available for compliance audit.'
+            });
+        }
+
         // 1. Build unique storage path
         const fileExt = file.originalname.split('.').pop();
         const fileName = `${employee_id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;

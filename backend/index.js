@@ -12,12 +12,13 @@ import leaveRoutes from './routes/leaves.js';
 import dashboardRoutes from './routes/dashboard.js';
 import profileRoutes from './routes/profile.js';
 import auditLogRoutes from './routes/auditLogs.js';
-import shiftRoutes from './routes/shifts.js';
 import disciplinaryRoutes from './routes/disciplinary.js';
 import notificationRoutes from './routes/notifications.js';
 import pushRoutes from './routes/push.js';
 import aiRoutes from './routes/ai.js';
 import employeeDocumentRoutes from './routes/employeeDocuments.js';
+import otpRoutes from './routes/otp.js';
+import productionGroupRoutes from './routes/productionGroups.js';
 
 // Middleware & Utilities
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
@@ -60,14 +61,15 @@ app.use('/api/attendance', verifyToken, attendanceRoutes);
 app.use('/api/payroll', verifyToken, checkAdminOrOwnership, payrollRoutes);
 app.use('/api/leaves', verifyToken, checkAdminOrOwnership, leaveRoutes);
 app.use('/api/dashboard', verifyToken, dashboardRoutes);
-app.use('/api/shifts', verifyToken, checkAdminOrOwnership, shiftRoutes);
-app.use('/api/disciplinary', verifyToken, checkAdminOrOwnership, disciplinaryRoutes);
+app.use('/api/disciplinary', verifyToken, disciplinaryRoutes);
 app.use('/api/profile', verifyToken, profileRoutes);
 app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/ai', verifyToken, aiRoutes);
 app.use('/api/employee-documents', verifyToken, employeeDocumentRoutes);
+app.use('/api/auth/otp', otpRoutes);
+app.use('/api/production-groups', verifyToken, productionGroupRoutes);
 
 // Root Status
 app.get('/', (req, res) => {

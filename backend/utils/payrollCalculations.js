@@ -167,6 +167,7 @@ export function computeDayPay({
     holidaysByDate,
     attendanceByDate,
     restDays = [0],
+    canOvertime = true,
 }) {
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
@@ -175,7 +176,8 @@ export function computeDayPay({
     const worked = safeHoursWorked > 0;
     const restDayToday = isRestDay(dateStr, restDays);
     const regularHours = Math.min(safeHoursWorked, STANDARD_SHIFT_HOURS);
-    const overtimeHours = Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0);
+    // Factory workers cannot overtime per company policy
+    const overtimeHours = canOvertime ? Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0) : 0;
     const table = MULTIPLIERS[holiday.type];
 
     if (!table) {
@@ -257,6 +259,7 @@ export function computeHolidayPayForPeriod({
     holidayList = [],
     attendanceLogs = [],
     restDays = [0],
+    canOvertime = true,
 }) {
     const { dailyRate, hourlyRate } = deriveRates(monthlySalary);
     const holidaysByDate = indexHolidays(holidayList);
@@ -275,6 +278,7 @@ export function computeHolidayPayForPeriod({
             holidaysByDate,
             attendanceByDate,
             restDays,
+            canOvertime,
         });
         if (result) items.push(result);
     }

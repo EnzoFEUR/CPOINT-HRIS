@@ -197,16 +197,32 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 );
 
-// Register Progressive Web App Service Worker with auto-update
+// Register Service Worker with background update checking
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
-        console.log('[PWA] Service Worker active with scope:', registration.scope);
-        registration.update();
+        // Auto-check for updates on load
+        registration.update().catch(() => {});
+
+        // Auto-check for updates whenever user returns to the tab / app
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            registration.update().catch(() => {});
+          }
+        });
       })
       .catch((error) => {
-        console.warn('[PWA] Service Worker registration failed:', error);
+        console.warn('[PWA] Service Worker registration note:', error);
       });
+
+    // Handle service worker updates
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        console.log('[PWA] Upgraded to newest Service Worker version.');
+      }
+    });
   });
 }
