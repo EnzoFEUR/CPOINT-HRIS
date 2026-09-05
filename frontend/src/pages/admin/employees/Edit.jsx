@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 export default function Edit() {
@@ -30,7 +31,24 @@ export default function Edit() {
     const [selectedGroup, setSelectedGroup] = useState(() => {
         return parseProductionGroup(cachedEmp?.shift) || 'Line A';
     });
+    const [selectedGroupId, setSelectedGroupId] = useState(cachedEmp?.production_group_id || '');
     const [isCustomLine, setIsCustomLine] = useState(false);
+
+    // Fetch real production groups from the dedicated database table
+    const { data: productionGroupsData } = useQuery({
+        queryKey: ['productionGroups'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/production-groups');
+            const result = await res.json();
+            return result?.data || [];
+        },
+        staleTime: 60_000,
+        gcTime: 300_000
+    });
+
+    const productionGroups = useMemo(() => {
+        return Array.isArray(productionGroupsData) ? productionGroupsData : [];
+    }, [productionGroupsData]);
 
     // Existing production lines from workforce cache
     const { data: workforceData } = useQuery({
@@ -127,6 +145,15 @@ export default function Edit() {
 
         const lineName = (selectedGroup || 'Line A').trim();
 
+        let groupId = null;
+        if (isFactory) {
+            if (!isCustomLine) {
+                const found = productionGroups.find(g => g.id === selectedGroupId) ||
+                              productionGroups.find(g => g.name === selectedGroup);
+                groupId = found?.id || selectedGroupId || null;
+            }
+        }
+
         // Form payload
         const payload = {
             email: data.email,
@@ -135,6 +162,7 @@ export default function Edit() {
             last_name: data.last_name,
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
+            production_group_id: isFactory ? groupId : null,
             pay_type: isFactory ? 'piece_rate' : 'monthly',
             monthly_salary: isFactory ? null : cleanSalary,
             piece_rate: null,
@@ -167,6 +195,7 @@ export default function Edit() {
 
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                 queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                queryClient.invalidateQueries({ queryKey: ['productionGroups'] });
 
                 toast.success('Profile updated successfully!');
                 navigate(`/admin/employees/${id}`);
@@ -375,24 +404,33 @@ export default function Edit() {
                                         ) : (
                                             <div>
                                                 <select
-                                                    value={selectedGroup}
+                                                    value={selectedGroupId || (productionGroups.find(g => g.name === selectedGroup)?.id || '')}
                                                     onChange={(e) => {
                                                         if (e.target.value === '__NEW__') {
                                                             setIsCustomLine(true);
+                                                            setSelectedGroupId('');
                                                             setSelectedGroup('');
                                                         } else {
-                                                            setSelectedGroup(e.target.value);
+                                                            setSelectedGroupId(e.target.value);
+                                                            const found = productionGroups.find(g => g.id === e.target.value);
+                                                            if (found) setSelectedGroup(found.name);
                                                         }
                                                     }}
                                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
                                                 >
-                                                    {existingLines.map(line => (
-                                                        <option key={line} value={line}>{line}</option>
-                                                    ))}
+                                                    {productionGroups.length > 0 ? (
+                                                        productionGroups.map(group => (
+                                                            <option key={group.id} value={group.id}>
+                                                                {group.name} ({group.code}) {group.member_count !== undefined ? `· ${group.member_count} active workers` : ''}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <option value="">Loading production lines...</option>
+                                                    )}
                                                     <option value="__NEW__">+ Create new production line...</option>
                                                 </select>
                                                 <p className="text-[10px] text-slate-400 mt-1">
-                                                    Select an existing production line or create a custom one to organize separate teams.
+                                                    Connected to Supabase <code className="text-amber-700 font-mono">production_groups</code> table with target quota tracking.
                                                 </p>
                                             </div>
                                         )}
