@@ -17,9 +17,15 @@ const cleanDeductionName = (rawName) => {
     if (!rawName) return '';
     let name = rawName.trim();
 
-    // Strip long/verbose system prefixes before hyphens (e.g., "End of Month Deductions Applied - SSS" -> "SSS")
-    if (name.includes('-')) {
-        const parts = name.split('-');
+    // Check for Pag-IBIG variations first before hyphen splitting
+    const lowerRaw = name.toLowerCase();
+    if (lowerRaw.includes('pag-ibig') || lowerRaw.includes('pagibig') || lowerRaw.includes('hdmf') || lowerRaw === 'ibig') {
+        return 'Pag-IBIG';
+    }
+
+    // Strip long/verbose system prefixes using ' - ' (spaced hyphen) so 'Pag-IBIG' isn't split
+    if (name.includes(' - ')) {
+        const parts = name.split(' - ');
         const lastPart = parts[parts.length - 1].trim();
         if (lastPart) name = lastPart;
     }
@@ -29,7 +35,7 @@ const cleanDeductionName = (rawName) => {
     if (lower === 'tax' || lower.includes('withholding tax')) return 'Withholding Tax';
     if (lower === 'sss' || lower.includes('sss contribution')) return 'SSS Contribution';
     if (lower === 'philhealth' || lower === 'ph') return 'PhilHealth';
-    if (lower === 'pag-ibig' || lower === 'hdmf' || lower.includes('pagibig')) return 'Pag-IBIG';
+    if (lower.includes('pag-ibig') || lower.includes('pagibig') || lower.includes('hdmf') || lower.includes('ibig')) return 'Pag-IBIG';
     if (lower.includes('late') || lower.includes('tardiness')) return 'Late / Tardiness';
     if (lower.includes('absence') || lower.includes('undertime')) return 'Absences / Undertime';
     return name;
@@ -135,21 +141,26 @@ export default function PayrollShow() {
 
     const grossEarnings = Number(payroll.basic_pay || 0) + Number(payroll.overtime_pay || 0) + holidayPay;
 
-    // Deductions parser
+    // Deductions Parser
     const deductionsMap = new Map();
 
     const setDeduction = (rawName, rawAmount) => {
         if (!rawName) return;
-        const amount = Number(rawAmount || 0);
-        if (isNaN(amount)) return;
+        const cleanedStr = String(rawAmount || '').replace(/[^\d.-]/g, '');
+        const amount = Number(cleanedStr);
+        if (isNaN(amount) || amount <= 0) return;
 
         const displayName = cleanDeductionName(rawName);
         const normKey = displayName.toLowerCase();
 
-        // Prevent duplicates
+        // Deduplicate items
         let targetKey = normKey;
         for (const existingKey of deductionsMap.keys()) {
             if (
+                (existingKey.includes('sss') && normKey.includes('sss')) ||
+                (existingKey.includes('philhealth') && normKey.includes('philhealth')) ||
+                (existingKey.includes('ibig') && normKey.includes('ibig')) ||
+                (existingKey.includes('tax') && normKey.includes('tax')) ||
                 (existingKey.includes('late') && normKey.includes('late')) ||
                 (existingKey.includes('absence') && normKey.includes('absence')) ||
                 existingKey === normKey
@@ -162,21 +173,22 @@ export default function PayrollShow() {
         deductionsMap.set(targetKey, { name: displayName, amount });
     };
 
-    // 1. Parse string remarks (e.g., "SSS: 750, PH: 1250, HDMF: 100, Tax: 0")
+    // 1. Direct fields check
+    if (payroll.sss_deduction || payroll.sss) setDeduction('SSS Contribution', payroll.sss_deduction || payroll.sss);
+    if (payroll.philhealth_deduction || payroll.philhealth) setDeduction('PhilHealth', payroll.philhealth_deduction || payroll.philhealth);
+    if (payroll.pagibig_deduction || payroll.pagibig) setDeduction('Pag-IBIG', payroll.pagibig_deduction || payroll.pagibig);
+    if (payroll.tax_deduction || payroll.tax || payroll.withholding_tax) setDeduction('Withholding Tax', payroll.tax_deduction || payroll.tax || payroll.withholding_tax);
+
+    // 2. Parse string remarks using Regex
     if (payroll.remarks) {
-        const items = payroll.remarks.split(',');
-        items.forEach((item) => {
-            const parts = item.split(':').map((s) => s?.trim());
-            if (parts.length === 2) {
-                const valNum = Number(parts[1].replace(/,/g, ''));
-                if (!isNaN(valNum)) {
-                    setDeduction(parts[0], valNum);
-                }
-            }
-        });
+        const deductionRegex = /(SSS|PhilHealth|Pag-IBIG|PagIBIG|HDMF|IBIG|Tax|Withholding Tax|Late|Tardiness|Absence|Undertime):\s*₱?\s*([\d,]+(?:\.\d+)?)/gi;
+        let match;
+        while ((match = deductionRegex.exec(payroll.remarks)) !== null) {
+            setDeduction(match[1], match[2]);
+        }
     }
 
-    // 2. Fetch Late & Absence deductions directly from object fields
+    // 3. Fetch Late & Absence deductions directly from object fields
     const lateAmt = Number(
         payroll.late_deductions ??
         payroll.late_deduction ??
@@ -195,10 +207,10 @@ export default function PayrollShow() {
         0
     );
 
-    if (lateAmt > 0) setDeduction('Late / Tardiness Deductions', lateAmt);
+    if (lateAmt > 0) setDeduction('Late / Tardiness', lateAmt);
     if (absenceAmt > 0) setDeduction('Absences / Undertime', absenceAmt);
 
-    // 3. Optional loans / advances
+    // 4. Optional loans / advances
     if (Number(payroll.loan || payroll.loans || 0) > 0) {
         setDeduction('Company Loan', Number(payroll.loan || payroll.loans));
     }
@@ -214,15 +226,6 @@ export default function PayrollShow() {
 
     const totalDeductions = deductionsList.reduce((sum, item) => sum + item.amount, 0);
     const netPay = grossEarnings - totalDeductions;
-
-    // Resolve employee avatar image source
-    const avatarUrl = payroll.employees?.avatar_url || (
-        payroll.employees?.biometric_baseline_path
-            ? (payroll.employees.biometric_baseline_path.startsWith('http')
-                ? payroll.employees.biometric_baseline_path
-                : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${payroll.employees.biometric_baseline_path.replace(/^\/+/, '')}`)
-            : null
-    );
 
     return (
         <div className="max-w-4xl mx-auto py-10 px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">

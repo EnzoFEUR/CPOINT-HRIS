@@ -65,9 +65,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
         return lines;
     }, [workforceData, selectedGroup, isCustomLine]);
 
-    // Regular salary state
-    const [displaySalary, setDisplaySalary] = useState(defaultValues.monthly_salary ? formatSalary(defaultValues.monthly_salary) : '');
-    const [rawSalary, setRawSalary] = useState(defaultValues.monthly_salary || '');
+    // Regular Pay State (Daily & Hourly)
+    const [rawDailyPay, setRawDailyPay] = useState(defaultValues.daily_rate || defaultValues.monthly_salary ? String(defaultValues.daily_rate || '') : '');
+    const [displayDailyPay, setDisplayDailyPay] = useState(defaultValues.daily_rate ? formatSalary(defaultValues.daily_rate) : '');
+
+    const [rawHourlyPay, setRawHourlyPay] = useState(defaultValues.hourly_rate || '');
+    const [displayHourlyPay, setDisplayHourlyPay] = useState(defaultValues.hourly_rate ? formatSalary(defaultValues.hourly_rate) : '');
 
     function formatSalary(value) {
         let strVal = String(value);
@@ -77,16 +80,38 @@ export default function Create({ errors = [], defaultValues = {} }) {
         return parts.join('.');
     }
 
-    const handleSalaryChange = (e) => {
+    const handleDailyPayChange = (e) => {
         const value = e.target.value.replace(/[^0-9.]/g, '');
-        setRawSalary(value);
-        setDisplaySalary(formatSalary(value));
+        setRawDailyPay(value);
+        setDisplayDailyPay(formatSalary(value));
+
+        // Auto-calculate Hourly Pay (8 hours workday)
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+            const hourly = (num / 8).toFixed(2);
+            setRawHourlyPay(hourly);
+            setDisplayHourlyPay(formatSalary(hourly));
+        } else {
+            setRawHourlyPay('');
+            setDisplayHourlyPay('');
+        }
     };
 
-    const handlePieceRateChange = (e) => {
+    const handleHourlyPayChange = (e) => {
         const value = e.target.value.replace(/[^0-9.]/g, '');
-        setRawPieceRate(value);
-        setDisplayPieceRate(formatSalary(value));
+        setRawHourlyPay(value);
+        setDisplayHourlyPay(formatSalary(value));
+
+        // Auto-calculate Daily Pay (8 hours workday)
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+            const daily = (num * 8).toFixed(2);
+            setRawDailyPay(daily);
+            setDisplayDailyPay(formatSalary(daily));
+        } else {
+            setRawDailyPay('');
+            setDisplayDailyPay('');
+        }
     };
 
     const [createdEmployee, setCreatedEmployee] = useState(null);
@@ -115,8 +140,10 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const handleCreateAnother = () => {
         setShowSuccessModal(false);
         setCreatedEmployee(null);
-        setDisplaySalary('');
-        setRawSalary('');
+        setDisplayDailyPay('');
+        setRawDailyPay('');
+        setDisplayHourlyPay('');
+        setRawHourlyPay('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
         const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
         setSelectedGroupId(defaultLine?.id || '');
@@ -136,6 +163,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
             data.job_title = selectedCraft;
             data.pay_type = 'piece_rate';
             data.monthly_salary = null;
+            data.daily_rate = null;
+            data.hourly_rate = null;
             data.piece_rate = null;
 
             if (isCustomLine) {
@@ -145,7 +174,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 data.shift = `${customName} · Factory (08:00 AM - 05:00 PM)`;
             } else {
                 const activeGroup = productionGroups.find(g => g.id === selectedGroupId) ||
-                                   productionGroups.find(g => g.name === selectedGroup);
+                    productionGroups.find(g => g.name === selectedGroup);
                 const resolvedId = activeGroup?.id || selectedGroupId || null;
                 const resolvedName = activeGroup?.name || selectedGroup || 'Line A';
                 data.production_group_id = resolvedId;
@@ -154,8 +183,10 @@ export default function Create({ errors = [], defaultValues = {} }) {
             }
         } else {
             data.production_group_id = null;
-            data.pay_type = 'monthly';
-            data.monthly_salary = parseFloat(rawSalary || 0);
+            data.pay_type = 'daily';
+            data.daily_rate = parseFloat(rawDailyPay || 0);
+            data.hourly_rate = parseFloat(rawHourlyPay || 0);
+            data.monthly_salary = parseFloat(rawDailyPay || 0) * 26;
             data.piece_rate = null;
             data.shift = 'Regular Worker (08:00 AM - 08:00 PM)';
         }
@@ -202,7 +233,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
-            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
                 <Link to="/admin/employees" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-xs sm:shadow-sm border border-slate-200 flex items-center gap-1.5 sm:gap-2 tap-active">
                     <i className="ti ti-arrow-left text-base sm:text-lg" /> Back to Directory
                 </Link>
@@ -222,7 +253,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 </div>
             )}
 
-            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
+            <div className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
                 <div className="mb-6 sm:mb-10 text-center">
                     <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-800 tracking-tight">Onboard Personnel</h2>
                     <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">Create a new employee profile and system account.</p>
@@ -331,17 +362,15 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                         type="button"
                                                         key={craft.id}
                                                         onClick={() => setSelectedCraft(craft.id)}
-                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${
-                                                            isSelected
-                                                                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
-                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                                                        }`}
+                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${isSelected
+                                                            ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                                                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                                            }`}
                                                     >
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${
-                                                                    isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
-                                                                }`}>
+                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                                                                    }`}>
                                                                     <i className={`ti ${craft.icon}`} />
                                                                 </span>
                                                                 <div>
@@ -447,9 +476,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             )}
 
                             <div className="md:col-span-2">
-                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
-                                    department === 'Factory' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
-                                }`}>
+                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${department === 'Factory' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                    }`}>
                                     <div className="flex items-center gap-2.5">
                                         <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
                                         <div>
@@ -461,9 +489,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
-                                        department === 'Factory' ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
-                                    }`}>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${department === 'Factory' ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                        }`}>
                                         {department === 'Factory' ? 'No OT' : 'OT Eligible'}
                                     </span>
                                 </div>
@@ -493,7 +520,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         </span>
                                     </div>
                                     <p className="text-xs text-amber-800 leading-relaxed">
-                                        Factory workers are <strong>not paid via fixed monthly salaries</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
+                                        Factory workers are <strong>not paid via fixed rates</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
                                     </p>
                                     <div className="pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-3 text-[11px] text-amber-800 font-medium">
                                         <span className="flex items-center gap-1">
@@ -509,25 +536,48 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="max-w-md">
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                    Monthly Base Salary
-                                </label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={displaySalary}
-                                        onChange={handleSalaryChange}
-                                        className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
-                                        placeholder="0.00"
-                                    />
-                                    <input type="hidden" name="monthly_salary" value={rawSalary} />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Daily Pay Rate
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={displayDailyPay}
+                                            onChange={handleDailyPayChange}
+                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            placeholder="0.00"
+                                        />
+                                        <input type="hidden" name="daily_rate" value={rawDailyPay} />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                        <i className="ti ti-calendar" /> Base daily compensation rate
+                                    </p>
                                 </div>
-                                <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest flex items-center gap-1">
-                                    <i className="ti ti-info-circle" /> Used for standard semi-monthly payslip generation
-                                </p>
+
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Hourly Pay Rate
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={displayHourlyPay}
+                                            onChange={handleHourlyPayChange}
+                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            placeholder="0.00"
+                                        />
+                                        <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                        <i className="ti ti-clock" /> Calculated per 8-hour workday standard
+                                    </p>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -546,131 +596,124 @@ export default function Create({ errors = [], defaultValues = {} }) {
             </div>
 
             {/* Account Created & Temporary Password Modal */}
-            
-                {showSuccessModal && createdEmployee && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-xs">
-                        <div
-                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="bg-white rounded-2xl p-5 sm:p-7 max-w-md w-full shadow-2xl border border-slate-200 space-y-5"
-                        >
-                            {/* Header */}
-                            <div className="text-center space-y-2">
-                                <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
-                                    <i className="ti ti-check text-2xl font-bold" />
-                                </div>
-                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                                    Account Created Successfully!
-                                </h3>
-                                <p className="text-xs text-slate-500 font-medium">
-                                    Provide these temporary login credentials to the employee.
-                                </p>
+            {showSuccessModal && createdEmployee && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-xs">
+                    <div className="bg-white rounded-2xl p-5 sm:p-7 max-w-md w-full shadow-2xl border border-slate-200 space-y-5">
+                        {/* Header */}
+                        <div className="text-center space-y-2">
+                            <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
+                                <i className="ti ti-check text-2xl font-bold" />
                             </div>
-
-                            {/* Credentials Card */}
-                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
-                                
-                                {/* Name */}
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Employee</span>
-                                    <span className="text-xs font-black text-slate-800">
-                                        {createdEmployee.first_name} {createdEmployee.last_name}
-                                    </span>
-                                </div>
-
-                                {/* Company ID */}
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Company ID</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(createdEmployee.company_id, 'Company ID')}
-                                        className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer"
-                                    >
-                                        <span>{createdEmployee.company_id}</span>
-                                        <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs`} />
-                                    </button>
-                                </div>
-
-                                {/* Email Address */}
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Login Email</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(createdEmployee.email, 'Email')}
-                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer max-w-[200px] truncate"
-                                    >
-                                        <span className="truncate">{createdEmployee.email}</span>
-                                        <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
-                                    </button>
-                                </div>
-
-                                {/* Temporary password */}
-                                <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                                            <i className="ti ti-key text-xs" /> Temporary Password
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1"
-                                        >
-                                            <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-xs`} />
-                                            {showPassword ? 'Hide' : 'Show'}
-                                        </button>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="font-mono text-base sm:text-lg font-black tracking-wider text-white">
-                                            {showPassword ? (createdEmployee.temp_password || 'Emp-1234') : '••••••••'}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => copyToClipboard(createdEmployee.temp_password, 'Password')}
-                                            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                                        >
-                                            <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy'} text-xs`} />
-                                            {copiedField === 'Password' ? 'Copied' : 'Copy'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Copy All Button */}
-                            <button
-                                type="button"
-                                onClick={copyAllCredentials}
-                                className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 cursor-pointer"
-                            >
-                                <i className={`ti ${copiedAll ? 'ti-check text-emerald-600' : 'ti-clipboard-check'} text-sm`} />
-                                {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
-                            </button>
-
-                            <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
-                                <i className="ti ti-info-circle mr-1" />
-                                The employee will be required to change this password upon their first sign-in.
+                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                Account Created Successfully!
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium">
+                                Provide these temporary login credentials to the employee.
                             </p>
+                        </div>
 
-                            {/* Modal Actions */}
-                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                        {/* Credentials Card */}
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+
+                            {/* Name */}
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Employee</span>
+                                <span className="text-xs font-black text-slate-800">
+                                    {createdEmployee.first_name} {createdEmployee.last_name}
+                                </span>
+                            </div>
+
+                            {/* Company ID */}
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Company ID</span>
                                 <button
                                     type="button"
-                                    onClick={handleCreateAnother}
-                                    className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors text-center cursor-pointer"
+                                    onClick={() => copyToClipboard(createdEmployee.company_id, 'Company ID')}
+                                    className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer"
                                 >
-                                    + Add Another
+                                    <span>{createdEmployee.company_id}</span>
+                                    <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs`} />
                                 </button>
-                                <Link
-                                    to={`/admin/employees/${createdEmployee.id}`}
-                                    className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors text-center flex items-center justify-center gap-1"
+                            </div>
+
+                            {/* Email Address */}
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Login Email</span>
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(createdEmployee.email, 'Email')}
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer max-w-[200px] truncate"
                                 >
-                                    View Profile <i className="ti ti-arrow-right text-xs" />
-                                </Link>
+                                    <span className="truncate">{createdEmployee.email}</span>
+                                    <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
+                                </button>
+                            </div>
+
+                            {/* Temporary password */}
+                            <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                                        <i className="ti ti-key text-xs" /> Temporary Password
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1"
+                                    >
+                                        <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-xs`} />
+                                        {showPassword ? 'Hide' : 'Show'}
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono text-base sm:text-lg font-black tracking-wider text-white">
+                                        {showPassword ? (createdEmployee.temp_password || 'Emp-1234') : '••••••••'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(createdEmployee.temp_password, 'Password')}
+                                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                                    >
+                                        <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy'} text-xs`} />
+                                        {copiedField === 'Password' ? 'Copied' : 'Copy'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
+
+                        {/* Copy All Button */}
+                        <button
+                            type="button"
+                            onClick={copyAllCredentials}
+                            className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 cursor-pointer"
+                        >
+                            <i className={`ti ${copiedAll ? 'ti-check text-emerald-600' : 'ti-clipboard-check'} text-sm`} />
+                            {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
+                        </button>
+
+                        <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
+                            <i className="ti ti-info-circle mr-1" />
+                            The employee will be required to change this password upon their first sign-in.
+                        </p>
+
+                        {/* Modal Actions */}
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={handleCreateAnother}
+                                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors text-center cursor-pointer"
+                            >
+                                + Add Another
+                            </button>
+                            <Link
+                                to={`/admin/employees/${createdEmployee.id}`}
+                                className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors text-center flex items-center justify-center gap-1"
+                            >
+                                View Profile <i className="ti ti-arrow-right text-xs" />
+                            </Link>
+                        </div>
                     </div>
-                )}
-            
+                </div>
+            )}
         </div>
     );
 }
