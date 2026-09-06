@@ -103,9 +103,6 @@ const PayrollCreate = () => {
         initialPrefill.period_end || extractDateStr(new Date(Date.now() + 6 * 24 * 60 * 60 * 1000))
     );
 
-    // Statutory Deduction Schedule Option ('1st_week', '2nd_week', 'none')
-    const [deductionTiming, setDeductionTiming] = useState('1st_week');
-
     // Single Entry Form Data (Overtime enabled ONLY for Regular Employees)
     const [formData, setFormData] = useState({
         employee_id: initialPrefill.employee_id,
@@ -333,12 +330,6 @@ const PayrollCreate = () => {
         return { periodDaysCount: count, isInvalidDateRange: false };
     }, [periodStart, periodEnd]);
 
-    const shouldApplyDeductions = useMemo(() => {
-        if (deductionTiming === 'none') return false;
-        if (deductionTiming === '1st_week' || deductionTiming === '2nd_week') return true;
-        return true;
-    }, [deductionTiming]);
-
     // Computed Factory Operation Rows
     const computedFactoryRows = useMemo(() => {
         return factoryRows.map(row => {
@@ -380,7 +371,7 @@ const PayrollCreate = () => {
         return computedFactoryRows.reduce((sum, r) => sum + r.totalPrice, 0);
     }, [computedFactoryRows]);
 
-    // Operation-Level Calculation & Full Undivided Statutory Breakdown per Employee
+    // Operation-Level Calculation & Statutory Breakdown per Employee
     const workerPayrollMap = useMemo(() => {
         const map = {};
 
@@ -429,7 +420,7 @@ const PayrollCreate = () => {
             let philHealth = 0;
             let pagIbig = 0;
 
-            if (shouldApplyDeductions && gross > 0) {
+            if (gross > 0) {
                 const monthlyEquiv = gross * 4;
                 const sssBase = Math.min(monthlyEquiv, 35000);
                 sss = parseFloat((sssBase * 0.05).toFixed(2));
@@ -468,7 +459,7 @@ const PayrollCreate = () => {
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows, shouldApplyDeductions]);
+    }, [activeGroupEmployees, computedFactoryRows]);
 
     // Single Mode Employee Computations
     const selectedEmployee = useMemo(() => {
@@ -511,7 +502,7 @@ const PayrollCreate = () => {
         });
     }, [employees, empSearch, selectedDeptFilter]);
 
-    // Single Employee Attendance & Calculation (Includes Overtime auto-detection for Regular Employees)
+    // Single Employee Attendance & Calculation
     useEffect(() => {
         if (entryMode !== 'single' || !formData.employee_id || !periodStart || !periodEnd || isInvalidDateRange) {
             return;
@@ -590,8 +581,7 @@ const PayrollCreate = () => {
                         monthly_salary: selectedEmployee?.monthly_salary || selectedEmployee?.salary || 0,
                         daily_rate: dailyRate,
                         worked_dates: uniqueWorkedDates,
-                        apply_deductions: shouldApplyDeductions,
-                        deduction_timing: deductionTiming
+                        apply_deductions: true
                     }),
                 });
 
@@ -619,7 +609,7 @@ const PayrollCreate = () => {
 
         calculatePayroll();
         return () => { isMounted = false; };
-    }, [entryMode, formData.employee_id, periodStart, periodEnd, selectedEmployee, employeeRate, isInvalidDateRange, shouldApplyDeductions, deductionTiming]);
+    }, [entryMode, formData.employee_id, periodStart, periodEnd, selectedEmployee, employeeRate, isInvalidDateRange]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -733,8 +723,7 @@ const PayrollCreate = () => {
                 overtime_pay: parseFloat(otPay.toFixed(2)),
                 period_start: periodStart,
                 period_end: periodEnd,
-                apply_deductions: shouldApplyDeductions,
-                deduction_timing: deductionTiming,
+                apply_deductions: true,
                 admin_id: user?.id
             };
 
@@ -837,7 +826,7 @@ const PayrollCreate = () => {
                     </div>
                 )}
 
-                {/* Cutoff Period & Statutory Deduction Timing Selector */}
+                {/* Cutoff Period Selector */}
                 <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100 space-y-4 mb-6">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2.5 sm:gap-3">
@@ -845,9 +834,9 @@ const PayrollCreate = () => {
                                 <i className="ti ti-calendar-event"></i>
                             </div>
                             <div className="min-w-0">
-                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff &amp; Deduction Schedule</h3>
+                                <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff</h3>
                                 <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-snug truncate">
-                                    Configure cutoff dates and select when full SSS / PhilHealth / Pag-IBIG deductions occur
+                                    Configure payroll cutoff dates for this processing period
                                 </p>
                             </div>
                         </div>
@@ -871,28 +860,6 @@ const PayrollCreate = () => {
                             <i className={`ti ${includeWeekends ? 'ti-calendar-check text-emerald-600' : 'ti-calendar-minus text-slate-500'} text-base`}></i>
                             <span>{includeWeekends ? 'Auto-Weekends: Active (1 Week Auto)' : 'Auto-Weekends: Inactive (Free Choice)'}</span>
                         </button>
-                    </div>
-
-                    {/* Full Undivided Statutory Deduction Selector */}
-                    <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-blue-200 shadow-2xs space-y-2">
-                        <div className="flex items-center justify-between flex-wrap gap-1">
-                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                                <i className="ti ti-shield-check text-blue-600 text-sm"></i>
-                                SSS / PhilHealth / Pag-IBIG Mandatory Deduction Schedule
-                            </label>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${shouldApplyDeductions ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-500'}`}>
-                                {shouldApplyDeductions ? 'Full Deductions Active' : 'Deductions Skipped'}
-                            </span>
-                        </div>
-                        <select
-                            value={deductionTiming}
-                            onChange={(e) => setDeductionTiming(e.target.value)}
-                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-800 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                            <option value="1st_week">1st Week of Month (Deduct Full Mandatory Government Contributions)</option>
-                            <option value="2nd_week">2nd Week of Month (Deduct Full Mandatory Government Contributions)</option>
-                            <option value="none">No Deductions (Skip mandatory deductions for this cutoff)</option>
-                        </select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -946,11 +913,6 @@ const PayrollCreate = () => {
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
-                                {shouldApplyDeductions && (
-                                    <span className="font-bold bg-amber-600 text-white px-2 py-0.5 rounded-md text-[10px] uppercase">
-                                        Full Deductions Active
-                                    </span>
-                                )}
                                 <span className="shrink-0 font-black bg-blue-600 text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-sm">
                                     {periodDaysCount} Days
                                 </span>
@@ -1073,7 +1035,7 @@ const PayrollCreate = () => {
                                                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                                                     <div>
                                                         <span className="text-[10px] text-slate-400 font-bold block">
-                                                            {shouldApplyDeductions ? 'Full Deductions (SSS/PH/PGB/Tax)' : 'Deductions'}
+                                                            Deductions (SSS/PH/PGB/Tax)
                                                         </span>
                                                         <span className="font-mono font-bold text-red-500 text-[11px]">
                                                             -₱{workerData.totalDeductions.toFixed(2)}
@@ -1299,7 +1261,7 @@ const PayrollCreate = () => {
                             ) : (
                                 <>
                                     <i className="ti ti-loader text-xl animate-spin"></i>
-                                    <span>Computing DOLE Contributions...</span>
+                                    <span>Computing Payroll...</span>
                                 </>
                             )}
                         </button>
