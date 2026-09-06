@@ -1,19 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient'; // Adjust path if needed
 
-export default function StatutorySettings({ onBack }) {
-    const DEFAULT_SETTINGS = {
-        sss_employee_rate: 5,
-        sss_employer_rate: 10,
-        sss_max_msc: 30000,
-        philhealth_rate: 5,
-        philhealth_min_salary: 10000,
-        philhealth_max_salary: 100000,
-        pagibig_employee_rate: 2,
-        pagibig_employer_rate: 2,
-        pagibig_max_contribution: 200
-    };
+const DEFAULT_SETTINGS = {
+    sss_employee_rate: 5,         // 5%
+    sss_employer_rate: 10,        // 10%
+    sss_max_msc: 35000,           // 2026 SSS MSC Cap (P35,000)
+    philhealth_rate: 5,           // 5% Total
+    philhealth_min_salary: 10000,
+    philhealth_max_salary: 100000,
+    pagibig_employee_rate: 2,     // 2%
+    pagibig_employer_rate: 2,     // 2%
+    pagibig_max_contribution: 100 // P100 Max EE share (P200 total EE+ER)
+};
 
+// Static class lookup map to fix Tailwind CSS JIT compilation issue with dynamic string interpolation
+const FOCUS_STYLES = {
+    blue: 'focus:ring-blue-500/20 focus:border-blue-500',
+    rose: 'focus:ring-rose-500/20 focus:border-rose-500',
+    emerald: 'focus:ring-emerald-500/20 focus:border-emerald-500'
+};
+
+// Moved component outside parent to preserve input DOM identity and focus state across re-renders
+const FieldInput = ({ label, name, value, onChange, focusColor = 'blue', ...props }) => (
+    <div>
+        <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">{label}</label>
+        <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            name={name}
+            value={value ?? ''}
+            onChange={onChange}
+            className={`w-full bg-[#f8fafc] border border-slate-200/80 rounded-xl px-4 py-3.5 sm:py-3 text-base sm:text-sm text-slate-800 font-semibold focus:outline-none focus:ring-2 ${FOCUS_STYLES[focusColor] || FOCUS_STYLES.blue} transition-all min-h-[48px]`}
+            {...props}
+        />
+    </div>
+);
+
+export default function StatutorySettings({ onBack }) {
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [fetching, setFetching] = useState(true);
     const [loading, setLoading] = useState(false);
@@ -33,9 +57,6 @@ export default function StatutorySettings({ onBack }) {
         }
         if (msg.includes('permission') || msg.includes('row-level security') || msg.includes('42501')) {
             return "You do not have permission to update statutory settings. Please contact your administrator.";
-        }
-        if (msg.includes('invalid input syntax') || msg.includes('type uuid')) {
-            return "The database configuration requires an update. Please contact your system administrator.";
         }
         return "Unable to update statutory rates right now. Please try again later.";
     };
@@ -109,9 +130,22 @@ export default function StatutorySettings({ onBack }) {
                 updated_at: new Date().toISOString()
             };
 
-            const { error } = await supabase
-                .from('statutory_settings')
-                .upsert(payload);
+            let error;
+            if (settings.id) {
+                ({ error } = await supabase
+                    .from('statutory_settings')
+                    .update(payload)
+                    .eq('id', settings.id));
+            } else {
+                const { data: inserted, error: insErr } = await supabase
+                    .from('statutory_settings')
+                    .insert([payload])
+                    .select()
+                    .single();
+
+                error = insErr;
+                if (inserted) setSettings(inserted);
+            }
 
             if (error) throw error;
 
@@ -136,22 +170,6 @@ export default function StatutorySettings({ onBack }) {
             </div>
         );
     }
-
-    const FieldInput = ({ label, name, focusColor = 'blue', ...props }) => (
-        <div>
-            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">{label}</label>
-            <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                name={name}
-                value={settings[name] ?? ''}
-                onChange={handleChange}
-                className={`w-full bg-[#f8fafc] border border-slate-200/80 rounded-xl px-4 py-3.5 sm:py-3 text-base sm:text-sm text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-${focusColor}-500/20 focus:border-${focusColor}-500 transition-all min-h-[48px]`}
-                {...props}
-            />
-        </div>
-    );
 
     return (
         <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-12 px-3 sm:px-4 md:px-0">
@@ -192,7 +210,7 @@ export default function StatutorySettings({ onBack }) {
                 </div>
             )}
 
-            {/* HR Friendly Warning / Error Alert */}
+            {/* HR Error Alert */}
             {errorMessage && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl flex items-start sm:items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-start sm:items-center space-x-2">
@@ -223,9 +241,9 @@ export default function StatutorySettings({ onBack }) {
                         <h2 className="text-lg sm:text-xl font-bold text-slate-800">SSS Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 sm:gap-6">
-                        <FieldInput label="EMPLOYEE SHARE (%)" name="sss_employee_rate" step="0.01" focusColor="blue" />
-                        <FieldInput label="EMPLOYER SHARE (%)" name="sss_employer_rate" step="0.01" focusColor="blue" />
-                        <FieldInput label="MAX SALARY CREDIT (₱)" name="sss_max_msc" focusColor="blue" />
+                        <FieldInput label="EMPLOYEE SHARE (%)" name="sss_employee_rate" value={settings.sss_employee_rate} onChange={handleChange} step="0.01" focusColor="blue" />
+                        <FieldInput label="EMPLOYER SHARE (%)" name="sss_employer_rate" value={settings.sss_employer_rate} onChange={handleChange} step="0.01" focusColor="blue" />
+                        <FieldInput label="MAX SALARY CREDIT (₱)" name="sss_max_msc" value={settings.sss_max_msc} onChange={handleChange} focusColor="blue" />
                     </div>
                 </div>
 
@@ -240,9 +258,9 @@ export default function StatutorySettings({ onBack }) {
                         <h2 className="text-lg sm:text-xl font-bold text-slate-800">PhilHealth Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 sm:gap-6">
-                        <FieldInput label="TOTAL PREMIUM RATE (%)" name="philhealth_rate" step="0.01" focusColor="rose" />
-                        <FieldInput label="MIN SALARY FLOOR (₱)" name="philhealth_min_salary" focusColor="rose" />
-                        <FieldInput label="MAX SALARY CEILING (₱)" name="philhealth_max_salary" focusColor="rose" />
+                        <FieldInput label="TOTAL PREMIUM RATE (%)" name="philhealth_rate" value={settings.philhealth_rate} onChange={handleChange} step="0.01" focusColor="rose" />
+                        <FieldInput label="MIN SALARY FLOOR (₱)" name="philhealth_min_salary" value={settings.philhealth_min_salary} onChange={handleChange} focusColor="rose" />
+                        <FieldInput label="MAX SALARY CEILING (₱)" name="philhealth_max_salary" value={settings.philhealth_max_salary} onChange={handleChange} focusColor="rose" />
                     </div>
                 </div>
 
@@ -257,9 +275,9 @@ export default function StatutorySettings({ onBack }) {
                         <h2 className="text-lg sm:text-xl font-bold text-slate-800">Pag-IBIG (HDMF) Contributions</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 sm:gap-6">
-                        <FieldInput label="EMPLOYEE SHARE (%)" name="pagibig_employee_rate" step="0.01" focusColor="emerald" />
-                        <FieldInput label="EMPLOYER SHARE (%)" name="pagibig_employer_rate" step="0.01" focusColor="emerald" />
-                        <FieldInput label="MAX MONTHLY CONTRIBUTION (₱)" name="pagibig_max_contribution" focusColor="emerald" />
+                        <FieldInput label="EMPLOYEE SHARE (%)" name="pagibig_employee_rate" value={settings.pagibig_employee_rate} onChange={handleChange} step="0.01" focusColor="emerald" />
+                        <FieldInput label="EMPLOYER SHARE (%)" name="pagibig_employer_rate" value={settings.pagibig_employer_rate} onChange={handleChange} step="0.01" focusColor="emerald" />
+                        <FieldInput label="EE MAX MONTHLY CAP (₱)" name="pagibig_max_contribution" value={settings.pagibig_max_contribution} onChange={handleChange} focusColor="emerald" />
                     </div>
                 </div>
 
