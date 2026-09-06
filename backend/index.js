@@ -42,7 +42,7 @@ app.use(cors({
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-user-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-user-id', 'Cache-Control', 'Pragma', 'Expires'],
     maxAge: 86400 // Cache OPTIONS preflight for 24 hours to eliminate 200ms preflight latency
 }));
 app.use(express.json({ limit: '10mb' }));

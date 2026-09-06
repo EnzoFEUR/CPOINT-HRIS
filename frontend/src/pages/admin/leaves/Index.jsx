@@ -19,9 +19,7 @@ export default function LeavesIndex() {
     };
 
     const fetchLeaves = async () => {
-        const res = await fetchWithAuth(`/api/leaves?_t=${Date.now()}`, {
-            headers: { 'Cache-Control': 'no-cache, no-store' }
-        });
+        const res = await fetchWithAuth(`/api/leaves?_t=${Date.now()}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch leaves');
         return Array.isArray(data) ? data : (data?.data || []);
