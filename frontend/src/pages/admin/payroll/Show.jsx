@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -44,38 +45,27 @@ const cleanDeductionName = (rawName) => {
 export default function PayrollShow() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [payroll, setPayroll] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [errorMessage, setErrorMessage] = useState(null);
+    const queryClient = useQueryClient();
 
-    useEffect(() => {
-        if (!id || id === 'undefined' || !isValidUUID(id)) {
-            setIsLoading(false);
-            setErrorMessage('Invalid or missing Payroll record ID.');
-            return;
-        }
+    const isIdValid = Boolean(id && id !== 'undefined' && isValidUUID(id));
 
-        const fetchPayroll = async () => {
-            setIsLoading(true);
-            setErrorMessage(null);
-            try {
-                const res = await fetchWithAuth(`/api/payroll/${id}`);
-                const result = await res.json();
-
-                if (!res.ok || result.error) {
-                    throw new Error(result.message || result.error || 'Failed to load payslip.');
-                }
-
-                setPayroll(result.data || result);
-            } catch (err) {
-                console.error('[PAYROLL_SHOW] Load Error:', err);
-                setErrorMessage(err.message || 'Payslip record not found.');
-            } finally {
-                setIsLoading(false);
+    const { data: payroll = null, isLoading, error: queryError } = useQuery({
+        queryKey: ['payroll', id],
+        queryFn: async () => {
+            const res = await fetchWithAuth(`/api/payroll/${id}`);
+            const result = await res.json();
+            if (!res.ok || result.error) {
+                throw new Error(result.message || result.error || 'Failed to load payslip.');
             }
-        };
-        fetchPayroll();
-    }, [id]);
+            return result.data || result;
+        },
+        enabled: isIdValid,
+        staleTime: 60_000,
+        gcTime: 300_000,
+        refetchOnWindowFocus: false,
+    });
+
+    const errorMessage = !isIdValid ? 'Invalid or missing Payroll record ID.' : (queryError?.message || null);
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -94,6 +84,8 @@ export default function PayrollShow() {
             });
             const resultData = await res.json();
             if (res.ok && resultData.success) {
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
+                queryClient.removeQueries({ queryKey: ['payroll', id] });
                 toast.success('Payroll record deleted successfully.');
                 navigate('/admin/payroll');
             } else {

@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { matchJobTitle } from './Create';
 
 export default function FactoryPiece({
     isOpen,
     onClose,
+    onSave,
     availableGroups = [],
     selectedGroup,
     handleGroupTabChange,
@@ -14,6 +15,55 @@ export default function FactoryPiece({
     setFactoryRows,
     computedFactoryRows = []
 }) {
+    const [localRows, setLocalRows] = useState(factoryRows);
+
+    useEffect(() => {
+        if (isOpen) {
+            setLocalRows(factoryRows);
+        }
+    }, [isOpen, factoryRows]);
+
+    const activeGroupSet = useMemo(() => new Set(activeGroupEmployees.map(e => String(e.id))), [activeGroupEmployees]);
+
+    const activeComputedRows = useMemo(() => {
+        return localRows.map(row => {
+            const qty = parseFloat(row.quantity_in) || 0;
+            const amt = parseFloat(row.amount) || 0;
+            const totalPrice = qty * amt;
+
+            const rawAssigned = Array.isArray(row.assignedEmployeeIds) ? row.assignedEmployeeIds : [];
+            const groupAssignedIds = rawAssigned.filter(id => activeGroupSet.has(String(id)));
+
+            let effectiveAssignedIds = [];
+
+            if (row.isExplicitlyEmpty) {
+                effectiveAssignedIds = [];
+            } else if (groupAssignedIds.length > 0) {
+                effectiveAssignedIds = groupAssignedIds;
+            } else {
+                const jobMatchedEmployees = activeGroupEmployees.filter(emp => {
+                    const empJobTitle = emp.job_title || emp.position || '';
+                    return matchJobTitle(empJobTitle, row.operation);
+                });
+                effectiveAssignedIds = jobMatchedEmployees.map(e => String(e.id));
+            }
+
+            return {
+                ...row,
+                qty,
+                amt,
+                totalPrice,
+                effectiveAssignedIds,
+                perWorkerShare: effectiveAssignedIds.length > 0 ? totalPrice / effectiveAssignedIds.length : 0
+            };
+        });
+    }, [localRows, activeGroupEmployees, activeGroupSet]);
+
+    const displayTotalPayout = useMemo(() => {
+        if (!selectedGroup) return 0;
+        return activeComputedRows.reduce((sum, r) => sum + r.totalPrice, 0);
+    }, [activeComputedRows, selectedGroup]);
+
     const [isOpAssignModalOpen, setIsOpAssignModalOpen] = useState(false);
     const [currentOpRowId, setCurrentOpRowId] = useState(null);
     const [opWorkerSearch, setOpWorkerSearch] = useState('');
@@ -21,9 +71,37 @@ export default function FactoryPiece({
     // HR Layout View State: 'compact' | 'grid'
     const [viewMode, setViewMode] = useState('compact');
 
-    // Updates row value, auto-syncing Stock No. and Quantity IN across all rows
+    const handleSaveAndClose = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (onSave) {
+            onSave(localRows);
+        } else if (onClose) {
+            onClose();
+        }
+    };
+
+    // Close on Escape key
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                if (isOpAssignModalOpen) {
+                    setIsOpAssignModalOpen(false);
+                } else {
+                    handleSaveAndClose();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, isOpAssignModalOpen, localRows]);
+
+    // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally (zero parent re-render)
     const handleFactoryRowChange = (id, field, value) => {
-        setFactoryRows(prev => prev.map(row => {
+        setLocalRows(prev => prev.map(row => {
             if (field === 'stock_no' || field === 'quantity_in') {
                 return { ...row, [field]: value };
             }
@@ -32,11 +110,11 @@ export default function FactoryPiece({
     };
 
     const addFactoryRow = () => {
-        const lastRow = factoryRows[factoryRows.length - 1];
+        const lastRow = localRows[localRows.length - 1];
         const defaultStock = lastRow ? lastRow.stock_no : 'Formal';
         const defaultQty = lastRow ? lastRow.quantity_in : '';
 
-        setFactoryRows(prev => [
+        setLocalRows(prev => [
             ...prev,
             {
                 id: Date.now(),
@@ -50,8 +128,8 @@ export default function FactoryPiece({
     };
 
     const removeFactoryRow = (id) => {
-        if (factoryRows.length <= 1) return;
-        setFactoryRows(prev => prev.filter(row => row.id !== id));
+        if (localRows.length <= 1) return;
+        setLocalRows(prev => prev.filter(row => row.id !== id));
     };
 
     const openOpWorkerModal = (rowId) => {
@@ -61,41 +139,51 @@ export default function FactoryPiece({
     };
 
     const activeOpRow = useMemo(() => {
-        return computedFactoryRows.find(r => r.id === currentOpRowId) || null;
-    }, [computedFactoryRows, currentOpRowId]);
+        return activeComputedRows.find(r => r.id === currentOpRowId) || null;
+    }, [activeComputedRows, currentOpRowId]);
 
     const toggleOpWorker = (empId) => {
         if (!currentOpRowId) return;
         const idStr = String(empId);
 
-        setFactoryRows(prev => prev.map(row => {
+        setLocalRows(prev => prev.map(row => {
             if (row.id !== currentOpRowId) return row;
-            const currentIds = Array.isArray(row.assignedEmployeeIds) ? row.assignedEmployeeIds : [];
-            const nextIds = currentIds.includes(idStr)
-                ? currentIds.filter(id => id !== idStr)
-                : [...currentIds, idStr];
-            return { ...row, assignedEmployeeIds: nextIds };
+            const baseIds = (Array.isArray(row.assignedEmployeeIds) && row.assignedEmployeeIds.length > 0)
+                ? row.assignedEmployeeIds
+                : (row.isExplicitlyEmpty ? [] : (activeOpRow ? activeOpRow.effectiveAssignedIds : []));
+            const nextIds = baseIds.includes(idStr)
+                ? baseIds.filter(id => id !== idStr)
+                : [...baseIds, idStr];
+            return {
+                ...row,
+                assignedEmployeeIds: nextIds,
+                isExplicitlyEmpty: nextIds.length === 0
+            };
         }));
     };
 
     const selectAllOpWorkers = () => {
         if (!currentOpRowId) return;
         const allIds = activeGroupEmployees.map(e => String(e.id));
-        setFactoryRows(prev => prev.map(row => row.id === currentOpRowId ? { ...row, assignedEmployeeIds: allIds } : row));
+        setLocalRows(prev => prev.map(row => row.id === currentOpRowId ? { ...row, assignedEmployeeIds: allIds, isExplicitlyEmpty: false } : row));
     };
 
     const clearAllOpWorkers = () => {
         if (!currentOpRowId) return;
-        setFactoryRows(prev => prev.map(row => row.id === currentOpRowId ? { ...row, assignedEmployeeIds: [] } : row));
+        setLocalRows(prev => prev.map(row => row.id === currentOpRowId ? { ...row, assignedEmployeeIds: [], isExplicitlyEmpty: true } : row));
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
-            {/* Backdrop */}
-            <div onClick={onClose} className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity" />
-
+        <div
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    handleSaveAndClose(e);
+                }
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+        >
             {/* Main Modal Container */}
             <div className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10 border border-slate-200">
                 {/* Modal Header */}
@@ -111,7 +199,7 @@ export default function FactoryPiece({
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={handleSaveAndClose}
                         className="w-9 h-9 rounded-full bg-slate-200/80 hover:bg-slate-300 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
                     >
                         <i className="ti ti-x text-lg" />
@@ -134,8 +222,8 @@ export default function FactoryPiece({
                                     </p>
                                 </div>
                             </div>
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded-full shrink-0">
-                                {activeGroupEmployees.length} Workers Active
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${selectedGroup ? 'text-blue-700 bg-blue-100' : 'text-slate-500 bg-slate-200/60'}`}>
+                                {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}
                             </span>
                         </div>
 
@@ -153,7 +241,12 @@ export default function FactoryPiece({
                                         <button
                                             key={groupName}
                                             type="button"
-                                            onClick={() => handleGroupTabChange(groupName)}
+                                            onClick={() => {
+                                                if (selectedGroup && onSave) {
+                                                    onSave(localRows);
+                                                }
+                                                handleGroupTabChange(groupName);
+                                            }}
                                             className={`p-2.5 rounded-xl border-2 text-left transition-all flex items-center justify-between cursor-pointer ${isSelected
                                                 ? 'bg-blue-50/90 border-blue-600 shadow-xs shadow-blue-500/10'
                                                 : 'bg-white border-slate-200 hover:border-slate-300'
@@ -246,8 +339,8 @@ export default function FactoryPiece({
                                             <th className="p-3 text-center">Action</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100 text-xs">
-                                        {computedFactoryRows.map((row) => (
+                                     <tbody className="divide-y divide-slate-100 text-xs">
+                                        {activeComputedRows.map((row) => (
                                             <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="p-2.5 font-bold text-slate-800">
                                                     <input
@@ -304,7 +397,7 @@ export default function FactoryPiece({
                                                     <button
                                                         type="button"
                                                         onClick={() => removeFactoryRow(row.id)}
-                                                        disabled={factoryRows.length <= 1}
+                                                        disabled={localRows.length <= 1}
                                                         className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-30 cursor-pointer"
                                                     >
                                                         <i className="ti ti-trash text-base" />
@@ -320,7 +413,7 @@ export default function FactoryPiece({
                         {/* VIEW MODE: Grid & Cards Stack View */}
                         {viewMode === 'grid' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {computedFactoryRows.map((row, idx) => (
+                                {activeComputedRows.map((row, idx) => (
                                     <div
                                         key={row.id}
                                         className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 relative"
@@ -332,7 +425,7 @@ export default function FactoryPiece({
                                             <button
                                                 type="button"
                                                 onClick={() => removeFactoryRow(row.id)}
-                                                disabled={factoryRows.length <= 1}
+                                                disabled={localRows.length <= 1}
                                                 className="text-slate-400 hover:text-red-500 disabled:opacity-30 transition-colors cursor-pointer"
                                             >
                                                 <i className="ti ti-trash text-base" />
@@ -415,16 +508,16 @@ export default function FactoryPiece({
                     <div className="p-5 bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
                         <div>
                             <span className="text-xs font-bold text-blue-300 uppercase tracking-wider block">
-                                {selectedGroup || 'Factory Group'} Total Operation Output
+                                {selectedGroup ? `${selectedGroup} Total Operation Output` : 'Overall Operation Output'}
                             </span>
                             <p className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 mt-0.5">
-                                ₱{grandTotalFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                ₱{displayTotalPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
                         <div className="bg-white/10 px-4 py-2.5 rounded-xl text-xs font-semibold backdrop-blur-xs flex items-center gap-3">
                             <div>
-                                <span className="text-[10px] text-slate-300 uppercase font-bold block">{selectedGroup} Active Workers</span>
-                                <span className="text-base font-mono font-bold text-white">{activeGroupEmployees.length} Workers</span>
+                                <span className="text-[10px] text-slate-300 uppercase font-bold block">{selectedGroup ? `${selectedGroup} Active Workers` : 'Active Workers'}</span>
+                                <span className="text-base font-mono font-bold text-white">{selectedGroup ? activeGroupEmployees.length : 0} Workers</span>
                             </div>
                             <div className="border-l border-white/20 pl-3">
                                 <span className="text-[10px] text-amber-300 uppercase font-bold block">Division Method</span>
@@ -438,18 +531,25 @@ export default function FactoryPiece({
                 <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex justify-end">
                     <button
                         type="button"
-                        onClick={onClose}
-                        className="px-6 py-2.5 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                        onClick={handleSaveAndClose}
+                        className="px-6 py-2.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                     >
-                        Save &amp; Close Log
+                        <i className="ti ti-device-floppy text-base" />
+                        <span>Save &amp; Close Log</span>
                     </button>
                 </div>
             </div>
 
             {/* Inner Modal: Assign Workers to Operation Row */}
             {isOpAssignModalOpen && activeOpRow && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div onClick={() => setIsOpAssignModalOpen(false)} className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" />
+                <div
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setIsOpAssignModalOpen(false);
+                        }
+                    }}
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/60 backdrop-blur-xs"
+                >
                     <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10">
                         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div>

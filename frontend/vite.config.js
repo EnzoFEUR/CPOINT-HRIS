@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     target: 'esnext',
     cssCodeSplit: true,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
     minify: 'esbuild',
     rollupOptions: {
       output: {
@@ -44,6 +44,9 @@ export default defineConfig({
             }
             if (normalizedId.includes('@tabler/icons-react') || normalizedId.includes('lucide-react')) {
               return 'vendor-icons';
+            }
+            if (normalizedId.includes('node_modules/dayjs')) {
+              return 'vendor-dayjs';
             }
             return 'vendor-core';
           }

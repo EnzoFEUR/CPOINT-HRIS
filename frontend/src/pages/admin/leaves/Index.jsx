@@ -19,7 +19,9 @@ export default function LeavesIndex() {
     };
 
     const fetchLeaves = async () => {
-        const res = await fetchWithAuth('/api/leaves');
+        const res = await fetchWithAuth(`/api/leaves?_t=${Date.now()}`, {
+            headers: { 'Cache-Control': 'no-cache, no-store' }
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch leaves');
         return Array.isArray(data) ? data : (data?.data || []);
@@ -54,40 +56,125 @@ export default function LeavesIndex() {
         };
     }, [queryClient]);
 
-    const handleStatusChange = async (id, status) => {
-        // Optimistic UI Update
-        const previousLeaves = queryClient.getQueryData(['adminLeaves']);
-        queryClient.setQueryData(['adminLeaves'], old => old.map(l => l.id === id ? { ...l, status } : l));
+    const [approvalModalLeave, setApprovalModalLeave] = useState(null);
+    const [approvalPayType, setApprovalPayType] = useState('with_pay');
+    const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+    const isLeavePending = (status) => {
+        const s = String(status || '').toLowerCase().trim();
+        return s === 'new' || s === 'pending';
+    };
+
+    const handleOpenApproveModal = (leave) => {
+        setApprovalModalLeave(leave);
+        const isUnpaid = leave.pay_type === 'without_pay' || leave.is_paid === false;
+        setApprovalPayType(isUnpaid ? 'without_pay' : 'with_pay');
+    };
+
+    const handleConfirmApproval = async () => {
+        if (!approvalModalLeave) return;
+        const leave = approvalModalLeave;
+        const isPaid = approvalPayType === 'with_pay';
+
+        setIsSubmittingApproval(true);
+        // Instant Optimistic Update
+        queryClient.setQueryData(['adminLeaves'], old => {
+            if (!Array.isArray(old)) return old;
+            return old.map(l => String(l.id) === String(leave.id) ? { 
+                ...l, 
+                status: 'Approved', 
+                is_paid: isPaid, 
+                pay_type: approvalPayType 
+            } : l);
+        });
 
         try {
-            const user = JSON.parse(localStorage.getItem('user'));
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const res = await fetchWithAuth(`/api/leaves/${leave.id}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ 
+                    status: 'Approved', 
+                    pay_type: approvalPayType,
+                    is_paid: isPaid,
+                    admin_id: user?.id 
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(`Leave Approved (${isPaid ? 'With Pay' : 'Without Pay / Unpaid'})!`, {
+                    icon: <i className="ti ti-check text-xl text-emerald-500" />
+                });
+                queryClient.setQueryData(['adminLeaves'], old => {
+                    if (!Array.isArray(old)) return old;
+                    return old.map(l => String(l.id) === String(leave.id) ? { 
+                        ...l, 
+                        status: 'Approved', 
+                        is_paid: isPaid, 
+                        pay_type: approvalPayType,
+                        ...(data.leave || {})
+                    } : l);
+                });
+                await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+                await queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
+                setApprovalModalLeave(null);
+            } else {
+                toast.error(data.error || 'Failed to update status');
+                await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error('Network error');
+            await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+        } finally {
+            setIsSubmittingApproval(false);
+        }
+    };
+
+    const handleStatusChange = async (id, status) => {
+        // Instant Optimistic Update
+        queryClient.setQueryData(['adminLeaves'], old => {
+            if (!Array.isArray(old)) return old;
+            return old.map(l => String(l.id) === String(id) ? { ...l, status } : l);
+        });
+
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
             const res = await fetchWithAuth(`/api/leaves/${id}/status`, {
                 method: 'PUT',
                 body: JSON.stringify({ status, admin_id: user?.id })
             });
             const data = await res.json();
             if (data.success) {
-                toast.success(status === 'Approved' ? 'Leave Approved!' : 'Leave Rejected', {
+                toast.success(status === 'Approved' ? 'Leave Approved!' : (status === 'New' ? 'Leave Re-opened' : 'Leave Rejected'), {
                     icon: status === 'Approved' ? <i className="ti ti-check text-xl text-emerald-500" /> : <i className="ti ti-x text-xl text-rose-500" />
                 });
-                queryClient.invalidateQueries(['adminLeaves']);
+                queryClient.setQueryData(['adminLeaves'], old => {
+                    if (!Array.isArray(old)) return old;
+                    return old.map(l => String(l.id) === String(id) ? { 
+                        ...l, 
+                        status,
+                        ...(data.leave || {})
+                    } : l);
+                });
+                await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+                await queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
             } else {
                 toast.error(data.error || 'Failed to update status');
-                queryClient.setQueryData(['adminLeaves'], previousLeaves); // rollback
+                await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
             }
         } catch (err) {
             console.error(err);
             toast.error('Network error');
-            queryClient.setQueryData(['adminLeaves'], previousLeaves); // rollback
+            await queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
         }
     };
 
-    const pendingCount = leaves.filter(l => l.status === 'New' || l.status === 'Pending').length;
+    const pendingCount = leaves.filter(l => isLeavePending(l.status)).length;
 
     const filteredLeaves = leaves.filter(l => {
         if (filterStatus === 'All') return true;
-        if (filterStatus === 'Pending') return l.status === 'New' || l.status === 'Pending';
-        return l.status?.toLowerCase() === filterStatus.toLowerCase();
+        if (filterStatus === 'Pending') return isLeavePending(l.status);
+        return (l.status || '').toLowerCase() === filterStatus.toLowerCase();
     });
 
     const totalItems = filteredLeaves.length;
@@ -170,8 +257,15 @@ export default function LeavesIndex() {
                                         </span>
                                     )}
                                     {leave.status === 'Approved' && (
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1 shrink-0">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Approved
+                                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center gap-1 shrink-0 ${
+                                            leave.pay_type === 'without_pay' || leave.is_paid === false
+                                                ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                        }`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                                leave.pay_type === 'without_pay' || leave.is_paid === false ? 'bg-amber-500' : 'bg-emerald-500'
+                                            }`} />
+                                            {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • Paid'}
                                         </span>
                                     )}
                                     {leave.status === 'Rejected' && (
@@ -200,10 +294,10 @@ export default function LeavesIndex() {
                                 </div>
 
                                 {/* Action Buttons for Mobile */}
-                                {leave.status === 'New' ? (
+                                {isLeavePending(leave.status) ? (
                                     <div className="flex items-center gap-2 pt-1">
                                         <button 
-                                            onClick={() => handleStatusChange(leave.id, 'Approved')} 
+                                            onClick={() => handleOpenApproveModal(leave)} 
                                             className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 tap-active transition-all"
                                         >
                                             <i className="ti ti-check text-base font-bold" /> Approve
@@ -216,10 +310,17 @@ export default function LeavesIndex() {
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="flex justify-end pt-1">
+                                    <div className="flex items-center justify-between pt-1">
                                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                                            <i className="ti ti-lock" /> Decision Locked
+                                            <i className="ti ti-lock" /> Decision Locked ({leave.status})
                                         </span>
+                                        <button
+                                            onClick={() => handleStatusChange(leave.id, 'New')}
+                                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 underline px-2 py-1"
+                                            title="Re-open this request"
+                                        >
+                                            Re-open
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -291,8 +392,15 @@ export default function LeavesIndex() {
                                                 </span>
                                             )}
                                             {leave.status === 'Approved' && (
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex w-max items-center gap-1.5 mx-auto">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Approved
+                                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center gap-1.5 mx-auto ${
+                                                    leave.pay_type === 'without_pay' || leave.is_paid === false
+                                                        ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-xs'
+                                                        : 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs'
+                                                }`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        leave.pay_type === 'without_pay' || leave.is_paid === false ? 'bg-amber-500' : 'bg-emerald-500'
+                                                    }`} />
+                                                    {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • With Pay'}
                                                 </span>
                                             )}
                                             {leave.status === 'Rejected' && (
@@ -303,12 +411,12 @@ export default function LeavesIndex() {
                                         </td>
 
                                         <td className="px-6 lg:px-8 py-4 text-right">
-                                            {leave.status === 'New' ? (
+                                            {isLeavePending(leave.status) ? (
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button 
-                                                        onClick={() => handleStatusChange(leave.id, 'Approved')} 
+                                                        onClick={() => handleOpenApproveModal(leave)} 
                                                         className="h-9 w-9 flex items-center justify-center bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-xl hover:bg-emerald-600 hover:text-white active:scale-90 transition-all shadow-xs tap-active" 
-                                                        title="Approve Request"
+                                                        title="Approve Request (With Pay / Without Pay)"
                                                     >
                                                         <i className="ti ti-check text-base font-bold" />
                                                     </button>
@@ -321,10 +429,17 @@ export default function LeavesIndex() {
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <div className="text-right">
-                                                    <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">
+                                                <div className="flex items-center justify-end gap-2 text-right">
+                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
                                                         <i className="ti ti-lock" /> Locked
                                                     </span>
+                                                    <button
+                                                        onClick={() => handleStatusChange(leave.id, 'New')}
+                                                        className="text-[10px] font-bold text-slate-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100 transition-colors"
+                                                        title="Re-open request"
+                                                    >
+                                                        Edit
+                                                    </button>
                                                 </div>
                                             )}
                                         </td>
@@ -381,6 +496,167 @@ export default function LeavesIndex() {
                 </div>
             </div>
             </div>
+
+            {/* Leave Approval Modal */}
+            {approvalModalLeave && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50/30 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs">
+                                    <i className="ti ti-calendar-check text-xl" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-black text-slate-800">Authorize Leave Approval</h3>
+                                    <p className="text-xs text-slate-500 font-medium">Configure payroll compensation treatment for this request.</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setApprovalModalLeave(null)}
+                                disabled={isSubmittingApproval}
+                                className="w-8 h-8 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 space-y-5">
+                            {/* Employee Info Box */}
+                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <EmployeeAvatar employee={approvalModalLeave.employees} size="h-9 w-9" />
+                                        <div>
+                                            <p className="text-xs font-black text-slate-800">
+                                                {approvalModalLeave.employees ? `${approvalModalLeave.employees.first_name} ${approvalModalLeave.employees.last_name}` : 'Employee'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                                {approvalModalLeave.employees?.department} &bull; {approvalModalLeave.type}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-black text-xs border border-blue-200">
+                                        {Math.ceil((new Date(approvalModalLeave.end_date) - new Date(approvalModalLeave.start_date)) / (1000 * 60 * 60 * 24)) + 1} Day(s)
+                                    </span>
+                                </div>
+
+                                <div className="text-xs text-slate-600 flex items-center justify-between border-t border-slate-200/60 pt-2 font-medium">
+                                    <span>Duration:</span>
+                                    <span className="font-bold text-slate-800">
+                                        {new Date(approvalModalLeave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} &rarr; {new Date(approvalModalLeave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                </div>
+                                {approvalModalLeave.notes && (
+                                    <p className="text-xs text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-100">
+                                        "{approvalModalLeave.notes}"
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Compensation Choices */}
+                            <div className="space-y-2.5">
+                                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                                    Payroll Impact Treatment
+                                </label>
+
+                                {/* With Pay */}
+                                <label 
+                                    onClick={() => setApprovalPayType('with_pay')}
+                                    className={`p-3.5 rounded-xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
+                                        approvalPayType === 'with_pay' 
+                                            ? 'border-emerald-500 bg-emerald-50/40 shadow-xs ring-2 ring-emerald-500/10' 
+                                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                                    }`}
+                                >
+                                    <input 
+                                        type="radio" 
+                                        name="pay_type" 
+                                        checked={approvalPayType === 'with_pay'} 
+                                        onChange={() => setApprovalPayType('with_pay')}
+                                        className="mt-1 text-emerald-600 focus:ring-emerald-500" 
+                                    />
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black text-slate-800">Leave With Pay (LWP / Paid)</span>
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                                                Zero Deduction
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-snug">
+                                            Credited as paid time off. Automatically marks attendance as <span className="font-semibold text-slate-700">On Leave</span>. Employee retains full basic pay.
+                                        </p>
+                                    </div>
+                                </label>
+
+                                {/* Without Pay */}
+                                <label 
+                                    onClick={() => setApprovalPayType('without_pay')}
+                                    className={`p-3.5 rounded-xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
+                                        approvalPayType === 'without_pay' 
+                                            ? 'border-amber-500 bg-amber-50/40 shadow-xs ring-2 ring-amber-500/10' 
+                                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                                    }`}
+                                >
+                                    <input 
+                                        type="radio" 
+                                        name="pay_type" 
+                                        checked={approvalPayType === 'without_pay'} 
+                                        onChange={() => setApprovalPayType('without_pay')}
+                                        className="mt-1 text-amber-600 focus:ring-amber-500" 
+                                    />
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black text-slate-800">Leave Without Pay (LWOP / Unpaid)</span>
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700">
+                                                Deducted From Salary
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-snug">
+                                            Treated under DOLE "No Work, No Pay" standard. Automatically marks attendance as <span className="font-semibold text-slate-700">Absent</span> and deducts <code className="font-bold text-amber-800">(daily_rate × days)</code> from payroll.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                            <button
+                                type="button"
+                                onClick={() => setApprovalModalLeave(null)}
+                                disabled={isSubmittingApproval}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 tap-active transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmApproval}
+                                disabled={isSubmittingApproval}
+                                className={`px-5 py-2.5 rounded-xl text-xs font-black text-white shadow-md tap-active transition-all flex items-center gap-2 ${
+                                    approvalPayType === 'with_pay' 
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 active:scale-95' 
+                                        : 'bg-amber-600 hover:bg-amber-500 active:scale-95'
+                                }`}
+                            >
+                                {isSubmittingApproval ? (
+                                    <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="ti ti-check font-bold" />
+                                        Confirm Approval ({approvalPayType === 'with_pay' ? 'With Pay' : 'Without Pay'})
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             
             <style dangerouslySetInnerHTML={{__html: `
                 @keyframes ringing {
