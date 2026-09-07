@@ -227,10 +227,13 @@ export default function Show() {
     const isFactory = employee?.department?.toLowerCase().includes('factory');
     const shoeRole = isFactory ? getShoeRoleDetails(employee?.job_title) : null;
     const prodGroup = isFactory ? parseProductionGroup(employee?.shift) : null;
-    const rateAmount = Number(
-        isFactory
-            ? (employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? employee.monthly_salary ?? 0)
-            : (employee.monthly_salary ?? employee.salary ?? 0)
+    const dailyRate = Number(
+        employee.daily_rate ?? 
+        (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0)
+    );
+    const hourlyRate = Number(
+        employee.hourly_rate ?? 
+        (dailyRate ? dailyRate / 8 : 0)
     );
     const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
     const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
@@ -704,11 +707,11 @@ export default function Show() {
                             <div className={`p-4 rounded-xl border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
                                 <div className="flex items-center justify-between mb-1">
                                     <span className={`text-[11px] font-black uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
-                                        {isFactory ? 'Factory Compensation Model' : 'Monthly Base Salary'}
+                                        {isFactory ? 'Factory Compensation Model' : 'Wage Structure'}
                                     </span>
                                     <span className={`text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         }`}>
-                                        {isFactory ? 'Group Piece-Rate' : 'Fixed Monthly'}
+                                        {isFactory ? 'Group Piece-Rate' : 'Daily & Hourly Wage'}
                                     </span>
                                 </div>
 
@@ -723,12 +726,28 @@ export default function Show() {
                                         </p>
                                     </div>
                                 ) : (
-                                    <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-                                        <span className="text-emerald-600 text-2xl">₱</span>
-                                        {rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        <span className="text-xs font-bold text-slate-400 uppercase">
-                                            / month
-                                        </span>
+                                    <div className="space-y-2 pt-1">
+                                        <div className="flex items-baseline justify-between gap-4">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Daily Rate</span>
+                                                <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
+                                                    <span className="text-emerald-600 text-xl font-bold">₱</span>
+                                                    {dailyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    <span className="text-xs font-bold text-slate-400 uppercase">/ day</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hourly Rate</span>
+                                                <div className="text-lg sm:text-xl font-black text-slate-700 tracking-tight flex items-baseline justify-end gap-1">
+                                                    <span className="text-emerald-600 text-base font-bold">₱</span>
+                                                    {hourlyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    <span className="text-xs font-bold text-slate-400 uppercase">/ hr</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-200/60">
+                                            Standard DOLE 8-hour workday (Daily Rate ÷ 8).
+                                        </p>
                                     </div>
                                 )}
                             </div>

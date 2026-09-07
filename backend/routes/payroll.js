@@ -24,14 +24,17 @@ const normalizeDateRange = (d1, d2) => {
 const getEffectiveMonthlySalary = (employee) => {
     if (!employee) return 0;
 
+    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
+    if (dailyRate > 0) return dailyRate * 26;
+
+    const hourlyRate = toSafeNumber(employee.hourly_rate);
+    if (hourlyRate > 0) return hourlyRate * 8 * 26;
+
     const salary = toSafeNumber(employee.salary || employee.monthly_salary);
     if (salary > 0) return salary;
 
-    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
-    if (dailyRate > 0) return dailyRate * 21.75;
-
     const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
-    if (pieceRate > 0) return pieceRate * 8 * 21.75;
+    if (pieceRate > 0) return pieceRate * 8 * 26;
 
     return 0;
 };
@@ -49,6 +52,38 @@ const calculateBIRWithholdingTax = (monthlyTaxableIncome) => {
     if (taxable <= 166666.67) return round2(8541.67 + (taxable - 66666.67) * 0.25);
     if (taxable <= 666666.67) return round2(33541.67 + (taxable - 166666.67) * 0.30);
     return round2(183541.67 + (taxable - 666666.67) * 0.35);
+};
+
+/**
+ * Helper: Fetches HR-approved paid leave applications for an employee within a date range.
+ * Automatically overrides missing attendance logs by awarding full day pay for approved paid leaves.
+ */
+const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
+    try {
+        const { data, error } = await supabase
+            .from('leave_applications')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .lte('start_date', end)
+            .gte('end_date', start)
+            .or('status.ilike.%APPROVED • WITH PAY%,and(status.ilike.%APPROVED%,with_pay.eq.true)');
+
+        if (error || !data) return { totalPaidLeaveDays: 0, leaveRecords: [] };
+
+        let totalPaidLeaveDays = 0;
+        data.forEach(leave => {
+            const days = toSafeNumber(leave.days_count || leave.duration_days || leave.duration) || 1;
+            totalPaidLeaveDays += days;
+        });
+
+        return {
+            totalPaidLeaveDays,
+            leaveRecords: data
+        };
+    } catch (err) {
+        console.error('Error fetching approved paid leaves:', err);
+        return { totalPaidLeaveDays: 0, leaveRecords: [] };
+    }
 };
 
 // 1. Statutory settings
@@ -205,10 +240,10 @@ router.post('/preview', async (req, res) => {
 
         const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
         if (effectiveMonthlySalary <= 0) {
-            return res.json({ items: [], totalHolidayPay: 0 });
+            return res.json({ items: [], totalHolidayPay: 0, approvedPaidLeaveDays: 0, paidLeaveRecords: [] });
         }
 
-        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
@@ -216,6 +251,7 @@ router.post('/preview', async (req, res) => {
                 .eq('employee_id', employee_id)
                 .gte('date', pStart)
                 .lte('date', pEnd),
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
         ]);
 
         const restDays = Array.isArray(employee?.rest_days) && employee.rest_days.length
@@ -238,6 +274,8 @@ router.post('/preview', async (req, res) => {
 
         res.json({
             ...preview,
+            approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
+            paidLeaveRecords: paidLeaveInfo.leaveRecords,
             isFactoryWorker,
             canOvertime: !isFactoryWorker,
             policyNotice: isFactoryWorker
@@ -434,7 +472,8 @@ router.post('/', async (req, res) => {
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
 
-        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+        // Fetch Holidays, Attendances, and HR-Approved Paid Leaves
+        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
@@ -442,6 +481,7 @@ router.post('/', async (req, res) => {
                 .eq('employee_id', employee_id)
                 .gte('date', pStart)
                 .lte('date', pEnd),
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
         ]);
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
@@ -457,6 +497,10 @@ router.post('/', async (req, res) => {
             restDays,
             canOvertime: !isFactory,
         });
+
+        // Compute HR Approved Paid Leave Pay (Bypasses absence / missing timecard punches)
+        const approvedPaidLeaveDays = paidLeaveInfo.totalPaidLeaveDays;
+        const paidLeavePay = round2(approvedPaidLeaveDays * dailyRate);
 
         const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days }).leavePay;
         const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days }).leavePay;
@@ -478,8 +522,10 @@ router.post('/', async (req, res) => {
         const safeHoliday = toSafeNumber(totalHolidayPay);
         const safeLeave = toSafeNumber(totalOtherLeavePay);
         const safeMatDiff = toSafeNumber(matDiffPay);
+        const safePaidLeavePay = toSafeNumber(paidLeavePay);
 
-        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff);
+        // Combined Gross Pay: Basic + OT + Holiday Pay + Statutory Leaves + Maternity Differential + HR Approved Paid Leaves
+        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + safePaidLeavePay);
 
         // Deductions schedule evaluation
         const periodEndDay = new Date(pEnd).getDate();
@@ -534,10 +580,11 @@ router.post('/', async (req, res) => {
         const baseRemarks = shouldDeductStatutory
             ? `2026 Statutory Applied (${pay_frequency.toUpperCase()}) - SSS: ${sssEE.toFixed(2)} (ER: ${sssER.toFixed(2)}, EC: ${sssEC}), PhilHealth: ${philHealthEE.toFixed(2)}, Pag-IBIG: ${pagIbigEE.toFixed(2)}, Tax: ${tax.toFixed(2)}`
             : `Regular Period (No Statutory Deductions) - Tax: ${tax.toFixed(2)}, Late: ${lateDed.toFixed(2)}`;
+        const paidLeaveNote = approvedPaidLeaveDays > 0 ? ` [Approved Paid Leave: ${approvedPaidLeaveDays} day(s) (+₱${safePaidLeavePay.toFixed(2)})]` : '';
         const otPolicyNote = isFactory && (toSafeNumber(overtime_hours) > 0 || toSafeNumber(regular_ot_hours) > 0)
             ? ' [Factory Worker: Overtime disallowed per HR policy (₱0.00)]'
             : '';
-        const remarks = `${baseRemarks}${tardinessNote}${suspensionNote}${otPolicyNote}`;
+        const remarks = `${baseRemarks}${tardinessNote}${suspensionNote}${paidLeaveNote}${otPolicyNote}`;
 
         let insertPayload = {
             employee_id,
@@ -593,7 +640,7 @@ router.post('/', async (req, res) => {
                 subject_id: null,
                 event: 'created',
                 causer_id: admin_id,
-                properties: { basic_pay: safeBasic, net_pay: netPay, holiday_pay: safeHoliday }
+                properties: { basic_pay: safeBasic, net_pay: netPay, holiday_pay: safeHoliday, paid_leave_pay: safePaidLeavePay }
             });
         }
 
@@ -604,6 +651,8 @@ router.post('/', async (req, res) => {
             gross_pay: grossPay,
             net_pay: netPay,
             holiday_pay: safeHoliday,
+            paid_leave_pay: safePaidLeavePay,
+            approved_paid_leave_days: approvedPaidLeaveDays,
             maternity_differential: safeMatDiff,
             employer_contributions: {
                 sss_er: sssER,
@@ -749,6 +798,224 @@ router.post('/batch', async (req, res) => {
             skipped
         });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==============================================================================
+// 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
+// ==============================================================================
+
+router.get('/factory-logs', async (req, res) => {
+    try {
+        const { group_name, production_group_id, period_start, period_end } = req.query;
+
+        let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
+        if (!resolvedGroupId && group_name) {
+            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (grp?.id) resolvedGroupId = grp.id;
+        }
+
+        let query = supabase.from('factory_production_logs').select('*');
+
+        if (resolvedGroupId) {
+            query = query.eq('production_group_id', resolvedGroupId);
+        }
+
+        if (period_start && period_end) {
+            query = query.eq('period_start', period_start).eq('period_end', period_end);
+        } else if (period_start) {
+            query = query.gte('period_start', period_start);
+        }
+
+        let { data, error } = await query.order('created_at', { ascending: true });
+        if (error) throw error;
+
+        // Enterprise Fallback: If no records match this exact cutoff period, load group's latest saved batch operations
+        if ((!data || data.length === 0) && resolvedGroupId) {
+            const { data: latestData } = await supabase
+                .from('factory_production_logs')
+                .select('*')
+                .eq('production_group_id', resolvedGroupId)
+                .order('updated_at', { ascending: false })
+                .order('period_end', { ascending: false })
+                .limit(30);
+
+            if (latestData && latestData.length > 0) {
+                const seenOps = new Set();
+                const uniqueLatest = [];
+                for (const row of latestData) {
+                    if (!seenOps.has(row.operation)) {
+                        seenOps.add(row.operation);
+                        uniqueLatest.push(row);
+                    }
+                }
+                data = uniqueLatest;
+            }
+        }
+
+        // Map directly into the UI expected schema
+        const rows = (data || []).map(r => ({
+            id: r.id,
+            operation: r.operation,
+            stock_no: r.stock_no || 'Formal',
+            quantity_in: String(r.quantity_in ?? 0),
+            amount: String(r.amount ?? 0),
+            assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+        }));
+
+        res.json({ success: true, data: rows });
+    } catch (err) {
+        console.error('Error fetching factory production logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/factory-logs', async (req, res) => {
+    try {
+        const {
+            production_group_id,
+            group_name,
+            period_start,
+            period_end,
+            rows
+        } = req.body;
+
+        if (!rows || !Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ error: 'No factory operation rows provided' });
+        }
+
+        let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
+        if (!resolvedGroupId && group_name) {
+            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (grp?.id) resolvedGroupId = grp.id;
+        }
+
+        const pStart = period_start || new Date().toISOString().split('T')[0];
+        const pEnd = period_end || new Date().toISOString().split('T')[0];
+
+        // Fetch existing rows for this group to resolve existing stable UUIDs
+        let existingRows = [];
+        if (resolvedGroupId) {
+            const { data: dbExisting } = await supabase
+                .from('factory_production_logs')
+                .select('id, operation, production_group_id, period_start, period_end')
+                .eq('production_group_id', resolvedGroupId);
+            existingRows = dbExisting || [];
+        }
+
+        const existingById = new Map(existingRows.map(r => [r.id, r]));
+        const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
+
+        const upsertPayloads = rows.map(r => {
+            const qty = parseFloat(r.quantity_in) || 0;
+            const amt = parseFloat(r.amount) || 0;
+            const opName = (r.operation || 'General Operation').trim();
+
+            // Resolve stable UUID so row is edited in place in Supabase (no duplicate rows)
+            let targetId = (r.id && isValidUUID(r.id) && existingById.has(r.id)) ? r.id : null;
+            if (!targetId && existingByOp.has(opName.toLowerCase())) {
+                targetId = existingByOp.get(opName.toLowerCase()).id;
+            }
+
+            const payload = {
+                production_group_id: resolvedGroupId,
+                period_start: pStart,
+                period_end: pEnd,
+                operation: opName,
+                stock_no: r.stock_no || 'Formal',
+                quantity_in: qty,
+                amount: amt,
+                total_amount: parseFloat((qty * amt).toFixed(2)),
+                assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
+                updated_at: new Date().toISOString()
+            };
+
+            if (targetId) {
+                payload.id = targetId;
+            }
+
+            return payload;
+        });
+
+        const { data, error } = await supabase
+            .from('factory_production_logs')
+            .upsert(upsertPayloads, { onConflict: 'id' })
+            .select('*');
+
+        if (error) throw error;
+
+        // Clean up any stale operations removed by the user for this group
+        if (resolvedGroupId && existingRows.length > 0) {
+            const savedIds = new Set((data || []).map(r => r.id));
+            const staleIds = existingRows.filter(er => !savedIds.has(er.id)).map(er => er.id);
+            if (staleIds.length > 0) {
+                await supabase.from('factory_production_logs').delete().in('id', staleIds);
+            }
+        }
+
+        const formattedRows = (data || []).map(r => ({
+            id: r.id,
+            operation: r.operation,
+            stock_no: r.stock_no || 'Formal',
+            quantity_in: String(r.quantity_in ?? 0),
+            amount: String(r.amount ?? 0),
+            assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+        }));
+
+        res.status(200).json({ success: true, count: data.length, data: formattedRows });
+    } catch (err) {
+        console.error('Error saving factory production logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Single-row direct update by UUID
+router.put('/factory-logs/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ error: 'Valid UUID required' });
+        }
+
+        const { operation, stock_no, quantity_in, amount, assignedEmployeeIds } = req.body;
+        const updateData = { updated_at: new Date().toISOString() };
+
+        if (operation !== undefined) updateData.operation = operation;
+        if (stock_no !== undefined) updateData.stock_no = stock_no;
+        if (quantity_in !== undefined) updateData.quantity_in = parseFloat(quantity_in) || 0;
+        if (amount !== undefined) updateData.amount = parseFloat(amount) || 0;
+        if (quantity_in !== undefined || amount !== undefined) {
+            const qty = updateData.quantity_in !== undefined ? updateData.quantity_in : parseFloat(quantity_in) || 0;
+            const amt = updateData.amount !== undefined ? updateData.amount : parseFloat(amount) || 0;
+            updateData.total_amount = parseFloat((qty * amt).toFixed(2));
+        }
+        if (assignedEmployeeIds !== undefined) {
+            updateData.assigned_worker_ids = Array.isArray(assignedEmployeeIds) ? assignedEmployeeIds : [];
+        }
+
+        const { data, error } = await supabase
+            .from('factory_production_logs')
+            .update(updateData)
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            data: {
+                id: data.id,
+                operation: data.operation,
+                stock_no: data.stock_no || 'Formal',
+                quantity_in: String(data.quantity_in ?? 0),
+                amount: String(data.amount ?? 0),
+                assignedEmployeeIds: Array.isArray(data.assigned_worker_ids) ? data.assigned_worker_ids : []
+            }
+        });
+    } catch (err) {
+        console.error('Error updating single factory production log:', err);
         res.status(500).json({ error: err.message });
     }
 });

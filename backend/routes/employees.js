@@ -147,6 +147,8 @@ router.post('/', async (req, res) => {
             shift,
             production_group_id,
             production_group_name,
+            daily_rate,
+            hourly_rate,
             monthly_salary,
             piece_rate,
             role = 'employee'
@@ -160,13 +162,23 @@ router.post('/', async (req, res) => {
         if (!job_title || typeof job_title !== 'string') return res.status(400).json({ success: false, error: 'Invalid job title' });
         if (!['admin', 'employee', 'security'].includes(role)) return res.status(400).json({ success: false, error: 'Invalid role' });
 
-        const parsedSalary = monthly_salary !== undefined && monthly_salary !== null && !isNaN(monthly_salary)
-            ? parseFloat(monthly_salary)
+        let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
+            ? parseFloat(daily_rate)
             : null;
 
-        const parsedPieceRate = piece_rate !== undefined && piece_rate !== null && !isNaN(piece_rate)
-            ? parseFloat(piece_rate)
+        let parsedHourlyRate = hourly_rate !== undefined && hourly_rate !== null && !isNaN(hourly_rate)
+            ? parseFloat(hourly_rate)
             : null;
+
+        // Auto-compute between daily_rate and hourly_rate (Philippine DOLE standard 8-hour workday)
+        if (parsedDailyRate && (!parsedHourlyRate || parsedHourlyRate === 0)) {
+            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+        } else if (parsedHourlyRate && (!parsedDailyRate || parsedDailyRate === 0)) {
+            parsedDailyRate = parseFloat((parsedHourlyRate * 8).toFixed(2));
+        } else if (!parsedDailyRate && monthly_salary && !isNaN(monthly_salary)) {
+            parsedDailyRate = parseFloat((parseFloat(monthly_salary) / 26).toFixed(2));
+            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+        }
 
         // Normalize and hash email
         const normalizedEmail = email.trim().toLowerCase();
@@ -338,8 +350,8 @@ router.post('/', async (req, res) => {
                     job_title,
                     shift: resolvedShift,
                     production_group_id: resolvedGroupId,
-                    monthly_salary: parsedSalary,
-                    piece_rate: parsedPieceRate,
+                    daily_rate: parsedDailyRate,
+                    hourly_rate: parsedHourlyRate,
                     email_hash: lookupHash,
                     status: 'active',
                     requires_password_change: true
@@ -416,28 +428,41 @@ router.put('/:id', async (req, res) => {
             role,
             department,
             job_title,
+            daily_rate,
+            hourly_rate,
             monthly_salary,
             piece_rate,
             shift,
             production_group_id
         } = req.body;
 
-        const parsedSalary = monthly_salary !== undefined && monthly_salary !== null && !isNaN(monthly_salary)
-            ? parseFloat(monthly_salary)
+        let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
+            ? parseFloat(daily_rate)
             : null;
 
-        const parsedPieceRate = piece_rate !== undefined && piece_rate !== null && !isNaN(piece_rate)
-            ? parseFloat(piece_rate)
+        let parsedHourlyRate = hourly_rate !== undefined && hourly_rate !== null && !isNaN(hourly_rate)
+            ? parseFloat(hourly_rate)
             : null;
+
+        // Auto-compute between daily_rate and hourly_rate (Philippine DOLE standard 8-hour workday)
+        if (parsedDailyRate && (!parsedHourlyRate || parsedHourlyRate === 0)) {
+            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+        } else if (parsedHourlyRate && (!parsedDailyRate || parsedDailyRate === 0)) {
+            parsedDailyRate = parseFloat((parsedHourlyRate * 8).toFixed(2));
+        } else if (!parsedDailyRate && monthly_salary && !isNaN(monthly_salary)) {
+            parsedDailyRate = parseFloat((parseFloat(monthly_salary) / 26).toFixed(2));
+            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+        }
 
         const updatePayload = {
             first_name,
             last_name,
             department,
-            job_title,
-            monthly_salary: parsedSalary,
-            piece_rate: parsedPieceRate
+            job_title
         };
+
+        if (parsedDailyRate !== null) updatePayload.daily_rate = parsedDailyRate;
+        if (parsedHourlyRate !== null) updatePayload.hourly_rate = parsedHourlyRate;
 
         if (email) updatePayload.email = email;
         if (role) updatePayload.role = role;
@@ -452,7 +477,7 @@ router.put('/:id', async (req, res) => {
         if (error) throw error;
 
         // Notify employee if compensation or shift was modified
-        if (parsedSalary !== null || parsedPieceRate !== null || shift) {
+        if (parsedDailyRate !== null || parsedHourlyRate !== null || shift) {
             const { data: emp } = await supabase
                 .from('employees')
                 .select('id, company_id, first_name, last_name')
