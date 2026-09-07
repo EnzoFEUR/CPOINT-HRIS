@@ -798,6 +798,9 @@ router.delete('/:id', async (req, res) => {
 // ==============================================================================
 // 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
 // ==============================================================================
+// FACTORY PRODUCTION & PIECE-RATE OPERATIONS PERSISTENCE API
+// ==============================================================================
+
 router.get('/factory-logs', async (req, res) => {
     try {
         const { group_name, production_group_id, period_start, period_end } = req.query;
@@ -814,15 +817,37 @@ router.get('/factory-logs', async (req, res) => {
             query = query.eq('production_group_id', resolvedGroupId);
         }
 
-        if (period_start) {
+        if (period_start && period_end) {
+            query = query.eq('period_start', period_start).eq('period_end', period_end);
+        } else if (period_start) {
             query = query.gte('period_start', period_start);
         }
-        if (period_end) {
-            query = query.lte('period_end', period_end);
-        }
 
-        const { data, error } = await query.order('created_at', { ascending: true });
+        let { data, error } = await query.order('created_at', { ascending: true });
         if (error) throw error;
+
+        // Enterprise Fallback: If no records match this exact cutoff period, load group's latest saved batch operations
+        if ((!data || data.length === 0) && resolvedGroupId) {
+            const { data: latestData } = await supabase
+                .from('factory_production_logs')
+                .select('*')
+                .eq('production_group_id', resolvedGroupId)
+                .order('period_end', { ascending: false })
+                .order('created_at', { ascending: true })
+                .limit(20);
+
+            if (latestData && latestData.length > 0) {
+                const seenOps = new Set();
+                const uniqueLatest = [];
+                for (const row of latestData) {
+                    if (!seenOps.has(row.operation)) {
+                        seenOps.add(row.operation);
+                        uniqueLatest.push(row);
+                    }
+                }
+                data = uniqueLatest;
+            }
+        }
 
         // Map directly into the UI expected schema
         const rows = (data || []).map(r => ({
@@ -864,41 +889,128 @@ router.post('/factory-logs', async (req, res) => {
         const pStart = period_start || new Date().toISOString().split('T')[0];
         const pEnd = period_end || new Date().toISOString().split('T')[0];
 
-        // Clean out existing records for this group and cutoff to avoid duplicates
+        // Fetch existing rows for this group to resolve existing stable UUIDs
+        let existingRows = [];
         if (resolvedGroupId) {
-            let deleteQuery = supabase.from('factory_production_logs').delete().eq('production_group_id', resolvedGroupId);
-            if (pStart && pEnd) {
-                deleteQuery = deleteQuery.eq('period_start', pStart).eq('period_end', pEnd);
-            }
-            await deleteQuery;
+            const { data: dbExisting } = await supabase
+                .from('factory_production_logs')
+                .select('id, operation, production_group_id, period_start, period_end')
+                .eq('production_group_id', resolvedGroupId);
+            existingRows = dbExisting || [];
         }
 
-        const insertPayloads = rows.map(r => {
+        const existingById = new Map(existingRows.map(r => [r.id, r]));
+        const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
+
+        const upsertPayloads = rows.map(r => {
             const qty = parseFloat(r.quantity_in) || 0;
             const amt = parseFloat(r.amount) || 0;
-            return {
+            const opName = (r.operation || 'General Operation').trim();
+
+            // Resolve stable UUID so row is edited in place in Supabase (no duplicate rows)
+            let targetId = (r.id && isValidUUID(r.id) && existingById.has(r.id)) ? r.id : null;
+            if (!targetId && existingByOp.has(opName.toLowerCase())) {
+                targetId = existingByOp.get(opName.toLowerCase()).id;
+            }
+
+            const payload = {
                 production_group_id: resolvedGroupId,
                 period_start: pStart,
                 period_end: pEnd,
-                operation: r.operation || 'General Operation',
+                operation: opName,
                 stock_no: r.stock_no || 'Formal',
                 quantity_in: qty,
                 amount: amt,
                 total_amount: parseFloat((qty * amt).toFixed(2)),
-                assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : []
+                assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
+                updated_at: new Date().toISOString()
             };
+
+            if (targetId) {
+                payload.id = targetId;
+            }
+
+            return payload;
         });
 
         const { data, error } = await supabase
             .from('factory_production_logs')
-            .insert(insertPayloads)
+            .upsert(upsertPayloads, { onConflict: 'id' })
             .select('*');
 
         if (error) throw error;
 
-        res.status(201).json({ success: true, count: data.length, data });
+        // Clean up any stale operations removed by the user for this group
+        if (resolvedGroupId && existingRows.length > 0) {
+            const savedIds = new Set((data || []).map(r => r.id));
+            const staleIds = existingRows.filter(er => !savedIds.has(er.id)).map(er => er.id);
+            if (staleIds.length > 0) {
+                await supabase.from('factory_production_logs').delete().in('id', staleIds);
+            }
+        }
+
+        const formattedRows = (data || []).map(r => ({
+            id: r.id,
+            operation: r.operation,
+            stock_no: r.stock_no || 'Formal',
+            quantity_in: String(r.quantity_in ?? 0),
+            amount: String(r.amount ?? 0),
+            assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+        }));
+
+        res.status(200).json({ success: true, count: data.length, data: formattedRows });
     } catch (err) {
         console.error('Error saving factory production logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Single-row direct update by UUID
+router.put('/factory-logs/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ error: 'Valid UUID required' });
+        }
+
+        const { operation, stock_no, quantity_in, amount, assignedEmployeeIds } = req.body;
+        const updateData = { updated_at: new Date().toISOString() };
+
+        if (operation !== undefined) updateData.operation = operation;
+        if (stock_no !== undefined) updateData.stock_no = stock_no;
+        if (quantity_in !== undefined) updateData.quantity_in = parseFloat(quantity_in) || 0;
+        if (amount !== undefined) updateData.amount = parseFloat(amount) || 0;
+        if (quantity_in !== undefined || amount !== undefined) {
+            const qty = updateData.quantity_in !== undefined ? updateData.quantity_in : parseFloat(quantity_in) || 0;
+            const amt = updateData.amount !== undefined ? updateData.amount : parseFloat(amount) || 0;
+            updateData.total_amount = parseFloat((qty * amt).toFixed(2));
+        }
+        if (assignedEmployeeIds !== undefined) {
+            updateData.assigned_worker_ids = Array.isArray(assignedEmployeeIds) ? assignedEmployeeIds : [];
+        }
+
+        const { data, error } = await supabase
+            .from('factory_production_logs')
+            .update(updateData)
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            data: {
+                id: data.id,
+                operation: data.operation,
+                stock_no: data.stock_no || 'Formal',
+                quantity_in: String(data.quantity_in ?? 0),
+                amount: String(data.amount ?? 0),
+                assignedEmployeeIds: Array.isArray(data.assigned_worker_ids) ? data.assigned_worker_ids : []
+            }
+        });
+    } catch (err) {
+        console.error('Error updating single factory production log:', err);
         res.status(500).json({ error: err.message });
     }
 });
