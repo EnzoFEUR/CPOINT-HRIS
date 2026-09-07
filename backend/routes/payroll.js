@@ -756,45 +756,6 @@ router.post('/batch', async (req, res) => {
     }
 });
 
-router.get('/:id', cacheResponse(20), async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!id || !isValidUUID(id)) {
-            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
-        }
-
-        const { data, error } = await supabase
-            .from('payrolls')
-            .select('*, employees:employee_id(*)')
-            .eq('id', id)
-            .maybeSingle();
-
-        if (error) throw error;
-        if (!data) return res.status(404).json({ status: 'error', code: 'NOT_FOUND', message: 'Payroll record not found.' });
-
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-router.delete('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!id || !isValidUUID(id)) {
-            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
-        }
-
-        const { error } = await supabase.from('payrolls').delete().eq('id', id);
-        if (error) throw error;
-
-        invalidateCache(['/api/payroll', '/api/dashboard']);
-        res.json({ success: true, message: 'Payroll record deleted successfully.' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // ==============================================================================
 // 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
 // ==============================================================================
@@ -832,9 +793,9 @@ router.get('/factory-logs', async (req, res) => {
                 .from('factory_production_logs')
                 .select('*')
                 .eq('production_group_id', resolvedGroupId)
+                .order('updated_at', { ascending: false })
                 .order('period_end', { ascending: false })
-                .order('created_at', { ascending: true })
-                .limit(20);
+                .limit(30);
 
             if (latestData && latestData.length > 0) {
                 const seenOps = new Set();
@@ -1011,6 +972,45 @@ router.put('/factory-logs/:id', async (req, res) => {
         });
     } catch (err) {
         console.error('Error updating single factory production log:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get('/:id', cacheResponse(20), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
+        }
+
+        const { data, error } = await supabase
+            .from('payrolls')
+            .select('*, employees:employee_id(*)')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ status: 'error', code: 'NOT_FOUND', message: 'Payroll record not found.' });
+
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !isValidUUID(id)) {
+            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
+        }
+
+        const { error } = await supabase.from('payrolls').delete().eq('id', id);
+        if (error) throw error;
+
+        invalidateCache(['/api/payroll', '/api/dashboard']);
+        res.json({ success: true, message: 'Payroll record deleted successfully.' });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

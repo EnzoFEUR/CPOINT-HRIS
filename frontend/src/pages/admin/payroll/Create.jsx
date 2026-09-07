@@ -227,6 +227,19 @@ const PayrollCreate = () => {
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
     const [prefillEmployeeMissing, setPrefillEmployeeMissing] = useState(false);
 
+    // Stable references for realtime listeners without triggering reconnection cycles
+    const selectedGroupRef = useRef(selectedGroup);
+    selectedGroupRef.current = selectedGroup;
+
+    const productionGroupsRef = useRef(productionGroups);
+    productionGroupsRef.current = productionGroups;
+
+    const periodStartRef = useRef(periodStart);
+    periodStartRef.current = periodStart;
+
+    const periodEndRef = useRef(periodEnd);
+    periodEndRef.current = periodEnd;
+
     // Save Factory Piece Rows Callback with direct Supabase cloud persistence & API fallback
     const handleSaveFactoryPiece = async (updatedRows) => {
         if (!Array.isArray(updatedRows)) return;
@@ -496,8 +509,20 @@ const PayrollCreate = () => {
     // Dedicated enterprise loader for factory logs (Direct Supabase Cloud first, then backend fallback)
     const loadFactoryLogs = async (groupName, start, end) => {
         if (!groupName) return;
-        const groupObj = productionGroups.find(g => g.name === groupName);
-        const resolvedGroupId = groupObj?.id || null;
+        const groups = productionGroupsRef.current || productionGroups;
+        let groupObj = groups.find(g => g.name === groupName);
+        let resolvedGroupId = groupObj?.id || null;
+
+        if (!resolvedGroupId) {
+            try {
+                const { data: grp } = await supabase
+                    .from('production_groups')
+                    .select('id')
+                    .ilike('name', groupName.trim())
+                    .maybeSingle();
+                if (grp?.id) resolvedGroupId = grp.id;
+            } catch (e) {}
+        }
 
         // 1. Direct Cloud Supabase Fetch (Guaranteed to work across all computers, friend's PC, mobile, etc.)
         try {
@@ -517,9 +542,9 @@ const PayrollCreate = () => {
                     .from('factory_production_logs')
                     .select('*')
                     .eq('production_group_id', resolvedGroupId)
+                    .order('updated_at', { ascending: false })
                     .order('period_end', { ascending: false })
-                    .order('created_at', { ascending: true })
-                    .limit(20);
+                    .limit(30);
 
                 if (latestData && latestData.length > 0) {
                     const seenOps = new Set();
@@ -614,7 +639,7 @@ const PayrollCreate = () => {
     // Realtime Supabase Subscription for multi-client zero-latency sync
     useEffect(() => {
         const channel = supabase
-            .channel('realtime_factory_production_logs')
+            .channel('realtime_factory_production_logs_sync')
             .on(
                 'postgres_changes',
                 {
@@ -622,9 +647,102 @@ const PayrollCreate = () => {
                     schema: 'public',
                     table: 'factory_production_logs'
                 },
-                () => {
-                    if (selectedGroup) {
-                        loadFactoryLogs(selectedGroup, periodStart, periodEnd);
+                (payload) => {
+                    if (!payload) return;
+                    const { eventType, new: updatedRow, old: oldRow } = payload;
+                    const currentGroup = selectedGroupRef.current;
+                    const groups = productionGroupsRef.current || [];
+                    const activeGroupObj = groups.find(g => g.name === currentGroup);
+                    const activeGroupId = activeGroupObj?.id;
+
+                    const rowGroupId = updatedRow?.production_group_id || oldRow?.production_group_id;
+
+                    // If the change applies to the currently active group or if no specific group is selected
+                    const isForActiveGroup = !activeGroupId || !rowGroupId || activeGroupId === rowGroupId;
+
+                    if (isForActiveGroup) {
+                        if (eventType === 'DELETE' && oldRow?.id) {
+                            setFactoryRows(prev => prev.filter(r => String(r.id) !== String(oldRow.id)));
+                        } else if ((eventType === 'UPDATE' || eventType === 'INSERT') && updatedRow) {
+                            setFactoryRows(prev => {
+                                const isMatch = (r) =>
+                                    String(r.id) === String(updatedRow.id) ||
+                                    (r.operation && updatedRow.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase());
+
+                                const rowExists = prev.some(isMatch);
+                                let next;
+                                if (rowExists) {
+                                    next = prev.map(r => {
+                                        if (isMatch(r)) {
+                                            return {
+                                                ...r,
+                                                id: updatedRow.id,
+                                                operation: updatedRow.operation || r.operation,
+                                                stock_no: updatedRow.stock_no || r.stock_no,
+                                                quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
+                                                amount: String(updatedRow.amount ?? r.amount),
+                                                assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
+                                                    ? updatedRow.assigned_worker_ids
+                                                    : (r.assignedEmployeeIds || [])
+                                            };
+                                        }
+                                        if (updatedRow.stock_no && r.stock_no !== updatedRow.stock_no) {
+                                            return { ...r, stock_no: updatedRow.stock_no };
+                                        }
+                                        return r;
+                                    });
+                                } else {
+                                    next = [...prev, {
+                                        id: updatedRow.id,
+                                        operation: updatedRow.operation,
+                                        stock_no: updatedRow.stock_no || 'Formal',
+                                        quantity_in: String(updatedRow.quantity_in ?? 0),
+                                        amount: String(updatedRow.amount ?? 0),
+                                        assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
+                                            ? updatedRow.assigned_worker_ids
+                                            : []
+                                    }];
+                                }
+                                if (currentGroup) {
+                                    try {
+                                        localStorage.setItem(`hris_factory_piece_rows_${currentGroup}`, JSON.stringify(next));
+                                    } catch (e) {}
+                                }
+                                return next;
+                            });
+                        }
+                    } else if (rowGroupId) {
+                        // Background-sync cache for other production group if edited remotely
+                        const targetGroupObj = groups.find(g => g.id === rowGroupId);
+                        if (targetGroupObj?.name) {
+                            try {
+                                const cacheKey = `hris_factory_piece_rows_${targetGroupObj.name}`;
+                                const cached = localStorage.getItem(cacheKey);
+                                if (cached) {
+                                    const parsed = JSON.parse(cached);
+                                    if (Array.isArray(parsed)) {
+                                        const next = parsed.map(r => {
+                                            if (String(r.id) === String(updatedRow?.id) || (r.operation && updatedRow?.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase())) {
+                                                return {
+                                                    ...r,
+                                                    id: updatedRow.id,
+                                                    operation: updatedRow.operation || r.operation,
+                                                    stock_no: updatedRow.stock_no || r.stock_no,
+                                                    quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
+                                                    amount: String(updatedRow.amount ?? r.amount),
+                                                    assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids) ? updatedRow.assigned_worker_ids : []
+                                                };
+                                            }
+                                            if (updatedRow?.stock_no && r.stock_no !== updatedRow.stock_no) {
+                                                return { ...r, stock_no: updatedRow.stock_no };
+                                            }
+                                            return r;
+                                        });
+                                        localStorage.setItem(cacheKey, JSON.stringify(next));
+                                    }
+                                }
+                            } catch (e) {}
+                        }
                     }
                 }
             )
@@ -633,7 +751,7 @@ const PayrollCreate = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [selectedGroup, periodStart, periodEnd, productionGroups]);
+    }, []);
 
     const activeGroupEmployees = useMemo(() => {
         return factoryEmployees.filter(e => selectedGroupMemberIds.includes(String(e.id)));
