@@ -795,4 +795,112 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// ==============================================================================
+// 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
+// ==============================================================================
+router.get('/factory-logs', async (req, res) => {
+    try {
+        const { group_name, production_group_id, period_start, period_end } = req.query;
+
+        let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
+        if (!resolvedGroupId && group_name) {
+            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (grp?.id) resolvedGroupId = grp.id;
+        }
+
+        let query = supabase.from('factory_production_logs').select('*');
+
+        if (resolvedGroupId) {
+            query = query.eq('production_group_id', resolvedGroupId);
+        }
+
+        if (period_start) {
+            query = query.gte('period_start', period_start);
+        }
+        if (period_end) {
+            query = query.lte('period_end', period_end);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: true });
+        if (error) throw error;
+
+        // Map directly into the UI expected schema
+        const rows = (data || []).map(r => ({
+            id: r.id,
+            operation: r.operation,
+            stock_no: r.stock_no || 'Formal',
+            quantity_in: String(r.quantity_in ?? 0),
+            amount: String(r.amount ?? 0),
+            assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+        }));
+
+        res.json({ success: true, data: rows });
+    } catch (err) {
+        console.error('Error fetching factory production logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/factory-logs', async (req, res) => {
+    try {
+        const {
+            production_group_id,
+            group_name,
+            period_start,
+            period_end,
+            rows
+        } = req.body;
+
+        if (!rows || !Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ error: 'No factory operation rows provided' });
+        }
+
+        let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
+        if (!resolvedGroupId && group_name) {
+            const { data: grp } = await supabase.from('production_groups').select('id').ilike('name', group_name.trim()).maybeSingle();
+            if (grp?.id) resolvedGroupId = grp.id;
+        }
+
+        const pStart = period_start || new Date().toISOString().split('T')[0];
+        const pEnd = period_end || new Date().toISOString().split('T')[0];
+
+        // Clean out existing records for this group and cutoff to avoid duplicates
+        if (resolvedGroupId) {
+            let deleteQuery = supabase.from('factory_production_logs').delete().eq('production_group_id', resolvedGroupId);
+            if (pStart && pEnd) {
+                deleteQuery = deleteQuery.eq('period_start', pStart).eq('period_end', pEnd);
+            }
+            await deleteQuery;
+        }
+
+        const insertPayloads = rows.map(r => {
+            const qty = parseFloat(r.quantity_in) || 0;
+            const amt = parseFloat(r.amount) || 0;
+            return {
+                production_group_id: resolvedGroupId,
+                period_start: pStart,
+                period_end: pEnd,
+                operation: r.operation || 'General Operation',
+                stock_no: r.stock_no || 'Formal',
+                quantity_in: qty,
+                amount: amt,
+                total_amount: parseFloat((qty * amt).toFixed(2)),
+                assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : []
+            };
+        });
+
+        const { data, error } = await supabase
+            .from('factory_production_logs')
+            .insert(insertPayloads)
+            .select('*');
+
+        if (error) throw error;
+
+        res.status(201).json({ success: true, count: data.length, data });
+    } catch (err) {
+        console.error('Error saving factory production logs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;

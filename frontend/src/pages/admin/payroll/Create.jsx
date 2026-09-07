@@ -226,19 +226,34 @@ const PayrollCreate = () => {
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
     const [prefillEmployeeMissing, setPrefillEmployeeMissing] = useState(false);
 
-    // Save Factory Piece Rows Callback with persistence and feedback
-    const handleSaveFactoryPiece = (updatedRows) => {
+    // Save Factory Piece Rows Callback with database persistence & local cache fallback
+    const handleSaveFactoryPiece = async (updatedRows) => {
         if (Array.isArray(updatedRows)) {
             setFactoryRows(updatedRows);
             if (selectedGroup) {
+                // 1. Instant local cache fallback
                 try {
                     localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(updatedRows));
                 } catch (e) {
                     console.error('Failed to cache factory rows:', e);
                 }
+
+                // 2. Cloud Database Sync (Supabase factory_production_logs)
+                const groupObj = productionGroups.find(g => g.name === selectedGroup);
+                fetchWithAuth('/api/payroll/factory-logs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        production_group_id: groupObj?.id || null,
+                        group_name: selectedGroup,
+                        period_start: periodStart,
+                        period_end: periodEnd,
+                        rows: updatedRows
+                    })
+                }).catch(err => console.error('Cloud sync error:', err));
             }
         }
-        setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully.`);
+        setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully to database.`);
         setTimeout(() => setSuccess(null), 3000);
         setIsFactoryPieceOpen(false);
     };
@@ -394,19 +409,50 @@ const PayrollCreate = () => {
         const membersOfGroup = factoryEmployees.filter(e => e.group === groupName);
         setSelectedGroupMemberIds(membersOfGroup.map(e => String(e.id)));
 
-        // Load saved template for this group if available
+        // 1. Instant local/default hydration (zero flicker)
+        let loadedFromLocal = false;
         try {
             const saved = localStorage.getItem(`hris_factory_piece_rows_${groupName}`);
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed) && parsed.length > 0) {
                     setFactoryRows(parsed);
-                    return;
+                    loadedFromLocal = true;
                 }
             }
-            setFactoryRows(DEFAULT_FACTORY_ROWS);
         } catch (e) {}
+
+        if (!loadedFromLocal) {
+            setFactoryRows(DEFAULT_FACTORY_ROWS);
+        }
+
+        // 2. Fetch latest source-of-truth from Supabase database
+        const groupObj = productionGroups.find(g => g.name === groupName);
+        const groupIdParam = groupObj?.id ? `&production_group_id=${groupObj.id}` : '';
+        fetchWithAuth(`/api/payroll/factory-logs?group_name=${encodeURIComponent(groupName)}&period_start=${periodStart}&period_end=${periodEnd}${groupIdParam}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+                    setFactoryRows(res.data);
+                }
+            })
+            .catch(() => {});
     };
+
+    // Reload factory production logs from DB when cutoff dates change
+    useEffect(() => {
+        if (!selectedGroup) return;
+        const groupObj = productionGroups.find(g => g.name === selectedGroup);
+        const groupIdParam = groupObj?.id ? `&production_group_id=${groupObj.id}` : '';
+        fetchWithAuth(`/api/payroll/factory-logs?group_name=${encodeURIComponent(selectedGroup)}&period_start=${periodStart}&period_end=${periodEnd}${groupIdParam}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+                    setFactoryRows(res.data);
+                }
+            })
+            .catch(() => {});
+    }, [periodStart, periodEnd, selectedGroup, productionGroups]);
 
     const activeGroupEmployees = useMemo(() => {
         return factoryEmployees.filter(e => selectedGroupMemberIds.includes(String(e.id)));
