@@ -227,44 +227,124 @@ const PayrollCreate = () => {
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
     const [prefillEmployeeMissing, setPrefillEmployeeMissing] = useState(false);
 
-    // Save Factory Piece Rows Callback with database persistence & local cache fallback
+    // Save Factory Piece Rows Callback with direct Supabase cloud persistence & API fallback
     const handleSaveFactoryPiece = async (updatedRows) => {
-        if (Array.isArray(updatedRows)) {
-            setFactoryRows(updatedRows);
-            if (selectedGroup) {
-                // 1. Instant local cache fallback
-                try {
-                    localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(updatedRows));
-                } catch (e) {
-                    console.error('Failed to cache factory rows:', e);
+        if (!Array.isArray(updatedRows)) return;
+        setFactoryRows(updatedRows);
+
+        if (selectedGroup) {
+            try {
+                localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(updatedRows));
+            } catch (e) {}
+
+            const groupObj = productionGroups.find(g => g.name === selectedGroup);
+            const resolvedGroupId = groupObj?.id || null;
+
+            // 1. Direct Cloud Supabase Upsert (Instant global cloud persistence across all PCs)
+            try {
+                let existingRows = [];
+                if (resolvedGroupId) {
+                    const { data: dbExisting } = await supabase
+                        .from('factory_production_logs')
+                        .select('id, operation, production_group_id')
+                        .eq('production_group_id', resolvedGroupId);
+                    existingRows = dbExisting || [];
                 }
 
-                // 2. Cloud Database Sync (Supabase factory_production_logs)
-                const groupObj = productionGroups.find(g => g.name === selectedGroup);
-                try {
-                    const res = await fetchWithAuth('/api/payroll/factory-logs', {
+                const existingById = new Map(existingRows.map(r => [r.id, r]));
+                const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
+
+                const upsertPayloads = updatedRows.map(r => {
+                    const qty = parseFloat(r.quantity_in) || 0;
+                    const amt = parseFloat(r.amount) || 0;
+                    const opName = (r.operation || 'General Operation').trim();
+
+                    let targetId = (r.id && existingById.has(r.id)) ? r.id : null;
+                    if (!targetId && existingByOp.has(opName.toLowerCase())) {
+                        targetId = existingByOp.get(opName.toLowerCase()).id;
+                    }
+
+                    const payload = {
+                        production_group_id: resolvedGroupId,
+                        period_start: periodStart,
+                        period_end: periodEnd,
+                        operation: opName,
+                        stock_no: r.stock_no || 'Formal',
+                        quantity_in: qty,
+                        amount: amt,
+                        total_amount: parseFloat((qty * amt).toFixed(2)),
+                        assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
+                        updated_at: new Date().toISOString()
+                    };
+                    if (targetId) payload.id = targetId;
+                    return payload;
+                });
+
+                const { data: savedData, error: upsertErr } = await supabase
+                    .from('factory_production_logs')
+                    .upsert(upsertPayloads, { onConflict: 'id' })
+                    .select('*');
+
+                if (!upsertErr && savedData && savedData.length > 0) {
+                    const formatted = savedData.map(r => ({
+                        id: r.id,
+                        operation: r.operation,
+                        stock_no: r.stock_no || 'Formal',
+                        quantity_in: String(r.quantity_in ?? 0),
+                        amount: String(r.amount ?? 0),
+                        assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+                    }));
+                    setFactoryRows(formatted);
+                    try {
+                        localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(formatted));
+                    } catch (e) {}
+
+                    // Background sync to backend route for consistency
+                    fetchWithAuth('/api/payroll/factory-logs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            production_group_id: groupObj?.id || null,
+                            production_group_id: resolvedGroupId,
                             group_name: selectedGroup,
                             period_start: periodStart,
                             period_end: periodEnd,
-                            rows: updatedRows
+                            rows: formatted
                         })
-                    });
-                    if (res.ok) {
-                        const result = await res.json();
-                        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                            setFactoryRows(result.data);
-                            try {
-                                localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(result.data));
-                            } catch (e) {}
-                        }
-                    }
-                } catch (err) {
-                    console.error('Cloud sync error:', err);
+                    }).catch(() => {});
+
+                    setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully to cloud.`);
+                    setTimeout(() => setSuccess(null), 3000);
+                    setIsFactoryPieceOpen(false);
+                    return;
                 }
+            } catch (cloudErr) {
+                console.warn('Direct Cloud upsert failed, falling back to API:', cloudErr);
+            }
+
+            // 2. Fallback to backend API
+            try {
+                const res = await fetchWithAuth('/api/payroll/factory-logs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        production_group_id: resolvedGroupId,
+                        group_name: selectedGroup,
+                        period_start: periodStart,
+                        period_end: periodEnd,
+                        rows: updatedRows
+                    })
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                        setFactoryRows(result.data);
+                        try {
+                            localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(result.data));
+                        } catch (e) {}
+                    }
+                }
+            } catch (err) {
+                console.error('Cloud sync error:', err);
             }
         }
         setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully.`);
@@ -413,11 +493,68 @@ const PayrollCreate = () => {
         return factoryEmployees.filter(e => e.group === selectedGroup);
     }, [factoryEmployees, selectedGroup]);
 
-    // Dedicated enterprise loader for factory logs
+    // Dedicated enterprise loader for factory logs (Direct Supabase Cloud first, then backend fallback)
     const loadFactoryLogs = async (groupName, start, end) => {
         if (!groupName) return;
         const groupObj = productionGroups.find(g => g.name === groupName);
-        const groupIdParam = groupObj?.id ? `&production_group_id=${groupObj.id}` : '';
+        const resolvedGroupId = groupObj?.id || null;
+
+        // 1. Direct Cloud Supabase Fetch (Guaranteed to work across all computers, friend's PC, mobile, etc.)
+        try {
+            let query = supabase.from('factory_production_logs').select('*');
+            if (resolvedGroupId) {
+                query = query.eq('production_group_id', resolvedGroupId);
+            }
+            if (start && end) {
+                query = query.eq('period_start', start).eq('period_end', end);
+            }
+
+            let { data, error } = await query.order('created_at', { ascending: true });
+
+            // Enterprise Fallback: If no records match this exact period, load latest saved configuration for this group
+            if ((!data || data.length === 0) && resolvedGroupId) {
+                const { data: latestData } = await supabase
+                    .from('factory_production_logs')
+                    .select('*')
+                    .eq('production_group_id', resolvedGroupId)
+                    .order('period_end', { ascending: false })
+                    .order('created_at', { ascending: true })
+                    .limit(20);
+
+                if (latestData && latestData.length > 0) {
+                    const seenOps = new Set();
+                    const uniqueLatest = [];
+                    for (const row of latestData) {
+                        if (!seenOps.has(row.operation)) {
+                            seenOps.add(row.operation);
+                            uniqueLatest.push(row);
+                        }
+                    }
+                    data = uniqueLatest;
+                }
+            }
+
+            if (!error && data && data.length > 0) {
+                const rows = data.map(r => ({
+                    id: r.id,
+                    operation: r.operation,
+                    stock_no: r.stock_no || 'Formal',
+                    quantity_in: String(r.quantity_in ?? 0),
+                    amount: String(r.amount ?? 0),
+                    assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+                }));
+                setFactoryRows(rows);
+                try {
+                    localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(rows));
+                } catch (e) {}
+                return;
+            }
+        } catch (cloudErr) {
+            console.warn('Direct Cloud fetch failed, falling back to API:', cloudErr);
+        }
+
+        // 2. Fallback to backend API if Supabase query failed
+        const groupIdParam = resolvedGroupId ? `&production_group_id=${resolvedGroupId}` : '';
         try {
             const res = await fetchWithAuth(
                 `/api/payroll/factory-logs?group_name=${encodeURIComponent(groupName)}&period_start=${start}&period_end=${end}${groupIdParam}`
@@ -476,10 +613,8 @@ const PayrollCreate = () => {
 
     // Realtime Supabase Subscription for multi-client zero-latency sync
     useEffect(() => {
-        if (!selectedGroup) return;
-
         const channel = supabase
-            .channel(`realtime_factory_logs_${selectedGroup}`)
+            .channel('realtime_factory_production_logs')
             .on(
                 'postgres_changes',
                 {
@@ -488,7 +623,9 @@ const PayrollCreate = () => {
                     table: 'factory_production_logs'
                 },
                 () => {
-                    loadFactoryLogs(selectedGroup, periodStart, periodEnd);
+                    if (selectedGroup) {
+                        loadFactoryLogs(selectedGroup, periodStart, periodEnd);
+                    }
                 }
             )
             .subscribe();
