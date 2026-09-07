@@ -215,7 +215,7 @@ async function computePayrollForecast() {
     const remainingWorkingDays = Math.max(0, totalCutoffWorkingDays - elapsedWorkingDays);
 
     const [{ data: employees, error: empErr }, { data: attendance, error: attErr }] = await Promise.all([
-        supabase.from('employees').select('id, department, monthly_salary, shift').eq('status', 'active'),
+        supabase.from('employees').select('id, department, daily_rate, hourly_rate, shift').eq('status', 'active'),
         supabase.from('attendances').select('employee_id, date, status').gte('date', startStr).lte('date', todayStr)
     ]);
 
@@ -234,11 +234,10 @@ async function computePayrollForecast() {
     let employeesWithPayrate = 0;
 
     (employees || []).forEach(emp => {
-        const salary = Number(emp.monthly_salary) || 0;
-        if (salary <= 0) return;
+        const dailyRate = Number(emp.daily_rate) || (Number(emp.hourly_rate) ? Number(emp.hourly_rate) * 8 : 0);
+        if (dailyRate <= 0) return;
         employeesWithPayrate += 1;
 
-        const dailyRate = salary / PH_WORKING_DAYS_PER_MONTH;
         const records = attByEmployee[emp.id] || [];
         const isNightShift = (emp.shift || '').toLowerCase().includes('night');
 
@@ -452,7 +451,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .maybeSingle(),
             supabase
                 .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, monthly_salary, piece_rate')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate')
                 .eq('id', id)
                 .single(),
             supabase

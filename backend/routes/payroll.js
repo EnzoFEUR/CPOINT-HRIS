@@ -24,14 +24,17 @@ const normalizeDateRange = (d1, d2) => {
 const getEffectiveMonthlySalary = (employee) => {
     if (!employee) return 0;
 
+    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
+    if (dailyRate > 0) return dailyRate * 26;
+
+    const hourlyRate = toSafeNumber(employee.hourly_rate);
+    if (hourlyRate > 0) return hourlyRate * 8 * 26;
+
     const salary = toSafeNumber(employee.salary || employee.monthly_salary);
     if (salary > 0) return salary;
 
-    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
-    if (dailyRate > 0) return dailyRate * 21.75;
-
     const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
-    if (pieceRate > 0) return pieceRate * 8 * 21.75;
+    if (pieceRate > 0) return pieceRate * 8 * 26;
 
     return 0;
 };

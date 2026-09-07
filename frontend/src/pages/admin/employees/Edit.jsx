@@ -72,11 +72,22 @@ export default function Edit() {
         return lines;
     }, [workforceData, selectedGroup, isCustomLine]);
 
-    const [displaySalary, setDisplaySalary] = useState(() => {
-        return cachedEmp?.monthly_salary ? formatSalary(cachedEmp.monthly_salary) : '';
+    const [rawDailyPay, setRawDailyPay] = useState(() => {
+        const val = cachedEmp?.daily_rate ?? (cachedEmp?.monthly_salary ? (Number(cachedEmp.monthly_salary) / 26).toFixed(2) : '');
+        return val ? String(val) : '';
     });
-    const [rawSalary, setRawSalary] = useState(() => {
-        return cachedEmp?.monthly_salary ? String(cachedEmp.monthly_salary) : '';
+    const [displayDailyPay, setDisplayDailyPay] = useState(() => {
+        const val = cachedEmp?.daily_rate ?? (cachedEmp?.monthly_salary ? (Number(cachedEmp.monthly_salary) / 26).toFixed(2) : '');
+        return val ? formatSalary(val) : '';
+    });
+
+    const [rawHourlyPay, setRawHourlyPay] = useState(() => {
+        const val = cachedEmp?.hourly_rate ?? (cachedEmp?.daily_rate ? (Number(cachedEmp.daily_rate) / 8).toFixed(2) : '');
+        return val ? String(val) : '';
+    });
+    const [displayHourlyPay, setDisplayHourlyPay] = useState(() => {
+        const val = cachedEmp?.hourly_rate ?? (cachedEmp?.daily_rate ? (Number(cachedEmp.daily_rate) / 8).toFixed(2) : '');
+        return val ? formatSalary(val) : '';
     });
 
     useEffect(() => {
@@ -96,9 +107,16 @@ export default function Edit() {
                     const parsedGroup = parseProductionGroup(emp.shift);
                     if (parsedGroup) setSelectedGroup(parsedGroup);
 
-                    if (emp.monthly_salary !== null && emp.monthly_salary !== undefined) {
-                        setDisplaySalary(formatSalary(emp.monthly_salary));
-                        setRawSalary(String(emp.monthly_salary));
+                    const daily = emp.daily_rate ?? (emp.monthly_salary ? (Number(emp.monthly_salary) / 26).toFixed(2) : '');
+                    const hourly = emp.hourly_rate ?? (daily ? (Number(daily) / 8).toFixed(2) : '');
+
+                    if (daily) {
+                        setRawDailyPay(String(daily));
+                        setDisplayDailyPay(formatSalary(daily));
+                    }
+                    if (hourly) {
+                        setRawHourlyPay(String(hourly));
+                        setDisplayHourlyPay(formatSalary(hourly));
                     }
                 } else if (!cachedEmp) {
                     toast.error('Employee not found');
@@ -126,10 +144,36 @@ export default function Edit() {
         return parts.join('.');
     }
 
-    const handleSalaryChange = (e) => {
+    const handleDailyPayChange = (e) => {
         const value = e.target.value.replace(/[^0-9.]/g, '');
-        setRawSalary(value);
-        setDisplaySalary(formatSalary(value));
+        setRawDailyPay(value);
+        setDisplayDailyPay(formatSalary(value));
+
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+            const hourly = (num / 8).toFixed(2);
+            setRawHourlyPay(hourly);
+            setDisplayHourlyPay(formatSalary(hourly));
+        } else {
+            setRawHourlyPay('');
+            setDisplayHourlyPay('');
+        }
+    };
+
+    const handleHourlyPayChange = (e) => {
+        const value = e.target.value.replace(/[^0-9.]/g, '');
+        setRawHourlyPay(value);
+        setDisplayHourlyPay(formatSalary(value));
+
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+            const daily = (num * 8).toFixed(2);
+            setRawDailyPay(daily);
+            setDisplayDailyPay(formatSalary(daily));
+        } else {
+            setRawDailyPay('');
+            setDisplayDailyPay('');
+        }
     };
 
     const isFactory = department?.toLowerCase().includes('factory');
@@ -140,8 +184,11 @@ export default function Edit() {
         const data = Object.fromEntries(formData.entries());
 
         // Parse numerical values safely
-        const numSalary = parseFloat(String(rawSalary).replace(/[^0-9.]/g, ''));
-        const cleanSalary = !isNaN(numSalary) ? numSalary : null;
+        const numDaily = parseFloat(String(rawDailyPay).replace(/[^0-9.]/g, ''));
+        const cleanDailyRate = !isNaN(numDaily) ? numDaily : null;
+
+        const numHourly = parseFloat(String(rawHourlyPay).replace(/[^0-9.]/g, ''));
+        const cleanHourlyRate = !isNaN(numHourly) ? numHourly : null;
 
         const lineName = (selectedGroup || 'Line A').trim();
 
@@ -163,9 +210,9 @@ export default function Edit() {
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
             production_group_id: isFactory ? groupId : null,
-            pay_type: isFactory ? 'piece_rate' : 'monthly',
-            monthly_salary: isFactory ? null : cleanSalary,
-            piece_rate: null,
+            pay_type: isFactory ? 'piece_rate' : 'daily',
+            daily_rate: cleanDailyRate,
+            hourly_rate: cleanHourlyRate,
             shift: isFactory 
                 ? `${lineName} · Factory (08:00 AM - 05:00 PM)` 
                 : 'Regular Worker (08:00 AM - 08:00 PM)',
@@ -501,19 +548,45 @@ export default function Edit() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="max-w-md">
-                                <label className="block text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1.5 text-emerald-700">Monthly Base Salary</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg text-emerald-500">₱</span>
-                                    <input
-                                        type="text"
-                                        name="monthly_salary"
-                                        required
-                                        value={displaySalary}
-                                        onChange={handleSalaryChange}
-                                        className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border-2 border-emerald-200 focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 rounded-xl focus:outline-none font-black text-base sm:text-lg text-slate-800 transition-all"
-                                        placeholder="0.00"
-                                    />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Daily Pay Rate
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <input
+                                            type="text"
+                                            value={displayDailyPay}
+                                            onChange={handleDailyPayChange}
+                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            placeholder="0.00"
+                                        />
+                                        <input type="hidden" name="daily_rate" value={rawDailyPay} />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                        <i className="ti ti-calendar" /> Base daily compensation rate
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Hourly Pay Rate
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <input
+                                            type="text"
+                                            value={displayHourlyPay}
+                                            onChange={handleHourlyPayChange}
+                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            placeholder="0.00"
+                                        />
+                                        <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                        <i className="ti ti-clock" /> Calculated per 8-hour workday standard
+                                    </p>
                                 </div>
                             </div>
                         )}

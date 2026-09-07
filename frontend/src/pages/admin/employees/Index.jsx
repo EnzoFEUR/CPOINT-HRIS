@@ -372,9 +372,8 @@ export default function EmployeesIndex() {
                                 const isFactory = (employee.department || '').toLowerCase().includes('factory');
                                 const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
                                 const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
-                                const rate = isFactory
-                                    ? Number(employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? 0)
-                                    : Number(employee.monthly_salary ?? employee.salary ?? 0);
+                                const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
+                                const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                 const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
                                 const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
                                 const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
@@ -393,47 +392,48 @@ export default function EmployeesIndex() {
                                     >
                                         <div className="space-y-3.5">
                                             
-                                            {/* Header Row: Avatar, Identity, Status */}
+                                            {/* Top Row: Avatar & Identification */}
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <div className="relative shrink-0">
                                                         <EmployeeAvatar employee={employee} size="h-12 w-12" />
                                                         {isTerminated ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[9px] ring-2 ring-white" title="Account Terminated">
-                                                                <i className="ti ti-x font-bold" />
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-600 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="DOLE Separated">
+                                                                <i className="ti ti-x" />
                                                             </span>
                                                         ) : isSuspended ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] ring-2 ring-white" title="Account Suspended">
-                                                                <i className="ti ti-clock-pause font-bold" />
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
+                                                                <i className="ti ti-clock-pause" />
                                                             </span>
                                                         ) : (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" title="Active Personnel" />
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" title="Active" />
                                                         )}
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <h3 className="font-bold text-slate-900 text-base leading-tight truncate group-hover:text-indigo-600 transition-colors">
+                                                    
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="font-bold text-slate-900 text-sm sm:text-base leading-tight truncate group-hover:text-indigo-600 transition-colors">
                                                             {employee.first_name} {employee.last_name}
-                                                        </h3>
-                                                        <p className="text-xs font-semibold text-slate-500 truncate flex items-center gap-1 mt-0.5">
-                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
-                                                            {employee.job_title || 'General Staff'}
-                                                        </p>
+                                                        </h4>
+                                                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-semibold text-slate-500 truncate">
+                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600 shrink-0`} />}
+                                                            <span className="truncate">{employee.job_title || 'General Staff'}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
 
-                                                {/* Standing badge */}
+                                                {/* Status indicator pill */}
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
-                                                            <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Separated
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
-                                                            <i className="ti ti-clock-pause text-xs text-amber-600" /> Suspended
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
                                                         </span>
                                                     )}
                                                 </div>
@@ -478,27 +478,27 @@ export default function EmployeesIndex() {
 
                                                     <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border flex items-center gap-1 shrink-0 ${
                                                         isFactory
-                                                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                                            : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                                            : 'bg-indigo-100 text-indigo-900 border-indigo-200'
                                                     }`}>
-                                                        <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-building'} text-xs`} />
-                                                        {isFactory ? `${prodGroupName} · Factory` : `${employee.department || 'Retail'}`}
+                                                        {isFactory ? <i className="ti ti-building-factory text-amber-700 text-xs" /> : <i className="ti ti-briefcase text-indigo-700 text-xs" />}
+                                                        {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail')}
                                                     </span>
                                                 </div>
 
-                                                {/* Line 2: Compensation Box */}
+                                                {/* Line 2: Compensation & Schedule */}
                                                 <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
                                                     <div>
                                                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                                                            {isFactory ? 'Wage Structure' : 'Monthly Salary'}
+                                                            {isFactory ? 'Wage Structure' : 'Daily / Hourly Rate'}
                                                         </span>
                                                         {isFactory ? (
                                                             <span className="text-xs font-bold text-amber-800 flex items-center gap-1 mt-0.5">
                                                                 <i className="ti ti-box-multiple text-amber-600 text-xs" /> Group Piece-Rate
                                                             </span>
                                                         ) : (
-                                                            <span className="font-mono text-sm font-black text-emerald-700 block mt-0.5">
-                                                                ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            <span className="font-mono text-xs sm:text-sm font-black text-emerald-700 block mt-0.5">
+                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-bold text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
                                                             </span>
                                                         )}
                                                     </div>
@@ -572,9 +572,8 @@ export default function EmployeesIndex() {
                                     const isFactory = (employee.department || '').toLowerCase().includes('factory');
                                     const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
                                     const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
-                                    const rate = isFactory
-                                        ? Number(employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? 0)
-                                        : Number(employee.monthly_salary ?? employee.salary ?? 0);
+                                    const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
+                                    const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                     const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
                                     const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
                                     const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
@@ -607,7 +606,7 @@ export default function EmployeesIndex() {
                                                             Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
                                                         </span>
                                                     )}
@@ -630,7 +629,7 @@ export default function EmployeesIndex() {
                                                         <span className="text-xs font-bold text-amber-700 block">Group Piece-Rate</span>
                                                     ) : (
                                                         <span className="font-mono font-bold text-emerald-700 block">
-                                                            ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            ₱{daily.toFixed(2)}/day <span className="text-[10px] text-slate-400">· ₱{hourly.toFixed(2)}/hr</span>
                                                         </span>
                                                     )}
                                                     <span className="text-[10px] font-bold text-slate-400 block">
@@ -678,9 +677,8 @@ export default function EmployeesIndex() {
                                             const isFactory = (employee.department || '').toLowerCase().includes('factory');
                                             const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
                                             const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
-                                            const rate = isFactory
-                                                ? Number(employee.piece_rate ?? employee.rate_per_piece ?? employee.salary ?? 0)
-                                                : Number(employee.monthly_salary ?? employee.salary ?? 0);
+                                            const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
+                                            const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                             const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
                                             const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
                                             const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
@@ -767,10 +765,10 @@ export default function EmployeesIndex() {
                                                         ) : (
                                                             <div>
                                                                 <p className="font-mono font-bold text-sm text-emerald-700">
-                                                                    ₱{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-[10px] text-slate-400">/day</span>
                                                                 </p>
-                                                                <p className="text-slate-400 text-[10px] uppercase font-bold">
-                                                                    Fixed Monthly
+                                                                <p className="text-slate-500 text-[10px] font-semibold">
+                                                                    ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr
                                                                 </p>
                                                             </div>
                                                         )}
