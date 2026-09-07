@@ -99,20 +99,14 @@ export default function FactoryPiece({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, isOpAssignModalOpen, localRows]);
 
-    // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally (with real-time parent sync)
+    // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally
     const handleFactoryRowChange = (id, field, value) => {
-        setLocalRows(prev => {
-            const next = prev.map(row => {
-                if (field === 'stock_no' || field === 'quantity_in') {
-                    return { ...row, [field]: value };
-                }
-                return String(row.id) === String(id) ? { ...row, [field]: value } : row;
-            });
-            if (setFactoryRows) {
-                setFactoryRows(next);
+        setLocalRows(prev => prev.map(row => {
+            if (field === 'stock_no' || field === 'quantity_in') {
+                return { ...row, [field]: value };
             }
-            return next;
-        });
+            return String(row.id) === String(id) ? { ...row, [field]: value } : row;
+        }));
     };
 
     const addFactoryRow = () => {
@@ -120,30 +114,22 @@ export default function FactoryPiece({
         const defaultStock = lastRow ? lastRow.stock_no : 'Formal';
         const defaultQty = lastRow ? lastRow.quantity_in : '';
 
-        setLocalRows(prev => {
-            const next = [
-                ...prev,
-                {
-                    id: Date.now(),
-                    operation: '',
-                    stock_no: defaultStock,
-                    quantity_in: defaultQty,
-                    amount: '0.00',
-                    assignedEmployeeIds: []
-                }
-            ];
-            if (setFactoryRows) setFactoryRows(next);
-            return next;
-        });
+        setLocalRows(prev => [
+            ...prev,
+            {
+                id: Date.now(),
+                operation: '',
+                stock_no: defaultStock,
+                quantity_in: defaultQty,
+                amount: '0.00',
+                assignedEmployeeIds: []
+            }
+        ]);
     };
 
     const removeFactoryRow = (id) => {
         if (localRows.length <= 1) return;
-        setLocalRows(prev => {
-            const next = prev.filter(row => String(row.id) !== String(id));
-            if (setFactoryRows) setFactoryRows(next);
-            return next;
-        });
+        setLocalRows(prev => prev.filter(row => String(row.id) !== String(id)));
     };
 
     const openOpWorkerModal = (rowId) => {
@@ -160,43 +146,31 @@ export default function FactoryPiece({
         if (!currentOpRowId) return;
         const idStr = String(empId);
 
-        setLocalRows(prev => {
-            const next = prev.map(row => {
-                if (String(row.id) !== String(currentOpRowId)) return row;
-                const baseIds = (Array.isArray(row.assignedEmployeeIds) && row.assignedEmployeeIds.length > 0)
-                    ? row.assignedEmployeeIds
-                    : (row.isExplicitlyEmpty ? [] : (activeOpRow ? activeOpRow.effectiveAssignedIds : []));
-                const nextIds = baseIds.includes(idStr)
-                    ? baseIds.filter(id => id !== idStr)
-                    : [...baseIds, idStr];
-                return {
-                    ...row,
-                    assignedEmployeeIds: nextIds,
-                    isExplicitlyEmpty: nextIds.length === 0
-                };
-            });
-            if (setFactoryRows) setFactoryRows(next);
-            return next;
-        });
+        setLocalRows(prev => prev.map(row => {
+            if (String(row.id) !== String(currentOpRowId)) return row;
+            const baseIds = (Array.isArray(row.assignedEmployeeIds) && row.assignedEmployeeIds.length > 0)
+                ? row.assignedEmployeeIds
+                : (row.isExplicitlyEmpty ? [] : (activeOpRow ? activeOpRow.effectiveAssignedIds : []));
+            const nextIds = baseIds.includes(idStr)
+                ? baseIds.filter(id => id !== idStr)
+                : [...baseIds, idStr];
+            return {
+                ...row,
+                assignedEmployeeIds: nextIds,
+                isExplicitlyEmpty: nextIds.length === 0
+            };
+        }));
     };
 
     const selectAllOpWorkers = () => {
         if (!currentOpRowId) return;
         const allIds = activeGroupEmployees.map(e => String(e.id));
-        setLocalRows(prev => {
-            const next = prev.map(row => String(row.id) === String(currentOpRowId) ? { ...row, assignedEmployeeIds: allIds, isExplicitlyEmpty: false } : row);
-            if (setFactoryRows) setFactoryRows(next);
-            return next;
-        });
+        setLocalRows(prev => prev.map(row => String(row.id) === String(currentOpRowId) ? { ...row, assignedEmployeeIds: allIds, isExplicitlyEmpty: false } : row));
     };
 
     const clearAllOpWorkers = () => {
         if (!currentOpRowId) return;
-        setLocalRows(prev => {
-            const next = prev.map(row => String(row.id) === String(currentOpRowId) ? { ...row, assignedEmployeeIds: [], isExplicitlyEmpty: true } : row);
-            if (setFactoryRows) setFactoryRows(next);
-            return next;
-        });
+        setLocalRows(prev => prev.map(row => String(row.id) === String(currentOpRowId) ? { ...row, assignedEmployeeIds: [], isExplicitlyEmpty: true } : row));
     };
 
     if (!isOpen) return null;
