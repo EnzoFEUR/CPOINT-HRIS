@@ -95,7 +95,7 @@ export const matchJobTitle = (jobTitle, operation) => {
 
     const szJob = cleanJob.replace(/^z/, 's');
     const szOp = cleanOp.replace(/^z/, 's');
-    if (szJob === szOp || szJob.includes(szOp) || szJob.includes(szJob)) return true;
+    if (szJob === szOp || szJob.includes(szOp) || szOp.includes(szJob)) return true;
 
     return false;
 };
@@ -391,7 +391,17 @@ const PayrollCreate = () => {
             return { isInvalidDateRange: e < s };
         })();
 
-        if (!periodStart || !periodEnd || isInvalidDateRange) {
+        // FIX: targetEmpId now computed before the guard, and checked
+        // alongside periodStart/periodEnd. Previously this could be an
+        // empty string (no employee selected yet, employees list not
+        // loaded yet) while periodStart/periodEnd were already set from a
+        // default preset — the effect still fired and POSTed
+        // employee_id: '' to /api/payroll/preview, which the backend
+        // correctly rejects with "employee_id, period_start, and
+        // period_end are required."
+        const targetEmpId = formData.employee_id || (employees.length > 0 ? employees[0].id : '');
+
+        if (!periodStart || !periodEnd || isInvalidDateRange || !targetEmpId) {
             setHolidayPreview({ items: [], totalHolidayPay: 0 });
             return;
         }
@@ -399,7 +409,6 @@ const PayrollCreate = () => {
         let isMounted = true;
         const fetchHolidayPreview = async () => {
             try {
-                const targetEmpId = formData.employee_id || (employees.length > 0 ? employees[0].id : '');
                 const previewRes = await fetchWithAuth('/api/payroll/preview', {
                     method: 'POST',
                     body: JSON.stringify({
