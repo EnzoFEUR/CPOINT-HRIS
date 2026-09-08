@@ -5,8 +5,8 @@ import NodeCache from 'node-cache';
 const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
 // Model hierarchy with automatic fallback
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-const FALLBACK_MODEL = 'gemini-1.5-flash';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-latest';
 
 /**
  * Initialize GoogleGenerativeAI client safely
@@ -24,7 +24,7 @@ const getGenAI = () => {
  */
 const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
   const genAI = getGenAI();
-  const timeoutMs = options.timeoutMs || 6000;
+  const timeoutMs = options.timeoutMs || parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 12000;
 
   const tryModel = async (modelName) => {
     const model = genAI.getGenerativeModel({
