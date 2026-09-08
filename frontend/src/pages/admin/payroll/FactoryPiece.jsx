@@ -339,7 +339,7 @@ export default function FactoryPiece({
                                             <th className="p-3 text-center">Action</th>
                                         </tr>
                                     </thead>
-                                     <tbody className="divide-y divide-slate-100 text-xs">
+                                    <tbody className="divide-y divide-slate-100 text-xs">
                                         {activeComputedRows.map((row) => (
                                             <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="p-2.5 font-bold text-slate-800">

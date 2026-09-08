@@ -54,6 +54,38 @@ const calculateBIRWithholdingTax = (monthlyTaxableIncome) => {
     return round2(183541.67 + (taxable - 666666.67) * 0.35);
 };
 
+/**
+ * Helper: Fetches HR-approved paid leave applications for an employee within a date range.
+ * Automatically overrides missing attendance logs by awarding full day pay for approved paid leaves.
+ */
+const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
+    try {
+        const { data, error } = await supabase
+            .from('leave_applications')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .lte('start_date', end)
+            .gte('end_date', start)
+            .or('status.ilike.%APPROVED • WITH PAY%,and(status.ilike.%APPROVED%,with_pay.eq.true)');
+
+        if (error || !data) return { totalPaidLeaveDays: 0, leaveRecords: [] };
+
+        let totalPaidLeaveDays = 0;
+        data.forEach(leave => {
+            const days = toSafeNumber(leave.days_count || leave.duration_days || leave.duration) || 1;
+            totalPaidLeaveDays += days;
+        });
+
+        return {
+            totalPaidLeaveDays,
+            leaveRecords: data
+        };
+    } catch (err) {
+        console.error('Error fetching approved paid leaves:', err);
+        return { totalPaidLeaveDays: 0, leaveRecords: [] };
+    }
+};
+
 // 1. Statutory settings
 router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     try {
@@ -208,10 +240,10 @@ router.post('/preview', async (req, res) => {
 
         const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
         if (effectiveMonthlySalary <= 0) {
-            return res.json({ items: [], totalHolidayPay: 0 });
+            return res.json({ items: [], totalHolidayPay: 0, approvedPaidLeaveDays: 0, paidLeaveRecords: [] });
         }
 
-        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
@@ -219,6 +251,7 @@ router.post('/preview', async (req, res) => {
                 .eq('employee_id', employee_id)
                 .gte('date', pStart)
                 .lte('date', pEnd),
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
         ]);
 
         const restDays = Array.isArray(employee?.rest_days) && employee.rest_days.length
@@ -241,6 +274,8 @@ router.post('/preview', async (req, res) => {
 
         res.json({
             ...preview,
+            approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
+            paidLeaveRecords: paidLeaveInfo.leaveRecords,
             isFactoryWorker,
             canOvertime: !isFactoryWorker,
             policyNotice: isFactoryWorker
@@ -437,7 +472,8 @@ router.post('/', async (req, res) => {
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
 
-        const [{ data: holidayList }, { data: attendanceLogs }] = await Promise.all([
+        // Fetch Holidays, Attendances, and HR-Approved Paid Leaves
+        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
             supabase
                 .from('attendances')
@@ -445,6 +481,7 @@ router.post('/', async (req, res) => {
                 .eq('employee_id', employee_id)
                 .gte('date', pStart)
                 .lte('date', pEnd),
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
         ]);
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
@@ -460,6 +497,10 @@ router.post('/', async (req, res) => {
             restDays,
             canOvertime: !isFactory,
         });
+
+        // Compute HR Approved Paid Leave Pay (Bypasses absence / missing timecard punches)
+        const approvedPaidLeaveDays = paidLeaveInfo.totalPaidLeaveDays;
+        const paidLeavePay = round2(approvedPaidLeaveDays * dailyRate);
 
         const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days }).leavePay;
         const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days }).leavePay;
@@ -481,8 +522,10 @@ router.post('/', async (req, res) => {
         const safeHoliday = toSafeNumber(totalHolidayPay);
         const safeLeave = toSafeNumber(totalOtherLeavePay);
         const safeMatDiff = toSafeNumber(matDiffPay);
+        const safePaidLeavePay = toSafeNumber(paidLeavePay);
 
-        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff);
+        // Combined Gross Pay: Basic + OT + Holiday Pay + Statutory Leaves + Maternity Differential + HR Approved Paid Leaves
+        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + safePaidLeavePay);
 
         // Deductions schedule evaluation
         const periodEndDay = new Date(pEnd).getDate();
@@ -537,10 +580,11 @@ router.post('/', async (req, res) => {
         const baseRemarks = shouldDeductStatutory
             ? `2026 Statutory Applied (${pay_frequency.toUpperCase()}) - SSS: ${sssEE.toFixed(2)} (ER: ${sssER.toFixed(2)}, EC: ${sssEC}), PhilHealth: ${philHealthEE.toFixed(2)}, Pag-IBIG: ${pagIbigEE.toFixed(2)}, Tax: ${tax.toFixed(2)}`
             : `Regular Period (No Statutory Deductions) - Tax: ${tax.toFixed(2)}, Late: ${lateDed.toFixed(2)}`;
+        const paidLeaveNote = approvedPaidLeaveDays > 0 ? ` [Approved Paid Leave: ${approvedPaidLeaveDays} day(s) (+₱${safePaidLeavePay.toFixed(2)})]` : '';
         const otPolicyNote = isFactory && (toSafeNumber(overtime_hours) > 0 || toSafeNumber(regular_ot_hours) > 0)
             ? ' [Factory Worker: Overtime disallowed per HR policy (₱0.00)]'
             : '';
-        const remarks = `${baseRemarks}${tardinessNote}${suspensionNote}${otPolicyNote}`;
+        const remarks = `${baseRemarks}${tardinessNote}${suspensionNote}${paidLeaveNote}${otPolicyNote}`;
 
         let insertPayload = {
             employee_id,
@@ -596,7 +640,7 @@ router.post('/', async (req, res) => {
                 subject_id: null,
                 event: 'created',
                 causer_id: admin_id,
-                properties: { basic_pay: safeBasic, net_pay: netPay, holiday_pay: safeHoliday }
+                properties: { basic_pay: safeBasic, net_pay: netPay, holiday_pay: safeHoliday, paid_leave_pay: safePaidLeavePay }
             });
         }
 
@@ -607,6 +651,8 @@ router.post('/', async (req, res) => {
             gross_pay: grossPay,
             net_pay: netPay,
             holiday_pay: safeHoliday,
+            paid_leave_pay: safePaidLeavePay,
+            approved_paid_leave_days: approvedPaidLeaveDays,
             maternity_differential: safeMatDiff,
             employer_contributions: {
                 sss_er: sssER,
@@ -758,8 +804,6 @@ router.post('/batch', async (req, res) => {
 
 // ==============================================================================
 // 7. Factory Production & Piece-Rate Logs (Enterprise Database Persistence)
-// ==============================================================================
-// FACTORY PRODUCTION & PIECE-RATE OPERATIONS PERSISTENCE API
 // ==============================================================================
 
 router.get('/factory-logs', async (req, res) => {

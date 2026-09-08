@@ -149,11 +149,10 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
         <tr
             onClick={handleRowClick}
             title={payroll.isPending ? `Click to process payroll for ${payroll._fullName}` : `Click to view payslip for ${payroll._fullName}`}
-            className={`cursor-pointer transition-all duration-150 group select-none ${
-                isGroupChild 
-                    ? 'bg-slate-50/40 hover:bg-emerald-50/50 hover:shadow-2xs active:bg-emerald-100/30' 
+            className={`cursor-pointer transition-all duration-150 group select-none ${isGroupChild
+                    ? 'bg-slate-50/40 hover:bg-emerald-50/50 hover:shadow-2xs active:bg-emerald-100/30'
                     : 'bg-white hover:bg-emerald-50/35 hover:shadow-2xs active:bg-emerald-100/30'
-            }`}
+                }`}
         >
             {/* 1. Worker & Role */}
             <td className={`py-5 px-4 xl:px-6 align-middle ${isGroupChild ? 'pl-8 xl:pl-10' : ''}`}>
@@ -242,7 +241,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                             -₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {(payroll._sss > 0 || payroll._philHealth > 0 || payroll._pagIbig > 0 || payroll._tax > 0) && (
-                            <div 
+                            <div
                                 className="text-[11px] text-slate-400 font-sans mt-0.5 flex items-center justify-end gap-1 cursor-help whitespace-nowrap"
                                 title={`SSS: ₱${payroll._sss.toFixed(2)} | PhilHealth: ₱${payroll._philHealth.toFixed(2)} | Pag-IBIG: ₱${payroll._pagIbig.toFixed(2)} | BIR Tax: ₱${payroll._tax.toFixed(2)}`}
                             >
@@ -325,21 +324,19 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
     return (
         <tr
             onClick={onToggle}
-            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${
-                isExpanded
+            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${isExpanded
                     ? 'bg-emerald-50/75 border-emerald-200 shadow-2xs'
                     : 'bg-slate-50/90 border-slate-200/90 hover:bg-slate-100/90'
-            }`}
+                }`}
         >
             {/* 1. Group Identity & Role (27%) */}
             <td className="py-5 px-4 xl:px-6 align-middle">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div
-                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-base transition-all shadow-2xs shrink-0 ${
-                            isExpanded
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-base transition-all shadow-2xs shrink-0 ${isExpanded
                                 ? 'bg-emerald-600 text-white shadow-emerald-500/20'
                                 : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
-                        }`}
+                            }`}
                     >
                         <i className="ti ti-building-factory-2 text-xl" />
                     </div>
@@ -448,11 +445,10 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                             e.stopPropagation();
                             onToggle();
                         }}
-                        className={`inline-flex items-center gap-1.5 px-4 py-2 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${
-                            isExpanded
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${isExpanded
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
                                 : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50/60'
-                        }`}
+                            }`}
                         title={isExpanded ? `Collapse ${group.groupName}` : `Inspect workers in ${group.groupName}`}
                     >
                         <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
@@ -472,9 +468,8 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
     return (
         <div
-            className={`p-4 space-y-3 rounded-2xl border transition-all ${
-                isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200/90 hover:border-emerald-300 shadow-xs'
-            }`}
+            className={`p-4 space-y-3 rounded-2xl border transition-all ${isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200/90 hover:border-emerald-300 shadow-xs'
+                }`}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -1491,54 +1486,48 @@ export default function PayrollIndex() {
                         <button
                             type="button"
                             onClick={() => handleCategoryChange('all')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                rosterCategory === 'all'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'all'
                                     ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
                                     : 'text-slate-500 hover:text-slate-800'
-                            }`}
+                                }`}
                             title="All Personnel (Default: Group Paid -> Group Pending -> Regular Paid -> Regular Pending)"
                         >
                             <i className="ti ti-users text-sm" />
                             <span>All</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${
-                                rosterCategory === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : 'bg-slate-200/70 text-slate-500'
-                            }`}>
+                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : 'bg-slate-200/70 text-slate-500'
+                                }`}>
                                 {categoryCounts.all}
                             </span>
                         </button>
                         <button
                             type="button"
                             onClick={() => handleCategoryChange('group')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                rosterCategory === 'group'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'group'
                                     ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
                                     : 'text-slate-500 hover:text-slate-800'
-                            }`}
+                                }`}
                             title="Factory Production Lines & Groups (Paid first, then Pending)"
                         >
                             <i className="ti ti-building-factory-2 text-sm" />
                             <span>Group</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${
-                                rosterCategory === 'group' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
-                            }`}>
+                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'group' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
+                                }`}>
                                 {categoryCounts.group}
                             </span>
                         </button>
                         <button
                             type="button"
                             onClick={() => handleCategoryChange('regular')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                rosterCategory === 'regular'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'regular'
                                     ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
                                     : 'text-slate-500 hover:text-slate-800'
-                            }`}
+                                }`}
                             title="Regular Corporate / Individual Staff (Paid first, then Pending)"
                         >
                             <i className="ti ti-user text-sm" />
                             <span>Regular</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${
-                                rosterCategory === 'regular' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
-                            }`}>
+                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'regular' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
+                                }`}>
                                 {categoryCounts.regular}
                             </span>
                         </button>
@@ -1550,11 +1539,10 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('grouped'); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    viewMode === 'grouped'
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
                                         ? 'bg-white text-slate-900 shadow-2xs'
                                         : 'text-slate-500 hover:text-slate-800'
-                                }`}
+                                    }`}
                                 title="Group factory workers under line summary units"
                             >
                                 <i className="ti ti-layout-distribute-vertical text-sm" />
@@ -1564,11 +1552,10 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('flat'); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    viewMode === 'flat'
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
                                         ? 'bg-white text-slate-900 shadow-2xs'
                                         : 'text-slate-500 hover:text-slate-800'
-                                }`}
+                                    }`}
                                 title="Show flat list of all workers"
                             >
                                 <i className="ti ti-list text-sm" />
@@ -1589,25 +1576,23 @@ export default function PayrollIndex() {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                                    filterStatus === tab.id
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${filterStatus === tab.id
                                         ? (tab.id === 'Completed'
                                             ? 'bg-emerald-600 text-white shadow-2xs'
                                             : tab.id === 'Pending'
                                                 ? 'bg-amber-500 text-white shadow-2xs'
                                                 : 'bg-slate-900 text-white shadow-2xs')
                                         : 'text-slate-500 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 {tab.dot && <span className={`w-1.5 h-1.5 rounded-full ${tab.dot}`} />}
                                 <span>{tab.label}</span>
-                                <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${
-                                    filterStatus === tab.id
+                                <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${filterStatus === tab.id
                                         ? 'bg-white/20 text-white'
                                         : tab.alert
                                             ? 'bg-amber-100 text-amber-800 font-bold'
                                             : 'bg-slate-200/80 text-slate-600'
-                                }`}>
+                                    }`}>
                                     {tab.count}
                                 </span>
                             </button>
@@ -1930,11 +1915,10 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span>Worker &amp; Role</span>
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'name'
+                                                <i className={`ti ${sortConfig.key === 'name'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                             </div>
                                         </th>
 
@@ -1946,11 +1930,10 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span>Cycle Period</span>
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'date'
+                                                <i className={`ti ${sortConfig.key === 'date'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                             </div>
                                         </th>
 
@@ -1961,11 +1944,10 @@ export default function PayrollIndex() {
                                             title="Sort by Gross Pay"
                                         >
                                             <div className="flex items-center justify-end gap-2">
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'gross'
+                                                <i className={`ti ${sortConfig.key === 'gross'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                                 <span>Gross Pay</span>
                                             </div>
                                         </th>
@@ -1977,11 +1959,10 @@ export default function PayrollIndex() {
                                             title="Sort by Deductions"
                                         >
                                             <div className="flex items-center justify-end gap-2">
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'deductions'
+                                                <i className={`ti ${sortConfig.key === 'deductions'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                                 <span>Deductions</span>
                                             </div>
                                         </th>
@@ -1993,11 +1974,10 @@ export default function PayrollIndex() {
                                             title="Sort by Net Payout"
                                         >
                                             <div className="flex items-center justify-end gap-2">
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'net'
+                                                <i className={`ti ${sortConfig.key === 'net'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                                 <span>Net Payout</span>
                                             </div>
                                         </th>
@@ -2010,11 +1990,10 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center justify-center gap-2">
                                                 <span>Status</span>
-                                                <i className={`ti ${
-                                                    sortConfig.key === 'status'
+                                                <i className={`ti ${sortConfig.key === 'status'
                                                         ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
                                                         : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
-                                                } text-xs transition-opacity`} />
+                                                    } text-xs transition-opacity`} />
                                             </div>
                                         </th>
 
