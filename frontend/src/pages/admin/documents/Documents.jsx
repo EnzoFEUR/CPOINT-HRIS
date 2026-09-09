@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { supabase } from '../../../supabaseClient'; // Make sure this import path matches your project structure
+import { supabase } from '../../../supabaseClient';
 
 const CATEGORIES = [
     'All',
@@ -51,12 +51,8 @@ export default function Documents() {
 
     // 1. FETCH DOCUMENTS & EMPLOYEE DETAILS ON COMPONENT MOUNT
     useEffect(() => {
-        if (employeeId) {
-            fetchDocuments();
-        } else {
-            setIsLoading(false);
-        }
-    }, [employeeId]);
+    fetchDocuments();
+}, [employeeId]);
 
     // Real-time synchronization for instant status changes
     useEffect(() => {
@@ -83,40 +79,85 @@ export default function Documents() {
         try {
             setIsLoading(true);
 
-            const [
-                { data: docData, error: docError },
-                { data: empData, error: empError },
-                { data: termLogs }
-            ] = await Promise.all([
-                supabase
+            if (employeeId) {
+                // KAPAG MAY EMPLOYEE ID: Kunin ang docs at details ng specific employee
+                const [
+                    { data: docData, error: docError },
+                    { data: empData, error: empError },
+                    { data: termLogs }
+                ] = await Promise.all([
+                    supabase
+                        .from('employee_documents')
+                        .select('*')
+                        .eq('employee_id', employeeId)
+                        .order('created_at', { ascending: false }),
+                    supabase
+                        .from('employees')
+                        .select('id, first_name, last_name, company_id, department, status, is_active')
+                        .eq('id', employeeId)
+                        .maybeSingle(),
+                    supabase
+                        .from('disciplinary_logs')
+                        .select('id, type, reason, created_at')
+                        .eq('employee_id', employeeId)
+                        .eq('type', 'Termination')
+                        .limit(1)
+                ]);
+
+                if (docError) throw docError;
+
+                if (empData) {
+                    setEmployee(empData);
+                    const terminated = 
+                        empData.status === 'inactive' || 
+                        empData.status === 'terminated' || 
+                        empData.is_active === false || 
+                        Boolean(termLogs && termLogs.length > 0);
+                    setIsTerminated(terminated);
+
+                    // I-attach ang employee details sa bawat doc
+                    const docsWithEmp = (docData || []).map(doc => ({
+                        ...doc,
+                        employees: empData
+                    }));
+                    setDocuments(docsWithEmp);
+                } else {
+                    setDocuments(docData || []);
+                }
+            } else {
+                // KAPAG WALANG EMPLOYEE ID: Kunin LAHAT ng documents sa system
+                const { data: docData, error: docError } = await supabase
                     .from('employee_documents')
                     .select('*')
-                    .eq('employee_id', employeeId)
-                    .order('created_at', { ascending: false }),
-                supabase
-                    .from('employees')
-                    .select('id, first_name, last_name, company_id, department, job_title, status, is_active')
-                    .eq('id', employeeId)
-                    .maybeSingle(),
-                supabase
-                    .from('disciplinary_logs')
-                    .select('id, type, reason, created_at')
-                    .eq('employee_id', employeeId)
-                    .eq('type', 'Termination')
-                    .limit(1)
-            ]);
+                    .order('created_at', { ascending: false });
 
-            if (docError) throw docError;
-            setDocuments(docData || []);
+                if (docError) throw docError;
 
-            if (empData) {
-                setEmployee(empData);
-                const terminated = 
-                    empData.status === 'inactive' || 
-                    empData.status === 'terminated' || 
-                    empData.is_active === false || 
-                    Boolean(termLogs && termLogs.length > 0);
-                setIsTerminated(terminated);
+                // Kunin ang mga pangalan ng empleyado para sa bawat dokumento
+                const empIds = [...new Set((docData || []).map(d => d.employee_id).filter(Boolean))];
+                let empMap = {};
+
+                if (empIds.length > 0) {
+                    const { data: empData } = await supabase
+                        .from('employees')
+                        .select('id, first_name, last_name, company_id')
+                        .in('id', empIds);
+
+                    if (empData) {
+                        empData.forEach(emp => {
+                            empMap[emp.id] = emp;
+                        });
+                    }
+                }
+
+                const docsWithEmp = (docData || []).map(doc => ({
+                    ...doc,
+                    employees: empMap[doc.employee_id] || null
+                }));
+
+                setDocuments(docsWithEmp);
+                setEmployee(null);
+                setIsTerminated(false);
             }
         } catch (error) {
             console.error('Error fetching documents:', error);
@@ -362,6 +403,21 @@ export default function Documents() {
 
     const showExpiryField = EXPIRABLE_CATEGORIES.includes(category);
 
+    const [previewUrl, setPreviewUrl] = useState(null);
+
+useEffect(() => {
+  if (!selectedFile || !selectedFile.type?.startsWith('image/')) {
+    setPreviewUrl(null);
+    return;
+  }
+  //temporary browser memory URL for the image
+  const objectUrl = URL.createObjectURL(selectedFile);
+  setPreviewUrl(objectUrl);
+
+  // Automatically free memory when user selects another file or closes modal
+  return () => URL.revokeObjectURL(objectUrl);
+}, [selectedFile]);
+
     return (
         <div
             className="relative max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans"
@@ -584,7 +640,7 @@ export default function Documents() {
                     </p>
                 </div>
             ) : (
-                <div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     
                         {filteredDocuments.map((doc) => {
                             const iconClasses = getFileIcon(doc.file_name);
@@ -594,10 +650,6 @@ export default function Documents() {
                             return (
                                 <div
                                     key={doc.id}
-                                    layout
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
                                     className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
                                 >
                                     <div>
@@ -618,6 +670,12 @@ export default function Documents() {
 
                                         <h3 className="font-bold text-slate-800 text-sm tracking-tight line-clamp-1 group-hover:text-indigo-600 transition-colors" title={doc.title}>
                                             {doc.title}
+                                            {doc.employees && (
+                                            <p className="text-[11px] font-bold text-indigo-600 mt-0.5">
+                                                <i className="ti ti-user text-xs mr-1" />
+                                                {doc.employees.first_name} {doc.employees.last_name} ({doc.employees.company_id || 'N/A'})
+                                            </p>
+                                        )}
                                         </h3>
                                         <p className="text-slate-400 text-xs font-medium truncate mt-0.5" title={doc.file_name}>
                                             {doc.file_name}
@@ -752,45 +810,66 @@ export default function Documents() {
                                 )}
 
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        File
-                                    </label>
-                                    <div
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="relative border-2 border-dashed border-slate-200 rounded-2xl p-4 text-center hover:bg-slate-50/50 hover:border-indigo-300 transition cursor-pointer"
-                                    >
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            onChange={handleFileChange}
-                                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                        />
-                                        {selectedFile && isImageFile(selectedFile.name) ? (
-                                            <div className="flex items-center gap-3 justify-center">
-                                                <img
-                                                    src={URL.createObjectURL(selectedFile)}
-                                                    alt=""
-                                                    className="h-12 w-12 rounded-lg object-cover border border-slate-200"
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                                File
+                                            </label>
+                                            <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50/50 hover:border-indigo-300 transition">
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    onChange={handleFileChange}
+                                                    accept="image/*,application/pdf,.doc,.docx"
+                                                    className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                                                 />
-                                                <div className="text-left">
-                                                    <p className="text-xs font-bold text-slate-600">{selectedFile.name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-medium">{formatFileSize(selectedFile.size)}</p>
-                                                </div>
+
+                                                {selectedFile ? (
+                                                    <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm relative z-20">
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            {isImageFile(selectedFile.name) ? (
+                                                                <img
+                                                                    src={URL.createObjectURL(selectedFile)}
+                                                                    alt="Preview"
+                                                                    className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                                                                />
+                                                            ) : (
+                                                                <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                                                    <i className="ti ti-file-text text-xl" />
+                                                                </div>
+                                                            )}
+                                                            <div className="text-left overflow-hidden">
+                                                                <p className="text-xs font-bold text-slate-700 truncate">
+                                                                    {selectedFile.name}
+                                                                </p>
+                                                                <p className="text-[10px] text-slate-400 font-medium">
+                                                                    {formatFileSize(selectedFile.size)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedFile(null);
+                                                                if (fileInputRef.current) fileInputRef.current.value = '';
+                                                            }}
+                                                            className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg transition shrink-0"
+                                                        >
+                                                            <i className="ti ti-trash text-base" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="pointer-events-none space-y-1">
+                                                        <i className="ti ti-cloud-upload text-3xl text-indigo-500 block" />
+                                                        <p className="text-xs font-bold text-slate-600">
+                                                            Tap to take photo or choose file
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
+                                                            PDF, PNG, JPG, or DOC up to 10MB
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ) : (
-                                            <>
-                                                <i className="ti ti-cloud-upload text-3xl text-indigo-500 mb-1 block" />
-                                                <p className="text-xs font-bold text-slate-600">
-                                                    {selectedFile ? selectedFile.name : 'Click or drag file here'}
-                                                </p>
-                                                <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                                                    {selectedFile ? formatFileSize(selectedFile.size) : 'PDF, PNG, JPG, or DOC up to 10MB'}
-                                                </p>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
+                                        </div>
 
                                 <div className="pt-4 flex gap-3">
                                     <button

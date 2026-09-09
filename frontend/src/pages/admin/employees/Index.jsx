@@ -6,7 +6,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
-import Badge from '../../../components/ui/Badge';
+import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 function formatDate(dateString) {
@@ -18,18 +18,35 @@ export default function EmployeesIndex() {
     const location = useLocation();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    
+    // UI State
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedDepartment, setSelectedDepartment] = useState('All');
     const [filterStatus, setFilterStatus] = useState('All');
-    const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+    const [viewMode, setViewMode] = useState('grid');
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = viewMode === 'grid' ? 9 : 10;
+    const itemsPerPage = viewMode === 'grid' ? 9 : 12;
+    const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+
+    // Retrieve the active logged-in user session
+    const currentUser = useMemo(() => {
+        try {
+            return JSON.parse(localStorage.getItem('user') || localStorage.getItem('authUser') || '{}');
+        } catch {
+            return {};
+        }
+    }, []);
 
     // Temporary password modal state
     const [tempCreds, setTempCreds] = useState(null);
     const [copiedField, setCopiedField] = useState(null);
     const [copiedAll, setCopiedAll] = useState(false);
     const [showPassword, setShowPassword] = useState(true);
+
+    const handleArchiveAccessClick = (e) => {
+        if (e) e.preventDefault();
+        setIsSecurityModalOpen(true); 
+    };
 
     useEffect(() => {
         if (location.state?.temp_password) {
@@ -65,7 +82,14 @@ export default function EmployeesIndex() {
         const res = await fetchWithAuth('/api/employees');
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
-        return Array.isArray(result) ? result : (result.data || []);
+        const data = Array.isArray(result) ? result : (result.data || []);
+        
+        // Filter out terminated and inactive personnel
+        return data.filter(emp => 
+            emp.status !== 'terminated' && 
+            emp.status !== 'inactive' && 
+            emp.is_active !== false
+        );
     };
 
     const { data: employees = [], isLoading } = useQuery({
@@ -220,14 +244,15 @@ export default function EmployeesIndex() {
                 title="Personnel Directory"
                 description="Active workforce registry, biometric identification baselines, and statutory salary configurations."
                 actions={
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <Link
-                            to="/admin/documents"
-                            className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-xs touch-manipulation"
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                        <button
+                            type="button"
+                            onClick={handleArchiveAccessClick}
+                            className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-xs touch-manipulation cursor-pointer"
                         >
                             <i className="ti ti-folders text-slate-500 text-base shrink-0" />
-                            <span className="whitespace-nowrap">201 Docs</span>
-                        </Link>
+                            <span className="whitespace-nowrap">Archive</span>
+                        </button>
 
                         <Link
                             to="/admin/employees/create"
@@ -240,7 +265,91 @@ export default function EmployeesIndex() {
                 }
             />
 
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-4 sm:space-y-5">
+
+                {/* Filter and search toolbar */}
+                <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 sm:gap-3">
+                        
+                        {/* Search input */}
+                        <div className="relative flex-1 min-w-0">
+                            <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
+                            <input
+                                type="text"
+                                placeholder="Search by name, company ID, email, role, or craft..."
+                                value={searchQuery}
+                                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                                className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 transition-all"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg active:bg-slate-200 cursor-pointer"
+                                    title="Clear search"
+                                >
+                                    <i className="ti ti-x text-sm" />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Status filter tabs & View switcher */}
+                        <div className="flex items-center gap-2 justify-between lg:justify-end">
+                            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar touch-pan-x bg-slate-100 p-1 rounded-xl shrink-0">
+                                {[
+                                    { id: 'All', label: 'All', count: counts.all, dot: null },
+                                    { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
+                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
+                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
+                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
+                                        className={`px-3 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95 touch-manipulation ${
+                                            filterStatus === tab.id
+                                                ? 'bg-white text-slate-900 shadow-xs'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        {tab.dot && (
+                                            <span className={`w-2 h-2 rounded-full ${tab.dot} ${tab.id === 'Active' ? 'animate-pulse' : ''} shrink-0`} />
+                                        )}
+                                        <span>{tab.label}</span>
+                                        <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
+                                            filterStatus === tab.id 
+                                                ? 'bg-slate-100 text-slate-700' 
+                                                : tab.alert 
+                                                    ? 'bg-amber-100 text-amber-700 font-bold'
+                                                    : 'bg-slate-200/80 text-slate-500'
+                                        }`}>
+                                            {tab.count}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* View Switcher (Grid / Stack) */}
+                            <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
+                                <button
+                                    onClick={() => setViewMode('grid')}
+                                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                    title="Card Grid View"
+                                >
+                                    <i className="ti ti-layout-grid text-sm" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('table')}
+                                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                    title="Stacked List View"
+                                >
+                                    <i className="ti ti-list text-sm" />
+                                </button>
+                            </div>
+                        </div>
 
             {/* Filters */}
             <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
@@ -547,6 +656,21 @@ export default function EmployeesIndex() {
                                                 </div>
                                             </div>
 
+                                            {/* Action links */}
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <Link
+                                                    to={`/admin/documents?employee_id=${employee.id}`}
+                                                    className="flex-1 py-1.5 text-center bg-sky-50 text-sky-800 font-bold text-xs rounded-lg border border-sky-200"
+                                                >
+                                                    Archive
+                                                </Link>
+                                                <Link
+                                                    to={`/admin/employees/${employee.id}`}
+                                                    className="flex-1 py-1.5 text-center bg-slate-900 text-white font-bold text-xs rounded-lg"
+                                                >
+                                                    View Profile
+                                                </Link>
+                                            </div>
                                         </div>
 
                                         {/* Actions */}
@@ -799,7 +923,7 @@ export default function EmployeesIndex() {
             {tempCreds && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-6 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
                     <div className="bg-white rounded-2xl p-4 sm:p-7 max-w-md w-full my-auto shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 max-h-[90vh] overflow-y-auto">
-                        {/* Header */}
+                        
                         <div className="text-center space-y-2">
                             <div className="h-11 w-11 sm:h-12 sm:w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
                                 <i className="ti ti-check text-2xl font-bold" />
@@ -900,7 +1024,7 @@ export default function EmployeesIndex() {
                             <button
                                 type="button"
                                 onClick={() => setTempCreds(null)}
-                                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl font-bold text-xs transition-colors text-center cursor-pointer touch-manipulation"
+                                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition-all cursor-pointer"
                             >
                                 Dismiss & View Directory
                             </button>
@@ -908,7 +1032,19 @@ export default function EmployeesIndex() {
                     </div>
                 </div>
             )}
-            
+
+            {/* Security Modal Component */}
+            <OtpVerificationModal
+                isOpen={isSecurityModalOpen}
+                onClose={() => setIsSecurityModalOpen(false)}
+                onSuccess={() => {
+                    setIsSecurityModalOpen(false);
+                    navigate('/admin/archive');
+                }}
+                email={currentUser?.email}
+                phone={currentUser?.phone}
+                initialMethod="email"
+            />
         </div>
     );
 }
