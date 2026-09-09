@@ -85,7 +85,7 @@ export const matchJobTitle = (jobTitle, operation) => {
 
     const szJob = cleanJob.replace(/^z/, 's');
     const szOp = cleanOp.replace(/^z/, 's');
-    if (szJob === szOp || szJob.includes(szOp) || szJob.includes(szJob)) return true;
+    if (szJob === szOp || szJob.includes(szOp) || szOp.includes(szJob)) return true;
 
     return false;
 };
