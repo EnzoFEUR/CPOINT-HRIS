@@ -119,20 +119,9 @@ export default function Dashboard() {
 
             {/* AI Executive Briefing */}
             <div className="bg-slate-900 rounded-3xl border border-slate-800 text-white shadow-xl shadow-emerald-500/5 relative overflow-hidden">
-                {/* Gradient top accent - makes this card visually distinct from the start */}
-                <div className="h-1 w-full bg-gradient-to-r from-emerald-400 via-blue-400 to-purple-400" />
-
-                {/* Ambient glow blobs for depth, CSS-only (no animation library needed) */}
-                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-10" />
-                <div className="absolute bottom-0 left-1/4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
                 <div className="relative z-10 space-y-4 p-6 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                            <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                            </span>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
                                 <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Daily Briefing
                             </span>
@@ -172,7 +161,7 @@ export default function Dashboard() {
 
                     {/* AI-Generated Descriptive Analytics */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        <div className="bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 rounded-2xl p-4">
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
                             <span className="text-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
                                 <i className="ti ti-bulb text-amber-400" /> Key Insights
                             </span>
@@ -185,7 +174,7 @@ export default function Dashboard() {
                                 ))}
                             </ul>
                         </div>
-                        <div className="bg-gradient-to-br from-blue-500/10 to-transparent border border-blue-500/20 rounded-2xl p-4">
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
                             <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
                                 <i className="ti ti-target-arrow text-blue-400" /> Recommended Actions
                             </span>
