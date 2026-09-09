@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import Flatpickr from 'react-flatpickr';
-import 'flatpickr/dist/flatpickr.min.css';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import FactoryPiece from './FactoryPiece';
@@ -236,6 +234,17 @@ const PayrollCreate = () => {
         initialPrefill.period_end || extractDateStr(new Date(Date.now() + 6 * 24 * 60 * 60 * 1000))
     );
 
+    // Stable refs for zero-latency realtime Supabase sync across multiple client machines
+    const selectedGroupRef = useRef(selectedGroup);
+    const productionGroupsRef = useRef(productionGroups);
+    const periodStartRef = useRef(periodStart);
+    const periodEndRef = useRef(periodEnd);
+
+    useEffect(() => { selectedGroupRef.current = selectedGroup; }, [selectedGroup]);
+    useEffect(() => { productionGroupsRef.current = productionGroups; }, [productionGroups]);
+    useEffect(() => { periodStartRef.current = periodStart; }, [periodStart]);
+    useEffect(() => { periodEndRef.current = periodEnd; }, [periodEnd]);
+
     // Single Entry Form Data
     const [formData, setFormData] = useState({
         employee_id: initialPrefill.employee_id,
@@ -289,69 +298,57 @@ const PayrollCreate = () => {
         }
 
         let isMounted = true;
-        setIsLoadingLeaves(true);
 
         const fetchPaidLeaves = async () => {
+            setIsLoadingLeaves(true);
             try {
-                let leavesData = [];
-
-                // Attempt API fetch
+                // 1. Primary: Dedicated leave summary endpoint with exact DOLE overlap calculations
                 const res = await fetchWithAuth(
-                    `/api/leaves?employee_id=${formData.employee_id}&start_date=${periodStart}&end_date=${periodEnd}`
+                    `/api/leaves/summary?employee_id=${formData.employee_id}&start_date=${periodStart}&end_date=${periodEnd}`
                 ).catch(() => null);
 
                 if (res && res.ok) {
-                    const json = await res.json();
-                    leavesData = Array.isArray(json) ? json : (json.data || json.leaves || []);
-                } else {
-                    // Fallback to Supabase
-                    const { data: sbData, error: sbErr } = await supabase
-                        .from('leave_requests')
-                        .select('*')
-                        .eq('employee_id', formData.employee_id);
-
-                    if (!sbErr && sbData && sbData.length > 0) {
-                        leavesData = sbData;
-                    } else {
-                        const { data: sbLeaves } = await supabase
-                            .from('leaves')
-                            .select('*')
-                            .eq('employee_id', formData.employee_id);
-                        if (sbLeaves) leavesData = sbLeaves;
+                    const summary = await res.json();
+                    if (isMounted) {
+                        const paidLeavesList = (summary.leaves || []).filter(l => l.is_paid);
+                        setPaidLeaves(paidLeavesList.map(l => ({
+                            ...l,
+                            leave_type: l.type,
+                            days: l.overlap_days || 1,
+                            reason: l.notes
+                        })));
                     }
+                    return;
                 }
+
+                // 2. Secondary: Direct Supabase query on leave_requests table with exact period overlap math
+                const { data: sbData } = await supabase
+                    .from('leave_requests')
+                    .select('*')
+                    .eq('employee_id', formData.employee_id)
+                    .eq('status', 'Approved')
+                    .lte('start_date', periodEnd)
+                    .gte('end_date', periodStart);
 
                 if (!isMounted) return;
 
-                const pStart = new Date(periodStart + 'T00:00:00');
-                const pEnd = new Date(periodEnd + 'T23:59:59');
-
-                // Filter for approved leave with pay overlapping cutoff period
-                const activePaidLeaves = leavesData.filter(l => {
-                    const status = String(l.status || l.approval_status || '').toLowerCase();
-                    const isApproved = status === 'approved' || status === 'paid' || status === 'accepted';
-
-                    const isWithPay = l.with_pay === true ||
-                        l.is_paid === true ||
-                        String(l.pay_type || l.payment_status || '').toLowerCase() === 'with_pay' ||
-                        String(l.pay_type || l.payment_status || '').toLowerCase() === 'paid' ||
-                        String(l.type || l.leave_type || '').toLowerCase().includes('paid') ||
-                        l.with_pay !== false;
-
-                    const lStartStr = extractDateStr(l.start_date || l.from_date || l.date);
-                    const lEndStr = extractDateStr(l.end_date || l.to_date || l.start_date || l.date);
-
-                    if (!lStartStr) return false;
-
-                    const lStart = new Date(lStartStr + 'T00:00:00');
-                    const lEnd = new Date((lEndStr || lStartStr) + 'T23:59:59');
-
-                    const overlaps = (lStart <= pEnd && lEnd >= pStart);
-
-                    return isApproved && isWithPay && overlaps;
+                const leavesList = (sbData || []).filter(l => {
+                    const rawNotes = l.notes || '';
+                    const isUnpaid = /\[PAY_TYPE:WITHOUT_PAY\]/i.test(rawNotes) || /\[UNPAID\]/i.test(rawNotes);
+                    return !isUnpaid;
+                }).map(l => {
+                    const oStart = l.start_date > periodStart ? l.start_date : periodStart;
+                    const oEnd = l.end_date < periodEnd ? l.end_date : periodEnd;
+                    const overlapDays = Math.max(1, Math.round((new Date(oEnd) - new Date(oStart)) / (1000 * 60 * 60 * 24)) + 1);
+                    return {
+                        ...l,
+                        leave_type: l.type,
+                        days: overlapDays,
+                        reason: (l.notes || '').replace(/\[PAY_TYPE:[^\]]+\]/gi, '').replace(/\[(PAID|UNPAID)\]/gi, '').trim()
+                    };
                 });
 
-                setPaidLeaves(activePaidLeaves);
+                setPaidLeaves(leavesList);
             } catch (err) {
                 console.error('Failed to fetch paid leaves:', err);
                 if (isMounted) setPaidLeaves([]);
@@ -409,10 +406,16 @@ const PayrollCreate = () => {
         let isMounted = true;
         const fetchHolidayPreview = async () => {
             try {
+                // In single mode with selected employee, pass that employee's ID.
+                // In batch mode or before employee selection, pass null/undefined to retrieve period holidays for piece-rate multiplier
+                const targetEmpId = (entryMode === 'single' && formData.employee_id)
+                    ? formData.employee_id
+                    : (formData.employee_id || null);
+
                 const previewRes = await fetchWithAuth('/api/payroll/preview', {
                     method: 'POST',
                     body: JSON.stringify({
-                        employee_id: targetEmpId,
+                        employee_id: targetEmpId || undefined,
                         period_start: periodStart,
                         period_end: periodEnd,
                         apply_deductions: false
@@ -435,129 +438,154 @@ const PayrollCreate = () => {
 
         fetchHolidayPreview();
         return () => { isMounted = false; };
-    }, [periodStart, periodEnd, formData.employee_id, employees]);
+    }, [periodStart, periodEnd, formData.employee_id, entryMode]);
 
     // Save Factory Piece Rows Callback
-    const handleSaveFactoryPiece = async (updatedRows) => {
+    const handleSaveFactoryPiece = async (updatedRows, shouldClose = true, targetGroupName = null) => {
         if (!Array.isArray(updatedRows)) return;
-        setFactoryRows(updatedRows);
+        const groupToSave = targetGroupName || selectedGroup;
+        if (!groupToSave) return;
 
-        if (selectedGroup) {
+        if (groupToSave === selectedGroup) {
+            setFactoryRows(updatedRows);
+        }
+
+        try {
+            localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(updatedRows));
+        } catch (e) { }
+
+        const groups = productionGroupsRef.current || productionGroups;
+        let groupObj = groups.find(g => g.name === groupToSave);
+        let resolvedGroupId = groupObj?.id || null;
+
+        if (!resolvedGroupId && groupToSave) {
             try {
-                localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(updatedRows));
+                const { data: grp } = await supabase
+                    .from('production_groups')
+                    .select('id')
+                    .ilike('name', groupToSave.trim())
+                    .maybeSingle();
+                if (grp?.id) resolvedGroupId = grp.id;
             } catch (e) { }
+        }
 
-            const groupObj = productionGroups.find(g => g.name === selectedGroup);
-            const resolvedGroupId = groupObj?.id || null;
-
-            try {
-                let existingRows = [];
-                if (resolvedGroupId) {
-                    const { data: dbExisting } = await supabase
-                        .from('factory_production_logs')
-                        .select('id, operation, production_group_id')
-                        .eq('production_group_id', resolvedGroupId);
-                    existingRows = dbExisting || [];
-                }
-
-                const existingById = new Map(existingRows.map(r => [r.id, r]));
-                const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
-
-                const upsertPayloads = updatedRows.map(r => {
-                    const qty = parseFloat(r.quantity_in) || 0;
-                    const baseAmt = parseFloat(r.amount) || 0;
-                    const effectiveAmt = baseAmt * holidayRateMultiplier;
-                    const opName = (r.operation || 'General Operation').trim();
-
-                    let targetId = (r.id && existingById.has(r.id)) ? r.id : null;
-                    if (!targetId && existingByOp.has(opName.toLowerCase())) {
-                        targetId = existingByOp.get(opName.toLowerCase()).id;
-                    }
-
-                    const payload = {
-                        production_group_id: resolvedGroupId,
-                        period_start: periodStart,
-                        period_end: periodEnd,
-                        operation: opName,
-                        stock_no: r.stock_no || 'Formal',
-                        quantity_in: qty,
-                        amount: baseAmt,
-                        total_amount: parseFloat((qty * effectiveAmt).toFixed(2)),
-                        assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
-                        updated_at: new Date().toISOString()
-                    };
-                    if (targetId) payload.id = targetId;
-                    return payload;
-                });
-
-                const { data: savedData, error: upsertErr } = await supabase
+        try {
+            let existingRows = [];
+            if (resolvedGroupId) {
+                const { data: dbExisting } = await supabase
                     .from('factory_production_logs')
-                    .upsert(upsertPayloads, { onConflict: 'id' })
-                    .select('*');
-
-                if (!upsertErr && savedData && savedData.length > 0) {
-                    const formatted = savedData.map(r => ({
-                        id: r.id,
-                        operation: r.operation,
-                        stock_no: r.stock_no || 'Formal',
-                        quantity_in: String(r.quantity_in ?? 0),
-                        amount: String(r.amount ?? 0),
-                        assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
-                    }));
-                    setFactoryRows(formatted);
-                    try {
-                        localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(formatted));
-                    } catch (e) { }
-
-                    fetchWithAuth('/api/payroll/factory-logs', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            production_group_id: resolvedGroupId,
-                            group_name: selectedGroup,
-                            period_start: periodStart,
-                            period_end: periodEnd,
-                            rows: formatted
-                        })
-                    }).catch(() => { });
-
-                    setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully to cloud.`);
-                    setTimeout(() => setSuccess(null), 3000);
-                    setIsFactoryPieceOpen(false);
-                    return;
-                }
-            } catch (cloudErr) {
-                console.warn('Direct Cloud upsert failed, falling back to API:', cloudErr);
+                    .select('id, operation, production_group_id')
+                    .eq('production_group_id', resolvedGroupId);
+                existingRows = dbExisting || [];
             }
 
-            try {
-                const res = await fetchWithAuth('/api/payroll/factory-logs', {
+            const existingById = new Map(existingRows.map(r => [r.id, r]));
+            const existingByOp = new Map(existingRows.map(r => [(r.operation || '').trim().toLowerCase(), r]));
+
+            const upsertPayloads = updatedRows.map(r => {
+                const qty = parseFloat(r.quantity_in) || 0;
+                const baseAmt = parseFloat(r.amount) || 0;
+                const effectiveAmt = baseAmt * holidayRateMultiplier;
+                const opName = (r.operation || 'General Operation').trim();
+
+                let targetId = (r.id && existingById.has(r.id)) ? r.id : null;
+                if (!targetId && existingByOp.has(opName.toLowerCase())) {
+                    targetId = existingByOp.get(opName.toLowerCase()).id;
+                }
+
+                const payload = {
+                    production_group_id: resolvedGroupId,
+                    period_start: periodStart,
+                    period_end: periodEnd,
+                    operation: opName,
+                    stock_no: r.stock_no || 'Formal',
+                    quantity_in: qty,
+                    amount: baseAmt,
+                    total_amount: parseFloat((qty * effectiveAmt).toFixed(2)),
+                    assigned_worker_ids: Array.isArray(r.assignedEmployeeIds) ? r.assignedEmployeeIds : [],
+                    updated_at: new Date().toISOString()
+                };
+                if (targetId) payload.id = targetId;
+                return payload;
+            });
+
+            const { data: savedData, error: upsertErr } = await supabase
+                .from('factory_production_logs')
+                .upsert(upsertPayloads, { onConflict: 'id' })
+                .select('*');
+
+            if (!upsertErr && savedData && savedData.length > 0) {
+                const formatted = savedData.map(r => ({
+                    id: r.id,
+                    operation: r.operation,
+                    stock_no: r.stock_no || 'Formal',
+                    quantity_in: String(r.quantity_in ?? 0),
+                    amount: String(r.amount ?? 0),
+                    assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
+                }));
+
+                if (selectedGroupRef.current === groupToSave) {
+                    setFactoryRows(formatted);
+                }
+                try {
+                    localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(formatted));
+                } catch (e) { }
+
+                fetchWithAuth('/api/payroll/factory-logs', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         production_group_id: resolvedGroupId,
-                        group_name: selectedGroup,
+                        group_name: groupToSave,
                         period_start: periodStart,
                         period_end: periodEnd,
-                        rows: updatedRows
+                        rows: formatted
                     })
-                });
-                if (res.ok) {
-                    const result = await res.json();
-                    if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                        setFactoryRows(result.data);
-                        try {
-                            localStorage.setItem(`hris_factory_piece_rows_${selectedGroup}`, JSON.stringify(result.data));
-                        } catch (e) { }
-                    }
+                }).catch(() => { });
+
+                if (shouldClose) {
+                    setSuccess(`Factory piece-rate operations for ${groupToSave} saved successfully to cloud.`);
+                    setTimeout(() => setSuccess(null), 3000);
+                    setIsFactoryPieceOpen(false);
                 }
-            } catch (err) {
-                console.error('Cloud sync error:', err);
+                return;
             }
+        } catch (cloudErr) {
+            console.warn('Direct Cloud upsert failed, falling back to API:', cloudErr);
         }
-        setSuccess(`Factory piece-rate operations for ${selectedGroup || 'group'} saved successfully.`);
-        setTimeout(() => setSuccess(null), 3000);
-        setIsFactoryPieceOpen(false);
+
+        try {
+            const res = await fetchWithAuth('/api/payroll/factory-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    production_group_id: resolvedGroupId,
+                    group_name: groupToSave,
+                    period_start: periodStart,
+                    period_end: periodEnd,
+                    rows: updatedRows
+                })
+            });
+            if (res.ok) {
+                const result = await res.json();
+                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                    if (selectedGroupRef.current === groupToSave) {
+                        setFactoryRows(result.data);
+                    }
+                    try {
+                        localStorage.setItem(`hris_factory_piece_rows_${groupToSave}`, JSON.stringify(result.data));
+                    } catch (e) { }
+                }
+            }
+        } catch (err) {
+            console.error('Cloud sync error:', err);
+        }
+
+        if (shouldClose) {
+            setSuccess(`Factory piece-rate operations for ${groupToSave} saved successfully.`);
+            setTimeout(() => setSuccess(null), 3000);
+            setIsFactoryPieceOpen(false);
+        }
     };
 
     // Load active employees and production groups from database
@@ -701,8 +729,20 @@ const PayrollCreate = () => {
 
     const loadFactoryLogs = async (groupName, start, end) => {
         if (!groupName) return;
-        const groupObj = productionGroups.find(g => g.name === groupName);
-        const resolvedGroupId = groupObj?.id || null;
+        const groups = productionGroupsRef.current || productionGroups;
+        let groupObj = groups.find(g => g.name === groupName);
+        let resolvedGroupId = groupObj?.id || null;
+
+        if (!resolvedGroupId && groupName) {
+            try {
+                const { data: grp } = await supabase
+                    .from('production_groups')
+                    .select('id')
+                    .ilike('name', groupName.trim())
+                    .maybeSingle();
+                if (grp?.id) resolvedGroupId = grp.id;
+            } catch (e) { }
+        }
 
         try {
             let query = supabase.from('factory_production_logs').select('*');
@@ -720,9 +760,9 @@ const PayrollCreate = () => {
                     .from('factory_production_logs')
                     .select('*')
                     .eq('production_group_id', resolvedGroupId)
+                    .order('updated_at', { ascending: false })
                     .order('period_end', { ascending: false })
-                    .order('created_at', { ascending: true })
-                    .limit(20);
+                    .limit(30);
 
                 if (latestData && latestData.length > 0) {
                     const seenOps = new Set();
@@ -746,7 +786,9 @@ const PayrollCreate = () => {
                     amount: String(r.amount ?? 0),
                     assignedEmployeeIds: Array.isArray(r.assigned_worker_ids) ? r.assigned_worker_ids : []
                 }));
-                setFactoryRows(rows);
+                if (selectedGroupRef.current === groupName) {
+                    setFactoryRows(rows);
+                }
                 try {
                     localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(rows));
                 } catch (e) { }
@@ -764,7 +806,9 @@ const PayrollCreate = () => {
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-                    setFactoryRows(json.data);
+                    if (selectedGroupRef.current === groupName) {
+                        setFactoryRows(json.data);
+                    }
                     try {
                         localStorage.setItem(`hris_factory_piece_rows_${groupName}`, JSON.stringify(json.data));
                     } catch (e) { }
@@ -777,11 +821,10 @@ const PayrollCreate = () => {
 
     const handleGroupTabChange = (groupName) => {
         if (selectedGroup === groupName) {
-            setSelectedGroup('');
-            setSelectedGroupMemberIds([]);
             return;
         }
         setSelectedGroup(groupName);
+        selectedGroupRef.current = groupName;
         const membersOfGroup = factoryEmployees.filter(e => e.group === groupName);
         setSelectedGroupMemberIds(membersOfGroup.map(e => String(e.id)));
 
@@ -798,7 +841,7 @@ const PayrollCreate = () => {
         } catch (e) { }
 
         if (!loadedFromLocal) {
-            setFactoryRows(DEFAULT_FACTORY_ROWS);
+            setFactoryRows(DEFAULT_FACTORY_ROWS.map(r => ({ ...r })));
         }
 
         loadFactoryLogs(groupName, periodStart, periodEnd);
@@ -808,11 +851,12 @@ const PayrollCreate = () => {
         if (selectedGroup) {
             loadFactoryLogs(selectedGroup, periodStart, periodEnd);
         }
-    }, [periodStart, periodEnd, selectedGroup, productionGroups]);
+    }, [periodStart, periodEnd, selectedGroup]);
 
+    // Realtime Supabase Subscription for multi-client zero-latency sync
     useEffect(() => {
         const channel = supabase
-            .channel('realtime_factory_production_logs')
+            .channel('realtime_factory_production_logs_sync')
             .on(
                 'postgres_changes',
                 {
@@ -820,9 +864,102 @@ const PayrollCreate = () => {
                     schema: 'public',
                     table: 'factory_production_logs'
                 },
-                () => {
-                    if (selectedGroup) {
-                        loadFactoryLogs(selectedGroup, periodStart, periodEnd);
+                (payload) => {
+                    if (!payload) return;
+                    const { eventType, new: updatedRow, old: oldRow } = payload;
+                    const currentGroup = selectedGroupRef.current;
+                    const groups = productionGroupsRef.current || [];
+                    const activeGroupObj = groups.find(g => g.name === currentGroup);
+                    const activeGroupId = activeGroupObj?.id;
+
+                    const rowGroupId = updatedRow?.production_group_id || oldRow?.production_group_id;
+
+                    // If the change applies to the currently active group or if no specific group is selected
+                    const isForActiveGroup = !activeGroupId || !rowGroupId || activeGroupId === rowGroupId;
+
+                    if (isForActiveGroup) {
+                        if (eventType === 'DELETE' && oldRow?.id) {
+                            setFactoryRows(prev => prev.filter(r => String(r.id) !== String(oldRow.id)));
+                        } else if ((eventType === 'UPDATE' || eventType === 'INSERT') && updatedRow) {
+                            setFactoryRows(prev => {
+                                const isMatch = (r) =>
+                                    String(r.id) === String(updatedRow.id) ||
+                                    (r.operation && updatedRow.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase());
+
+                                const rowExists = prev.some(isMatch);
+                                let next;
+                                if (rowExists) {
+                                    next = prev.map(r => {
+                                        if (isMatch(r)) {
+                                            return {
+                                                ...r,
+                                                id: updatedRow.id,
+                                                operation: updatedRow.operation || r.operation,
+                                                stock_no: updatedRow.stock_no || r.stock_no,
+                                                quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
+                                                amount: String(updatedRow.amount ?? r.amount),
+                                                assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
+                                                    ? updatedRow.assigned_worker_ids
+                                                    : (r.assignedEmployeeIds || [])
+                                            };
+                                        }
+                                        if (updatedRow.stock_no && r.stock_no !== updatedRow.stock_no) {
+                                            return { ...r, stock_no: updatedRow.stock_no };
+                                        }
+                                        return r;
+                                    });
+                                } else {
+                                    next = [...prev, {
+                                        id: updatedRow.id,
+                                        operation: updatedRow.operation,
+                                        stock_no: updatedRow.stock_no || 'Formal',
+                                        quantity_in: String(updatedRow.quantity_in ?? 0),
+                                        amount: String(updatedRow.amount ?? 0),
+                                        assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids)
+                                            ? updatedRow.assigned_worker_ids
+                                            : []
+                                    }];
+                                }
+                                if (currentGroup) {
+                                    try {
+                                        localStorage.setItem(`hris_factory_piece_rows_${currentGroup}`, JSON.stringify(next));
+                                    } catch (e) { }
+                                }
+                                return next;
+                            });
+                        }
+                    } else if (rowGroupId) {
+                        // Background-sync cache for other production group if edited remotely
+                        const targetGroupObj = groups.find(g => g.id === rowGroupId);
+                        if (targetGroupObj?.name) {
+                            try {
+                                const cacheKey = `hris_factory_piece_rows_${targetGroupObj.name}`;
+                                const cached = localStorage.getItem(cacheKey);
+                                if (cached) {
+                                    const parsed = JSON.parse(cached);
+                                    if (Array.isArray(parsed)) {
+                                        const next = parsed.map(r => {
+                                            if (String(r.id) === String(updatedRow?.id) || (r.operation && updatedRow?.operation && r.operation.trim().toLowerCase() === updatedRow.operation.trim().toLowerCase())) {
+                                                return {
+                                                    ...r,
+                                                    id: updatedRow.id,
+                                                    operation: updatedRow.operation || r.operation,
+                                                    stock_no: updatedRow.stock_no || r.stock_no,
+                                                    quantity_in: String(updatedRow.quantity_in ?? r.quantity_in),
+                                                    amount: String(updatedRow.amount ?? r.amount),
+                                                    assignedEmployeeIds: Array.isArray(updatedRow.assigned_worker_ids) ? updatedRow.assigned_worker_ids : []
+                                                };
+                                            }
+                                            if (updatedRow?.stock_no && r.stock_no !== updatedRow.stock_no) {
+                                                return { ...r, stock_no: updatedRow.stock_no };
+                                            }
+                                            return r;
+                                        });
+                                        localStorage.setItem(cacheKey, JSON.stringify(next));
+                                    }
+                                }
+                            } catch (e) { }
+                        }
                     }
                 }
             )
@@ -831,7 +968,7 @@ const PayrollCreate = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [selectedGroup, periodStart, periodEnd, productionGroups]);
+    }, []);
 
     const activeGroupEmployees = useMemo(() => {
         return factoryEmployees.filter(e => selectedGroupMemberIds.includes(String(e.id)));
@@ -894,29 +1031,49 @@ const PayrollCreate = () => {
         }
     };
 
-    const handleStartDateChange = ([date]) => {
-        if (!date) return;
+    const handleStartDateChange = (val) => {
+        let dateStr = '';
+        if (typeof val === 'string') {
+            dateStr = val;
+        } else if (Array.isArray(val) && val[0]) {
+            dateStr = formatLocalDate(val[0]);
+        } else if (val instanceof Date) {
+            dateStr = formatLocalDate(val);
+        }
+        if (!dateStr) return;
         setActivePreset('custom');
-        const startStr = formatLocalDate(date);
-        setPeriodStart(startStr);
+        setPeriodStart(dateStr);
 
         if (includeWeekends) {
-            const end = new Date(date);
-            end.setDate(date.getDate() + 6);
-            setPeriodEnd(formatLocalDate(end));
+            const date = new Date(dateStr + 'T00:00:00');
+            if (!isNaN(date.getTime())) {
+                const end = new Date(date);
+                end.setDate(date.getDate() + 6);
+                setPeriodEnd(formatLocalDate(end));
+            }
         }
     };
 
-    const handleEndDateChange = ([date]) => {
-        if (!date) return;
+    const handleEndDateChange = (val) => {
+        let dateStr = '';
+        if (typeof val === 'string') {
+            dateStr = val;
+        } else if (Array.isArray(val) && val[0]) {
+            dateStr = formatLocalDate(val[0]);
+        } else if (val instanceof Date) {
+            dateStr = formatLocalDate(val);
+        }
+        if (!dateStr) return;
         setActivePreset('custom');
-        const endStr = formatLocalDate(date);
-        setPeriodEnd(endStr);
+        setPeriodEnd(dateStr);
 
         if (includeWeekends) {
-            const start = new Date(date);
-            start.setDate(date.getDate() - 6);
-            setPeriodStart(formatLocalDate(start));
+            const date = new Date(dateStr + 'T00:00:00');
+            if (!isNaN(date.getTime())) {
+                const start = new Date(date);
+                start.setDate(date.getDate() - 6);
+                setPeriodStart(formatLocalDate(start));
+            }
         }
     };
 
@@ -1176,9 +1333,9 @@ const PayrollCreate = () => {
         }
 
         let isMounted = true;
-        setIsCalculating(true);
 
         const calculatePayroll = async () => {
+            setIsCalculating(true);
             try {
                 const attendanceRes = await fetchWithAuth(
                     `/api/attendance?employee_id=${formData.employee_id}&start_date=${periodStart}&end_date=${periodEnd}`
@@ -1551,37 +1708,39 @@ const PayrollCreate = () => {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
                             <div className="flex items-center justify-between mb-2 gap-1">
-                                <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 truncate">
+                                <label htmlFor="cutoff-start-date" className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 truncate cursor-pointer">
                                     <i className="ti ti-calendar-event text-blue-600 text-sm shrink-0"></i> Start Date
-                                </span>
-                                <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md shrink-0">
+                                </label>
+                                <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
                                     {formatReadableDate(periodStart)}
                                 </span>
                             </div>
-                            <Flatpickr
+                            <input
+                                id="cutoff-start-date"
+                                type="date"
                                 value={periodStart}
-                                onChange={handleStartDateChange}
-                                options={{ dateFormat: "Y-m-d", altInput: true, altFormat: "F j, Y (D)", disableMobile: true }}
-                                className="w-full p-2.5 min-h-[44px] bg-slate-50 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm sm:text-base"
+                                onChange={(e) => handleStartDateChange(e.target.value)}
+                                className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-white focus:bg-white text-slate-800 font-bold rounded-lg border border-slate-200 focus:border-blue-500 outline-none transition-all text-sm sm:text-base cursor-pointer"
                             />
                         </div>
 
-                        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all group">
+                        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100 transition-all">
                             <div className="flex items-center justify-between mb-2 gap-1">
-                                <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 truncate">
+                                <label htmlFor="cutoff-end-date" className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 truncate cursor-pointer">
                                     <i className="ti ti-flag text-emerald-600 text-sm shrink-0"></i> End Date
-                                </span>
-                                <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0">
+                                </label>
+                                <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
                                     {formatReadableDate(periodEnd)}
                                 </span>
                             </div>
-                            <Flatpickr
+                            <input
+                                id="cutoff-end-date"
+                                type="date"
                                 value={periodEnd}
-                                onChange={handleEndDateChange}
-                                options={{ dateFormat: "Y-m-d", altInput: true, altFormat: "F j, Y (D)", disableMobile: true }}
-                                className="w-full p-2.5 min-h-[44px] bg-slate-50 text-slate-800 font-bold rounded-lg border border-slate-200 outline-none cursor-pointer text-sm sm:text-base"
+                                onChange={(e) => handleEndDateChange(e.target.value)}
+                                className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-white focus:bg-white text-slate-800 font-bold rounded-lg border border-slate-200 focus:border-emerald-500 outline-none transition-all text-sm sm:text-base cursor-pointer"
                             />
                         </div>
                     </div>
@@ -2219,6 +2378,31 @@ const PayrollCreate = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Holiday Pay Preview (DOLE) */}
+                        {holidayPreview.items.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-800">Holiday Pay (DOLE)</h3>
+                                    <span className="font-black bg-amber-500 text-white px-3 py-1 rounded-lg text-xs">
+                                        +₱{holidayPreview.totalHolidayPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <div className="bg-amber-50/60 border border-amber-100 rounded-2xl divide-y divide-amber-100/80">
+                                    {holidayPreview.items.map((item) => (
+                                        <div key={item.date} className="flex justify-between p-3 text-xs">
+                                            <div>
+                                                <p className="font-bold text-slate-800">{formatReadableDate(item.date)} &middot; {item.holidayName}</p>
+                                                <p className="text-slate-500 text-[11px]">{HOLIDAY_LABELS[item.holidayType] || item.holidayType}</p>
+                                            </div>
+                                            <span className="font-mono font-bold text-emerald-600">
+                                                ₱{item.pay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Deductions & Overrides */}
                         <div className="p-4 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { matchJobTitle } from './Create';
 
 export default function FactoryPiece({
@@ -16,12 +16,24 @@ export default function FactoryPiece({
     computedFactoryRows = []
 }) {
     const [localRows, setLocalRows] = useState(factoryRows);
+    const draftsRef = useRef({});
+
+    // Reset session drafts when modal opens or closes
+    useEffect(() => {
+        if (!isOpen) {
+            draftsRef.current = {};
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen) {
-            setLocalRows(factoryRows);
+            if (selectedGroup && draftsRef.current[selectedGroup]) {
+                setLocalRows(draftsRef.current[selectedGroup]);
+            } else {
+                setLocalRows(factoryRows);
+            }
         }
-    }, [isOpen, factoryRows]);
+    }, [isOpen, selectedGroup, factoryRows]);
 
     const activeGroupSet = useMemo(() => new Set(activeGroupEmployees.map(e => String(e.id))), [activeGroupEmployees]);
 
@@ -71,19 +83,45 @@ export default function FactoryPiece({
     // HR Layout View State: 'compact' | 'grid'
     const [viewMode, setViewMode] = useState('compact');
 
-    const handleSaveAndClose = (e) => {
+    // Close modal WITHOUT saving (discards in-memory session drafts)
+    const handleClose = (e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
         }
-        if (onSave) {
-            onSave(localRows);
-        } else if (onClose) {
+        draftsRef.current = {};
+        setLocalRows(factoryRows);
+        if (onClose) {
             onClose();
         }
     };
 
-    // Close on Escape key
+    // Explicitly commit changes to database and close modal
+    const handleSaveAndClose = async (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        const drafts = { ...draftsRef.current };
+        if (selectedGroup) {
+            drafts[selectedGroup] = localRows;
+        }
+
+        if (onSave) {
+            const otherEntries = Object.entries(drafts).filter(([grp]) => grp !== selectedGroup);
+            for (const [grpName, rows] of otherEntries) {
+                await onSave(rows, false, grpName);
+            }
+            await onSave(localRows, true, selectedGroup);
+        } else if (onClose) {
+            onClose();
+        }
+
+        draftsRef.current = {};
+    };
+
+    // Close on Escape key without saving
     useEffect(() => {
         if (!isOpen) return;
         const handleKeyDown = (e) => {
@@ -91,13 +129,13 @@ export default function FactoryPiece({
                 if (isOpAssignModalOpen) {
                     setIsOpAssignModalOpen(false);
                 } else {
-                    handleSaveAndClose();
+                    handleClose();
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, isOpAssignModalOpen, localRows]);
+    }, [isOpen, isOpAssignModalOpen, factoryRows]);
 
     // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally
     const handleFactoryRowChange = (id, field, value) => {
@@ -179,7 +217,7 @@ export default function FactoryPiece({
         <div
             onClick={(e) => {
                 if (e.target === e.currentTarget) {
-                    handleSaveAndClose(e);
+                    handleClose(e);
                 }
             }}
             className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs transition-opacity"
@@ -199,8 +237,9 @@ export default function FactoryPiece({
                     </div>
                     <button
                         type="button"
-                        onClick={handleSaveAndClose}
+                        onClick={handleClose}
                         className="w-9 h-9 rounded-full bg-slate-200/80 hover:bg-slate-300 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
+                        title="Close without saving"
                     >
                         <i className="ti ti-x text-lg" />
                     </button>
@@ -242,8 +281,10 @@ export default function FactoryPiece({
                                             key={groupName}
                                             type="button"
                                             onClick={() => {
-                                                if (selectedGroup && onSave) {
-                                                    onSave(localRows);
+                                                if (groupName === selectedGroup) return;
+
+                                                if (selectedGroup) {
+                                                    draftsRef.current[selectedGroup] = localRows;
                                                 }
                                                 handleGroupTabChange(groupName);
                                             }}
@@ -528,11 +569,18 @@ export default function FactoryPiece({
                 </div>
 
                 {/* Modal Footer */}
-                <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex justify-end">
+                <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        className="px-5 py-2.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                    >
+                        Cancel
+                    </button>
                     <button
                         type="button"
                         onClick={handleSaveAndClose}
-                        className="px-6 py-2.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
                     >
                         <i className="ti ti-device-floppy text-base" />
                         <span>Save &amp; Close Log</span>

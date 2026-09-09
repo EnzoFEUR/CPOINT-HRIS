@@ -11,6 +11,7 @@ import {
     calculateStatutoryLeavePay,
     aggregate13thMonthPay,
 } from '../utils/payrollCalculations.js';
+import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
 const router = express.Router();
 
@@ -60,25 +61,15 @@ const calculateBIRWithholdingTax = (monthlyTaxableIncome) => {
  */
 const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
     try {
-        const { data, error } = await supabase
-            .from('leave_applications')
-            .select('*')
-            .eq('employee_id', employeeId)
-            .lte('start_date', end)
-            .gte('end_date', start)
-            .or('status.ilike.%APPROVED • WITH PAY%,and(status.ilike.%APPROVED%,with_pay.eq.true)');
-
-        if (error || !data) return { totalPaidLeaveDays: 0, leaveRecords: [] };
-
-        let totalPaidLeaveDays = 0;
-        data.forEach(leave => {
-            const days = toSafeNumber(leave.days_count || leave.duration_days || leave.duration) || 1;
-            totalPaidLeaveDays += days;
+        const summary = await getLeaveSummaryForPeriod({
+            employeeId,
+            periodStart: start,
+            periodEnd: end
         });
 
         return {
-            totalPaidLeaveDays,
-            leaveRecords: data
+            totalPaidLeaveDays: summary.paid_leave_days || 0,
+            leaveRecords: summary.leaves || []
         };
     } catch (err) {
         console.error('Error fetching approved paid leaves:', err);
@@ -226,25 +217,80 @@ router.get('/13th-month/:employee_id', async (req, res) => {
 router.post('/preview', async (req, res) => {
     try {
         const { employee_id, period_start, period_end } = req.body;
-        if (!employee_id || !period_start || !period_end) {
-            return res.status(400).json({ error: 'employee_id, period_start, and period_end are required.' });
+        if (!period_start || !period_end) {
+            return res.status(400).json({ error: 'period_start and period_end are required.' });
         }
 
         const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
+
+        // Fetch holiday calendar for the period
+        const { data: holidayList } = await supabase
+            .from('holidays')
+            .select('*')
+            .gte('date', pStart)
+            .lte('date', pEnd)
+            .order('date', { ascending: true });
+
+        // If no employee_id provided (e.g. batch mode or initial page load), return holiday calendar
+        if (!employee_id) {
+            const genericItems = (holidayList || []).map(h => ({
+                date: h.date,
+                holidayName: h.name,
+                holidayType: h.type || 'regular',
+                pay: 0
+            }));
+            return res.json({
+                items: genericItems,
+                totalHolidayPay: 0,
+                approvedPaidLeaveDays: 0,
+                paidLeaveRecords: [],
+                isFactoryWorker: false,
+                canOvertime: false
+            });
+        }
 
         const { data: employee } = await supabase
             .from('employees')
             .select('*')
             .eq('id', employee_id)
-            .single();
+            .maybeSingle();
+
+        if (!employee) {
+            const genericItems = (holidayList || []).map(h => ({
+                date: h.date,
+                holidayName: h.name,
+                holidayType: h.type || 'regular',
+                pay: 0
+            }));
+            return res.json({
+                items: genericItems,
+                totalHolidayPay: 0,
+                approvedPaidLeaveDays: 0,
+                paidLeaveRecords: [],
+                isFactoryWorker: false,
+                canOvertime: false
+            });
+        }
 
         const effectiveMonthlySalary = getEffectiveMonthlySalary(employee);
         if (effectiveMonthlySalary <= 0) {
-            return res.json({ items: [], totalHolidayPay: 0, approvedPaidLeaveDays: 0, paidLeaveRecords: [] });
+            const genericItems = (holidayList || []).map(h => ({
+                date: h.date,
+                holidayName: h.name,
+                holidayType: h.type || 'regular',
+                pay: 0
+            }));
+            return res.json({
+                items: genericItems,
+                totalHolidayPay: 0,
+                approvedPaidLeaveDays: 0,
+                paidLeaveRecords: [],
+                isFactoryWorker: false,
+                canOvertime: false
+            });
         }
 
-        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
+        const [{ data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
             supabase
                 .from('attendances')
                 .select('*')
@@ -283,6 +329,7 @@ router.post('/preview', async (req, res) => {
                 : 'Regular Worker: Fixed schedule. Overtime eligible.'
         });
     } catch (err) {
+        console.error('Payroll preview error:', err);
         res.status(500).json({ error: err.message });
     }
 });
