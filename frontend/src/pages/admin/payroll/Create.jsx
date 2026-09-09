@@ -1244,7 +1244,7 @@ const PayrollCreate = () => {
                         ...prev,
                         days_worked: daysWorked,
                         late_minutes: totalLateMinutes,
-                        overtime_hours: calculatedOtHours > 0 ? calculatedOtHours.toString() : prev.overtime_hours,
+                        overtime_hours: calculatedOtHours > 0 ? calculatedOtHours.toFixed(2) : prev.overtime_hours,
                         late_deductions: adjustments > 0 ? adjustments.toFixed(2) : (prev.late_deductions || '0.00')
                     }));
                 }
