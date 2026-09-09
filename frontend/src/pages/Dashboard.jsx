@@ -102,7 +102,6 @@ export default function Dashboard() {
         sampleSize: d.sampleSize,
         ...(GRADE_COLORS[d.grade] || GRADE_COLORS['B']),
     }));
-    const topDept = deptList[0];
 
     const burnoutAlerts = anomalyData?.report?.burnout_risk_alerts || [];
     const latePatterns = anomalyData?.report?.frequent_late_patterns || [];
@@ -119,8 +118,8 @@ export default function Dashboard() {
             </div>
 
             {/* AI Executive Briefing */}
-            <div className="bg-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-800 text-white shadow-xl relative overflow-hidden">
-                <div className="relative z-10 space-y-4">
+            <div className="bg-slate-900 rounded-3xl border border-slate-800 text-white shadow-xl shadow-emerald-500/5 relative overflow-hidden">
+                <div className="relative z-10 space-y-4 p-6 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
@@ -137,29 +136,56 @@ export default function Dashboard() {
                         </button>
                     </div>
 
-                    <p className="text-sm sm:text-base font-bold text-slate-200 leading-relaxed">
+                    <p className="text-base sm:text-lg font-bold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
                         {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
                     </p>
 
-                    {/* Summary metrics */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Punctuality Rating</span>
-                            <p className="text-slate-200 font-semibold mt-1">
-                                {lateTodayCount === 0 ? '100% On-time compliance across shifts.' : `${lateTodayCount} staff clocked in past grace period.`}
-                            </p>
+                    {/* Badges pulled straight from the AI briefing - not locally recomputed */}
+                    {briefing && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                Punctuality Grade: {briefing.punctuality_grade || 'N/A'}
+                            </span>
+                            {briefing.top_performing_department && (
+                                <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-blue-300">
+                                    Top Dept: {briefing.top_performing_department}
+                                </span>
+                            )}
+                            {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
+                                <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1 animate-pulse">
+                                    <i className="ti ti-alert-triangle-filled text-[11px]" /> Needs Attention: {briefing.department_needs_attention}
+                                </span>
+                            )}
                         </div>
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Top Division</span>
-                            <p className="text-slate-200 font-semibold mt-1">
-                                {topDept ? `${topDept.name} leading on-time attendance (${topDept.score}%).` : 'Not enough data yet.'}
-                            </p>
+                    )}
+
+                    {/* AI-Generated Descriptive Analytics */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
+                            <span className="text-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                <i className="ti ti-bulb text-amber-400" /> Key Insights
+                            </span>
+                            <ul className="mt-2 space-y-1.5">
+                                {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough data yet to generate insights.']).map((insight, i) => (
+                                    <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                        <span className="text-emerald-400 mt-0.5">&bull;</span>
+                                        <span>{insight}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider block">Pending Approvals</span>
-                            <p className="text-slate-200 font-semibold mt-1">
-                                {pendingLeavesCount > 0 ? `${pendingLeavesCount} leave requests pending review.` : 'All leave requests cleared.'}
-                            </p>
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+                            <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                <i className="ti ti-target-arrow text-blue-400" /> Recommended Actions
+                            </span>
+                            <ul className="mt-2 space-y-1.5">
+                                {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No action items at this time.']).map((rec, i) => (
+                                    <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                        <span className="text-blue-400 mt-0.5">&bull;</span>
+                                        <span>{rec}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -307,12 +333,12 @@ export default function Dashboard() {
             {/* Financial & Compliance Intelligence */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
-                {/* 15-Day Cutoff Payroll Forecaster */}
+                {/* Weekly Cutoff Payroll Forecaster */}
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : '15-Day Cutoff'} Payroll Forecaster
+                                <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly Cutoff'} Payroll Forecaster
                             </h3>
                             <p className="text-xs text-slate-400 font-medium">Projected payout based on active timecards</p>
                         </div>
@@ -400,13 +426,6 @@ export default function Dashboard() {
                                         <span>{doleCompliance.holidayMultiplier.label}</span>
                                     </div>
                                     <span className="font-mono text-[11px] font-black text-emerald-600">{doleCompliance.holidayMultiplier.status}</span>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 font-bold text-slate-700">
-                                        <i className="ti ti-circle-check-filled text-emerald-500 text-base" />
-                                        <span>{doleCompliance.nightDifferential.label}</span>
-                                    </div>
-                                    <span className="font-mono text-[11px] font-black text-emerald-600">{doleCompliance.nightDifferential.status}</span>
                                 </div>
                             </>
                         ) : (
