@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient';
-import api from '../../../utils/api';
+import { api } from '../../../utils/api';
 
 const CATEGORIES = ['Legal ID', 'Medical Record', 'Statutory', 'Other'];
 const SUB_CATEGORIES = {

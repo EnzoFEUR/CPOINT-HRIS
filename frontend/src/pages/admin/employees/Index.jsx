@@ -6,6 +6,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
+import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 function formatDate(dateString) {
@@ -17,18 +18,35 @@ export default function EmployeesIndex() {
     const location = useLocation();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    
+    // UI State
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedDepartment, setSelectedDepartment] = useState('All');
     const [filterStatus, setFilterStatus] = useState('All');
-    const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+    const [viewMode, setViewMode] = useState('grid');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = viewMode === 'grid' ? 9 : 12;
+    const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+
+    // Retrieve the active logged-in user session
+    const currentUser = useMemo(() => {
+        try {
+            return JSON.parse(localStorage.getItem('user') || localStorage.getItem('authUser') || '{}');
+        } catch {
+            return {};
+        }
+    }, []);
 
     // Temporary password modal state
     const [tempCreds, setTempCreds] = useState(null);
     const [copiedField, setCopiedField] = useState(null);
     const [copiedAll, setCopiedAll] = useState(false);
     const [showPassword, setShowPassword] = useState(true);
+
+    const handleArchiveAccessClick = (e) => {
+        if (e) e.preventDefault();
+        setIsSecurityModalOpen(true); 
+    };
 
     useEffect(() => {
         if (location.state?.temp_password) {
@@ -63,7 +81,14 @@ export default function EmployeesIndex() {
         const res = await fetchWithAuth('/api/employees');
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
-        return Array.isArray(result) ? result : (result.data || []);
+        const data = Array.isArray(result) ? result : (result.data || []);
+        
+        // Filter out terminated and inactive personnel
+        return data.filter(emp => 
+            emp.status !== 'terminated' && 
+            emp.status !== 'inactive' && 
+            emp.is_active !== false
+        );
     };
 
     const { data: employees = [], isLoading } = useQuery({
@@ -218,13 +243,14 @@ export default function EmployeesIndex() {
                 description="Active workforce registry, biometric identification baselines, and statutory salary configurations."
                 actions={
                     <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                        <Link
-                            to="/admin/documents"
-                            className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-xs touch-manipulation"
+                        <button
+                            type="button"
+                            onClick={handleArchiveAccessClick}
+                            className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-xs touch-manipulation cursor-pointer"
                         >
                             <i className="ti ti-folders text-slate-500 text-base shrink-0" />
-                            <span className="whitespace-nowrap">201 Vault</span>
-                        </Link>
+                            <span className="whitespace-nowrap">Archive</span>
+                        </button>
 
                         <Link
                             to="/admin/employees/create"
@@ -271,7 +297,6 @@ export default function EmployeesIndex() {
                                     { id: 'All', label: 'All', count: counts.all, dot: null },
                                     { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
                                     { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
-                                    { id: 'Terminated', label: 'Terminated', count: counts.terminated, dot: 'bg-rose-500', alert: counts.terminated > 0 },
                                     { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
                                     { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
                                 ].map(tab => (
@@ -292,7 +317,7 @@ export default function EmployeesIndex() {
                                             filterStatus === tab.id 
                                                 ? 'bg-slate-100 text-slate-700' 
                                                 : tab.alert 
-                                                    ? (tab.id === 'Terminated' ? 'bg-rose-100 text-rose-700 font-bold' : 'bg-amber-100 text-amber-700 font-bold')
+                                                    ? 'bg-amber-100 text-amber-700 font-bold'
                                                     : 'bg-slate-200/80 text-slate-500'
                                         }`}>
                                             {tab.count}
@@ -644,7 +669,7 @@ export default function EmployeesIndex() {
                                                     to={`/admin/documents?employee_id=${employee.id}`}
                                                     className="flex-1 py-1.5 text-center bg-sky-50 text-sky-800 font-bold text-xs rounded-lg border border-sky-200"
                                                 >
-                                                    201 Vault
+                                                    Archive
                                                 </Link>
                                                 <Link
                                                     to={`/admin/employees/${employee.id}`}
@@ -880,7 +905,7 @@ export default function EmployeesIndex() {
             {tempCreds && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-6 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
                     <div className="bg-white rounded-2xl p-4 sm:p-7 max-w-md w-full my-auto shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 max-h-[90vh] overflow-y-auto">
-                        {/* Header */}
+                        
                         <div className="text-center space-y-2">
                             <div className="h-11 w-11 sm:h-12 sm:w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
                                 <i className="ti ti-check text-2xl font-bold" />
@@ -981,7 +1006,7 @@ export default function EmployeesIndex() {
                             <button
                                 type="button"
                                 onClick={() => setTempCreds(null)}
-                                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl font-bold text-xs transition-colors text-center cursor-pointer touch-manipulation"
+                                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition-all cursor-pointer"
                             >
                                 Dismiss & View Directory
                             </button>
@@ -989,7 +1014,19 @@ export default function EmployeesIndex() {
                     </div>
                 </div>
             )}
-            
+
+            {/* Security Modal Component */}
+            <OtpVerificationModal
+                isOpen={isSecurityModalOpen}
+                onClose={() => setIsSecurityModalOpen(false)}
+                onSuccess={() => {
+                    setIsSecurityModalOpen(false);
+                    navigate('/admin/archive');
+                }}
+                email={currentUser?.email}
+                phone={currentUser?.phone}
+                initialMethod="email"
+            />
         </div>
     );
 }
