@@ -251,6 +251,7 @@ const PayrollCreate = () => {
         days_worked: 0,
         overtime_hours: '',
         late_deductions: '',
+        late_minutes: 0,
         allowance: ''
     });
 
@@ -1333,12 +1334,13 @@ const PayrollCreate = () => {
                 const rawLogs = await attendanceRes.json();
                 const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
 
-                const gracePeriodMins = 15;
-                const { hourlyRate } = employeeRates;
+                const gracePeriodMins = 120; // 2-Hour Late Rule threshold
+                const { hourlyRate, dailyRate } = employeeRates;
                 const perMinuteRate = hourlyRate / 60;
 
                 let adjustments = 0;
                 let calculatedOtHours = 0;
+                let totalLateMinutes = 0;
                 const workedDatesSet = new Set();
 
                 const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
@@ -1354,8 +1356,19 @@ const PayrollCreate = () => {
                         const scheduleStart = new Date(`${dateStr}T08:00:00`);
                         if (!isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
                             const minutes = Math.floor((timeIn - scheduleStart) / 60000);
-                            if (minutes > gracePeriodMins && perMinuteRate > 0) {
-                                adjustments += (minutes * perMinuteRate);
+                            if (minutes > 0) {
+                                totalLateMinutes += minutes;
+                                if (minutes >= gracePeriodMins) {
+                                    // 2-Hour Rule: Lateness >= 2 hrs (120+ mins): payment converts to HOURLY rate for actual hours worked
+                                    const lateHours = minutes / 60;
+                                    const workedHours = Math.max(0, 8 - lateHours);
+                                    const earnedHourlyPay = workedHours * hourlyRate;
+                                    const dayLoss = Math.max(0, dailyRate - earnedHourlyPay);
+                                    adjustments += dayLoss;
+                                } else if (perMinuteRate > 0) {
+                                    // < 2 Hours Late (< 120 mins): Standard per-minute deduction against standard basic pay
+                                    adjustments += (minutes * perMinuteRate);
+                                }
                             }
                         }
                     }
@@ -1382,8 +1395,9 @@ const PayrollCreate = () => {
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
+                        late_minutes: totalLateMinutes,
                         overtime_hours: calculatedOtHours > 0 ? calculatedOtHours.toString() : prev.overtime_hours,
-                        late_deductions: adjustments > 0 ? adjustments.toFixed(2) : prev.late_deductions
+                        late_deductions: adjustments > 0 ? adjustments.toFixed(2) : (prev.late_deductions || '0.00')
                     }));
                 }
             } catch (err) {
@@ -1519,6 +1533,7 @@ const PayrollCreate = () => {
 
             const payload = {
                 ...formData,
+                late_minutes: Number(formData.late_minutes) || 0,
                 hourly_rate: employeeRates.hourlyRate,
                 daily_rate: employeeRates.dailyRate,
                 paid_leave_days: totalPaidLeaveDays,
@@ -2396,7 +2411,18 @@ const PayrollCreate = () => {
 
                         {/* Deductions & Overrides */}
                         <div className="p-4 bg-red-50/60 rounded-2xl border border-red-100 space-y-2">
-                            <label className="block text-xs font-bold text-red-600 uppercase">Late Deductions / Tardiness (₱)</label>
+                            <div className="flex items-center justify-between">
+                                <label className="block text-xs font-bold text-red-600 uppercase">Late Deductions / Tardiness (₱)</label>
+                                {Number(formData.late_minutes) > 0 && (
+                                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                                        Number(formData.late_minutes) >= 120 
+                                            ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                            : 'bg-red-100 text-red-700'
+                                    }`}>
+                                        {formData.late_minutes} mins late {Number(formData.late_minutes) >= 120 ? '(≥ 2 hrs: Hourly Pay Rule)' : '(< 2 hrs: Per-Min Deduction)'}
+                                    </span>
+                                )}
+                            </div>
                             <input
                                 type="number"
                                 step="0.01"
@@ -2406,6 +2432,12 @@ const PayrollCreate = () => {
                                 className="w-full p-3 bg-white border border-red-200 rounded-xl font-mono text-red-600 text-lg font-bold outline-none"
                                 placeholder="0.00"
                             />
+                            {Number(formData.late_minutes) >= 120 && (
+                                <p className="text-[11px] text-amber-700 font-medium">
+                                    <i className="ti ti-info-circle mr-1" />
+                                    Regular Policy: Lateness of 2+ hours converts shift earnings to actual worked hours ({Math.max(0, 8 - (Number(formData.late_minutes) / 60)).toFixed(1)} hrs @ ₱{employeeRates.hourlyRate.toFixed(2)}/hr).
+                                </p>
+                            )}
                         </div>
 
                         <button

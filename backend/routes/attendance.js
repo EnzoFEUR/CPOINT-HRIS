@@ -14,7 +14,7 @@ const CONFIG = Object.freeze({
     ENROLLMENT_CONFIDENCE_MIN: parseFloat(process.env.ENROLLMENT_CONFIDENCE_MIN) || 0.60,
   },
   ATTENDANCE: {
-    GRACE_PERIOD_MINUTES: parseInt(process.env.GRACE_PERIOD_MINUTES, 10) || 15,
+    GRACE_PERIOD_MINUTES: parseInt(process.env.GRACE_PERIOD_MINUTES, 10) || 120, // 2-Hour (120 mins) Grace Period
     CALL_TIME_HOUR: parseInt(process.env.CALL_TIME_HOUR, 10) ?? 8,
     CALL_TIME_MINUTE: parseInt(process.env.CALL_TIME_MINUTE, 10) ?? 0,
     TIMEZONE: process.env.TZ || 'Asia/Manila',

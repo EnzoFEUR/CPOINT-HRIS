@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { supabase } from '../../../supabaseClient'; // Make sure this import path matches your project structure
+import { supabase } from '../../../supabaseClient';
 
 const CATEGORIES = [
     'All',

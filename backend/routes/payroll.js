@@ -447,8 +447,48 @@ router.post('/', async (req, res) => {
             basicPay = weeklySalary;
         }
 
+        // Fetch Holidays, Attendances, HR-Approved Paid Leaves, and Suspensions in parallel
+        const [
+            { data: holidayList },
+            { data: attendanceLogs },
+            paidLeaveInfo,
+            { data: suspensionLogs }
+        ] = await Promise.all([
+            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
+            supabase
+                .from('attendances')
+                .select('*')
+                .eq('employee_id', employee_id)
+                .gte('date', pStart)
+                .lte('date', pEnd),
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
+            supabase
+                .from('disciplinary_logs')
+                .select('id, date, reason, status')
+                .eq('employee_id', employee_id)
+                .eq('type', 'Suspension')
+        ]);
+
         // Lateness Policy Handling (2-Hour Rule for Regular Employees)
-        const lateMins = toSafeNumber(late_minutes);
+        let lateMins = toSafeNumber(late_minutes);
+
+        // Fallback: If late_minutes was not explicitly provided or 0, compute from attendance logs
+        if (lateMins === 0 && !isFactory && attendanceLogs && attendanceLogs.length > 0) {
+            for (const log of attendanceLogs) {
+                if (!log.time_in) continue;
+                const dateStr = log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : null);
+                if (!dateStr) continue;
+                const timeIn = new Date(log.time_in);
+                const scheduleStart = new Date(`${dateStr}T08:00:00`);
+                if (!isNaN(timeIn.getTime()) && !isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
+                    const mins = Math.floor((timeIn - scheduleStart) / 60000);
+                    if (mins > 0) {
+                        lateMins += mins;
+                    }
+                }
+            }
+        }
+
         let lateDed = 0;
         let tardinessNote = '';
 
@@ -476,11 +516,6 @@ router.post('/', async (req, res) => {
         // Suspension Deduction Handling
         let suspensionDeduction = 0;
         let suspensionNote = '';
-        const { data: suspensionLogs } = await supabase
-            .from('disciplinary_logs')
-            .select('id, date, reason, status')
-            .eq('employee_id', employee_id)
-            .eq('type', 'Suspension');
 
         if (suspensionLogs && suspensionLogs.length > 0) {
             for (const susp of suspensionLogs) {
@@ -518,18 +553,6 @@ router.post('/', async (req, res) => {
 
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
-
-        // Fetch Holidays, Attendances, and HR-Approved Paid Leaves
-        const [{ data: holidayList }, { data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
-            supabase
-                .from('attendances')
-                .select('*')
-                .eq('employee_id', employee_id)
-                .gte('date', pStart)
-                .lte('date', pEnd),
-            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
-        ]);
 
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
