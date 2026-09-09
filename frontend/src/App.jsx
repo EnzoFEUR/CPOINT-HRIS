@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchWithAuth } from './utils/api';
+import EmployeeArchive from './pages/admin/archive/EmployeeArchive';
+import ArchivedEmployeeProfile from './pages/admin/archive/ArchivedEmployeeProfile';
 
 // Auth Pages
 import Login from './pages/Login';
@@ -29,7 +32,6 @@ const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
 const EmployeeCreate = lazy(() => import('./pages/admin/employees/Create'));
 const EmployeeEdit = lazy(() => import('./pages/admin/employees/Edit'));
 const EmployeeShow = lazy(() => import('./pages/admin/employees/Show'));
-const Documents = lazy(() => import('./pages/admin/documents/Documents'));
 const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
 
 // Admin / Payroll
@@ -46,6 +48,9 @@ const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 
 // Admin / Disciplinary
 const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
+
+//Archive
+const Documents = lazy(() => import('./pages/admin/documents/Documents'));
 
 // Employee
 const MyQr = lazy(() => import('./pages/employee/MyQr'));
@@ -132,40 +137,43 @@ const RootRoute = () => {
 const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';
 
-  // Payroll Routes
+  // Payroll
   if (pathname === '/admin/payroll/statutory-settings') return 'Statutory Settings';
   if (pathname === '/admin/payroll') return 'Payroll Ledger';
   if (pathname === '/admin/payroll/process') return 'Payroll Calculator';
   if (pathname.startsWith('/admin/payroll/')) return 'Payslip Details';
 
-  // Employee Routes
+  // Employee
   if (pathname === '/admin/employees') return 'Employee Directory';
   if (pathname === '/admin/employees/create') return 'Add New Employee';
   if (pathname.startsWith('/admin/employees/') && pathname.endsWith('/edit')) return 'Edit Employee';
   if (pathname.startsWith('/admin/employees/') && pathname.endsWith('/qr')) return 'Employee QR Pass';
   if (pathname.startsWith('/admin/employees/')) return 'Employee Profile';
 
-  // Attendance Routes
+  // Archive
+  if (pathname === '/admin/archive') return 'Employee Archive';
+  if (pathname.startsWith('/admin/archive/')) return 'Archived Employee Profile';
+
+  // Attendance & Others
   if (pathname === '/admin/attendance') return 'Attendance Logs';
   if (pathname === '/admin/attendance/calendar') return 'Attendance Calendar';
-
-  // Other Admin Routes
   if (pathname === '/admin/leaves') return 'Leave Requests';
   if (pathname === '/admin/disciplinary') return 'Disciplinary Records';
   if (pathname === '/admin/audit-logs') return 'Audit Trail';
 
-  // Employee Routes
+  // Employee Portal
   if (pathname === '/employee/dashboard') return 'Employee Portal';
   if (pathname === '/employee/qr') return 'My Digital QR';
   if (pathname === '/employee/scanner') return 'Self Scanner';
   if (pathname === '/employee/profile') return 'My Profile';
 
-  const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
+  const segment = pathname.split('/').filter(Boolean).pop() || "Dashboard";
   if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(segment)) {
     return 'Details';
   }
-  return segment.replace(/-/g, ' ');
+  return 'Dashboard';
 };
+
 
 // Notification chime synthesizer
 const playNotificationChime = () => {
@@ -794,20 +802,33 @@ function MainLayout({ children }) {
                 )}
               </div>
 
-              {/* Nav links */}
-              {[
-                { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
-                { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
-                { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
-                { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
-                { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
+             {/* Nav links */}
+                  {[
+                  { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
+                  { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
+                  { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
+                  { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
+                  { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
               ].map(item => (
-                <Link key={item.label} to={item.route} className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${location.pathname.startsWith(item.route) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
-                  <i className={`ti ${item.icon} text-xl`}></i>
-                  <span className="ml-3 font-medium tracking-wide">{item.label}</span>
-                </Link>
-              ))}
-            </>
+                  <Link key={item.label} to={item.route} className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${location.pathname.startsWith(item.route) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-400 hover:text-white'}`}>
+                    <i className={`ti ${item.icon} text-xl`}></i>
+                    <span className="ml-3 font-medium tracking-wide">{item.label}</span>
+                  </Link>
+                ))}
+
+                  {/* INSERT YOUR NAVLINK HERE */}
+                  <NavLink
+                    to="/admin/archive"
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-primary text-white'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      }`
+                    }
+                  >
+                  </NavLink>
+                              </>
           ) : (
             <div className="space-y-1">
               <Link 
@@ -1669,9 +1690,15 @@ function App() {
           <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
           <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
 
-          {/* Admin - Documents */}
-          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
-
+          {/* Admin - Employee Archive */}
+          <Route 
+              path="/admin/archive" 
+              element={
+                  <ProtectedRoute allowedRoles={['admin', 'hr', 'super_admin']}>
+                      <EmployeeArchive />
+                  </ProtectedRoute>
+              } 
+          />
           {/* Admin - Attendance */}
           <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
           <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
@@ -1690,6 +1717,19 @@ function App() {
 
           {/* Admin - Disciplinary */}
           <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
+          
+          {/* Admin - Archive */}
+          {/* Line 1724 in App.jsx */}
+<Route 
+  path="/admin/documents" 
+  element={
+    <ProtectedRoute allowedRoles={['admin', 'hr_manager', 'super_admin']}>
+      <Documents />
+    </ProtectedRoute>
+  } 
+/>
+          <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
+          <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
 
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<EmployeeDashboard />} />

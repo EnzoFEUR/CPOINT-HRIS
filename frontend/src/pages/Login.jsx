@@ -117,13 +117,12 @@ export default function Login() {
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
-            if (data.simulated && data.previewCode) {
+           // Only show demo codes if running locally in development mode
+            if (data.simulated && data.previewCode && import.meta.env.DEV) {
                 setGeneratedOtp(data.previewCode);
-                setPreviewOtp(data.previewCode);
                 toast.success(`Demo code: ${data.previewCode}`, { duration: 5000 });
             } else {
                 setGeneratedOtp(null);
-                setPreviewOtp(null);
                 toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
             }
 
@@ -449,7 +448,7 @@ export default function Login() {
                                 ))}
                             </div>
 
-                            {generatedOtp && (
+                            {generatedOtp && import.meta.env.DEV && (
                                 <div className="mb-3">
                                     <button 
                                         type="button"

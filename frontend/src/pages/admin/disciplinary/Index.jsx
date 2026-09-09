@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
@@ -58,7 +59,7 @@ export default function DisciplinaryIndex() {
         fetchData();
     }, []);
 
-    const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             setIsSubmitting(true);
@@ -75,6 +76,14 @@ export default function DisciplinaryIndex() {
             });
 
             if (res.ok) {
+                /*if (type === 'Termination' || type === 'Suspension') {
+                    const newStatus = type === 'Termination' ? 'terminated' : 'suspended';
+                    await supabase
+                        .from('employees')
+                        .update({ status: newStatus })
+                        .eq('id', employeeId);
+                }*/
+
                 toast.success(`${type} action logged and applied to account`);
                 setShowModal(false);
                 setEmployeeId('');
@@ -96,7 +105,7 @@ export default function DisciplinaryIndex() {
         }
     };
 
-    const handleResolve = async (id, isSuspension = false) => {
+    const handleResolve = async (id, employeeId, isSuspension = false) => {
         try {
             const res = await fetchWithAuth(`/api/disciplinary/${id}/status`, {
                 method: 'PUT',
@@ -104,6 +113,13 @@ export default function DisciplinaryIndex() {
             });
 
             if (res.ok) {
+                if (isSuspension && employeeId) {
+                    await supabase
+                        .from('employees')
+                        .update({ status: 'active' })
+                        .eq('id', employeeId);
+                }
+
                 toast.success(isSuspension ? 'Suspension lifted & account reinstated!' : 'Record marked as Resolved');
                 fetchData();
             } else {
@@ -276,7 +292,7 @@ export default function DisciplinaryIndex() {
                                         <td className="px-6 py-3.5 text-right">
                                             {record.type === 'Suspension' && record.status === 'Active' ? (
                                                 <button 
-                                                    onClick={() => handleResolve(record.id, true)} 
+                                                    onClick={() => handleResolve(record.id, record.employee_id, true)}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs rounded-lg border border-emerald-200 transition-colors shadow-xs cursor-pointer"
                                                     title="Lift suspension and immediately reinstate employee access"
                                                 >
@@ -285,7 +301,7 @@ export default function DisciplinaryIndex() {
                                                 </button>
                                             ) : record.status !== 'Resolved' ? (
                                                 <button 
-                                                    onClick={() => handleResolve(record.id, false)} 
+                                                    onClick={() => handleResolve(record.id, record.employee_id, false)}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold text-xs rounded-lg border border-emerald-200 transition-colors shadow-xs cursor-pointer"
                                                 >
                                                     <i className="ti ti-check text-emerald-600" />
