@@ -242,6 +242,7 @@ export default function Show() {
         !isTerminated
     );
     const employeeFullName = employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
+    const disciplinaryLogs = useMemo(() => Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [], [employee?.disciplinary_logs]);
 
     return (
         <>
@@ -764,6 +765,161 @@ export default function Show() {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* Disciplinary & Compliance Records */}
+                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-6">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-amber-50 text-amber-700 rounded-xl sm:rounded-2xl flex items-center justify-center border border-amber-200/70">
+                                <i className="ti ti-scale text-xl sm:text-2xl" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                                    Disciplinary & Compliance Records
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    DOLE due process logs, written warnings, suspensions, and clearances
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
+                                isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                isSuspended ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                                <span className={`w-2 h-2 rounded-full ${
+                                    isTerminated ? 'bg-rose-600' :
+                                    isSuspended ? 'bg-amber-600 animate-pulse' :
+                                    disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-600 animate-pulse' :
+                                    'bg-emerald-500'
+                                }`} />
+                                {isTerminated ? 'Separated' :
+                                 isSuspended ? 'Suspended' :
+                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'Active Notice' :
+                                 'Good Standing'}
+                            </span>
+
+                            <Link
+                                to={`/admin/disciplinary?search=${encodeURIComponent(employeeFullName || employee.first_name || '')}`}
+                                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-gavel text-sm" /> Disciplinary Hub
+                            </Link>
+                        </div>
+                    </div>
+
+                    {disciplinaryLogs.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-center py-10 px-4 bg-emerald-50/40 rounded-xl sm:rounded-2xl border border-dashed border-emerald-200">
+                            <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-100 shadow-xs mb-3">
+                                <i className="ti ti-shield-check text-2xl sm:text-3xl" />
+                            </div>
+                            <h4 className="text-sm sm:text-base font-black text-slate-800 mb-1">Clean Compliance Standing</h4>
+                            <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-md">
+                                This employee currently has zero disciplinary infractions, warnings, or sanctions on record. Account is in full compliance with company policies and DOLE standards.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {disciplinaryLogs.map((log) => {
+                                const isOverturnedOrResolved = log.status === 'Resolved' || log.status === 'Overturned';
+                                const isResolvedTermination = log.type === 'Termination' && isOverturnedOrResolved;
+                                const isReinstatedNote = (log.reason || '').includes('[REINSTATED') || (log.reason || '').includes('[EXONERATED') || (log.reason || '').includes('[CLEARED');
+
+                                return (
+                                    <div
+                                        key={log.id}
+                                        className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                                            isResolvedTermination
+                                                ? 'bg-emerald-50/30 border-emerald-200'
+                                                : log.status === 'Active'
+                                                ? 'bg-rose-50/30 border-rose-200'
+                                                : log.status === 'Acknowledged'
+                                                ? 'bg-blue-50/30 border-blue-200'
+                                                : 'bg-slate-50/70 border-slate-200'
+                                        }`}
+                                    >
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+                                                    isResolvedTermination
+                                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                        : log.type === 'Termination'
+                                                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                                        : log.type === 'Suspension'
+                                                        ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                                }`}>
+                                                    <i className={`ti ${
+                                                        isResolvedTermination ? 'ti-circle-check' :
+                                                        log.type === 'Termination' ? 'ti-ban' :
+                                                        log.type === 'Suspension' ? 'ti-player-pause' : 'ti-alert-triangle'
+                                                    }`} />
+                                                    {isResolvedTermination ? 'Termination (Revoked / Restored)' : log.type}
+                                                </span>
+
+                                                {log.severity && (
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                                                        log.severity === 'Critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                        log.severity === 'High' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                                        log.severity === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        'bg-blue-50 text-blue-700 border-blue-200'
+                                                    }`}>
+                                                        {log.severity} Severity
+                                                    </span>
+                                                )}
+
+                                                <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                                                    <i className="ti ti-calendar text-xs" />
+                                                    {formatDate(log.date || log.created_at)}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider border flex items-center gap-1 ${
+                                                    log.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                    log.status === 'Overturned' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                                                    log.status === 'Acknowledged' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                                    'bg-rose-100 text-rose-800 border-rose-300'
+                                                }`}>
+                                                    {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
+                                                    {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
+                                                    {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
+                                                    {log.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                                                    <span>
+                                                        {log.status === 'Resolved' ? 'Resolved' :
+                                                         log.status === 'Overturned' ? 'Cleared' :
+                                                         log.status === 'Acknowledged' ? 'Acknowledged' :
+                                                         'Action Required'}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                                            <p className="whitespace-pre-line">{log.reason || 'No specific description recorded.'}</p>
+                                        </div>
+
+                                        {log.status === 'Acknowledged' && (
+                                            <div className="mt-2.5 pt-2 border-t border-slate-100 text-[11px] text-blue-700 font-medium flex items-center gap-1.5">
+                                                <i className="ti ti-file-certificate text-sm" />
+                                                <span>Acknowledged by employee via portal.</span>
+                                            </div>
+                                        )}
+                                        {isReinstatedNote && (
+                                            <div className="mt-2.5 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-bold flex items-center gap-1.5">
+                                                <i className="ti ti-check text-sm" />
+                                                <span>Record cleared and active standing restored.</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* 201 Documents */}

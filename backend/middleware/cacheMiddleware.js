@@ -24,20 +24,18 @@ export const cacheResponse = (ttlSeconds = 30) => {
         if (cachedData) {
             res.setHeader('X-Cache', 'HIT');
             res.setHeader('X-Cache-TTL', `${ttlSeconds}s`);
-            res.setHeader('Cache-Control', `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`);
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             return res.json(cachedData);
         }
 
-        // Intercept res.json to capture and store payload
         const originalJson = res.json.bind(res);
 
         res.json = (body) => {
-            // Only cache successful 200 responses
             if (res.statusCode >= 200 && res.statusCode < 300 && body && !body.error) {
                 memoryCache.set(cacheKey, body, ttlSeconds);
-                res.setHeader('Cache-Control', `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`);
             }
             res.setHeader('X-Cache', 'MISS');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             return originalJson(body);
         };
 

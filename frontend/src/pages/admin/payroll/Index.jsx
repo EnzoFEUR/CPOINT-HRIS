@@ -621,7 +621,7 @@ export default function PayrollIndex() {
         }));
     }, []);
 
-    // Real-time Supabase Subscription for zero-latency ledger updates
+    // Realtime Supabase subscription for live ledger updates
     useEffect(() => {
         const channel = supabase
             .channel('admin-live-payroll-ledger')

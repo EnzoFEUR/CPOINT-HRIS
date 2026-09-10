@@ -32,7 +32,7 @@ export default function Dashboard() {
     const [trendView, setTrendView] = useState('weekly');
     const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
 
-    // 1. High-speed Telemetry Overview Query (< 80ms)
+    // Overview data query
     const { data: overviewData, isLoading } = useQuery({
         queryKey: ['adminDashboardOverview'],
         queryFn: async () => {

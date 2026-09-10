@@ -177,14 +177,14 @@ const EmployeeDashboard = () => {
     const infractions = employeeDisciplinary.filter(log => log.status === 'Active');
     const unresolvedInfractions = employeeDisciplinary.filter(log => log.status !== 'Resolved');
 
-    // Check for termination record
-    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination');
+    // Check for active termination record (exclude resolved and overturned)
+    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && log.status !== 'Resolved' && log.status !== 'Overturned');
     const activeTermination = queryHasLoaded
         ? terminationRecord
         : (disciplinaryState.isTerminated ? (disciplinaryState.record || { type: 'Termination', reason: 'Account separated' }) : null);
 
     const activeSuspension = queryHasLoaded
-        ? employeeDisciplinary.find(log => log.type === 'Suspension' && log.status !== 'Resolved')
+        ? employeeDisciplinary.find(log => log.type === 'Suspension' && log.status !== 'Resolved' && log.status !== 'Overturned')
         : (disciplinaryState.isSuspended ? (disciplinaryState.record || { type: 'Suspension', reason: 'Operational access temporarily suspended' }) : null);
 
     const isTerminated = Boolean(activeTermination) || currentStatus === 'inactive' || currentStatus === 'terminated' || Boolean(disciplinaryState.isTerminated);

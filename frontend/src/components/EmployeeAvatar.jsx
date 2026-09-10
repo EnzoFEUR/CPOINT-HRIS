@@ -11,6 +11,7 @@ export const EmployeeAvatar = ({
     firstName = '',
     lastName = '',
     name = '',
+    employeeName = '',
     companyId = '',
     employeeId = '',
     photoUrl = '',
@@ -29,7 +30,7 @@ export const EmployeeAvatar = ({
     // 1. Resolve Name and Initials
     const resolvedFirstName = firstName || employee?.first_name || '';
     const resolvedLastName = lastName || employee?.last_name || '';
-    const resolvedName = name || employee?.name || `${resolvedFirstName} ${resolvedLastName}`.trim();
+    const resolvedName = name || employeeName || employee?.name || employee?.employee_name || `${resolvedFirstName} ${resolvedLastName}`.trim();
 
     const initials = useMemo(() => {
         if (resolvedFirstName && resolvedLastName) {
@@ -59,8 +60,13 @@ export const EmployeeAvatar = ({
             }
             return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${rawPhoto.replace(/^\/+/, '')}`;
         }
+        const cId = companyId || employee?.company_id;
+        const eId = employeeId || employee?.id;
+        if (cId && eId) {
+            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${cId}/${eId}.jpg`;
+        }
         return null;
-    }, [photoUrl, avatarUrl, employee]);
+    }, [photoUrl, avatarUrl, employee, companyId, employeeId]);
 
     // 3. Resolve Loading State from Global Cache
     const initialStatus = resolvedAvatarSrc ? urlStatusCache.get(resolvedAvatarSrc) : null;

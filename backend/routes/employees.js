@@ -10,7 +10,11 @@ const router = express.Router();
  * based on employee account status and disciplinary records.
  */
 function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
-    const termLog = logs.find(l => l.type === 'Termination');
+    const termLog = logs.find(l => {
+        if (l.type !== 'Termination') return false;
+        const s = (l.status || '').toLowerCase();
+        return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+    });
     const isDeactivated = emp.status === 'inactive' || emp.status === 'terminated' || emp.is_active === false;
 
     // 1. Termination Evaluation
@@ -533,6 +537,97 @@ router.put('/:id', async (req, res) => {
 
         res.json({ success: true, message: 'Employee updated successfully.' });
     } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/employees/:id/restore - High-speed enterprise restoration from Archive
+router.post('/:id/restore', async (req, res) => {
+    try {
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        if (!isAdmin) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to restore employees.' });
+        }
+
+        const targetId = req.params.id;
+
+        // 1. Restore employee to active status and clear archive/separation fields
+        const { data: updatedEmp, error: updateError } = await supabase
+            .from('employees')
+            .update({
+                status: 'active',
+                is_active: true,
+                archived_at: null,
+                separation_reason: null,
+                separation_type: null,
+                separation_date: null,
+                separation_notes: null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', targetId)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        // 2. Resolve any associated active, pending, or under review disciplinary logs
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data: openLogs } = await supabase
+            .from('disciplinary_logs')
+            .select('id, reason, type')
+            .eq('employee_id', targetId)
+            .in('status', ['Active', 'Action Required', 'Pending', 'Under Review']);
+
+        if (openLogs && openLogs.length > 0) {
+            for (const log of openLogs) {
+                const updatedReason = `[REINSTATED FROM ARCHIVE - ${todayStr}] Sanction revoked upon employee reinstatement.\n---\n${log.reason || ''}`;
+                await supabase
+                    .from('disciplinary_logs')
+                    .update({ 
+                        status: 'Resolved',
+                        reason: updatedReason
+                    })
+                    .eq('id', log.id);
+            }
+        }
+
+        // 3. Structured Audit Log
+        if (req.user?.id) {
+            const { createAuditLog } = await import('./auditLogs.js');
+            await createAuditLog({
+                log_name: 'employees',
+                description: `Restored employee ${updatedEmp.first_name} ${updatedEmp.last_name} (${updatedEmp.company_id || targetId}) to Active standing.`,
+                subject_type: 'App\\Models\\Employee',
+                subject_id: targetId,
+                event: 'restored',
+                causer_id: req.user.id,
+                properties: { restored_at: new Date().toISOString() },
+            }).catch(() => {});
+        }
+
+        // 4. Send Realtime broadcast to unblock Gate Scanner & update directory
+        try {
+            const channel = supabase.channel('disciplinary-updates');
+            await channel.send({
+                type: 'broadcast',
+                event: 'EMPLOYEE_RESTORED',
+                payload: {
+                    employee_id: targetId,
+                    company_id: updatedEmp.company_id,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } catch (_) {}
+
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/disciplinary', '/api/attendance']);
+
+        res.json({
+            success: true,
+            message: `${updatedEmp.first_name} ${updatedEmp.last_name} restored successfully to Active status.`,
+            data: updatedEmp
+        });
+    } catch (error) {
+        console.error('Error restoring employee:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
