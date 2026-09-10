@@ -114,9 +114,11 @@ function computeDepartmentPunctualityFromRecords(records, empMap) {
  * In-memory DOLE compliance checks computed from attendance records:
  *  1. Weekly Rest Day Rule (Labor Code Art. 91: 1 rest day per 6 work days)
  *  2. Regular Holiday Multipliers (200%)
- *  3. Night Shift Differential (+10% under Art. 86)
+ *
+ * NOTE: the Night Shift Differential check was removed - the company no longer
+ * runs night shifts, so this metric is retired.
  */
-function computeDoleComplianceFromRecords(records, nightShiftCount) {
+function computeDoleComplianceFromRecords(records) {
     const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
     const filteredRecords = (records || []).filter(r => r.date >= thirtyDaysAgo);
 
@@ -165,28 +167,28 @@ function computeDoleComplianceFromRecords(records, nightShiftCount) {
             label: 'Regular Holiday Multipliers (200%)',
             recordsFound: holidayRecords.length,
             status: holidayRecords.length > 0 ? `${holidayRecords.length} Tagged` : 'No holiday shifts logged'
-        },
-        nightDifferential: {
-            label: 'Night Shift Differential (+10%)',
-            employeesEligible: nightShiftCount,
-            status: nightShiftCount > 0 ? `Applied to ${nightShiftCount}` : 'N/A - No night shifts'
         }
     };
 }
 
-const PH_WORKING_DAYS_PER_MONTH = 26;
-
+/**
+ * Weekly pay cycle: Monday through Sunday. Workers here are paid weekly (not
+ * semi-monthly), so the forecaster projects a single work-week at a time instead
+ * of a 1-15 / 16-end cutoff. Working days within the week exclude Sunday only
+ * (6-day work week), matching the DOLE rest-day rule above.
+ */
 function getCutoffRange(refDate = new Date()) {
-    const year = refDate.getFullYear();
-    const month = refDate.getMonth();
-    const day = refDate.getDate();
-    const monthName = refDate.toLocaleString('default', { month: 'short' });
+    const day = refDate.getDay(); // 0 = Sun ... 6 = Sat
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    const start = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate() - diffToMonday);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6); // Sunday
 
-    if (day <= 15) {
-        return { start: new Date(year, month, 1), end: new Date(year, month, 15), label: `${monthName} 1-15` };
-    }
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    return { start: new Date(year, month, 16), end: new Date(year, month, lastDay), label: `${monthName} 16-${lastDay}` };
+    const fmt = (d) => `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+    const label = start.getMonth() === end.getMonth()
+        ? `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()}-${end.getDate()}`
+        : `${fmt(start)} - ${fmt(end)}`; // handles a week that spans a month boundary
+
+    return { start, end, label };
 }
 
 function countWorkingDays(start, end) {
@@ -201,7 +203,7 @@ function countWorkingDays(start, end) {
 }
 
 /**
- * 15-day cutoff payroll forecaster
+ * Weekly payroll forecaster
  */
 async function computePayrollForecast() {
     const today = new Date();
@@ -239,14 +241,11 @@ async function computePayrollForecast() {
         employeesWithPayrate += 1;
 
         const records = attByEmployee[emp.id] || [];
-        const isNightShift = (emp.shift || '').toLowerCase().includes('night');
 
         let empActual = 0;
         records.forEach(r => {
             const status = (r.status || '').toLowerCase();
-            if (status.includes('holiday')) empActual += dailyRate * 2;
-            else if (isNightShift) empActual += dailyRate * 1.1;
-            else empActual += dailyRate;
+            empActual += status.includes('holiday') ? dailyRate * 2 : dailyRate;
         });
 
         const attendanceRate = elapsedWorkingDays > 0 ? Math.min(1, records.length / elapsedWorkingDays) : 1;
@@ -318,7 +317,6 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         // 2. In-Memory Calculations
         const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
         const empMap = new Map();
-        let nightShiftCount = 0;
 
         employees.forEach(emp => {
             empMap.set(emp.id, emp);
@@ -327,10 +325,6 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             else if (dept === 'Retail') deptBreakdown.Retail++;
             else if (dept === 'IT') deptBreakdown.IT++;
             else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
-
-            if ((emp.shift || '').toLowerCase().includes('night')) {
-                nightShiftCount++;
-            }
         });
 
         let presentTodayCount = 0;
@@ -362,7 +356,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
-        const doleCompliance = computeDoleComplianceFromRecords(attendances, nightShiftCount);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances);
 
         // 3. Anomaly Signals & Briefing Metrics (deterministic in-memory)
         const signals = computeAttendanceSignals(attendances);
@@ -539,7 +533,6 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         // 1. Employee Department Breakdown
         const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
         const empMap = new Map();
-        let nightShiftCount = 0;
 
         employees.forEach(emp => {
             empMap.set(emp.id, emp);
@@ -548,10 +541,6 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
             else if (dept === 'Retail') deptBreakdown.Retail++;
             else if (dept === 'IT') deptBreakdown.IT++;
             else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
-
-            if ((emp.shift || '').toLowerCase().includes('night')) {
-                nightShiftCount++;
-            }
         });
 
         // 2. Today's Attendance Counters & Recent Logs
@@ -588,7 +577,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
-        const doleCompliance = computeDoleComplianceFromRecords(attendances, nightShiftCount);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances);
 
         res.json({
             totalStaff: employees.length,

@@ -231,13 +231,14 @@ export default function MyProfile() {
             case 'png':
             case 'jpg':
             case 'jpeg':
+            case 'heic':
                 return { icon: 'ti-photo', color: 'text-purple-500', bg: 'bg-purple-50', border: 'border-purple-100' };
             default:
                 return { icon: 'ti-file', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-100' };
         }
     };
 
-    const isImageFile = (fileName = '') => ['png', 'jpg', 'jpeg'].includes((fileName.split('.').pop() || '').toLowerCase());
+    const isImageFile = (fileName = '') => ['png', 'jpg', 'jpeg', 'heic', 'webp'].includes((fileName.split('.').pop() || '').toLowerCase());
 
     const getExpiryStatus = (doc) => {
         const expiryDate = doc.expiry_date || doc.expiryDate;
@@ -320,22 +321,15 @@ export default function MyProfile() {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            
-                {isDraggingFile && (
-                    <div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[60] bg-blue-600/10 backdrop-blur-xs flex items-center justify-center pointer-events-none"
-                    >
-                        <div className="bg-white rounded-xl shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
-                            <i className="ti ti-cloud-upload text-4xl text-blue-600 mb-2" />
-                            <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your 201 Document Vault</p>
-                        </div>
+            {isDraggingFile && (
+                <div className="fixed inset-0 z-[60] bg-blue-600/10 backdrop-blur-xs flex items-center justify-center pointer-events-none">
+                    <div className="bg-white rounded-xl shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
+                        <i className="ti ti-cloud-upload text-4xl text-blue-600 mb-2" />
+                        <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your 201 Document Vault</p>
                     </div>
-                )}
-            
+                </div>
+            )}
 
             {/* Profile header */}
             <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
@@ -429,7 +423,6 @@ export default function MyProfile() {
 
             {/* Personal and employment details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                
                 {/* Personal Information */}
                 <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
@@ -511,39 +504,32 @@ export default function MyProfile() {
 
             {/* 201 documents */}
             <div className="space-y-4">
-                
-                    {alerts.length > 0 && (
-                        <div
-                            initial={{ opacity: 0, y: -8, height: 0 }}
-                            animate={{ opacity: 1, y: 0, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5"
-                        >
-                            <div className="flex items-start gap-3">
-                                <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
-                                    <i className="ti ti-alert-triangle text-base" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs sm:text-sm font-bold text-amber-900">
-                                        {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} renewal
-                                    </p>
-                                    <p className="text-xs text-amber-700 font-medium mt-0.5">Please update or submit renewals before the expiry date.</p>
-                                    <div className="flex flex-wrap gap-2 mt-2.5">
-                                        {alerts.map(({ doc, status }) => (
-                                            <span
-                                                key={doc.id}
-                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}
-                                            >
-                                                <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-xs`} />
-                                                {doc.title || doc.file_name} · {status.label}
-                                            </span>
-                                        ))}
-                                    </div>
+                {alerts.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5">
+                        <div className="flex items-start gap-3">
+                            <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
+                                <i className="ti ti-alert-triangle text-base" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs sm:text-sm font-bold text-amber-900">
+                                    {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} renewal
+                                </p>
+                                <p className="text-xs text-amber-700 font-medium mt-0.5">Please update or submit renewals before the expiry date.</p>
+                                <div className="flex flex-wrap gap-2 mt-2.5">
+                                    {alerts.map(({ doc, status }) => (
+                                        <span
+                                            key={doc.id}
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}
+                                        >
+                                            <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-xs`} />
+                                            {doc.title || doc.file_name} · {status.label}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
                         </div>
-                    )}
-                
+                    </div>
+                )}
 
                 <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200">
                     {/* Separation notice */}
@@ -590,229 +576,235 @@ export default function MyProfile() {
                         </div>
                     </div>
 
-                        {documents.length === 0 ? (
-                            isTerminated ? (
-                                <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
-                                    <i className="ti ti-folder-off text-3xl text-slate-400 block" />
-                                    <div>
-                                        <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents on file</p>
-                                        <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
-                                    </div>
+                    {documents.length === 0 ? (
+                        isTerminated ? (
+                            <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                                <i className="ti ti-folder-off text-3xl text-slate-400 block" />
+                                <div>
+                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents on file</p>
+                                    <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
                                 </div>
-                            ) : (
-                                <div
-                                    onClick={() => openUploadModal()}
-                                    className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-blue-300 hover:bg-blue-50/20 transition-colors"
-                                >
-                                    <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
-                                    <div>
-                                        <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents uploaded yet</p>
-                                        <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
-                                    </div>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
-                                        className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                        <i className="ti ti-upload" /> Upload First Document
-                                    </button>
-                                </div>
-                            )
-                        ) : filteredDocuments.length === 0 ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                <i className="ti ti-file-search text-3xl text-slate-400 block mb-1" />
-                                <p className="font-semibold text-slate-600 text-xs">No files match "{docSearch}"</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                                {filteredDocuments.map((doc) => {
-                                    const meta = getFileMeta(doc.file_name || doc.title);
-                                    const status = getExpiryStatus(doc);
-                                    const fileUrl = doc.file_path?.startsWith('http')
-                                        ? doc.file_path
-                                        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/documents/${doc.file_path}`;
-
-                                    return (
-                                        <div key={doc.id} className="p-3.5 rounded-lg border border-slate-200 hover:border-blue-200 hover:shadow-xs transition-all flex items-start gap-3 bg-white">
-                                            {isImageFile(doc.file_name) ? (
-                                                <div className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-slate-200">
-                                                    <img src={fileUrl} alt="" className="h-full w-full object-cover" />
-                                                </div>
-                                            ) : (
-                                                <div className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
-                                                    <i className={`ti ${meta.icon} text-lg`} />
-                                                </div>
-                                            )}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-semibold text-slate-800 truncate" title={doc.title || doc.file_name}>{doc.title || doc.file_name}</p>
-                                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                    {doc.category && (
-                                                        <span className="inline-block px-1.5 py-0.2 bg-slate-100 text-slate-600 font-semibold text-[10px] rounded">
-                                                            {doc.category}
-                                                        </span>
-                                                    )}
-                                                    {status && (
-                                                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}>
-                                                            {status.level === 'valid' ? 'Valid' : status.label}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <a
-                                                    href={fileUrl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="mt-2 text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
-                                                >
-                                                    <i className="ti ti-external-link text-xs" /> View File
-                                                </a>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-            
-                {showUploadModal && !isTerminated && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-                        <div
-                            initial={{ opacity: 0, scale: 0.96 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.96 }}
-                            className="bg-white rounded-xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto"
-                        >
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
-                                        <i className="ti ti-file-upload text-base" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-slate-900 text-sm sm:text-base">Upload 201 Document</h3>
-                                        <p className="text-[11px] text-slate-500">Attach file to your permanent HR record</p>
-                                    </div>
+                            <div
+                                onClick={() => openUploadModal()}
+                                className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-blue-300 hover:bg-blue-50/20 transition-colors"
+                            >
+                                <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
+                                <div>
+                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents uploaded yet</p>
+                                    <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
                                 </div>
                                 <button
-                                    onClick={() => { if (!isUploading) { setShowUploadModal(false); resetUploadForm(); } }}
-                                    disabled={isUploading}
-                                    className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+                                    onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
+                                    className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                                 >
-                                    <i className="ti ti-x text-xs" />
+                                    <i className="ti ti-upload" /> Upload First Document
                                 </button>
                             </div>
+                        )
+                    ) : filteredDocuments.length === 0 ? (
+                        <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                            <i className="ti ti-file-search text-3xl text-slate-400 block mb-1" />
+                            <p className="font-semibold text-slate-600 text-xs">No files match "{docSearch}"</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                            {filteredDocuments.map((doc) => {
+                                const meta = getFileMeta(doc.file_name || doc.title);
+                                const status = getExpiryStatus(doc);
+                                const fileUrl = doc.file_path?.startsWith('http')
+                                    ? doc.file_path
+                                    : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/documents/${doc.file_path}`;
 
-                            <form onSubmit={handleUploadSubmit} className="space-y-3.5">
+                                return (
+                                    <div key={doc.id} className="p-3.5 rounded-lg border border-slate-200 hover:border-blue-200 hover:shadow-xs transition-all flex items-start gap-3 bg-white">
+                                        {isImageFile(doc.file_name) ? (
+                                            <div className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-slate-200">
+                                                <img src={fileUrl} alt="" className="h-full w-full object-cover" />
+                                            </div>
+                                        ) : (
+                                            <div className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
+                                                <i className={`ti ${meta.icon} text-lg`} />
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-semibold text-slate-800 truncate" title={doc.title || doc.file_name}>{doc.title || doc.file_name}</p>
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                {doc.category && (
+                                                    <span className="inline-block px-1.5 py-0.2 bg-slate-100 text-slate-600 font-semibold text-[10px] rounded">
+                                                        {doc.category}
+                                                    </span>
+                                                )}
+                                                {status && (
+                                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}>
+                                                        {status.level === 'valid' ? 'Valid' : status.label}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <a
+                                                href={fileUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="mt-2 text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                                            >
+                                                <i className="ti ti-external-link text-xs" /> View File
+                                            </a>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Modal for file upload */}
+            {showUploadModal && !isTerminated && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
+                    <div className="bg-white rounded-xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                                    <i className="ti ti-file-upload text-base" />
+                                </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Document Title</label>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
-                                        value={uploadForm.title}
-                                        onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Upload 201 Document</h3>
+                                    <p className="text-[11px] text-slate-500">Attach file to your permanent HR record</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { if (!isUploading) { setShowUploadModal(false); resetUploadForm(); } }}
+                                disabled={isUploading}
+                                className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+                            >
+                                <i className="ti ti-x text-xs" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUploadSubmit} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Document Title</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
+                                    value={uploadForm.title}
+                                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
+                                    required
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+                                    <select
+                                        value={uploadForm.category}
+                                        onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })}
                                         className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
-                                        required
+                                    >
+                                        {CATEGORIES.map((cat) => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                        Expiry Date {!showExpiryField && <span className="font-normal text-slate-400">(opt)</span>}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={uploadForm.expiryDate}
+                                        onChange={(e) => setUploadForm({ ...uploadForm, expiryDate: e.target.value })}
+                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
                                     />
                                 </div>
+                            </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                                        <select
-                                            value={uploadForm.category}
-                                            onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })}
-                                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
-                                        >
-                                            {CATEGORIES.map((cat) => (
-                                                <option key={cat} value={cat}>{cat}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                            Expiry Date {!showExpiryField && <span className="font-normal text-slate-400">(opt)</span>}
-                                        </label>
-                                        <input
-                                            type="date"
-                                            value={uploadForm.expiryDate}
-                                            onChange={(e) => setUploadForm({ ...uploadForm, expiryDate: e.target.value })}
-                                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Select File</label>
-                                    <div
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer"
-                                    >
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
-                                            onChange={(e) => e.target.files[0] && setUploadForm({ ...uploadForm, file: e.target.files[0] })}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                        />
-                                        {uploadForm.file && isImageFile(uploadForm.file.name) ? (
-                                            <div className="flex items-center gap-2.5 justify-center">
-                                                <img
-                                                    src={URL.createObjectURL(uploadForm.file)}
-                                                    alt=""
-                                                    className="h-10 w-10 rounded object-cover border border-slate-200"
-                                                />
-                                                <div className="text-left">
-                                                    <p className="text-xs font-semibold text-slate-800 truncate max-w-[180px]">{uploadForm.file.name}</p>
-                                                    <p className="text-[10px] text-slate-500">{formatFileSize(uploadForm.file.size)}</p>
-                                                </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Select File</label>
+                                <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                setUploadForm((prev) => ({
+                                                    ...prev,
+                                                    file,
+                                                    title: prev.title || file.name.replace(/\.[^/.]+$/, '')
+                                                }));
+                                            }
+                                        }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.target.value = null;
+                                        }}
+                                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                                    />
+                                    {uploadForm.file && isImageFile(uploadForm.file.name) ? (
+                                        <div className="flex items-center gap-2.5 justify-center z-0">
+                                            <img
+                                                src={URL.createObjectURL(uploadForm.file)}
+                                                alt=""
+                                                className="h-12 w-12 rounded object-cover border border-slate-200"
+                                            />
+                                            <div className="text-left">
+                                                <p className="text-xs font-semibold text-slate-800 truncate max-w-[180px]">{uploadForm.file.name}</p>
+                                                <p className="text-[10px] text-slate-500">{formatFileSize(uploadForm.file.size)}</p>
+                                                <p className="text-[10px] text-blue-600 font-semibold mt-0.5">Tap to change file</p>
                                             </div>
-                                        ) : uploadForm.file ? (
-                                            <>
-                                                <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl ${getFileMeta(uploadForm.file.name).color} mb-1 block`} />
-                                                <p className="text-xs font-semibold text-slate-800">{uploadForm.file.name}</p>
-                                                <p className="text-[10px] text-slate-500 mt-0.5">{formatFileSize(uploadForm.file.size)}</p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="ti ti-cloud-upload text-2xl text-blue-600 mb-1 block" />
-                                                <p className="text-xs font-semibold text-slate-700">Click or drag file here</p>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">PDF, PNG, JPG up to 10MB</p>
-                                            </>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : uploadForm.file ? (
+                                        <div className="z-0">
+                                            <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl ${getFileMeta(uploadForm.file.name).color} mb-1 block`} />
+                                            <p className="text-xs font-semibold text-slate-800 truncate max-w-[200px] mx-auto">{uploadForm.file.name}</p>
+                                            <p className="text-[10px] text-slate-500 mt-0.5">{formatFileSize(uploadForm.file.size)}</p>
+                                            <p className="text-[10px] text-blue-600 font-semibold mt-0.5">Tap to change file</p>
+                                        </div>
+                                    ) : (
+                                        <div className="z-0">
+                                            <i className="ti ti-cloud-upload text-2xl text-blue-600 mb-1 block" />
+                                            <p className="text-xs font-semibold text-slate-700">Tap here to choose file / take photo</p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5">PDF, Images (JPG, PNG) up to 10MB</p>
+                                        </div>
+                                    )}
                                 </div>
+                            </div>
 
-                                <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowUploadModal(false); resetUploadForm(); }}
-                                        disabled={isUploading}
-                                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isUploading || !uploadForm.file}
-                                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                        {isUploading ? (
-                                            <>
-                                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                Uploading...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="ti ti-upload" /> Submit Document
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
+                            <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowUploadModal(false); resetUploadForm(); }}
+                                    disabled={isUploading}
+                                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUploading || !uploadForm.file}
+                                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    {isUploading ? (
+                                        <>
+                                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            Uploading...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ti ti-upload" /> Submit Document
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                )}
-            
+                </div>
+            )}
         </div>
     );
 }

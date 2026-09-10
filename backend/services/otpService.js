@@ -35,11 +35,6 @@ export function storeOtp(identifier, code) {
 export function verifyOtpCode(identifier, code) {
     if (!identifier || !code) return { valid: false, error: 'Missing identifier or code' };
 
-    // Developer bypass code
-    if (code === '000000') {
-        return { valid: true, message: 'Master bypass accepted' };
-    }
-
     const key = identifier.toLowerCase().trim();
     const record = otpStore.get(key);
 
@@ -172,8 +167,9 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
             }
             console.warn(`[OTP_BREVO_WARN] Brevo response:`, data);
         } catch (err) {
-            console.warn(`[OTP_BREVO_ERROR] Brevo dispatch error (${err.message}).`);
-        }
+    console.warn(`[OTP_BREVO_ERROR] Brevo dispatch error (${err.message}).`);
+    return { success: false, error: 'Email delivery failed. Please try again or contact IT.' };
+}
     }
 
     // Local simulation fallback
