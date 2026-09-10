@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
@@ -22,16 +22,34 @@ const RISK_STYLES = {
 export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
+    const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
 
-    // Dashboard overview query
-    const { data: overviewData, isLoading, isFetching } = useQuery({
+    // 1. High-speed Telemetry Overview Query (< 80ms)
+    const { data: overviewData, isLoading } = useQuery({
         queryKey: ['adminDashboardOverview'],
         queryFn: async () => {
             const res = await fetchWithAuth('/api/dashboard/overview');
+            if (!res.ok) throw new Error('Failed to load dashboard overview');
             return res.json();
         },
         staleTime: 30000,
         refetchInterval: 60000,
+    });
+
+    // 2. Decoupled Asynchronous AI Briefing Query (Non-blocking background)
+    const { 
+        data: aiQueryData, 
+        isLoading: isAIQueryLoading, 
+        isFetching: isAIFetching 
+    } = useQuery({
+        queryKey: ['adminDashboardAI'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/dashboard/ai-briefing');
+            if (!res.ok) throw new Error('Failed to load AI briefing');
+            return res.json();
+        },
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     const dashboardData = overviewData?.admin || null;
@@ -39,11 +57,30 @@ export default function Dashboard() {
     const isPayrollLoading = isLoading && !payrollData;
     const anomalyData = overviewData?.anomalyData || null;
     const isAnomalyLoading = isLoading && !anomalyData;
-    const aiData = overviewData?.aiData || null;
-    const isAILoading = isFetching;
-    const refetchAI = () => queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
 
-    // Real-time synchronization
+    // Merge AI Data: prefer fresh AI query result, fallback to cached overview AI data
+    const briefing = aiQueryData?.briefing || overviewData?.aiData?.briefing || null;
+    const payrollInsight = aiQueryData?.payrollInsight || payrollData?.insight || null;
+    const isAILoading = isManualRefreshingAI || (isAIQueryLoading && !briefing) || (isAIFetching && !briefing);
+
+    // Manual Refresh of AI Briefing only (zero overhead on telemetry)
+    const handleRefreshAI = async () => {
+        if (isManualRefreshingAI) return;
+        setIsManualRefreshingAI(true);
+        try {
+            const res = await fetchWithAuth('/api/dashboard/ai-briefing?fresh=true');
+            if (res.ok) {
+                const fresh = await res.json();
+                queryClient.setQueryData(['adminDashboardAI'], fresh);
+            }
+        } catch (err) {
+            console.error('[DASHBOARD_UI] AI Refresh error:', err);
+        } finally {
+            setIsManualRefreshingAI(false);
+        }
+    };
+
+    // Real-time synchronization - ONLY invalidates fast overview telemetry
     useEffect(() => {
         const liveChannel = supabase
             .channel('dashboard_live')
@@ -63,10 +100,44 @@ export default function Dashboard() {
         };
     }, [queryClient]);
 
+    // Active trend data (memoized)
+    const activeTrend = useMemo(() => {
+        if (!dashboardData) return [];
+        return trendView === 'monthly' ? (dashboardData.monthlyTrends || []) : (dashboardData.weeklyTrends || []);
+    }, [dashboardData, trendView]);
+
+    const maxTrendValue = useMemo(() => {
+        return Math.max(...activeTrend.map(t => t.value || 0), 100);
+    }, [activeTrend]);
+
+    const presentPercentage = useMemo(() => {
+        if (!dashboardData || !dashboardData.totalStaff) return 0;
+        return Math.round((dashboardData.presentTodayCount / dashboardData.totalStaff) * 100);
+    }, [dashboardData]);
+
+    // Department punctuality ranking (memoized)
+    const deptList = useMemo(() => {
+        if (!dashboardData?.deptPunctuality) return [];
+        return dashboardData.deptPunctuality.map(d => ({
+            name: d.name,
+            score: d.score,
+            grade: d.grade,
+            sampleSize: d.sampleSize,
+            ...(GRADE_COLORS[d.grade] || GRADE_COLORS['B']),
+        }));
+    }, [dashboardData?.deptPunctuality]);
+
+    // Anomaly Risk Flags (memoized)
+    const riskFlags = useMemo(() => {
+        const burnoutAlerts = anomalyData?.report?.burnout_risk_alerts || [];
+        const latePatterns = anomalyData?.report?.frequent_late_patterns || [];
+        return [...burnoutAlerts, ...latePatterns].slice(0, 3);
+    }, [anomalyData]);
+
     if (isLoading || !dashboardData) {
         return (
             <div className="flex flex-col items-center justify-center h-[65vh] space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center animate-pulse">
                     <i className="ti ti-chart-pie-3 text-3xl text-blue-600" />
                 </div>
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting Real-Time Telemetry...</p>
@@ -79,33 +150,9 @@ export default function Dashboard() {
         presentTodayCount = 0,
         lateTodayCount = 0,
         pendingLeavesCount = 0,
-        deptBreakdown = {},
         recentLogs = [],
-        weeklyTrends = [],
-        monthlyTrends = [],
-        deptPunctuality = [],
         doleCompliance = null,
     } = dashboardData;
-
-    // Active trend data
-    const activeTrend = trendView === 'monthly' ? monthlyTrends : weeklyTrends;
-
-    const presentPercentage = totalStaff > 0 ? Math.round((presentTodayCount / totalStaff) * 100) : 0;
-    const briefing = aiData?.briefing;
-    const maxTrendValue = Math.max(...activeTrend.map(t => t.value || 0), 100);
-
-    // Department punctuality ranking
-    const deptList = deptPunctuality.map(d => ({
-        name: d.name,
-        score: d.score,
-        grade: d.grade,
-        sampleSize: d.sampleSize,
-        ...(GRADE_COLORS[d.grade] || GRADE_COLORS['B']),
-    }));
-
-    const burnoutAlerts = anomalyData?.report?.burnout_risk_alerts || [];
-    const latePatterns = anomalyData?.report?.frequent_late_patterns || [];
-    const riskFlags = [...burnoutAlerts, ...latePatterns].slice(0, 3);
 
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-12">
@@ -125,69 +172,111 @@ export default function Dashboard() {
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
                                 <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Daily Briefing
                             </span>
+                            {isManualRefreshingAI && (
+                                <span className="text-[11px] text-emerald-400/80 font-semibold flex items-center gap-1">
+                                    <i className="ti ti-loader-2 animate-spin" /> Regenerating...
+                                </span>
+                            )}
                         </div>
                         <button
-                            onClick={() => refetchAI({ fresh: true })}
+                            onClick={handleRefreshAI}
                             disabled={isAILoading}
-                            className="self-start sm:self-center px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/20 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer tap-active"
+                            className="self-start sm:self-center px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/20 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer tap-active disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <i className={`ti ti-refresh text-emerald-400 ${isAILoading ? 'animate-spin' : ''}`} />
                             <span>{isAILoading ? 'Analyzing...' : 'Refresh AI'}</span>
                         </button>
                     </div>
 
-                    <p className="text-base sm:text-lg font-bold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
-                        {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
-                    </p>
-
-                    {/* Badges pulled straight from the AI briefing - not locally recomputed */}
-                    {briefing && (
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-400">
-                                Punctuality Grade: {briefing.punctuality_grade || 'N/A'}
-                            </span>
-                            {briefing.top_performing_department && (
-                                <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-blue-300">
-                                    Top Dept: {briefing.top_performing_department}
+                    {isAILoading && !briefing ? (
+                        /* Enterprise Skeleton Shimmer State when AI briefing is cold / loading */
+                        <div className="space-y-4 animate-pulse pt-1">
+                            <div className="h-7 bg-slate-800/80 rounded-xl w-4/5 border-l-4 border-emerald-500/50 pl-4 py-1 flex items-center">
+                                <span className="text-xs text-slate-400 font-bold tracking-wide">
+                                    Gemini 2.0 analyzing real-time workforce telemetry...
                                 </span>
-                            )}
-                            {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
-                                <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1 animate-pulse">
-                                    <i className="ti ti-alert-triangle-filled text-[11px]" /> Needs Attention: {briefing.department_needs_attention}
-                                </span>
-                            )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="h-6 w-32 bg-slate-800/70 rounded-lg"></div>
+                                <div className="h-6 w-28 bg-slate-800/70 rounded-lg"></div>
+                                <div className="h-6 w-36 bg-slate-800/70 rounded-lg"></div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <i className="ti ti-bulb text-amber-400/40 text-sm" />
+                                        <div className="h-3 w-24 bg-slate-800 rounded"></div>
+                                    </div>
+                                    <div className="h-2.5 w-full bg-slate-800/60 rounded"></div>
+                                    <div className="h-2.5 w-4/5 bg-slate-800/60 rounded"></div>
+                                </div>
+                                <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 space-y-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <i className="ti ti-target-arrow text-blue-400/40 text-sm" />
+                                        <div className="h-3 w-32 bg-slate-800 rounded"></div>
+                                    </div>
+                                    <div className="h-2.5 w-full bg-slate-800/60 rounded"></div>
+                                    <div className="h-2.5 w-4/5 bg-slate-800/60 rounded"></div>
+                                </div>
+                            </div>
                         </div>
+                    ) : (
+                        /* Loaded AI Briefing */
+                        <>
+                            <p className="text-base sm:text-lg font-bold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
+                                {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
+                            </p>
+
+                            {/* Badges pulled straight from the AI briefing */}
+                            {briefing && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                        Punctuality Grade: {briefing.punctuality_grade || 'N/A'}
+                                    </span>
+                                    {briefing.top_performing_department && (
+                                        <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-blue-300">
+                                            Top Dept: {briefing.top_performing_department}
+                                        </span>
+                                    )}
+                                    {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
+                                        <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1 animate-pulse">
+                                            <i className="ti ti-alert-triangle-filled text-[11px]" /> Needs Attention: {briefing.department_needs_attention}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* AI-Generated Descriptive Analytics */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
+                                    <span className="text-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                        <i className="ti ti-bulb text-amber-400" /> Key Insights
+                                    </span>
+                                    <ul className="mt-2 space-y-1.5">
+                                        {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough data yet to generate insights.']).map((insight, i) => (
+                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                                <span className="text-emerald-400 mt-0.5">&bull;</span>
+                                                <span>{insight}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+                                    <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                        <i className="ti ti-target-arrow text-blue-400" /> Recommended Actions
+                                    </span>
+                                    <ul className="mt-2 space-y-1.5">
+                                        {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No action items at this time.']).map((rec, i) => (
+                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                                <span className="text-blue-400 mt-0.5">&bull;</span>
+                                                <span>{rec}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        </>
                     )}
-
-                    {/* AI-Generated Descriptive Analytics */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
-                            <span className="text-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
-                                <i className="ti ti-bulb text-amber-400" /> Key Insights
-                            </span>
-                            <ul className="mt-2 space-y-1.5">
-                                {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough data yet to generate insights.']).map((insight, i) => (
-                                    <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
-                                        <span className="text-emerald-400 mt-0.5">&bull;</span>
-                                        <span>{insight}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
-                            <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
-                                <i className="ti ti-target-arrow text-blue-400" /> Recommended Actions
-                            </span>
-                            <ul className="mt-2 space-y-1.5">
-                                {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No action items at this time.']).map((rec, i) => (
-                                    <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
-                                        <span className="text-blue-400 mt-0.5">&bull;</span>
-                                        <span>{rec}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -377,10 +466,10 @@ export default function Dashboard() {
                                 </div>
                             )}
 
-                            {payrollData.insight && (
+                            {(payrollInsight || payrollData.insight) && (
                                 <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
                                     <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
-                                    <p>{payrollData.insight}</p>
+                                    <p>{payrollInsight || payrollData.insight}</p>
                                 </div>
                             )}
                         </>

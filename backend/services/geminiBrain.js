@@ -253,6 +253,23 @@ Respond with strictly valid JSON:
 
   Analytics: {
     /**
+     * Fast retrieval of cached daily executive workforce briefing
+     */
+    getCachedBriefing() {
+      const cacheKey = `workforce_briefing_${new Date().toISOString().slice(0, 10)}`;
+      return aiCache.get(cacheKey) || null;
+    },
+
+    /**
+     * Fast retrieval of cached payroll narrative insight
+     */
+    getCachedPayrollInsight(cutoffStart, projectedTotal) {
+      if (!cutoffStart) return null;
+      const cacheKey = `payroll_insight_${cutoffStart}_${projectedTotal}`;
+      return aiCache.get(cacheKey) || null;
+    },
+
+    /**
      * Generate daily executive workforce briefing
      */
     async generateWorkforceBriefing(data, forceFresh = false) {
@@ -290,7 +307,7 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
 }`;
 
       try {
-        const raw = await executeGemini(prompt, systemInstruction, { isJson: true });
+        const raw = await executeGemini(prompt, systemInstruction, { isJson: true, timeoutMs: 5000 });
         const parsed = safeParseJson(raw, {
           executive_summary: `Workforce attendance is operating at ${data.attendanceRate || 95}% with ${data.presentCount || 0} active staff on site today.`,
           punctuality_grade: 'A',
