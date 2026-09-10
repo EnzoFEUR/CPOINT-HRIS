@@ -19,6 +19,14 @@ const RISK_STYLES = {
     Low: 'bg-orange-50 text-orange-700 border-orange-200',
 };
 
+const formatDisplayName = (name) => {
+    if (!name) return 'Staff Member';
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) {
+        return 'Staff Member';
+    }
+    return name;
+};
+
 export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
@@ -393,7 +401,7 @@ export default function Dashboard() {
                         {riskFlags.length > 0 ? riskFlags.map((flag, i) => (
                             <div key={i} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                    <p className="text-xs font-black text-slate-800 truncate">{flag.employee_name}</p>
+                                    <p className="text-xs font-black text-slate-800 truncate">{formatDisplayName(flag.employee_name)}</p>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
                                         {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
                                     </p>

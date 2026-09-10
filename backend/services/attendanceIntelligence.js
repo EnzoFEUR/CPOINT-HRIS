@@ -10,17 +10,37 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * (see geminiBrain.js `narrateAttendanceHealth`) is only to phrase a short summary
  * on top of these already-correct figures, never to produce the figures themselves.
  */
-export function computeAttendanceSignals(records) {
+function formatTitleCase(str) {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .split(' ')
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+export function computeAttendanceSignals(records, empMap = null) {
     const byEmployee = {};
 
     (records || []).forEach(r => {
         const empId = r.employee_id;
         if (!empId) return;
         if (!byEmployee[empId]) {
+            const emp = (empMap && empMap.get(empId)) || r.employees || null;
+            let formattedName = '';
+            if (emp) {
+                const rawName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+                formattedName = formatTitleCase(rawName);
+            }
+            if (!formattedName && emp?.company_id) {
+                formattedName = `Staff (${emp.company_id})`;
+            }
+
             byEmployee[empId] = {
                 employee_id: empId,
-                name: r.employees ? `${r.employees.first_name || ''} ${r.employees.last_name || ''}`.trim() || String(empId) : String(empId),
-                department: r.employees?.department || 'General',
+                name: formattedName || 'Staff Member',
+                department: emp?.department || 'General',
                 dates: [],
                 lateCount: 0,
                 // Sun..Sat histogram, used for the Monday/Friday absenteeism heuristic
