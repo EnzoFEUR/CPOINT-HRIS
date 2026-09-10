@@ -6,26 +6,29 @@ import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js
 
 const router = express.Router();
 
-// Get profile and 201 documents in a single parallel batch
+// Get profile, 201 documents, and disciplinary logs in a single parallel batch
 router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
     try {
         const userId = req.user.id;
-        const [empRes, docsRes] = await Promise.all([
-            supabase.from('employees').select('*').eq('id', userId).single(),
-            supabase.from('documents').select('*').eq('employee_id', userId).order('created_at', { ascending: false })
+        const [empRes, docsRes, discRes] = await Promise.all([
+            supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', userId).single(),
+            supabase.from('employee_documents').select('*').eq('employee_id', userId).order('created_at', { ascending: false }),
+            supabase.from('disciplinary_logs').select('*').eq('employee_id', userId).order('created_at', { ascending: false })
         ]);
 
         const employee = empRes.data || req.user;
         const documents = docsRes.data || [];
+        const disciplinary_logs = discRes.data || [];
 
         res.json({
             success: true,
             user: employee,
             employee,
-            documents
+            documents,
+            disciplinary_logs
         });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message, user: req.user, documents: [] });
+        res.status(500).json({ success: false, error: err.message, user: req.user, documents: [], disciplinary_logs: [] });
     }
 });
 

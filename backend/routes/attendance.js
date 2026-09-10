@@ -430,7 +430,7 @@ router.post(
     // Fetch Employee (with row-level locking intent via single())
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, is_active, requires_password_change')
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change')
       .eq('id', employee_id)
       .single();
 

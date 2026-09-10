@@ -41,6 +41,24 @@ export default function EmployeeArchive() {
 
   useEffect(() => {
     fetchArchivedEmployees();
+
+    // Subscribe to realtime employee changes
+    const channel = supabase
+      .channel('employee-archive-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+        fetchArchivedEmployees();
+      })
+      .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, () => {
+        fetchArchivedEmployees();
+      })
+      .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, () => {
+        fetchArchivedEmployees();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
 const fetchArchivedEmployees = async () => {

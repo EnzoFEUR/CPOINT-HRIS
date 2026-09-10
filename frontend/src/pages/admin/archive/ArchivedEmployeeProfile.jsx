@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
+import { fetchWithAuth } from '../../../utils/api';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -196,43 +197,75 @@ export default function ArchivedEmployeeProfile() {
     if (!employee) return;
     setIsRestoring(true);
     try {
-      const user = JSON.parse(localStorage.getItem('user'));
       const targetId = employee.id;
 
-      const { data, error: updateError } = await supabase
-        .from('employees')
-        .update({
-          status: 'active',
-          is_active: true,
-          archived_at: null,
-          separation_reason: null,
-          separation_type: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', targetId)
-        .select();
-
-      if (updateError) throw updateError;
-      if (!data || data.length === 0) {
-        throw new Error('No rows updated. Please check Row Level Security (RLS) policies.');
+      // Primary: Call the enterprise restore endpoint
+      let restoredSuccessfully = false;
+      try {
+        const res = await fetchWithAuth(`/api/employees/${targetId}/restore`, {
+          method: 'POST'
+        });
+        if (res.ok) {
+          const resData = await res.json();
+          if (resData.success) {
+            restoredSuccessfully = true;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('API restore failed, falling back to direct Supabase restore:', apiErr);
       }
 
-      await supabase
-        .from('disciplinary_logs')
-        .update({ status: 'Resolved' })
-        .eq('employee_id', targetId)
-        .or('status.ilike.Action Required,status.ilike.Pending');
+      // Fallback if backend route was not reached
+      if (!restoredSuccessfully) {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const { data, error: updateError } = await supabase
+          .from('employees')
+          .update({
+            status: 'active',
+            is_active: true,
+            archived_at: null,
+            separation_reason: null,
+            separation_type: null,
+            separation_date: null,
+            separation_notes: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', targetId)
+          .select();
 
-      if (user?.id) {
-        await supabase.from('activity_log').insert({
-          log_name: 'employees',
-          description: `Restored employee ${employee.first_name} ${employee.last_name} to Active status.`,
-          subject_type: 'App\\Models\\Employee',
-          subject_id: targetId,
-          event: 'restored',
-          causer_id: user.id,
-          properties: { previous_status: employee.status },
-        });
+        if (updateError) throw updateError;
+        if (!data || data.length === 0) {
+          throw new Error('No rows updated. Please check Row Level Security (RLS) policies.');
+        }
+
+        // Fix: Properly resolve all active/pending/under review disciplinary logs
+        await supabase
+          .from('disciplinary_logs')
+          .update({ status: 'Resolved' })
+          .eq('employee_id', targetId)
+          .in('status', ['Active', 'Action Required', 'Pending', 'Under Review']);
+
+        if (user?.id) {
+          await supabase.from('activity_log').insert({
+            log_name: 'employees',
+            description: `Restored employee ${employee.first_name} ${employee.last_name} to Active status.`,
+            subject_type: 'App\\Models\\Employee',
+            subject_id: targetId,
+            event: 'restored',
+            causer_id: user.id,
+            properties: { previous_status: employee.status },
+          }).catch(() => {});
+        }
+
+        // Realtime broadcast to Gate Scanner & Admin
+        try {
+          const channel = supabase.channel('disciplinary-updates');
+          await channel.send({
+            type: 'broadcast',
+            event: 'EMPLOYEE_RESTORED',
+            payload: { employee_id: targetId, timestamp: new Date().toISOString() }
+          });
+        } catch (_) {}
       }
 
       toast.success(`${employee.first_name} ${employee.last_name} restored successfully.`);

@@ -62,7 +62,7 @@ export function verifyOtpCode(identifier, code) {
     return { valid: true };
 }
 
-// Send OTP via Enterprise Resend API (sub-200ms REST HTTP/2)
+// Send OTP email with fallback dispatching
 export async function sendEmailOtp(email, code, userName = 'Employee') {
     const htmlContent = `
     <!DOCTYPE html>
@@ -138,7 +138,7 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
     </html>
     `;
 
-    // 1. Primary Enterprise Dispatcher: Brevo REST API v3 (Sub-200ms, Unrestricted Recipients)
+    // 1. Primary dispatcher: Brevo REST API v3
     if (process.env.BREVO_API_KEY) {
         try {
             const senderEmail = process.env.BREVO_SENDER_EMAIL || 'marikinahris2026@gmail.com';

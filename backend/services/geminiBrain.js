@@ -91,12 +91,10 @@ export const Brain = {
      */
     async checkLiveness(imageBuffer, isEnrollment = false) {
       const genAI = getGenAI();
-      const model = genAI.getGenerativeModel({
-        model: PRIMARY_MODEL,
-        generationConfig: { responseMimeType: 'application/json' }
-      });
-
+      const primaryModel = getPrimaryModel();
+      const fallbackModel = getFallbackModel();
       const base64Data = imageBuffer.toString('base64');
+
       const prompt = `You are an enterprise-grade biometric anti-spoofing forensic AI for a factory gate attendance system.
 Perform a strict 7-point liveness and anti-spoof analysis on this camera frame:
 
@@ -118,18 +116,32 @@ Respond with strictly valid JSON:
   "reason": "string: concise forensic justification"
 }`;
 
-      try {
-        const result = await model.generateContent([
+      const runLiveness = async (modelName) => {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { responseMimeType: 'application/json' }
+        });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Liveness timeout (${modelName})`)), 8000)
+        );
+        const contentPromise = model.generateContent([
           prompt,
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: 'image/jpeg'
-            }
-          }
+          { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }
         ]);
+        const result = await Promise.race([contentPromise, timeoutPromise]);
+        return result.response.text();
+      };
 
-        const parsed = safeParseJson(result.response.text(), {
+      try {
+        let rawText;
+        try {
+          rawText = await runLiveness(primaryModel);
+        } catch (primErr) {
+          console.warn(`[BRAIN_BIOMETRICS] Liveness primary model note: ${primErr.message}. Trying fallback ${fallbackModel}...`);
+          rawText = await runLiveness(fallbackModel);
+        }
+
+        const parsed = safeParseJson(rawText, {
           is_real_person: true,
           confidence: 0.85,
           reason: 'Liveness verified via heuristic fallback'
@@ -161,10 +173,8 @@ Respond with strictly valid JSON:
      */
     async verifyIdentityMatch(liveCameraBuffer, baselineBuffer, options = {}) {
       const genAI = getGenAI();
-      const model = genAI.getGenerativeModel({
-        model: PRIMARY_MODEL,
-        generationConfig: { responseMimeType: 'application/json' }
-      });
+      const primaryModel = getPrimaryModel();
+      const fallbackModel = getFallbackModel();
 
       const liveBase64 = liveCameraBuffer.toString('base64');
       const baselineBase64 = baselineBuffer.toString('base64');
@@ -194,19 +204,33 @@ Respond with strictly valid JSON:
   "reason": "string: clear forensic summary"
 }`;
 
-      try {
+      const runMatch = async (modelName) => {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { responseMimeType: 'application/json' }
+        });
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Dual biometric verification timeout')), 6000)
+          setTimeout(() => reject(new Error(`Dual biometric timeout (${modelName})`)), 10000)
         );
-
         const contentPromise = model.generateContent([
           prompt,
           { inlineData: { data: liveBase64, mimeType: 'image/jpeg' } },
           { inlineData: { data: baselineBase64, mimeType: 'image/jpeg' } }
         ]);
-
         const result = await Promise.race([contentPromise, timeoutPromise]);
-        const parsed = safeParseJson(result.response.text(), {
+        return result.response.text();
+      };
+
+      try {
+        let rawText;
+        try {
+          rawText = await runMatch(primaryModel);
+        } catch (primErr) {
+          console.warn(`[BRAIN_BIOMETRICS] Dual-match primary model note: ${primErr.message}. Trying fallback ${fallbackModel}...`);
+          rawText = await runMatch(fallbackModel);
+        }
+
+        const parsed = safeParseJson(rawText, {
           is_same_person: true,
           match_confidence: 0.85,
           is_live_person: true,
