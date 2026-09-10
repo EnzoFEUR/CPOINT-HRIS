@@ -36,6 +36,7 @@ export default function DisciplinaryIndex() {
     const [selectedRecordForClear, setSelectedRecordForClear] = useState(null);
     const [clearReason, setClearReason] = useState('');
     const [investigationNotes, setInvestigationNotes] = useState('');
+    const [isConfirmed, setIsConfirmed] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
 
     // Employee profile modal state
@@ -120,6 +121,11 @@ export default function DisciplinaryIndex() {
             return;
         }
 
+        if (!isConfirmed) {
+            toast.error('Please check the confirmation box before clearing this record.');
+            return;
+        }
+
         const targetRecordId = selectedRecordForClear.id;
         const previousRecords = [...records];
 
@@ -154,6 +160,7 @@ export default function DisciplinaryIndex() {
                 setSelectedRecordForClear(null);
                 setClearReason('');
                 setInvestigationNotes('');
+                setIsConfirmed(false);
             } else {
                 setRecords(previousRecords);
                 toast.error(data.error || 'Failed to clear record.');
@@ -761,20 +768,21 @@ export default function DisciplinaryIndex() {
                                         {/* 5. Actions */}
                                         <td className="px-6 py-3.5 text-right">
                                             <div className="flex items-center justify-end gap-1.5">
-                                                {/* Clear Record Button (Available unless already cleared) */}
+                                                {/* Review & Clear Button (Available unless already cleared) */}
                                                 {record.status !== 'Overturned' && (
                                                     <button 
                                                         onClick={() => {
                                                             setSelectedRecordForClear(record);
                                                             setClearReason('');
                                                             setInvestigationNotes('');
+                                                            setIsConfirmed(false);
                                                             setShowClearModal(true);
                                                         }}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 font-bold text-xs rounded-lg border border-teal-200 transition-colors shadow-xs cursor-pointer"
-                                                        title="Clear this record and remove penalties"
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 font-bold text-xs rounded-lg border border-teal-200 transition-colors shadow-xs cursor-pointer"
+                                                        title="Review this case and clear record"
                                                     >
-                                                        <i className="ti ti-shield-check text-teal-600" />
-                                                        <span>Clear Record</span>
+                                                        <i className="ti ti-file-check text-teal-600" />
+                                                        <span>Review &amp; Clear</span>
                                                     </button>
                                                 )}
 
@@ -956,12 +964,13 @@ export default function DisciplinaryIndex() {
                                                     setSelectedRecordForClear(record);
                                                     setClearReason('');
                                                     setInvestigationNotes('');
+                                                    setIsConfirmed(false);
                                                     setShowClearModal(true);
                                                 }}
                                                 className="px-2.5 py-1 bg-teal-50 text-teal-700 font-bold text-xs rounded-lg border border-teal-200 shadow-xs flex items-center gap-1 cursor-pointer"
-                                                title="Clear this record and remove penalties"
+                                                title="Review this case and clear record"
                                             >
-                                                <i className="ti ti-shield-check text-xs" /> Clear Record
+                                                <i className="ti ti-file-check text-xs" /> Review &amp; Clear
                                             </button>
                                         )}
 
@@ -1403,25 +1412,46 @@ export default function DisciplinaryIndex() {
                                 />
                             </div>
 
+                            {/* Confirmation Checkbox */}
+                            <div className="pt-1">
+                                <label className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                                    isConfirmed ? 'bg-teal-50/70 border-teal-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100/60'
+                                }`}>
+                                    <input 
+                                        type="checkbox"
+                                        checked={isConfirmed}
+                                        onChange={(e) => setIsConfirmed(e.target.checked)}
+                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
+                                    />
+                                    <span className="text-xs font-medium text-slate-700">
+                                        I have reviewed this case and confirm clearing this record.
+                                    </span>
+                                </label>
+                            </div>
+
                             <div className="pt-2 flex justify-end gap-2 shrink-0">
                                 <button 
                                     type="button" 
-                                    onClick={() => { setShowClearModal(false); setSelectedRecordForClear(null); }}
+                                    onClick={() => { setShowClearModal(false); setSelectedRecordForClear(null); setIsConfirmed(false); }}
                                     className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button 
-                                    disabled={isClearing}
+                                    disabled={isClearing || !isConfirmed || !clearReason.trim()}
                                     type="submit" 
-                                    className="px-5 py-2 font-bold rounded-xl text-xs shadow-sm text-white bg-teal-600 hover:bg-teal-700 cursor-pointer transition-all flex items-center gap-2"
+                                    className={`px-5 py-2 font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 ${
+                                        isConfirmed && clearReason.trim() && !isClearing
+                                            ? 'text-white bg-teal-600 hover:bg-teal-700 cursor-pointer shadow-teal-700/20'
+                                            : 'text-slate-400 bg-slate-100 border border-slate-200 cursor-not-allowed opacity-60'
+                                    }`}
                                 >
                                     {isClearing ? (
                                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                     ) : (
                                         <>
                                             <i className="ti ti-shield-check" />
-                                            <span>Clear Record</span>
+                                            <span>Confirm &amp; Clear Record</span>
                                         </>
                                     )}
                                 </button>
