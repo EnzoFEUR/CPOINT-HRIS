@@ -387,8 +387,8 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
         const doleCompliance = computeDoleComplianceFromRecords(attendances);
 
-        // 3. Anomaly Signals & Health Assessment (Deterministic in-memory)
-        const signals = computeAttendanceSignals(attendances);
+        // 3. Anomaly Signals & Health Assessment (Deterministic in-memory with empMap resolution)
+        const signals = computeAttendanceSignals(attendances, empMap);
         const general_health_assessment = signals.anomalies_detected_count === 0
             ? 'All attendance patterns are within acceptable organizational thresholds.'
             : `${signals.anomalies_detected_count} attendance pattern(s) flagged across ${signals.sample_size} active employees in the last 30 days.`;
