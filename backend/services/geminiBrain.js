@@ -4,9 +4,9 @@ import NodeCache from 'node-cache';
 // In-memory cache with 15-minute TTL
 const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
-// Model hierarchy with automatic fallback
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-latest';
+// Model hierarchy with automatic fallback to high-capacity production models
+const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+const getFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite';
 
 /**
  * Initialize GoogleGenerativeAI client safely
@@ -50,12 +50,15 @@ const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
     return result.response.text();
   };
 
+  const primaryModel = getPrimaryModel();
+  const fallbackModel = getFallbackModel();
+
   try {
-    return await tryModel(PRIMARY_MODEL);
+    return await tryModel(primaryModel);
   } catch (primaryErr) {
-    console.warn(`[GEMINI_BRAIN] Primary model note: ${primaryErr.message}. Attempting fallback...`);
+    console.warn(`[GEMINI_BRAIN] Primary model (${primaryModel}) note: ${primaryErr.message}. Attempting fallback to ${fallbackModel}...`);
     try {
-      return await tryModel(FALLBACK_MODEL);
+      return await tryModel(fallbackModel);
     } catch (fallbackErr) {
       console.error(`[GEMINI_BRAIN] Fallback model error: ${fallbackErr.message}`);
       throw fallbackErr;
@@ -253,6 +256,23 @@ Respond with strictly valid JSON:
 
   Analytics: {
     /**
+     * Fast retrieval of cached daily executive workforce briefing
+     */
+    getCachedBriefing() {
+      const cacheKey = `workforce_briefing_${new Date().toISOString().slice(0, 10)}`;
+      return aiCache.get(cacheKey) || null;
+    },
+
+    /**
+     * Fast retrieval of cached payroll narrative insight
+     */
+    getCachedPayrollInsight(cutoffStart, projectedTotal) {
+      if (!cutoffStart) return null;
+      const cacheKey = `payroll_insight_${cutoffStart}_${projectedTotal}`;
+      return aiCache.get(cacheKey) || null;
+    },
+
+    /**
      * Generate daily executive workforce briefing
      */
     async generateWorkforceBriefing(data, forceFresh = false) {
@@ -290,7 +310,7 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
 }`;
 
       try {
-        const raw = await executeGemini(prompt, systemInstruction, { isJson: true });
+        const raw = await executeGemini(prompt, systemInstruction, { isJson: true, timeoutMs: 8000 });
         const parsed = safeParseJson(raw, {
           executive_summary: `Workforce attendance is operating at ${data.attendanceRate || 95}% with ${data.presentCount || 0} active staff on site today.`,
           punctuality_grade: 'A',
