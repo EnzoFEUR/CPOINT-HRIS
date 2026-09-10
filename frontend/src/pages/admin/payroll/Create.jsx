@@ -72,7 +72,7 @@ const PayrollCreate = () => {
         initialPrefill.period_end || extractDateStr(new Date(Date.now() + 6 * 24 * 60 * 60 * 1000))
     );
 
-    // Stable refs for zero-latency realtime Supabase sync across multiple client machines
+    // Stable refs for realtime sync across client sessions
     const selectedGroupRef = useRef(selectedGroup);
     const productionGroupsRef = useRef(productionGroups);
     const periodStartRef = useRef(periodStart);
@@ -692,7 +692,7 @@ const PayrollCreate = () => {
         }
     }, [periodStart, periodEnd, selectedGroup, loadFactoryLogs]);
 
-    // Realtime Supabase Subscription for multi-client zero-latency sync
+    // Realtime Supabase subscription for multi-client sync
     useEffect(() => {
         const channel = supabase
             .channel('realtime_factory_production_logs_sync')

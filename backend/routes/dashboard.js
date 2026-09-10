@@ -203,7 +203,7 @@ function countWorkingDays(start, end) {
 }
 
 /**
- * In-memory weekly payroll forecaster (0ms database roundtrips)
+ * In-memory weekly payroll forecaster
  */
 function computePayrollForecastFromData(employees, attendances) {
     const today = new Date();
@@ -294,8 +294,8 @@ async function computePayrollForecast() {
 }
 
 /**
- * Consolidated admin dashboard overview (Ultra Low Latency < 100ms)
- * Delivers instant KPI telemetry, trends, punctuality, and forecast without blocking on AI generation.
+ * Consolidated admin dashboard overview
+ * Delivers KPI telemetry, trends, punctuality, and payroll forecast without blocking on AI generation.
  */
 router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
@@ -393,10 +393,10 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             ? 'All attendance patterns are within acceptable organizational thresholds.'
             : `${signals.anomalies_detected_count} attendance pattern(s) flagged across ${signals.sample_size} active employees in the last 30 days.`;
 
-        // 4. In-Memory Payroll Forecast (0ms database roundtrips)
+        // 4. In-memory payroll forecast
         const forecast = computePayrollForecastFromData(employees, attendances);
 
-        // 5. Zero-latency AI cache check (returns immediately if already generated, never blocks)
+        // 5. Cached AI briefing and insights (returns immediately if already generated)
         const cachedBriefing = Brain.Analytics.getCachedBriefing();
         const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal) : null;
         const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || null } : null;
@@ -447,7 +447,7 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             }
         }
 
-        // Fast parallel fetch of today's operational signals (< 20ms)
+        // Parallel fetch of today's operational signals
         const [
             { data: rawEmployees },
             { data: rawAttendances },

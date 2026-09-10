@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
@@ -79,6 +80,7 @@ export default function MyProfile() {
     }, [raw, initialUser]);
 
     const documents = profileResponse?.documents || [];
+    const disciplinaryLogs = profileResponse?.disciplinary_logs || [];
     const isLoading = isQueryLoading && !profile;
     const [docSearch, setDocSearch] = useState('');
     const fileInputRef = useRef(null);
@@ -500,6 +502,156 @@ export default function MyProfile() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Compliance & Disciplinary Standing */}
+            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                        <div className="h-9 w-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+                            <i className="ti ti-scale text-lg" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Compliance & Disciplinary Records</h3>
+                            <p className="text-[11px] text-slate-500">Official DOLE due process records, written warnings, and standing</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
+                            isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            disciplinaryState?.isSuspended ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                            disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                isTerminated ? 'bg-rose-600' :
+                                disciplinaryState?.isSuspended ? 'bg-amber-600 animate-pulse' :
+                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-600 animate-pulse' :
+                                'bg-emerald-500'
+                            }`} />
+                            {isTerminated ? 'Separated' :
+                             disciplinaryState?.isSuspended ? 'Suspension Active' :
+                             disciplinaryLogs.some(l => l.status === 'Active') ? 'Action Required' :
+                             'Good Standing'}
+                        </span>
+                    </div>
+                </div>
+
+                {disciplinaryLogs.length === 0 ? (
+                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                            <i className="ti ti-shield-check text-base" />
+                        </div>
+                        <div className="flex-1 text-center sm:text-left">
+                            <p className="font-bold text-emerald-900">Clean Disciplinary Standing</p>
+                            <p className="text-emerald-700 mt-0.5">
+                                You currently have no disciplinary infractions, warnings, or sanctions on file. Your account is in full compliance with company policies and DOLE standards.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {disciplinaryLogs.map((log) => {
+                            const isOverturnedOrResolved = log.status === 'Resolved' || log.status === 'Overturned';
+                            const isResolvedTermination = log.type === 'Termination' && isOverturnedOrResolved;
+                            const isReinstatedNote = (log.reason || '').includes('[REINSTATED') || (log.reason || '').includes('[EXONERATED') || (log.reason || '').includes('[CLEARED');
+
+                            return (
+                                <div
+                                    key={log.id}
+                                    className={`p-4 rounded-xl border text-xs transition-all ${
+                                        isResolvedTermination
+                                            ? 'bg-emerald-50/30 border-emerald-200'
+                                            : log.status === 'Active'
+                                            ? 'bg-rose-50/30 border-rose-200'
+                                            : log.status === 'Acknowledged'
+                                            ? 'bg-blue-50/30 border-blue-200'
+                                            : 'bg-slate-50/70 border-slate-200'
+                                    }`}
+                                >
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border flex items-center gap-1 ${
+                                                isResolvedTermination
+                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                    : log.type === 'Termination'
+                                                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                                    : log.type === 'Suspension'
+                                                    ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                            }`}>
+                                                <i className={`ti ${
+                                                    isResolvedTermination ? 'ti-circle-check' :
+                                                    log.type === 'Termination' ? 'ti-ban' :
+                                                    log.type === 'Suspension' ? 'ti-player-pause' : 'ti-alert-triangle'
+                                                }`} />
+                                                {isResolvedTermination ? 'Termination (Revoked / Restored)' : log.type}
+                                            </span>
+
+                                            <span className="text-slate-500 font-medium flex items-center gap-1">
+                                                <i className="ti ti-calendar text-xs" />
+                                                {formatDate(log.date || log.created_at)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
+                                                log.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                log.status === 'Overturned' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                                                log.status === 'Acknowledged' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                                'bg-rose-100 text-rose-800 border-rose-300'
+                                            }`}>
+                                                {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
+                                                {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
+                                                {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
+                                                {log.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                                                <span>
+                                                    {log.status === 'Resolved' ? 'Resolved' :
+                                                     log.status === 'Overturned' ? 'Cleared' :
+                                                     log.status === 'Acknowledged' ? 'Acknowledged' :
+                                                     'Action Required'}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <p className="mt-2 text-slate-700 leading-relaxed whitespace-pre-line font-medium">
+                                        {log.reason || 'No details provided.'}
+                                    </p>
+
+                                    {log.status === 'Active' && (
+                                        <div className="mt-2.5 pt-2 border-t border-rose-200/60 flex items-center justify-between gap-2 text-[11px] text-rose-700">
+                                            <span className="flex items-center gap-1">
+                                                <i className="ti ti-alert-circle text-sm" /> Formal acknowledgment required under DOLE due process.
+                                            </span>
+                                            <Link
+                                                to="/employee/dashboard"
+                                                className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] uppercase transition-colors shrink-0"
+                                            >
+                                                Review Notice
+                                            </Link>
+                                        </div>
+                                    )}
+
+                                    {log.status === 'Acknowledged' && (
+                                        <div className="mt-2 pt-2 border-t border-blue-100 text-[11px] text-blue-700 font-medium flex items-center gap-1">
+                                            <i className="ti ti-checks text-sm" />
+                                            <span>Receipt formally acknowledged on employee portal.</span>
+                                        </div>
+                                    )}
+
+                                    {isReinstatedNote && (
+                                        <div className="mt-2 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                                            <i className="ti ti-check text-sm" />
+                                            <span>Sanction revoked and operational standing restored.</span>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* 201 documents */}

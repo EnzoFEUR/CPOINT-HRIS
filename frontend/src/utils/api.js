@@ -25,11 +25,13 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        // 3. Ensure the URL is correctly formatted
         const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
-        // 4. Execute the network request
-        const response = await fetch(url, { ...options, headers });
+        const response = await fetch(url, {
+            cache: 'no-cache',
+            ...options,
+            headers
+        });
 
         // 5. Global Error Handling for Unauthorized access
         if (response.status === 401) {
