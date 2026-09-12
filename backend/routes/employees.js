@@ -619,7 +619,7 @@ router.post('/:id/restore', async (req, res) => {
             });
         } catch (_) {}
 
-        invalidateCache(['/api/employees', '/api/dashboard', '/api/disciplinary', '/api/attendance']);
+        invalidateCache(['/api/employees', `/api/employees/${targetId}`, '/api/dashboard', '/api/disciplinary', '/api/attendance']);
 
         res.json({
             success: true,
