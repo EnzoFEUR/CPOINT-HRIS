@@ -12,6 +12,7 @@ const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0
 const HOLIDAY_LABELS = {
     regular: 'Regular Holiday',
     special_non_working: 'Special Non-Working Day',
+    special_working: 'Special Working Day',
 };
 
 const cleanDeductionName = (rawName) => {
