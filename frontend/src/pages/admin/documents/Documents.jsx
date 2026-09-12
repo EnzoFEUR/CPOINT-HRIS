@@ -98,7 +98,7 @@ export default function Documents() {
                         .maybeSingle(),
                     supabase
                         .from('disciplinary_logs')
-                        .select('id, type, reason, created_at')
+                        .select('id, type, status, reason, created_at')
                         .eq('employee_id', employeeId)
                         .eq('type', 'Termination')
                         .limit(1)
@@ -108,11 +108,16 @@ export default function Documents() {
 
                 if (empData) {
                     setEmployee(empData);
-                    const terminated = 
-                        empData.status === 'inactive' || 
-                        empData.status === 'terminated' || 
-                        empData.is_active === false || 
-                        Boolean(termLogs && termLogs.length > 0);
+                    const activeTermLog = (termLogs || []).find(l => {
+                    const s = (l.status || '').toLowerCase();
+                    return !['resolved', 'overturned', 'dismissed', 'cancelled', 'closed'].includes(s);
+                });
+
+                const terminated =
+                    empData.status === 'inactive' ||
+                    empData.status === 'terminated' ||
+                    empData.is_active === false ||
+                    Boolean(activeTermLog);
                     setIsTerminated(terminated);
 
                     // I-attach ang employee details sa bawat doc

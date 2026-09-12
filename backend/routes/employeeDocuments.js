@@ -51,33 +51,21 @@ router.post('/', upload.single('file'), async (req, res) => {
             return res.status(400).json({ success: false, message: 'Employee ID and Title are required' });
         }
 
-        // Security check: Verify employee status & disciplinary separation
-        const [
-            { data: employee, error: empErr },
-            { data: termLog }
-        ] = await Promise.all([
-            supabase
-                .from('employees')
-                .select('id, first_name, last_name, status, is_active')
-                .eq('id', employee_id)
-                .single(),
-            supabase
-                .from('disciplinary_logs')
-                .select('id')
-                .eq('employee_id', employee_id)
-                .eq('type', 'Termination')
-                .limit(1)
-        ]);
+        // Security check: Verify employee's current status
+        const { data: employee, error: empErr } = await supabase
+            .from('employees')
+            .select('id, first_name, last_name, status, is_active')
+            .eq('id', employee_id)
+            .single();
 
         if (empErr || !employee) {
             return res.status(404).json({ success: false, message: 'Employee record not found.' });
         }
 
-        const isTerminated = 
-            employee.status === 'inactive' || 
-            employee.status === 'terminated' || 
-            employee.is_active === false || 
-            Boolean(termLog && termLog.length > 0);
+        const isTerminated =
+            employee.status === 'inactive' ||
+            employee.status === 'terminated' ||
+            employee.is_active === false;
 
         if (isTerminated) {
             return res.status(403).json({
