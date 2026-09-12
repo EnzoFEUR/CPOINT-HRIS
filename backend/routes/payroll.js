@@ -191,6 +191,241 @@ router.delete('/holidays/:id', async (req, res) => {
     }
 });
 
+// ==============================================================================
+// 2b. Auto-Generate Deterministic Holidays for a Given Year
+//     (fixed-date holidays, National Heroes Day rule, Easter-based Holy Week,
+//     and looked-up Chinese New Year. Eidul Fitr / Eidul Adha are intentionally
+//     excluded - those are set by NCMF proclamation via moon sighting, not a
+//     fixed calendar rule, and must still be added manually each year.)
+// ==============================================================================
+
+// Meeus/Jones/Butcher algorithm - computes Easter Sunday for a Gregorian year
+function getEasterSunday(year) {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31); // 3 = March, 4 = April
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(Date.UTC(year, month - 1, day));
+}
+
+function addDays(date, days) {
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d;
+}
+
+function toDateStr(d) {
+    return d.toISOString().substring(0, 10);
+}
+
+function getLastMondayOfAugust(year) {
+    const lastDayOfAug = new Date(Date.UTC(year, 8, 0)); // day 0 of Sept = last day of Aug
+    const dow = lastDayOfAug.getUTCDay(); // 0 = Sun ... 6 = Sat
+    const diffToMonday = (dow + 6) % 7;
+    return addDays(lastDayOfAug, -diffToMonday);
+}
+
+// Published Chinese New Year (Spring Festival) dates. These follow the lunisolar
+// calendar and cannot be derived by formula, but the dates are published by
+// astronomical almanacs years in advance, so a lookup table is reliable.
+const CHINESE_NEW_YEAR_DATES = {
+    2025: '2025-01-29', 2026: '2026-02-17', 2027: '2027-02-06', 2028: '2028-01-26',
+    2029: '2029-02-13', 2030: '2030-02-03', 2031: '2031-01-23', 2032: '2032-02-11',
+    2033: '2033-01-31', 2034: '2034-02-19', 2035: '2035-02-08', 2036: '2036-01-28'
+};
+
+function generateDeterministicHolidays(year) {
+    const easter = getEasterSunday(year);
+    const maundyThursday = toDateStr(addDays(easter, -3));
+    const goodFriday = toDateStr(addDays(easter, -2));
+    const blackSaturday = toDateStr(addDays(easter, -1));
+
+    const holidays = [
+        // A. Regular Holidays
+        { name: "New Year's Day", date: `${year}-01-01`, type: 'regular' },
+        { name: 'Maundy Thursday', date: maundyThursday, type: 'regular' },
+        { name: 'Good Friday', date: goodFriday, type: 'regular' },
+        { name: 'Araw ng Kagitingan', date: `${year}-04-09`, type: 'regular' },
+        { name: 'Labor Day', date: `${year}-05-01`, type: 'regular' },
+        { name: 'Independence Day', date: `${year}-06-12`, type: 'regular' },
+        { name: 'National Heroes Day', date: toDateStr(getLastMondayOfAugust(year)), type: 'regular' },
+        { name: 'Bonifacio Day', date: `${year}-11-30`, type: 'regular' },
+        { name: 'Christmas Day', date: `${year}-12-25`, type: 'regular' },
+        { name: 'Rizal Day', date: `${year}-12-30`, type: 'regular' },
+
+        // B. Special (Non-Working) Days
+        { name: 'Ninoy Aquino Day', date: `${year}-08-21`, type: 'special_non_working' },
+        { name: "All Saints' Day", date: `${year}-11-01`, type: 'special_non_working' },
+        { name: 'Feast of the Immaculate Conception of Mary', date: `${year}-12-08`, type: 'special_non_working' },
+        { name: 'Last Day of the Year', date: `${year}-12-31`, type: 'special_non_working' },
+        { name: 'Black Saturday', date: blackSaturday, type: 'special_non_working' },
+        { name: "All Souls' Day", date: `${year}-11-02`, type: 'special_non_working' },
+        { name: 'Christmas Eve', date: `${year}-12-24`, type: 'special_non_working' },
+
+        // C. Special (Working) Day
+        { name: 'EDSA People Power Revolution Anniversary', date: `${year}-02-25`, type: 'special_working' }
+    ];
+
+    if (CHINESE_NEW_YEAR_DATES[year]) {
+        holidays.push({ name: 'Chinese New Year', date: CHINESE_NEW_YEAR_DATES[year], type: 'special_non_working' });
+    }
+
+    return holidays;
+}
+
+// Read-only status check — deliberately does NOT call ensureHolidaysGeneratedForRange.
+// The frontend uses this to show HR an explicit "Generate Holidays" reminder the first
+// time a year is touched, before the silent auto-generation safety net (wired into
+// /preview, GET /holidays, and POST /) has a chance to fill it in behind the scenes.
+router.get('/holidays/status', async (req, res) => {
+    try {
+        const year = parseInt(req.query.year, 10);
+        if (!year || year < 2020 || year > 2100) {
+            return res.status(400).json({ error: 'A valid year is required.' });
+        }
+
+        const { count, error } = await supabase
+            .from('holidays')
+            .select('id', { count: 'exact', head: true })
+            .gte('date', `${year}-01-01`)
+            .lte('date', `${year}-12-31`);
+
+        if (error) throw error;
+
+        res.json({ year, generated: (count || 0) > 0, count: count || 0 });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==============================================================================
+// 2c. Last-resort auto-generation
+//     This ONLY runs at the moment a payroll is actually saved (POST /), not
+//     while browsing, previewing, or loading the calendar. Those read paths
+//     used to also silently trigger this, but that caused a real bug: two
+//     concurrent requests (the holiday-rate preview and the explicit status
+//     check) could race each other, with the status check reading the table
+//     a moment before the preview's silent insert committed — showing HR a
+//     "not generated yet" banner and an "Active +X% rate" banner at the same
+//     time, for the same year. Now the ONLY ways a year's holidays get
+//     created are: (1) HR explicitly clicking "Generate Holidays", or (2)
+//     this function, as a final safety net so payroll math is never silently
+//     wrong even if that click was skipped somehow.
+//
+//     Uses an in-flight promise per year (not just a "done" flag) so that if
+//     two payroll saves for the same never-generated year land at nearly the
+//     same instant, the second one awaits the first's actual insert instead
+//     of racing it and creating a duplicate set of holiday rows.
+// ==============================================================================
+const yearGenerationState = new Map(); // year -> 'done' | Promise
+
+async function ensureHolidaysGeneratedForRange(startDateStr, endDateStr) {
+    if (!startDateStr || !endDateStr) return;
+
+    const startYear = parseInt(String(startDateStr).substring(0, 4), 10);
+    const endYear = parseInt(String(endDateStr).substring(0, 4), 10);
+    if (!startYear || !endYear) return;
+
+    for (let year = startYear; year <= endYear; year++) {
+        if (year < 2020 || year > 2100) continue;
+
+        const existingState = yearGenerationState.get(year);
+        if (existingState === 'done') continue;
+        if (existingState instanceof Promise) {
+            await existingState; // another concurrent call is already generating this year - wait for it, don't race it
+            continue;
+        }
+
+        const generationPromise = (async () => {
+            try {
+                const { data: existingRows, error: checkError } = await supabase
+                    .from('holidays')
+                    .select('date')
+                    .gte('date', `${year}-01-01`)
+                    .lte('date', `${year}-12-31`)
+                    .limit(1);
+
+                if (checkError) throw checkError;
+
+                if (existingRows && existingRows.length > 0) {
+                    yearGenerationState.set(year, 'done');
+                    return;
+                }
+
+                const candidates = generateDeterministicHolidays(year);
+                const { error: insertError } = await supabase.from('holidays').insert(candidates);
+                if (insertError) throw insertError;
+
+                yearGenerationState.set(year, 'done');
+                invalidateCache(['/api/payroll/holidays']);
+                console.log(`[Holidays] Auto-generated ${candidates.length} DOLE holidays for ${year} (payroll save safety net).`);
+            } catch (err) {
+                // Never let this break the payroll save it's supporting - worst case,
+                // that save just proceeds with whatever holidays already exist.
+                yearGenerationState.delete(year); // allow a future attempt to retry, instead of getting stuck
+                console.error(`[Holidays] Auto-generation failed for ${year}:`, err.message);
+            }
+        })();
+
+        yearGenerationState.set(year, generationPromise);
+        await generationPromise;
+    }
+}
+
+router.post('/holidays/generate', async (req, res) => {
+    try {
+        const year = parseInt(req.body.year, 10);
+        if (!year || year < 2020 || year > 2100) {
+            return res.status(400).json({ error: 'A valid year is required.' });
+        }
+
+        const candidates = generateDeterministicHolidays(year);
+        const cnyMissing = !CHINESE_NEW_YEAR_DATES[year];
+
+        const { data: existingRows } = await supabase
+            .from('holidays')
+            .select('date, name')
+            .gte('date', `${year}-01-01`)
+            .lte('date', `${year}-12-31`);
+
+        const existingSet = new Set((existingRows || []).map(r => `${r.date}__${r.name}`));
+        const toInsert = candidates.filter(h => !existingSet.has(`${h.date}__${h.name}`));
+
+        let inserted = [];
+        if (toInsert.length > 0) {
+            const { data, error } = await supabase.from('holidays').insert(toInsert).select();
+            if (error) throw error;
+            inserted = data;
+        }
+
+        invalidateCache(['/api/payroll/holidays']);
+
+        res.json({
+            success: true,
+            year,
+            inserted_count: inserted.length,
+            inserted,
+            skipped_existing: candidates.length - toInsert.length,
+            chinese_new_year_generated: !cnyMissing,
+            reminder: cnyMissing
+                ? `Chinese New Year was NOT generated - ${year} isn't in the lookup table (only 2025-2036 are covered). Add it manually once you have the published date, and add it to CHINESE_NEW_YEAR_DATES for next time. Eidul Fitr and Eidul Adha were also NOT generated - those are set by NCMF proclamation based on moon sighting, not a fixed formula.`
+                : 'Eidul Fitr and Eidul Adha were NOT generated - those are set by NCMF proclamation based on moon sighting, not a fixed formula. Add them manually once the annual proclamation confirms the date.'
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // 3. 13th month pay
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
@@ -448,6 +683,7 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch Holidays, Attendances, HR-Approved Paid Leaves, and Suspensions in parallel
+        await ensureHolidaysGeneratedForRange(pStart, pEnd);
         const [
             { data: holidayList },
             { data: attendanceLogs },

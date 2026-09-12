@@ -16,6 +16,7 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
+    "@fullcalendar/google-calendar": "^7.1.0",
     "@tabler/icons-react": "^3.46.0",
     "file-saver": "^2.0.5",
     "framer-motion": "^13.2.0",

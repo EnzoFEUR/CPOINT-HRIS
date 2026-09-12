@@ -32,6 +32,14 @@ export function round2(n) {
 export const HOLIDAY_TYPES = Object.freeze({
     REGULAR: 'regular',
     SPECIAL_NON_WORKING: 'special_non_working',
+    SPECIAL_WORKING: 'special_working',
+});
+
+/** Display labels for each DOLE holiday classification, kept next to the multiplier table so they can't drift apart. */
+export const HOLIDAY_TYPE_LABELS = Object.freeze({
+    [HOLIDAY_TYPES.REGULAR]: 'Regular Holiday',
+    [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: 'Special Non-Working Day',
+    [HOLIDAY_TYPES.SPECIAL_WORKING]: 'Special Working Day',
 });
 
 export const DOLE_DIVISOR = 21.75; // Standard PH monthly-to-daily factor
@@ -39,7 +47,10 @@ export const STANDARD_SHIFT_HOURS = 8;
 export const HOLIDAY_OT_PREMIUM = 0.30;
 export const THIRTEENTH_MONTH_TAX_EXEMPT_CEILING = 90000;
 
-const MULTIPLIERS = Object.freeze({
+// Exported (not just internal) so any UI that needs to display "what does this
+// classification actually pay" — e.g. the holiday calendar legend — reads the
+// real numbers instead of hardcoding a second copy that can drift out of sync.
+export const MULTIPLIERS = Object.freeze({
     [HOLIDAY_TYPES.REGULAR]: {
         worked: 2.0,
         workedRestDay: 2.6,
@@ -48,6 +59,14 @@ const MULTIPLIERS = Object.freeze({
     [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: {
         worked: 1.3,
         workedRestDay: 1.5,
+        unworked: 0,
+    },
+    [HOLIDAY_TYPES.SPECIAL_WORKING]: {
+        // A "special working day" is legally an ordinary working day — DOLE grants
+        // it no holiday premium at all. Rest-day-worked premium (130%) still applies
+        // independently if it happens to also fall on the employee's rest day.
+        worked: 1.0,
+        workedRestDay: 1.3,
         unworked: 0,
     },
 });
@@ -185,11 +204,14 @@ export function computeDayPay({
     }
 
     if (!worked) {
-        if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING) {
+        if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING || holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING) {
+            const note = holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING
+                ? 'Special Working Day is treated as an ordinary working day — no work, no pay, no holiday premium.'
+                : 'No work, no pay.';
             return {
                 date: dateStr,
                 holidayType: holiday.type,
-                holidayName: holiday.name || 'Special Non-Working Day',
+                holidayName: holiday.name || HOLIDAY_TYPE_LABELS[holiday.type],
                 worked: false,
                 isRestDay: restDayToday,
                 eligible: false,
@@ -197,7 +219,7 @@ export function computeDayPay({
                 overtimeHours: 0,
                 multiplier: 0,
                 pay: 0,
-                breakdown: { basicHolidayPay: 0, overtimePay: 0, note: 'No work, no pay.' },
+                breakdown: { basicHolidayPay: 0, overtimePay: 0, note },
             };
         }
 
@@ -233,7 +255,7 @@ export function computeDayPay({
     return {
         date: dateStr,
         holidayType: holiday.type,
-        holidayName: holiday.name || (holiday.type === HOLIDAY_TYPES.REGULAR ? 'Regular Holiday' : 'Special Non-Working Day'),
+        holidayName: holiday.name || HOLIDAY_TYPE_LABELS[holiday.type],
         worked: true,
         isRestDay: restDayToday,
         eligible: true,
