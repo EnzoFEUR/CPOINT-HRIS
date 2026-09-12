@@ -19,6 +19,7 @@ import aiRoutes from './routes/ai.js';
 import employeeDocumentRoutes from './routes/employeeDocuments.js';
 import otpRoutes from './routes/otp.js';
 import productionGroupRoutes from './routes/productionGroups.js';
+import documentRouter from './routes/document.js';
 
 // Middleware & Utilities
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
@@ -50,6 +51,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Start background workers
 startCronJobs();
+
+app.use(express.json());
+
+// Routes
+app.use('/api/documents', documentRouter);
 
 // Global Security Middleware
 app.use(securityHeaders);
