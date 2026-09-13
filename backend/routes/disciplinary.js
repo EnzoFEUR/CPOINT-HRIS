@@ -346,10 +346,17 @@ router.post('/', async (req, res) => {
             formattedReason = `[SUSPENDED ${durationDays} DAYS - Until ${endDateStr}] ${formattedReason}`;
             resolvedSeverity = severity || 'High';
 
-            await supabase
+            const { error: suspendError } = await supabase
                 .from('employees')
                 .update({ status: 'suspended', is_active: false })
                 .eq('id', employee_id);
+
+            if (suspendError) {
+                console.error('[SUSPENSION_EMPLOYEE_UPDATE_FAIL]', suspendError);
+                return res.status(500).json({
+                    error: `Suspension was not applied: could not update employee account (${suspendError.message}). No disciplinary record was created.`
+                });
+            }
         } 
         // Archive terminated employee record
         else if (resolvedType === 'Termination') {
@@ -372,10 +379,17 @@ router.post('/', async (req, res) => {
             };
 
             // Update employee record to inactive/archived with full separation details
-            await supabase
+            const { error: terminateError } = await supabase
                 .from('employees')
                 .update(terminationPayload)
                 .eq('id', employee_id);
+
+            if (terminateError) {
+                console.error('[TERMINATION_EMPLOYEE_UPDATE_FAIL]', terminateError);
+                return res.status(500).json({
+                    error: `Termination was not applied: could not update employee account (${terminateError.message}). No disciplinary record was created.`
+                });
+            }
         }
         
         const { data: newRecord, error } = await supabase
