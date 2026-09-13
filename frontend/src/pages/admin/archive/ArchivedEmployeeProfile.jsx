@@ -23,6 +23,21 @@ function getInitials(first, last) {
   return (a + b).toUpperCase() || '—';
 }
 
+function getAvatarUrl(emp) {
+  if (!emp) return null;
+  const photoPath =
+    emp.biometric_baseline_path ||
+    (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
+  if (!photoPath) return null;
+  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+}
+
+function isTerminatedStatus(emp) {
+  if (!emp) return false;
+  const status = (emp.status || emp.operational_status || '').toLowerCase();
+  return status === 'terminated' || status === 'inactive' || emp.is_active === false;
+}
+
 function paletteFor(seed) {
   const s = (seed || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_PALETTE[s % AVATAR_PALETTE.length];
@@ -381,17 +396,29 @@ export default function ArchivedEmployeeProfile() {
       <div className="bg-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-            {employee.avatar_url || employee.photo_url ? (
-              <img
-                src={employee.avatar_url || employee.photo_url}
-                alt={`${employee.first_name} ${employee.last_name}`}
-                className="w-20 h-20 rounded-2xl object-cover ring-4 ring-white/10 shadow-lg shrink-0"
-              />
-            ) : (
-              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-2xl ring-4 ${avatar.bg} ${avatar.text} ${avatar.ring} shrink-0`}>
-                {getInitials(employee.first_name, employee.last_name)}
-              </div>
-            )}
+            {(() => {
+              const avatarUrl = getAvatarUrl(employee);
+              const inactive = isTerminatedStatus(employee);
+              return avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={`${employee.first_name} ${employee.last_name}`}
+                  className={`w-20 h-20 rounded-2xl object-cover ring-4 ring-white/10 shadow-lg shrink-0 ${
+                    inactive ? 'grayscale opacity-70' : ''
+                  }`}
+                />
+              ) : (
+                <div
+                  className={`w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-2xl ring-4 shrink-0 ${
+                    inactive
+                      ? 'bg-slate-700 text-slate-300 ring-white/10'
+                      : `${avatar.bg} ${avatar.text} ${avatar.ring}`
+                  }`}
+                >
+                  {getInitials(employee.first_name, employee.last_name)}
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
