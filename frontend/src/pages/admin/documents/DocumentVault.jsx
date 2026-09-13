@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
+import BulkImportModal from './BulkImportModal';
 
 // NOTE: These are the categories actually visible on the live Document Vault
 // page's filter tabs (Contract / Government ID / Clearance / Certificate /
@@ -29,6 +30,7 @@ export default function DocumentVault() {
     const [statusFilter, setStatusFilter] = useState('pending');
     const [searchTerm, setSearchTerm] = useState('');
     const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const [reviewingDocId, setReviewingDocId] = useState(null);
     const [rejectModalDoc, setRejectModalDoc] = useState(null);
@@ -325,16 +327,28 @@ export default function DocumentVault() {
                     <h1 className="text-xl font-black text-slate-800">Document Vault</h1>
                 )}
 
-                <button
-                    type="button"
-                    onClick={() => !isTerminated && setIsUploadOpen(true)}
-                    disabled={isTerminated}
-                    title={isTerminated ? 'Uploads are disabled for separated/terminated employees' : ''}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-                >
-                    <i className={`ti ${isTerminated ? 'ti-lock' : 'ti-upload'} text-base`} />
-                    {isTerminated ? 'Uploads Disabled' : 'Upload Document'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => !isTerminated && setIsBulkImportOpen(true)}
+                        disabled={isTerminated}
+                        title={isTerminated ? 'Uploads are disabled for separated/terminated employees' : ''}
+                        className="px-3.5 py-2 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed text-slate-700 font-semibold text-xs rounded-lg shadow-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                        <i className="ti ti-file-zip text-base" />
+                        Bulk Import (ZIP)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => !isTerminated && setIsUploadOpen(true)}
+                        disabled={isTerminated}
+                        title={isTerminated ? 'Uploads are disabled for separated/terminated employees' : ''}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                        <i className={`ti ${isTerminated ? 'ti-lock' : 'ti-upload'} text-base`} />
+                        {isTerminated ? 'Uploads Disabled' : 'Upload Document'}
+                    </button>
+                </div>
             </div>
 
             {/* Employee-scoped header */}
@@ -570,6 +584,17 @@ export default function DocumentVault() {
                     </div>
                 )}
             </div>
+
+            {/* Bulk import modal */}
+            <BulkImportModal
+                isOpen={isBulkImportOpen}
+                onClose={() => setIsBulkImportOpen(false)}
+                employeeId={employeeId}
+                employee={employee}
+                employeeList={employeeList}
+                categories={CATEGORIES}
+                onImported={() => queryClient.invalidateQueries({ queryKey: ['vaultDocuments', employeeId] })}
+            />
 
             {/* Upload modal */}
             {isUploadOpen && (

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
+import BulkImportModal from './BulkImportModal';
 
 const CATEGORIES = [
     'All',
@@ -41,6 +42,7 @@ export default function Documents() {
 
     // Upload Modal states
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [documentTitle, setDocumentTitle] = useState('');
     const [category, setCategory] = useState('Contract');
     const [expiryDate, setExpiryDate] = useState('');
@@ -468,12 +470,23 @@ useEffect(() => {
                         <i className="ti ti-lock text-base" /> Uploads Disabled
                     </button>
                 ) : (
-                    <button
-                        onClick={() => setIsUploadModalOpen(true)}
-                        className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
-                    >
-                        <i className="ti ti-upload text-lg" /> Upload Document
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {employeeId && (
+                            <button
+                                type="button"
+                                onClick={() => setIsBulkImportOpen(true)}
+                                className="px-4 py-2.5 bg-white text-slate-600 border border-slate-200 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                            >
+                                <i className="ti ti-file-zip text-lg" /> Bulk Import
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsUploadModalOpen(true)}
+                            className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                        >
+                            <i className="ti ti-upload text-lg" /> Upload Document
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -727,6 +740,16 @@ useEffect(() => {
                     
                 </div>
             )}
+
+            {/* BULK IMPORT MODAL */}
+            <BulkImportModal
+                isOpen={isBulkImportOpen}
+                onClose={() => setIsBulkImportOpen(false)}
+                employeeId={employeeId}
+                isTerminated={isTerminated}
+                categories={CATEGORIES.filter((c) => c !== 'All')}
+                onImported={fetchDocuments}
+            />
 
             {/* UPLOAD DOCUMENT MODAL */}
             
