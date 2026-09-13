@@ -16,6 +16,21 @@ function getCompanyId(emp) {
   );
 }
 
+function getAvatarUrl(emp) {
+  if (!emp) return null;
+  const photoPath =
+    emp.biometric_baseline_path ||
+    (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
+  if (!photoPath) return null;
+  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+}
+
+function isTerminatedStatus(emp) {
+  if (!emp) return false;
+  const status = (emp.status || emp.operational_status || '').toLowerCase();
+  return status === 'terminated' || status === 'inactive' || emp.is_active === false;
+}
+
 function getTerminationCooldown(terminatedAt, cooldownDays = 30) {
   if (!terminatedAt) return { inCooldown: false, remainingDays: 0 };
 
@@ -61,6 +76,8 @@ export default function EmployeeArchive() {
     };
   }, []);
 
+const PENDING_TERMINATION_DAYS = 14; // Must match the Employee Directory's pending-termination window
+
 const fetchArchivedEmployees = async () => {
   setLoading(true);
   try {
@@ -68,10 +85,22 @@ const fetchArchivedEmployees = async () => {
       .from('employees')
       .select('*, production_groups(name)') // 👈 Joins production_groups table
       .or('status.ilike.terminated,status.ilike.inactive,is_active.eq.false')
+      .neq('status', 'suspended') // Suspended is a temporary, reversible state — exclude it from the terminated/inactive archive
       .order('updated_at', { ascending: false });
 
     if (error) throw error;
-    setEmployees(data || []);
+
+    // Recently-terminated employees stay in the Employee Directory under "Pending Termination"
+    // for PENDING_TERMINATION_DAYS — don't surface them here until that window has elapsed.
+    const now = Date.now();
+    const fullyArchived = (data || []).filter((emp) => {
+      const ts = emp.archived_at || emp.separation_date || emp.updated_at;
+      if (!ts) return true; // no timestamp to judge by — show it rather than silently hide it
+      const elapsedDays = (now - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
+      return elapsedDays >= PENDING_TERMINATION_DAYS;
+    });
+
+    setEmployees(fullyArchived);
   } catch (err) {
     console.error('Error fetching archived employees:', err);
     toast.error('Failed to load archived employees');
@@ -215,13 +244,27 @@ const fetchArchivedEmployees = async () => {
               ) : (
                 filteredEmployees.map((emp) => {
                   const initials = `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'EM';
+                  const avatarUrl = getAvatarUrl(emp);
+                  const inactive = isTerminatedStatus(emp);
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50/60 transition-colors group">
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white font-black text-xs flex items-center justify-center shadow-sm">
-                            {initials}
-                          </div>
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt={`${emp.first_name} ${emp.last_name}`}
+                              className={`w-9 h-9 rounded-xl object-cover shadow-sm ${inactive ? 'grayscale opacity-60' : ''}`}
+                            />
+                          ) : (
+                            <div
+                              className={`w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center shadow-sm ${
+                                inactive ? 'bg-slate-400 text-slate-100' : 'bg-slate-900 text-white'
+                              }`}
+                            >
+                              {initials}
+                            </div>
+                          )}
                           <div>
                             <div className="font-semibold text-slate-800 capitalize">
                               {emp.first_name} {emp.last_name}

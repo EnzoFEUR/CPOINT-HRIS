@@ -194,6 +194,18 @@ export default function Show() {
     );
     const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
     const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+
+    // Termination cooldown: a separated employee stays visually flagged (grayed
+    // out) but not yet finalized for this many days after their effective
+    // separation date - a reversible window before the record is treated as
+    // permanent. Change this single constant to adjust the window company-wide.
+    const TERMINATION_COOLDOWN_DAYS = 30;
+    const separationDateRaw = employee.termination_record?.date || employee.separation_date || null;
+    const daysSinceSeparation = separationDateRaw
+        ? Math.floor((Date.now() - new Date(separationDateRaw).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+    const isInCooldown = isTerminated && daysSinceSeparation !== null && daysSinceSeparation < TERMINATION_COOLDOWN_DAYS;
+    const cooldownDaysRemaining = isInCooldown ? TERMINATION_COOLDOWN_DAYS - daysSinceSeparation : 0;
     const isPendingRegistration = Boolean(
         employee?.requires_password_change && 
         !isTerminated
@@ -246,7 +258,7 @@ export default function Show() {
                 {/* Profile banner */}
                 <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-                        <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
+                        <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInCooldown ? 'grayscale opacity-60' : ''}`}>
                             <EmployeeAvatar
                                 employee={employee}
                                 size="h-24 w-24 sm:h-28 sm:w-28"
@@ -470,7 +482,9 @@ export default function Show() {
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h4 className="font-bold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
-                                    <span className="px-2 py-0.5 bg-rose-200/80 text-rose-900 text-[10px] font-extrabold uppercase rounded">DOLE Separated</span>
+                                    <span className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded ${isInCooldown ? 'bg-amber-200/80 text-amber-900' : 'bg-rose-200/80 text-rose-900'}`}>
+                                        {isInCooldown ? `Cooldown · ${cooldownDaysRemaining}d Left` : 'DOLE Separated · Finalized'}
+                                    </span>
                                 </div>
                                 <p className="text-xs text-rose-800 mt-1 leading-relaxed">
                                     {employee.termination_record?.reason || 'This employee account has been officially separated from active roster. Portal access and attendance permissions are deactivated.'}
@@ -479,6 +493,11 @@ export default function Show() {
                                     {employee.termination_record?.date && (
                                         <span className="flex items-center gap-1">
                                             <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900">{employee.termination_record.date}</strong>
+                                        </span>
+                                    )}
+                                    {isInCooldown && (
+                                        <span className="flex items-center gap-1">
+                                            <i className="ti ti-hourglass-low" /> <strong className="text-rose-900">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
