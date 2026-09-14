@@ -21,28 +21,20 @@ router.get('/', cacheResponse(15), async (req, res) => {
         const { data: notifications, error } = await query;
         if (error) throw error;
 
-        // Only fetch specific employees related to these notifications (targeted query, no full-table scan)
-        const relevantEmpIds = Array.from(new Set(
-            (notifications || [])
-                .map(n => n.sender_id || (n.target !== 'admin' ? n.target : null))
-                .filter(Boolean)
-        ));
+        // Fetch active employees to enrich notifications with real biometric photos and names
+        const { data: employees } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, biometric_baseline_path');
 
-        let empMap = new Map();
-        let employees = [];
-        if (relevantEmpIds.length > 0) {
-            const { data } = await supabase
-                .from('employees')
-                .select('id, company_id, first_name, last_name')
-                .in('id', relevantEmpIds);
-
-            employees = data || [];
-            employees.forEach(emp => {
-                empMap.set(emp.id, emp);
+        const empMap = new Map();
+        (employees || []).forEach(emp => {
+            empMap.set(emp.id, emp);
+            if (emp.company_id) empMap.set(emp.company_id, emp);
+            if (emp.first_name && emp.last_name) {
                 const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
                 empMap.set(fullName, emp);
-            });
-        }
+            }
+        });
 
         const enriched = (notifications || []).map(notif => {
             let matchedEmp = null;
@@ -51,9 +43,12 @@ router.get('/', cacheResponse(15), async (req, res) => {
             } else if (notif.target && empMap.has(notif.target)) {
                 matchedEmp = empMap.get(notif.target);
             } else {
-                for (const emp of employees) {
-                    const fullName = `${emp.first_name} ${emp.last_name}`;
-                    if ((notif.title && notif.title.includes(fullName)) || (notif.text && notif.text.includes(fullName))) {
+                for (const emp of (employees || [])) {
+                    const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+                    if (
+                        (notif.title && notif.title.toLowerCase().includes(fullName)) ||
+                        (notif.text && notif.text.toLowerCase().includes(fullName))
+                    ) {
                         matchedEmp = emp;
                         break;
                     }
@@ -63,9 +58,17 @@ router.get('/', cacheResponse(15), async (req, res) => {
             const company_id = notif.company_id || matchedEmp?.company_id || null;
             const sender_id = notif.sender_id || matchedEmp?.id || null;
             const sender_name = notif.sender_name || (matchedEmp ? `${matchedEmp.first_name} ${matchedEmp.last_name}` : null);
-            const sender_avatar = notif.sender_avatar || (company_id && sender_id 
-                ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${company_id}/${sender_id}.jpg`
-                : null);
+            
+            let sender_avatar = notif.sender_avatar || null;
+            if (!sender_avatar && matchedEmp) {
+                if (matchedEmp.biometric_baseline_path) {
+                    sender_avatar = matchedEmp.biometric_baseline_path.startsWith('http')
+                        ? matchedEmp.biometric_baseline_path
+                        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
+                } else if (company_id && sender_id) {
+                    sender_avatar = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${company_id}/${sender_id}.jpg`;
+                }
+            }
 
             return {
                 ...notif,
@@ -81,6 +84,15 @@ router.get('/', cacheResponse(15), async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// Singleton Realtime Channel to prevent channel leaks and socket degradation
+let systemNotifChannel = null;
+const getSystemNotifChannel = () => {
+    if (!systemNotifChannel) {
+        systemNotifChannel = supabase.channel('system-notifications');
+    }
+    return systemNotifChannel;
+};
 
 export const createNotification = async ({ target, title, text, type, sender_id, company_id, sender_name, sender_avatar }) => {
     const { data: newNotif, error } = await supabase
@@ -100,20 +112,59 @@ export const createNotification = async ({ target, title, text, type, sender_id,
         return null;
     }
 
+    // Auto-resolve avatar and sender info if missing
+    let resolvedAvatar = sender_avatar || null;
+    let resolvedName = sender_name || null;
+    let resolvedCompanyId = company_id || null;
+    let resolvedSenderId = sender_id || null;
+
+    try {
+        const empLookupId = sender_id || (target !== 'admin' ? target : null);
+        let matchedEmp = null;
+        if (empLookupId) {
+            const { data } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name, biometric_baseline_path')
+                .eq('id', empLookupId)
+                .maybeSingle();
+            matchedEmp = data;
+        }
+        if (matchedEmp) {
+            resolvedCompanyId = resolvedCompanyId || matchedEmp.company_id;
+            resolvedSenderId = resolvedSenderId || matchedEmp.id;
+            resolvedName = resolvedName || `${matchedEmp.first_name} ${matchedEmp.last_name}`;
+            if (!resolvedAvatar) {
+                if (matchedEmp.biometric_baseline_path) {
+                    resolvedAvatar = matchedEmp.biometric_baseline_path.startsWith('http')
+                        ? matchedEmp.biometric_baseline_path
+                        : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
+                } else if (matchedEmp.company_id && matchedEmp.id) {
+                    resolvedAvatar = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
+                }
+            }
+        }
+    } catch {
+        // Fallback silently
+    }
+
     const enrichedPayload = {
         ...newNotif,
-        sender_id,
-        company_id,
-        sender_name,
-        sender_avatar
+        sender_id: resolvedSenderId,
+        company_id: resolvedCompanyId,
+        sender_name: resolvedName,
+        sender_avatar: resolvedAvatar
     };
 
-    const channel = supabase.channel('system-notifications');
-    await channel.send({
-        type: 'broadcast',
-        event: 'NEW_NOTIFICATION',
-        payload: enrichedPayload
-    });
+    try {
+        const channel = getSystemNotifChannel();
+        await channel.send({
+            type: 'broadcast',
+            event: 'NEW_NOTIFICATION',
+            payload: enrichedPayload
+        });
+    } catch (chErr) {
+        console.warn('[NOTIF_BROADCAST_WARN]', chErr.message);
+    }
 
     // Dispatch push notification to user devices
     import('../services/pushService.js')

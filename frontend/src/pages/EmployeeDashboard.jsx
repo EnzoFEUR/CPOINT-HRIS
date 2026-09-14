@@ -108,6 +108,33 @@ const EmployeeDashboard = () => {
             })
             .subscribe();
 
+        const broadcastBus = supabase
+            .channel(`dashboard-disciplinary-sync-${user.id}`)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    if (payload?.type === 'Warning' || payload?.type === 'Suspension') {
+                        setShowInfractionsModal(true);
+                    }
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .subscribe();
+
         const handleRefresh = () => {
             queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
         };
@@ -132,6 +159,7 @@ const EmployeeDashboard = () => {
 
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(broadcastBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
@@ -483,26 +511,26 @@ const EmployeeDashboard = () => {
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
-                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/20 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/30 transition-colors">
+                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/15 border border-white/20 rounded-xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/25 transition-colors">
                                     <i className="ti ti-wallet text-2xl sm:text-3xl" />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {isTerminated && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Archived Records
                                         </span>
                                     )}
                                     {isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Compensation
                                         </span>
                                     )}
                                     {isFactoryWorker && !isTerminated && !isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Pakyawan Pool
                                         </span>
                                     )}
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
                                         <i className="ti ti-arrow-right text-lg sm:text-xl" />
                                     </div>
                                 </div>
@@ -511,7 +539,7 @@ const EmployeeDashboard = () => {
                                 <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
                                     {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : isFactoryWorker && !latestPayroll ? 'Compensation Model' : 'Latest Net Pay'}
                                 </p>
-                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
+                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight font-mono">
                                     {latestPayroll ? `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}` : (isFactoryWorker ? 'Batch Pool' : '₱0.00')}
                                 </h2>
                                 <p className="text-emerald-50 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
@@ -531,15 +559,15 @@ const EmployeeDashboard = () => {
                     {/* Today's shift */}
                     <div className={`relative overflow-hidden ${
                         isTerminated 
-                            ? 'bg-slate-900 border border-rose-500/20' 
+                            ? 'bg-slate-900 border border-rose-500/30' 
                             : isSuspended 
                             ? 'bg-slate-900 border border-orange-500/30' 
-                            : 'bg-slate-900'
-                    } rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group select-none`}>
+                            : 'bg-slate-900 border border-slate-800'
+                    } rounded-xl p-5 sm:p-6 md:p-8 shadow-sm text-white flex flex-col justify-between group select-none`}>
                         <div className="relative z-10 flex justify-between items-start">
-                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center ${
+                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center ${
                                 isTerminated ? 'text-rose-400' : isSuspended ? 'text-orange-400' : 'text-blue-400'
-                            } mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors`}>
+                            } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -654,7 +682,7 @@ const EmployeeDashboard = () => {
                                             Personnel Standing: Separated Account
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600" />
+                                            <i className="ti ti-circle-x" />
                                             <span>Employment Terminated</span>
                                         </span>
                                     </div>
@@ -742,7 +770,7 @@ const EmployeeDashboard = () => {
                                             Disciplinary Suspension Active
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-300">
-                                            <span className="w-2 h-2 rounded-full bg-orange-600 animate-pulse" />
+                                            <i className="ti ti-clock-pause" />
                                             <span>Suspended · Operational Hold</span>
                                         </span>
                                     </div>
@@ -828,7 +856,7 @@ const EmployeeDashboard = () => {
                                             HR Notice Awaiting Review
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                                            <i className="ti ti-alert-triangle" />
                                             <span>{unresolvedInfractions.length} Action Required</span>
                                         </span>
                                     </div>
@@ -1131,7 +1159,7 @@ const EmployeeDashboard = () => {
                 {showQrModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <div 
-                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                            className="absolute inset-0 bg-slate-950/70"
                             onClick={() => setShowQrModal(false)}
                         />
                         <div 
@@ -1219,7 +1247,7 @@ const EmployeeDashboard = () => {
                         `}</style>
                         
                         <div 
-                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+                            className="absolute inset-0 bg-slate-950/70 transition-opacity"
                             onClick={() => setShowPayslipModal(false)}
                         />
                         
@@ -1256,7 +1284,6 @@ const EmployeeDashboard = () => {
                                                     #{voucherId}
                                                 </span>
                                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
                                                     {activePayroll.status || 'Released'}
                                                 </span>
                                             </div>
@@ -1564,7 +1591,7 @@ const EmployeeDashboard = () => {
             {showLeaveModal && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                        className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowLeaveModal(false)}
                     />
                     <div 
@@ -1644,7 +1671,7 @@ const EmployeeDashboard = () => {
             {showInfractionsModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity"
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
                     />
                     <div className="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">

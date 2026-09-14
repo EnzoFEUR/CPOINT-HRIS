@@ -83,7 +83,7 @@ const fetchArchivedEmployees = async () => {
   try {
     const { data, error } = await supabase
       .from('employees')
-      .select('*, production_groups(name)') // 👈 Joins production_groups table
+      .select('*, production_groups(name)') // Joins production_groups table
       .or('status.ilike.terminated,status.ilike.inactive,is_active.eq.false')
       .neq('status', 'suspended') // Suspended is a temporary, reversible state — exclude it from the terminated/inactive archive
       .order('updated_at', { ascending: false });

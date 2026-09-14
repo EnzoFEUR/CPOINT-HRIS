@@ -1348,6 +1348,31 @@ router.get('/:id', cacheResponse(20), async (req, res) => {
     }
 });
 
+router.post('/bulk-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'ids must be a non-empty array of payroll IDs.' });
+        }
+        if (ids.length > 200) {
+            return res.status(400).json({ error: 'Cannot delete more than 200 records in a single request.' });
+        }
+        const invalidIds = ids.filter((id) => !isValidUUID(id));
+        if (invalidIds.length > 0) {
+            return res.status(400).json({ error: `Invalid payroll ID format: ${invalidIds.join(', ')}` });
+        }
+
+        const { error, count } = await supabase.from('payrolls').delete({ count: 'exact' }).in('id', ids);
+        if (error) throw error;
+
+        invalidateCache(['/api/payroll', '/api/dashboard']);
+        const deletedCount = count ?? ids.length;
+        res.json({ success: true, deleted_count: deletedCount, message: `${deletedCount} payroll record(s) deleted successfully.` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;

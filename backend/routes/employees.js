@@ -76,7 +76,8 @@ router.get('/', cacheResponse(15), async (req, res) => {
                     id, type, reason, status, date, created_at
                 )
             `)
-            .order('created_at', { ascending: false });
+            .order('last_name', { ascending: true })
+            .order('first_name', { ascending: true });
 
         if (req.query.employee_id) {
             query = query.eq('id', req.query.employee_id);
@@ -92,6 +93,19 @@ router.get('/', cacheResponse(15), async (req, res) => {
                 ...emp,
                 ...standing
             };
+        });
+
+        // Priority ordering: active workforce first, separated records last. Both groups sorted alphabetically (A-Z).
+        enriched.sort((a, b) => {
+            const aTerm = a.is_terminated ? 1 : 0;
+            const bTerm = b.is_terminated ? 1 : 0;
+            if (aTerm !== bTerm) return aTerm - bTerm;
+
+            const lastNameA = (a.last_name || '').trim();
+            const lastNameB = (b.last_name || '').trim();
+            const comp = lastNameA.localeCompare(lastNameB, undefined, { sensitivity: 'base' });
+            if (comp !== 0) return comp;
+            return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), undefined, { sensitivity: 'base' });
         });
 
         res.json({ success: true, data: enriched });
@@ -541,15 +555,46 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// POST /api/employees/:id/restore - High-speed enterprise restoration from Archive
+// POST /api/employees/:id/restore - Enterprise reinstatement from Pending Termination
 router.post('/:id/restore', async (req, res) => {
     try {
         const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
         if (!isAdmin) {
-            return res.status(403).json({ success: false, error: 'Administrative privileges required to restore employees.' });
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to reinstate employees.' });
         }
 
         const targetId = req.params.id;
+
+        // Fetch current employee record to check lifecycle state
+        const { data: targetEmp, error: fetchErr } = await supabase
+            .from('employees')
+            .select('id, first_name, last_name, status, is_active, archived_at, separation_date, updated_at')
+            .eq('id', targetId)
+            .single();
+
+        if (fetchErr || !targetEmp) {
+            return res.status(404).json({ success: false, error: 'Employee record not found.' });
+        }
+
+        // Check if employee has passed the 14-day reversible cooldown and entered permanent archive
+        const ts = targetEmp.archived_at || targetEmp.separation_date || targetEmp.updated_at;
+        const PENDING_COOLDOWN_DAYS = 14;
+        let isPermanentlyArchived = false;
+        if (ts) {
+            const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
+            if (elapsedDays >= PENDING_COOLDOWN_DAYS && (targetEmp.status === 'inactive' || targetEmp.status === 'terminated')) {
+                isPermanentlyArchived = true;
+            }
+        }
+
+        // In an enterprise model, cold storage records in the Archive Vault cannot be casually restored.
+        // Returning employees must undergo formal Re-hire onboarding.
+        if (isPermanentlyArchived && !req.body.force_rehire) {
+            return res.status(400).json({
+                success: false,
+                error: 'This employee record is permanently archived in cold storage for statutory audit compliance. To re-engage this personnel, initiate a formal Re-hire requisition.'
+            });
+        }
 
         // 1. Restore employee to active status and clear archive/separation fields
         const { data: updatedEmp, error: updateError } = await supabase
@@ -580,7 +625,7 @@ router.post('/:id/restore', async (req, res) => {
 
         if (openLogs && openLogs.length > 0) {
             for (const log of openLogs) {
-                const updatedReason = `[REINSTATED FROM ARCHIVE - ${todayStr}] Sanction revoked upon employee reinstatement.\n---\n${log.reason || ''}`;
+                const updatedReason = `[REINSTATED - ${todayStr}] Sanction revoked upon employee reinstatement from pending termination review.\n---\n${log.reason || ''}`;
                 await supabase
                     .from('disciplinary_logs')
                     .update({ 
@@ -596,26 +641,56 @@ router.post('/:id/restore', async (req, res) => {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
-                description: `Restored employee ${updatedEmp.first_name} ${updatedEmp.last_name} (${updatedEmp.company_id || targetId}) to Active standing.`,
+                description: `Reinstated employee ${updatedEmp.first_name} ${updatedEmp.last_name} (${updatedEmp.company_id || targetId}) to Active operational standing.`,
                 subject_type: 'App\\Models\\Employee',
                 subject_id: targetId,
-                event: 'restored',
+                event: 'reinstated',
                 causer_id: req.user.id,
                 properties: { restored_at: new Date().toISOString() },
             }).catch(() => {});
         }
 
-        // 4. Send Realtime broadcast to unblock Gate Scanner & update directory
+        // 4. Send Realtime broadcast to unblock Gate Scanner & update directory across all channels
         try {
-            const channel = supabase.channel('disciplinary-updates');
-            await channel.send({
-                type: 'broadcast',
-                event: 'EMPLOYEE_RESTORED',
-                payload: {
-                    employee_id: targetId,
-                    company_id: updatedEmp.company_id,
-                    timestamp: new Date().toISOString()
-                }
+            const broadcastPayload = {
+                employee_id: targetId,
+                company_id: updatedEmp.company_id,
+                status: 'active',
+                is_active: true,
+                timestamp: new Date().toISOString()
+            };
+
+            const targetTopics = [
+                'disciplinary_realtime_sync',
+                'disciplinary-updates',
+                'scanner_disciplinary_realtime',
+                `dashboard-disciplinary-sync-${targetId}`,
+                `qr-disciplinary-sync-${targetId}`,
+                `qr-realtime-${targetId}`
+            ];
+
+            targetTopics.forEach(topic => {
+                try {
+                    const ch = supabase.channel(topic);
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'EMPLOYEE_RESTORED',
+                        payload: broadcastPayload
+                    }).catch(() => {});
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'DISCIPLINARY_RESOLVED',
+                        payload: broadcastPayload
+                    }).catch(() => {});
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'DISCIPLINARY_STATUS_UPDATED',
+                        payload: {
+                            ...broadcastPayload,
+                            status: 'Resolved'
+                        }
+                    }).catch(() => {});
+                } catch (_) {}
             });
         } catch (_) {}
 
@@ -623,11 +698,11 @@ router.post('/:id/restore', async (req, res) => {
 
         res.json({
             success: true,
-            message: `${updatedEmp.first_name} ${updatedEmp.last_name} restored successfully to Active status.`,
+            message: `${updatedEmp.first_name} ${updatedEmp.last_name} reinstated successfully to Active standing.`,
             data: updatedEmp
         });
     } catch (error) {
-        console.error('Error restoring employee:', error);
+        console.error('Error reinstating employee:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

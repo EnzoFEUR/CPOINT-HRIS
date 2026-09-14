@@ -1642,7 +1642,7 @@ const PayrollCreate = () => {
 
                 {/* Automatic Holiday Banner Indicator */}
                 {holidayPreview.items.length > 0 && (
-                    <div className="mb-6 bg-gradient-to-r from-amber-50 via-amber-50/70 to-amber-100/50 border border-amber-200/80 p-3.5 sm:p-4 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="mb-6 bg-amber-50 border border-amber-300 p-3.5 sm:p-4 rounded-xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
                                 <i className="ti ti-calendar-event"></i>

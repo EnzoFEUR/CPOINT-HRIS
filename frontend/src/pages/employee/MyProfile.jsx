@@ -328,7 +328,7 @@ export default function MyProfile() {
                     <div className="bg-white rounded-xl shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
                         <i className="ti ti-cloud-upload text-4xl text-blue-600 mb-2" />
                         <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your 201 Document Vault</p>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your documents</p>
                     </div>
                 </div>
             )}
@@ -496,8 +496,8 @@ export default function MyProfile() {
                         </div>
                         <div className="col-span-2">
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Employment Status</p>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold text-[11px] rounded border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active Full-Time
+                            <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold text-[11px] rounded border border-emerald-200">
+                                Active Full-Time
                             </span>
                         </div>
                     </div>
@@ -524,11 +524,11 @@ export default function MyProfile() {
                             disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-50 text-rose-700 border-rose-200' :
                             'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                                isTerminated ? 'bg-rose-600' :
-                                disciplinaryState?.isSuspended ? 'bg-amber-600 animate-pulse' :
-                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-600 animate-pulse' :
-                                'bg-emerald-500'
+                            <i className={`ti ${
+                                isTerminated ? 'ti-circle-x' :
+                                disciplinaryState?.isSuspended ? 'ti-clock-pause' :
+                                disciplinaryLogs.some(l => l.status === 'Active') ? 'ti-alert-triangle' :
+                                'ti-circle-check'
                             }`} />
                             {isTerminated ? 'Separated' :
                              disciplinaryState?.isSuspended ? 'Suspension Active' :
@@ -605,7 +605,7 @@ export default function MyProfile() {
                                                 {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
                                                 {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
                                                 {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
-                                                {log.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                                                {log.status === 'Active' && <i className="ti ti-alert-triangle" />}
                                                 <span>
                                                     {log.status === 'Resolved' ? 'Resolved' :
                                                      log.status === 'Overturned' ? 'Cleared' :
@@ -705,7 +705,7 @@ export default function MyProfile() {
                                 <i className="ti ti-folders text-lg" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">201 Personnel Document Vault</h3>
+                                <h3 className="font-bold text-slate-900 text-sm sm:text-base">Personnel Documents</h3>
                                 <p className="text-xs text-slate-500">Government credentials, contracts, and company clearances</p>
                             </div>
                         </div>
@@ -821,7 +821,7 @@ export default function MyProfile() {
                                     <i className="ti ti-file-upload text-base" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Upload 201 Document</h3>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Upload Document</h3>
                                     <p className="text-[11px] text-slate-500">Attach file to your permanent HR record</p>
                                 </div>
                             </div>

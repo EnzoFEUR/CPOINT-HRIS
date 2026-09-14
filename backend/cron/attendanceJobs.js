@@ -7,7 +7,7 @@ cron.schedule('0 0 * * *', async () => {
     try {
         // Find attendance records that have a time_in but no time_out
         const { data, error } = await supabase
-            .from('attendance')
+            .from('attendances')
             .select('id')
             .is('time_out', null);
             
@@ -21,7 +21,7 @@ cron.schedule('0 0 * * *', async () => {
             
             // Auto-close them and flag as Missed Punch
             const { error: updateError } = await supabase
-                .from('attendance')
+                .from('attendances')
                 .update({ 
                     status: 'Missed Punch',
                     notes: 'System auto-closed at midnight due to missing clock-out.'

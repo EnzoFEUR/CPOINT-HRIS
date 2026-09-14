@@ -278,7 +278,7 @@ const Scanner = () => {
                 </div>
                 <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Security Terminal</h2>
                 <p className="text-slate-500 font-medium text-sm flex items-center justify-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-amber-500'}`}></span>
+                    <i className={`ti ${modelsLoaded ? 'ti-check text-emerald-500' : 'ti-loader text-amber-500 animate-spin'}`} />
                     {modelsLoaded ? 'AI Models Loaded' : 'Loading AI Models...'}
                 </p>
             </div>
@@ -313,7 +313,7 @@ const Scanner = () => {
                     {/* Top overlay */}
                     <div className="w-full flex items-center justify-between z-20 text-white">
                         <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-red-500"></span> Live
+                            <i className="ti ti-video text-rose-500" /> Live
                         </span>
                         <button 
                             onClick={stopScanner} 
@@ -365,7 +365,7 @@ const Scanner = () => {
                         <div className="space-y-0.5">
                             <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">AI Subsystem</p>
                             <p className="text-sm font-bold flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${faceLockedIn ? 'bg-green-400' : 'bg-blue-400'}`}></span>
+                                <i className={`ti ${faceLockedIn ? 'ti-face-id text-emerald-400' : 'ti-scan text-blue-400'}`} />
                                 {aiStatus}
                             </p>
                         </div>

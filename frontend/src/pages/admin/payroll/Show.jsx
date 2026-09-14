@@ -161,7 +161,6 @@ export default function PayrollShow() {
                                     #{payroll.id ? `PAY-${String(payroll.id).slice(0, 8).toUpperCase()}` : 'RECORD'}
                                 </span>
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
                                     {payroll.status || 'Released'}
                                 </span>
                             </div>

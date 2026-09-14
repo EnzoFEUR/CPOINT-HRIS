@@ -17,9 +17,9 @@ export default function AdminDashboard() {
   return (
     <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
       <PageHeader
-        breadcrumbs={['Admin', 'Overview', 'Workforce Metrics']}
-        title="Admin Control Center"
-        description="Comprehensive facility headcount, active shift distribution, and operational metrics."
+        breadcrumbs={['Admin', 'Overview', 'Dashboard']}
+        title="Admin Dashboard"
+        description="Facility headcount, shift attendance, and daily workforce metrics."
       />
 
       {/* Stats grid */}
@@ -126,7 +126,7 @@ export default function AdminDashboard() {
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  <i className="ti ti-clock text-amber-600 text-sm" />
                   <span className="text-xs font-bold text-slate-800">Factory Worker Schedule</span>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase">No OT</span>
@@ -140,7 +140,7 @@ export default function AdminDashboard() {
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-2 w-2 rounded-full bg-blue-600" />
+                  <i className="ti ti-clock text-blue-600 text-sm" />
                   <span className="text-xs font-bold text-slate-800">Regular Worker Schedule</span>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase">OT Eligible</span>
