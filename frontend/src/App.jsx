@@ -54,6 +54,7 @@ const ArchivedEmployeeProfile = lazy(() => import('./pages/admin/archive/Archive
 const MyQr = lazy(() => import('./pages/employee/MyQr'));
 const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
 const MyProfile = lazy(() => import('./pages/employee/MyProfile'));
+const Document = lazy(() => import('./pages/employee/Document'));
 
 function App() {
   // Global Biometric Photo & Avatar Protection (Anti-Save, Anti-Drag, Anti-New-Tab)
@@ -152,12 +153,21 @@ function App() {
           <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
           <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
 
+
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
           <Route path="/employee/qr" element={<MyQr />} />
           <Route path="/employee/scanner" element={<EmployeeScanner />} />
           <Route path="/employee/profile" element={<MyProfile />} />
           <Route path="/profile" element={<MyProfile />} />
+          <Route
+            path="/employee/documents"
+            element={
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-600 rounded-full animate-spin" /></div>}>
+                <Document />
+              </Suspense>
+            }
+          />              
         </Route>
       </Routes>
       <SpeedInsights />

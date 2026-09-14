@@ -91,6 +91,10 @@ export const MainLayout = ({ children }) => {
     window.location.href = '/login';
   }, []);
 
+  // Pages that render their own header (title, date, search, bell) and
+  // don't need MainLayout's generic Header duplicated above them.
+  const hideSharedHeader = location.pathname.startsWith('/employee/documents');
+
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
       {/* Desktop Sidebar */}
@@ -100,7 +104,7 @@ export const MainLayout = ({ children }) => {
       <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           {/* Header */}
-          <Header user={user} setSidebarOpen={setSidebarOpen} />
+          {!hideSharedHeader && <Header user={user} setSidebarOpen={setSidebarOpen} />}
 
           {/* Page Content */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">

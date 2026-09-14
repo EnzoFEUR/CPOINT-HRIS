@@ -62,29 +62,37 @@ function matchEmployeeToFilename(filename, employees) {
 }
 
 // GET /api/employee-documents?employee_id=...
+// GET /api/employee-documents?employee_id=...
 router.get('/', async (req, res) => {
     try {
         const { employee_id } = req.query;
+        const targetId = employee_id || req.user?.id;
 
-        let query = supabase.from('employee_documents').select('*');
-
-        if (employee_id) {
-            query = query.eq('employee_id', employee_id);
+        if (!targetId) {
+            return res.status(400).json({ success: false, message: 'Employee ID is required.' });
         }
 
-        const { data, error } = await query;
+        // Ownership check: regular employees can only query their own documents
+        const isAdmin = ['admin', 'hr', 'superadmin'].includes(req.user?.role);
+        if (!isAdmin && req.user?.id !== targetId && req.user?.employee_id !== targetId) {
+            return res.status(403).json({ success: false, message: 'Unauthorized to view these documents.' });
+        }
+
+        const { data: documents, error } = await supabase
+            .from('employee_documents')
+            .select('*')
+            .eq('employee_id', targetId)
+            .order('created_at', { ascending: false });
 
         if (error) throw error;
 
         return res.status(200).json({
             success: true,
-            documents: data || []
+            documents: documents || []
         });
     } catch (err) {
-        return res.status(500).json({
-            success: false,
-            error: err.message
-        });
+        console.error('Error fetching employee documents:', err);
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 

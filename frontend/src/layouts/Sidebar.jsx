@@ -137,34 +137,46 @@ export const Sidebar = ({ user, handleLogout }) => {
             ))}
           </>
         ) : (
-          <div className="space-y-1">
-            <Link
-              to="/employee/profile"
-              className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
-                location.pathname === '/employee/profile' || location.pathname === '/profile'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
-              }`}
-            >
-              <i className="ti ti-user-circle text-xl"></i>
-              <span className="ml-3 font-medium tracking-wide">Profile</span>
-            </Link>
+  <div className="space-y-1">
+    <Link
+      to="/employee/profile"
+      className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+        location.pathname === '/employee/profile' || location.pathname === '/profile'
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+          : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+      }`}
+    >
+      <i className="ti ti-user-circle text-xl"></i>
+      <span className="ml-3 font-medium tracking-wide">Profile</span>
+    </Link>
 
-            {isSecurity(user) && (
-              <Link
-                to="/scanner"
-                className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
-                  location.pathname === '/scanner'
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
-                }`}
-              >
-                <i className="ti ti-scan text-xl"></i>
-                <span className="ml-3 font-medium tracking-wide">Gate Scanner</span>
-              </Link>
-            )}
-          </div>
-        )}
+    <Link
+      to="/employee/documents"
+      className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+        location.pathname === '/employee/documents'
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+          : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+      }`}
+    >
+      <i className="ti ti-folder text-xl"></i>
+      <span className="ml-3 font-medium tracking-wide">Documents</span>
+    </Link>
+
+    {isSecurity(user) && (
+      <Link
+        to="/scanner"
+        className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
+          location.pathname === '/scanner'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+        }`}
+      >
+        <i className="ti ti-scan text-xl"></i>
+        <span className="ml-3 font-medium tracking-wide">Gate Scanner</span>
+      </Link>
+    )}
+  </div>
+)}
       </nav>
 
       {/* User profile */}
