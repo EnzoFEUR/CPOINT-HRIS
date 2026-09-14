@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
@@ -30,6 +30,9 @@ export default function DisciplinaryIndex() {
     const [durationDays, setDurationDays] = useState(3);
     const [customDays, setCustomDays] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isPersonnelDropdownOpen, setIsPersonnelDropdownOpen] = useState(false);
+    const [personnelSearch, setPersonnelSearch] = useState('');
+    const [personnelFilter, setPersonnelFilter] = useState('All');
 
     // Clear Disciplinary Record Modal State
     const [showClearModal, setShowClearModal] = useState(false);
@@ -86,13 +89,69 @@ export default function DisciplinaryIndex() {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 fetchData(true);
-            }, 250);
+            }, 300);
+        };
+
+        // Senior-Fullstack Instant Payload-Driven Realtime Mutator (0ms latency reaction)
+        const handleDisciplinaryLogChange = (payload) => {
+            const { eventType, new: newRec, old: oldRec } = payload;
+            
+            if (eventType === 'INSERT' && newRec) {
+                setRecords(prev => {
+                    if (prev.some(r => r.id === newRec.id)) return prev;
+                    return [newRec, ...prev];
+                });
+
+                // Immediate optimistic employee operational mutation
+                setEmployees(prev => prev.map(emp => {
+                    if (emp.id === newRec.employee_id) {
+                        if (newRec.type === 'Suspension') {
+                            return { ...emp, status: 'suspended', is_suspended: true, operational_status: 'Suspended' };
+                        }
+                        if (newRec.type === 'Termination') {
+                            return { ...emp, status: 'terminated', is_terminated: true, is_active: false, operational_status: 'Terminated' };
+                        }
+                    }
+                    return emp;
+                }));
+            } else if (eventType === 'UPDATE' && newRec) {
+                setRecords(prev => prev.map(r => r.id === newRec.id ? { ...r, ...newRec } : r));
+
+                // If suspension was lifted or record overturned, instantly restore employee in local memory
+                if (newRec.type === 'Suspension' && ['Overturned', 'Resolved', 'Dismissed', 'Closed'].includes(newRec.status)) {
+                    setEmployees(prev => prev.map(emp => {
+                        if (emp.id === newRec.employee_id && emp.status === 'suspended') {
+                            return { ...emp, status: 'active', is_suspended: false, operational_status: 'Active' };
+                        }
+                        return emp;
+                    }));
+                }
+            } else if (eventType === 'DELETE' && oldRec) {
+                setRecords(prev => prev.filter(r => r.id !== oldRec.id));
+            }
+
+            debouncedRefresh();
+        };
+
+        const handleEmployeeChange = (payload) => {
+            const { eventType, new: newEmp, old: oldEmp } = payload;
+            if (eventType === 'UPDATE' && newEmp) {
+                setEmployees(prev => prev.map(emp => emp.id === newEmp.id ? { ...emp, ...newEmp } : emp));
+            } else if (eventType === 'INSERT' && newEmp) {
+                setEmployees(prev => {
+                    if (prev.some(e => e.id === newEmp.id) || newEmp.role === 'admin') return prev;
+                    return [...prev, newEmp];
+                });
+            } else if (eventType === 'DELETE' && oldEmp) {
+                setEmployees(prev => prev.filter(emp => emp.id !== oldEmp.id));
+            }
+            debouncedRefresh();
         };
 
         const channel = supabase
             .channel('disciplinary_realtime_sync')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, debouncedRefresh)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, debouncedRefresh)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, handleDisciplinaryLogChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, handleEmployeeChange)
             .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, debouncedRefresh)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, debouncedRefresh)
             .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, debouncedRefresh)
@@ -107,11 +166,143 @@ export default function DisciplinaryIndex() {
         };
     }, []);
 
+    // Senior Fullstack Helper: Real-time comprehensive standing evaluator
+    // Accurately detects: Terminated, Suspended, Active Warning(s), or Clean Standing
+    const getEmployeeStanding = useCallback((emp) => {
+        if (!emp) {
+            return {
+                isTerminated: false,
+                isSuspended: false,
+                hasWarning: false,
+                warningCount: 0,
+                activeSuspension: null,
+                activeWarnings: [],
+                standingLabel: 'Unknown',
+                badgeBg: 'bg-slate-100',
+                badgeText: 'text-slate-600',
+                badgeBorder: 'border-slate-200',
+                icon: 'ti-help',
+                isClean: true
+            };
+        }
+
+        const empLogs = records.filter(r => 
+            (r.employee_id === emp.id || (emp.company_id && r.company_id === emp.company_id))
+        );
+
+        // 1. Terminated / Separated Check
+        const activeTermLog = empLogs.find(r => 
+            r.type === 'Termination' && 
+            !['Overturned', 'Dismissed', 'Cancelled', 'Resolved', 'Closed'].includes(r.status)
+        );
+        const isTerminated = Boolean(
+            emp.status === 'terminated' || 
+            emp.operational_status === 'Terminated' || 
+            emp.is_terminated ||
+            (activeTermLog && (emp.status === 'inactive' || emp.is_active === false))
+        );
+
+        // 2. Suspended Check
+        const activeSuspensionLog = !isTerminated && empLogs.find(r => 
+            r.type === 'Suspension' && 
+            ['Active', 'Action Required', 'Under Review'].includes(r.status)
+        );
+        const isSuspended = !isTerminated && Boolean(
+            emp.status === 'suspended' || 
+            emp.operational_status === 'Suspended' || 
+            emp.is_suspended || 
+            activeSuspensionLog
+        );
+
+        // 3. Warning Check (Active warnings that have not been overturned/dismissed/closed)
+        const activeWarnings = (!isTerminated && !isSuspended) ? empLogs.filter(r => 
+            r.type === 'Warning' && 
+            !['Overturned', 'Dismissed', 'Cancelled', 'Resolved', 'Closed'].includes(r.status)
+        ) : [];
+        const warningCount = activeWarnings.length;
+        const hasWarning = warningCount > 0;
+
+        let standingLabel = 'Active';
+        let badgeBg = 'bg-emerald-50';
+        let badgeText = 'text-emerald-700';
+        let badgeBorder = 'border-emerald-200';
+        let icon = 'ti-circle-check';
+
+        if (isTerminated) {
+            standingLabel = 'Terminated';
+            badgeBg = 'bg-rose-50';
+            badgeText = 'text-rose-700';
+            badgeBorder = 'border-rose-200';
+            icon = 'ti-user-x';
+        } else if (isSuspended) {
+            standingLabel = 'Suspended';
+            badgeBg = 'bg-amber-50';
+            badgeText = 'text-amber-700';
+            badgeBorder = 'border-amber-200';
+            icon = 'ti-lock';
+        } else if (hasWarning) {
+            standingLabel = `${warningCount} ${warningCount === 1 ? 'Warning' : 'Warnings'}`;
+            badgeBg = warningCount >= 3 ? 'bg-rose-50' : 'bg-orange-50';
+            badgeText = warningCount >= 3 ? 'text-rose-700' : 'text-orange-700';
+            badgeBorder = warningCount >= 3 ? 'border-rose-200' : 'border-orange-200';
+            icon = 'ti-alert-triangle';
+        }
+
+        return {
+            isTerminated,
+            isSuspended,
+            hasWarning,
+            warningCount,
+            activeSuspension: activeSuspensionLog || null,
+            activeWarnings,
+            standingLabel,
+            badgeBg,
+            badgeText,
+            badgeBorder,
+            icon,
+            isClean: !isTerminated && !isSuspended && !hasWarning
+        };
+    }, [records]);
+
+    const isEmployeeSuspended = (emp) => getEmployeeStanding(emp).isSuspended;
+    const isEmployeeTerminated = (emp) => getEmployeeStanding(emp).isTerminated;
+
     // Selected employee for modal preview
     const selectedEmployeeObj = useMemo(() => {
         if (!employeeId) return null;
         return employees.find(e => e.id === employeeId) || null;
     }, [employeeId, employees]);
+
+    const selectedStanding = useMemo(() => {
+        return getEmployeeStanding(selectedEmployeeObj);
+    }, [selectedEmployeeObj, getEmployeeStanding]);
+
+    const isAlreadySuspended = selectedStanding.isSuspended;
+    const isAlreadyTerminated = selectedStanding.isTerminated;
+    const hasPriorWarnings = selectedStanding.hasWarning;
+
+    // Filtered personnel list for the target personnel custom dropdown
+    const filteredPersonnel = useMemo(() => {
+        return employees.filter(emp => {
+            const standing = getEmployeeStanding(emp);
+
+            if (personnelFilter === 'Active' && !standing.isClean) return false;
+            if (personnelFilter === 'Warnings' && !standing.hasWarning) return false;
+            if (personnelFilter === 'Suspended' && !standing.isSuspended) return false;
+            if (personnelFilter === 'Terminated' && !standing.isTerminated) return false;
+
+            if (personnelSearch.trim()) {
+                const q = personnelSearch.toLowerCase();
+                const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+                const compId = (emp.company_id || '').toLowerCase();
+                const dept = (emp.department || '').toLowerCase();
+                const job = (emp.job_title || '').toLowerCase();
+                const status = standing.standingLabel.toLowerCase();
+                return fullName.includes(q) || compId.includes(q) || dept.includes(q) || job.includes(q) || status.includes(q);
+            }
+            return true;
+        });
+    }, [employees, records, personnelFilter, personnelSearch, getEmployeeStanding]);
 
     // Clear false or unfounded disciplinary record
     const handleClearSubmit = async (e) => {
@@ -332,7 +523,8 @@ export default function DisciplinaryIndex() {
     const acknowledgedCases = records.filter(r => r.status === 'Acknowledged').length;
     const resolvedCases = records.filter(r => r.status === 'Resolved').length;
     const overturnedCases = records.filter(r => r.status === 'Overturned').length;
-    const suspensionsActive = records.filter(r => r.type === 'Suspension' && r.status === 'Active').length;
+    const suspensionsActive = records.filter(r => r.type === 'Suspension' && ['Active', 'Action Required', 'Under Review'].includes(r.status)).length;
+    const warningsActive = records.filter(r => r.type === 'Warning' && !['Overturned', 'Dismissed', 'Cancelled', 'Resolved', 'Closed'].includes(r.status)).length;
 
     // Filter, Search, and Sort Pipeline
     const filteredRecords = useMemo(() => {
@@ -453,7 +645,21 @@ export default function DisciplinaryIndex() {
                     </div>
                 </div>
 
-                {/* 3. Cleared Records */}
+                {/* 3. Active Warnings */}
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl shrink-0 border border-amber-100">
+                        <i className="ti ti-alert-circle" />
+                    </div>
+                    <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Warnings</p>
+                        <div className="flex items-baseline gap-2 mt-0.5">
+                            <span className="text-2xl font-bold font-mono text-amber-600 tabular-nums">{warningsActive}</span>
+                            <span className="text-[11px] text-slate-400 font-medium">on record</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. Cleared Records */}
                 <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
                     <div className="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-xl shrink-0 border border-teal-100">
                         <i className="ti ti-shield-check" />
@@ -462,21 +668,7 @@ export default function DisciplinaryIndex() {
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cleared Records</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{overturnedCases}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">records cleared</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 4. Total Incidents */}
-                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-xl shrink-0 border border-slate-200">
-                        <i className="ti ti-history" />
-                    </div>
-                    <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Recorded</p>
-                        <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">{totalCases}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">{resolvedCases} resolved</span>
+                            <span className="text-[11px] text-slate-400 font-medium">restored</span>
                         </div>
                     </div>
                 </div>
@@ -1063,7 +1255,7 @@ export default function DisciplinaryIndex() {
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs"
+                        className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowModal(false)}
                     />
                     <div 
@@ -1091,28 +1283,197 @@ export default function DisciplinaryIndex() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-1">
-                            {/* TARGET PERSONNEL SELECTOR */}
+                            {/* TARGET PERSONNEL SELECTOR WITH PROFILE PHOTO & OPERATIONAL STATUS */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1">Target Personnel</label>
-                                <select 
-                                    required 
-                                    value={employeeId} 
-                                    onChange={(e) => setEmployeeId(e.target.value)}
-                                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:border-blue-500 transition-colors"
-                                >
-                                    <option value="">Select employee...</option>
-                                    {employees.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                            {emp.first_name} {emp.last_name} ({emp.company_id || 'ID N/A'}) • {emp.department || 'Staff'}
-                                        </option>
-                                    ))}
-                                </select>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">
+                                    Target Personnel <span className="text-rose-500">*</span>
+                                </label>
+
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPersonnelDropdownOpen(prev => !prev)}
+                                        className={`w-full px-3 py-2.5 bg-slate-50 hover:bg-slate-100/80 border rounded-xl flex items-center justify-between text-left transition-all cursor-pointer ${
+                                            isPersonnelDropdownOpen ? 'border-blue-500 ring-2 ring-blue-100 bg-white' : 'border-slate-200'
+                                        }`}
+                                    >
+                                        {selectedEmployeeObj ? (
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <EmployeeAvatar
+                                                    employee={selectedEmployeeObj}
+                                                    companyId={selectedEmployeeObj.company_id}
+                                                    employeeId={selectedEmployeeObj.id}
+                                                    photoUrl={selectedEmployeeObj.biometric_baseline_path ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${selectedEmployeeObj.biometric_baseline_path}` : null}
+                                                    avatarUrl={selectedEmployeeObj.avatar_url}
+                                                    name={`${selectedEmployeeObj.first_name} ${selectedEmployeeObj.last_name}`}
+                                                    size="h-8 w-8"
+                                                    rounded="rounded-lg"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-slate-900 truncate">
+                                                            {selectedEmployeeObj.first_name} {selectedEmployeeObj.last_name}
+                                                        </span>
+                                                        <span className="text-[10px] font-mono text-slate-400">
+                                                            ({selectedEmployeeObj.company_id || 'ID N/A'})
+                                                        </span>
+                                                        {selectedStanding.isTerminated ? (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0 flex items-center gap-1">
+                                                                <i className="ti ti-user-x text-[10px]" />
+                                                                Terminated
+                                                            </span>
+                                                        ) : selectedStanding.isSuspended ? (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0 flex items-center gap-1">
+                                                                <i className="ti ti-lock text-[10px]" />
+                                                                Suspended
+                                                            </span>
+                                                        ) : selectedStanding.hasWarning ? (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200 shrink-0 flex items-center gap-1">
+                                                                <i className="ti ti-alert-triangle text-[10px]" />
+                                                                {selectedStanding.warningCount} {selectedStanding.warningCount === 1 ? 'Warning' : 'Warnings'}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
+                                                                <i className="ti ti-check text-[10px]" />
+                                                                Active
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-500 truncate">
+                                                        {selectedEmployeeObj.department || 'Operations'} • {selectedEmployeeObj.job_title || 'Staff'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-slate-400 text-xs">
+                                                <i className="ti ti-user text-base" />
+                                                <span>Select target employee...</span>
+                                            </div>
+                                        )}
+                                        <i className={`ti ti-chevron-down text-slate-400 transition-transform ${isPersonnelDropdownOpen ? 'rotate-180 text-blue-600' : ''}`} />
+                                    </button>
+
+                                    {/* Dropdown Menu */}
+                                    {isPersonnelDropdownOpen && (
+                                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden animate-fade-in flex flex-col max-h-72">
+                                            {/* Search Bar */}
+                                            <div className="p-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
+                                                <div className="relative">
+                                                    <i className="ti ti-search absolute left-2.5 top-2.5 text-slate-400 text-xs" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search by name, ID, or status..."
+                                                        value={personnelSearch}
+                                                        onChange={(e) => setPersonnelSearch(e.target.value)}
+                                                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 font-medium"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                                {/* Filter Pills */}
+                                                <div className="flex items-center gap-1 mt-1.5 overflow-x-auto no-scrollbar">
+                                                    {['All', 'Active', 'Warnings', 'Suspended', 'Terminated'].map(pill => (
+                                                        <button
+                                                            key={pill}
+                                                            type="button"
+                                                            onClick={() => setPersonnelFilter(pill)}
+                                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer shrink-0 ${
+                                                                personnelFilter === pill
+                                                                    ? 'bg-slate-900 text-white'
+                                                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                                            }`}
+                                                        >
+                                                            {pill}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Personnel List */}
+                                            <div className="overflow-y-auto divide-y divide-slate-100 p-1">
+                                                {filteredPersonnel.length > 0 ? (
+                                                    filteredPersonnel.map(emp => {
+                                                        const standing = getEmployeeStanding(emp);
+                                                        const isSelected = emp.id === employeeId;
+
+                                                        return (
+                                                            <button
+                                                                key={emp.id}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setEmployeeId(emp.id);
+                                                                    setIsPersonnelDropdownOpen(false);
+                                                                    setPersonnelSearch('');
+                                                                    if (standing.isSuspended && type === 'Suspension') {
+                                                                        setType('Warning');
+                                                                    }
+                                                                }}
+                                                                className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-left transition-colors cursor-pointer ${
+                                                                    isSelected 
+                                                                        ? 'bg-blue-50/90 border border-blue-200' 
+                                                                        : 'hover:bg-slate-50'
+                                                                }`}
+                                                            >
+                                                                <EmployeeAvatar
+                                                                    employee={emp}
+                                                                    companyId={emp.company_id}
+                                                                    employeeId={emp.id}
+                                                                    photoUrl={emp.biometric_baseline_path ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${emp.biometric_baseline_path}` : null}
+                                                                    avatarUrl={emp.avatar_url}
+                                                                    name={`${emp.first_name} ${emp.last_name}`}
+                                                                    size="h-8.5 w-8.5"
+                                                                    rounded="rounded-lg"
+                                                                />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <p className="text-xs font-bold text-slate-900 truncate">
+                                                                            {emp.first_name} {emp.last_name}
+                                                                        </p>
+                                                                        {standing.isTerminated ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0 flex items-center gap-1">
+                                                                                <i className="ti ti-user-x text-[10px]" />
+                                                                                Terminated
+                                                                            </span>
+                                                                        ) : standing.isSuspended ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0 flex items-center gap-1">
+                                                                                <i className="ti ti-lock text-[10px]" />
+                                                                                Suspended
+                                                                            </span>
+                                                                        ) : standing.hasWarning ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-100 text-orange-800 border border-orange-200 shrink-0 flex items-center gap-1">
+                                                                                <i className="ti ti-alert-triangle text-[10px]" />
+                                                                                {standing.warningCount} {standing.warningCount === 1 ? 'Warning' : 'Warnings'}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
+                                                                                <i className="ti ti-check text-[10px]" />
+                                                                                Active
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                                                        <span className="font-mono font-medium">{emp.company_id || 'ID N/A'}</span> • {emp.department || 'Operations'}
+                                                                    </p>
+                                                                </div>
+                                                                {isSelected && <i className="ti ti-check text-blue-600 text-xs shrink-0" />}
+                                                            </button>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="p-4 text-center text-xs text-slate-400">
+                                                        No matching personnel found.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* SELECTED EMPLOYEE AVATAR & BIO PREVIEW CARD */}
                             {selectedEmployeeObj && (
-                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3 animate-fade-in">
+                                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3.5 animate-fade-in">
                                     <EmployeeAvatar
+                                        employee={selectedEmployeeObj}
                                         companyId={selectedEmployeeObj.company_id}
                                         employeeId={selectedEmployeeObj.id}
                                         name={`${selectedEmployeeObj.first_name} ${selectedEmployeeObj.last_name}`}
@@ -1123,13 +1484,36 @@ export default function DisciplinaryIndex() {
                                         rounded="rounded-xl"
                                     />
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-2">
                                             <p className="text-xs font-bold text-slate-900 truncate">
                                                 {selectedEmployeeObj.first_name} {selectedEmployeeObj.last_name}
                                             </p>
-                                            <span className="text-[10px] font-mono text-slate-400 font-semibold">
-                                                {selectedEmployeeObj.company_id || 'ID N/A'}
-                                            </span>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {selectedStanding.isTerminated ? (
+                                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                                                        <i className="ti ti-user-x text-[11px]" />
+                                                        Terminated
+                                                    </span>
+                                                ) : selectedStanding.isSuspended ? (
+                                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                                        <i className="ti ti-lock text-[11px]" />
+                                                        Currently Suspended
+                                                    </span>
+                                                ) : selectedStanding.hasWarning ? (
+                                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1">
+                                                        <i className="ti ti-alert-triangle text-[11px]" />
+                                                        {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''}
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                                        <i className="ti ti-check text-[11px]" />
+                                                        Clean Standing
+                                                    </span>
+                                                )}
+                                                <span className="text-[10px] font-mono text-slate-400 font-semibold">
+                                                    {selectedEmployeeObj.company_id || 'ID N/A'}
+                                                </span>
+                                            </div>
                                         </div>
                                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
                                             {selectedEmployeeObj.job_title || 'Staff'} • {selectedEmployeeObj.department || 'Operations'}
@@ -1152,8 +1536,10 @@ export default function DisciplinaryIndex() {
                                         }}
                                         className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:bg-white focus:border-blue-500 transition-colors"
                                     >
-                                        <option value="Warning">Warning (Active Access)</option>
-                                        <option value="Suspension">Suspension (Account Lockout)</option>
+                                        <option value="Warning" disabled={isAlreadyTerminated}>Warning (Active Access)</option>
+                                        <option value="Suspension" disabled={isAlreadySuspended || isAlreadyTerminated}>
+                                            Suspension (Account Lockout) {isAlreadySuspended ? '— [ALREADY SUSPENDED]' : ''}
+                                        </option>
                                         <option value="Termination">Termination (Permanent Revocation)</option>
                                     </select>
                                 </div>
@@ -1173,8 +1559,61 @@ export default function DisciplinaryIndex() {
                                 </div>
                             </div>
 
+                            {/* DOLE PROGRESSIVE DISCIPLINE WARNING ALERT */}
+                            {selectedStanding.hasWarning && (
+                                <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl text-xs space-y-1.5 animate-fade-in">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                                            <i className="ti ti-alert-triangle text-amber-600 text-sm" />
+                                            DOLE Progressive Discipline Alert: {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''} on Record
+                                        </span>
+                                        <span className="text-[9px] uppercase font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                                            Prior Infractions
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                        This employee has previously received <strong>{selectedStanding.warningCount} formal administrative warning(s)</strong>. Under DOLE progressive discipline guidelines, repeated misconduct warrants escalating the next action to <strong>Suspension</strong> (or Termination for severe offenses).
+                                    </p>
+                                    {selectedStanding.activeWarnings.length > 0 && (
+                                        <div className="pt-1 flex flex-wrap gap-1.5">
+                                            {selectedStanding.activeWarnings.slice(0, 3).map((w, idx) => (
+                                                <span key={w.id || idx} className="text-[10px] bg-white border border-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
+                                                    <strong>{w.date || 'Notice'}:</strong> {w.reason?.slice(0, 35) || 'Infraction'}...
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ACTIVE SUSPENSION ALERT (CANNOT SUSPEND AGAIN) */}
+                            {isAlreadySuspended && type === 'Suspension' && (
+                                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5 animate-fade-in">
+                                    <i className="ti ti-alert-circle text-amber-600 text-base shrink-0 mt-0.5" />
+                                    <div>
+                                        <strong className="block font-bold text-amber-900 mb-0.5">Active Suspension In Effect</strong>
+                                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                                            This employee is currently serving an active suspension. Under DOLE standards and enterprise policy, an employee cannot be suspended again while an active suspension is in effect. You may lift or clear their suspension from the table below, or issue an administrative Warning instead.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TERMINATED / INACTIVE ALERT */}
+                            {isAlreadyTerminated && type !== 'Termination' && (
+                                <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-950 flex items-start gap-2.5 animate-fade-in">
+                                    <i className="ti ti-ban text-rose-600 text-base shrink-0 mt-0.5" />
+                                    <div>
+                                        <strong className="block font-bold text-rose-900 mb-0.5">Personnel Inactive or Terminated</strong>
+                                        <p className="text-[11px] text-rose-800 leading-relaxed">
+                                            This employee is inactive or already separated. Disciplinary actions cannot be issued to separated personnel.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* DURATION CONFIGURATOR FOR SUSPENSION */}
-                            {type === 'Suspension' && (
+                            {type === 'Suspension' && !isAlreadySuspended && (
                                 <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-xl space-y-2.5">
                                     <div className="flex items-center justify-between">
                                         <label className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
@@ -1289,16 +1728,30 @@ export default function DisciplinaryIndex() {
                                     Cancel
                                 </button>
                                 <button 
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || (type === 'Suspension' && isAlreadySuspended) || (isAlreadyTerminated && type !== 'Termination')}
                                     type="submit" 
-                                    className={`px-5 py-2 font-bold rounded-xl text-xs shadow-sm text-white cursor-pointer transition-all flex items-center gap-2 ${
-                                        type === 'Suspension' ? 'bg-orange-600 hover:bg-orange-700' :
-                                        type === 'Termination' ? 'bg-rose-600 hover:bg-rose-700' :
-                                        'bg-slate-900 hover:bg-black'
+                                    className={`px-5 py-2 font-bold rounded-xl text-xs shadow-sm text-white transition-all flex items-center gap-2 ${
+                                        (type === 'Suspension' && isAlreadySuspended) || (isAlreadyTerminated && type !== 'Termination')
+                                            ? 'bg-slate-400 cursor-not-allowed opacity-75'
+                                            : type === 'Suspension'
+                                            ? 'bg-orange-600 hover:bg-orange-700 cursor-pointer'
+                                            : type === 'Termination'
+                                            ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                                            : 'bg-slate-900 hover:bg-black cursor-pointer'
                                     }`}
                                 >
                                     {isSubmitting ? (
                                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (type === 'Suspension' && isAlreadySuspended) ? (
+                                        <>
+                                            <i className="ti ti-lock-off" />
+                                            <span>Cannot Suspend (Already Suspended)</span>
+                                        </>
+                                    ) : (isAlreadyTerminated && type !== 'Termination') ? (
+                                        <>
+                                            <i className="ti ti-ban" />
+                                            <span>Personnel Inactive</span>
+                                        </>
                                     ) : (
                                         <>
                                             <i className={type === 'Suspension' ? 'ti ti-lock' : (type === 'Termination' ? 'ti ti-ban' : 'ti ti-send')} />
@@ -1314,7 +1767,7 @@ export default function DisciplinaryIndex() {
 
             {/* CLEAR DISCIPLINARY RECORD MODAL */}
             {showClearModal && selectedRecordForClear && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 animate-fade-in">
                     <div className="relative bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200">
                         <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-teal-50/50">
                             <div className="flex items-center gap-2.5">
@@ -1463,7 +1916,7 @@ export default function DisciplinaryIndex() {
 
             {/* Employee Profile Modal */}
             {showProfileModal && selectedEmployeeProfile && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 animate-fade-in">
                     <div className="relative bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
                         {/* Modal Header */}
                         <div className="p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">

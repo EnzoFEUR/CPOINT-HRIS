@@ -8,7 +8,7 @@ import { computeAttendanceSignals } from '../services/attendanceIntelligence.js'
 const router = express.Router();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const toDateStr = (d) => d.toISOString().slice(0, 10);
+const toDateStr = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
 /**
  * Build the last N calendar date strings (oldest -> newest)
@@ -299,7 +299,7 @@ async function computePayrollForecast() {
  */
 router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = toDateStr(new Date());
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
         // 1. Fetch core metrics in 3 parallel ultra-light queries (no nested joins)
@@ -437,7 +437,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
 router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
     try {
         const forceFresh = req.query.fresh === 'true';
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = toDateStr(new Date());
 
         // Return cached briefing immediately unless user explicitly requested fresh AI generation
         if (!forceFresh) {
@@ -616,10 +616,10 @@ router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (re
  */
 router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => {
     try {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = toDateStr(new Date());
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
 
-        // Query dashboard statistics in parallel
+        // Query dashboard statistics in parallel (no nested joins)
         const [
             { data: rawEmployees, error: empErr },
             { data: rawAttendances, error: attErr },
@@ -627,13 +627,13 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         ] = await Promise.all([
             supabase
                 .from('employees')
-                .select('id, department, role, shift, company_id')
+                .select('id, department, role, shift, company_id, first_name, last_name')
                 .not('company_id', 'is', null)
                 .neq('role', 'admin')
                 .neq('role', 'security'),
             supabase
                 .from('attendances')
-                .select('id, employee_id, date, status, created_at, time_in, time_out, employees:employee_id(id, company_id, first_name, last_name, department, shift)')
+                .select('id, employee_id, date, status, created_at, time_in, time_out')
                 .gte('date', thirtyFiveDaysAgo)
                 .order('created_at', { ascending: false }),
             supabase
@@ -674,7 +674,18 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
                     lateTodayCount++;
                 }
                 if (recentLogs.length < 5) {
-                    recentLogs.push(att);
+                    const emp = empMap.get(att.employee_id);
+                    recentLogs.push({
+                        ...att,
+                        employees: emp ? {
+                            id: emp.id,
+                            company_id: emp.company_id,
+                            first_name: emp.first_name,
+                            last_name: emp.last_name,
+                            department: emp.department,
+                            shift: emp.shift
+                        } : null
+                    });
                 }
             }
         });

@@ -78,16 +78,45 @@ const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
 };
 
 // 1. Statutory settings
-router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
+let cachedStatSettings = null;
+let cachedStatTime = 0;
+
+export const getStatutorySettings = async () => {
+    const now = Date.now();
+    if (cachedStatSettings && (now - cachedStatTime < 300000)) {
+        return cachedStatSettings;
+    }
     try {
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('statutory_settings')
             .select('*')
             .limit(1)
             .maybeSingle();
+        if (data) {
+            cachedStatSettings = data;
+            cachedStatTime = now;
+            return data;
+        }
+    } catch (e) {
+        console.error('Failed to load statutory settings, fallback to defaults', e);
+    }
+    return {
+        sss_employee_rate: 5.0,
+        sss_employer_rate: 10.0,
+        sss_max_msc: 35000,
+        philhealth_rate: 5.0,
+        philhealth_min_salary: 10000,
+        philhealth_max_salary: 100000,
+        pagibig_employee_rate: 2.0,
+        pagibig_employer_rate: 2.0,
+        pagibig_max_contribution: 200
+    };
+};
 
-        if (error) throw error;
-        res.json(data || {});
+router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
+    try {
+        const settings = await getStatutorySettings();
+        res.json(settings || {});
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -117,6 +146,7 @@ router.put('/statutory-settings', async (req, res) => {
 
         if (error) throw error;
 
+        cachedStatSettings = null;
         invalidateCache(['/api/payroll/statutory-settings']);
         res.json({ success: true, message: 'Statutory settings updated successfully.' });
     } catch (err) {
@@ -848,25 +878,39 @@ router.post('/', async (req, res) => {
         let pagIbigER = 0;
 
         if (shouldDeductStatutory) {
+            const stat = await getStatutorySettings();
+            const sssEmpRate = stat.sss_employee_rate != null ? Number(stat.sss_employee_rate) / 100 : 0.05;
+            const sssErRate = stat.sss_employer_rate != null ? Number(stat.sss_employer_rate) / 100 : 0.10;
+            const sssMaxMsc = stat.sss_max_msc != null ? Number(stat.sss_max_msc) : 35000;
+
+            const phRate = stat.philhealth_rate != null ? Number(stat.philhealth_rate) / 100 : 0.05;
+            const phMinSal = stat.philhealth_min_salary != null ? Number(stat.philhealth_min_salary) : 10000;
+            const phMaxSal = stat.philhealth_max_salary != null ? Number(stat.philhealth_max_salary) : 100000;
+
+            const pagibigEmpRate = stat.pagibig_employee_rate != null ? Number(stat.pagibig_employee_rate) / 100 : 0.02;
+            const pagibigErRate = stat.pagibig_employer_rate != null ? Number(stat.pagibig_employer_rate) / 100 : 0.02;
+            const pagibigMax = stat.pagibig_max_contribution != null ? Number(stat.pagibig_max_contribution) : 200;
+
             const contributionSalaryBase = (isFactory && effectiveMonthlySalary <= 0) ? (grossPay * 4) : effectiveMonthlySalary;
 
             // Frequency Divisor (Weekly = 4, Semi-Monthly = 2, Monthly = 1)
             const divisor = pay_frequency === 'weekly' ? 4 : (pay_frequency === 'semi-monthly' ? 2 : 1);
 
-            // 1. SSS (2026 Rules: 5% EE, 10% ER, Max MSC P35,000, EC fee P30/P10)
-            const sssMsc = Math.min(contributionSalaryBase, 35000);
-            sssEE = round2((sssMsc * 0.05) / divisor);
-            sssER = round2((sssMsc * 0.10) / divisor);
+            // 1. SSS (Dynamic settings with 2026 Rules: Max MSC P35k, EC fee P30/P10)
+            const sssMsc = Math.min(contributionSalaryBase, sssMaxMsc);
+            sssEE = round2((sssMsc * sssEmpRate) / divisor);
+            sssER = round2((sssMsc * sssErRate) / divisor);
             sssEC = sssMsc >= 15000 ? 30 : 10;
 
-            // 2. PhilHealth (2026 Rules: 5% Total split 50/50, Min P10k, Max P100k)
-            const phSalaryBase = Math.min(Math.max(contributionSalaryBase, 10000), 100000);
-            philHealthEE = round2(((phSalaryBase * 0.05) / 2) / divisor);
-            philHealthER = round2(((phSalaryBase * 0.05) / 2) / divisor);
+            // 2. PhilHealth (Dynamic settings: split 50/50, Min P10k, Max P100k)
+            const phSalaryBase = Math.min(Math.max(contributionSalaryBase, phMinSal), phMaxSal);
+            philHealthEE = round2(((phSalaryBase * (phRate / 2))) / divisor);
+            philHealthER = round2(((phSalaryBase * (phRate / 2))) / divisor);
 
-            // 3. Pag-IBIG (2026 Rules: 2% EE, 2% ER, Max Contribution P200 Total -> P100 EE / P100 ER)
-            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * 0.02), 100);
-            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * 0.02), 100);
+            // 3. Pag-IBIG (Dynamic settings: split 50/50 up to max contribution cap)
+            const maxContribHalf = pagibigMax / 2;
+            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * pagibigEmpRate), maxContribHalf);
+            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * pagibigErRate), maxContribHalf);
             pagIbigEE = round2(monthlyPagIbigEE / divisor);
             pagIbigER = round2(monthlyPagIbigER / divisor);
         }

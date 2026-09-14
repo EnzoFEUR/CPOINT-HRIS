@@ -1365,7 +1365,7 @@ export default function PayrollIndex() {
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* 1. Net Disbursement */}
-                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs bg-gradient-to-br from-emerald-50/40 via-white to-white flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider">
                             Total Net Payout

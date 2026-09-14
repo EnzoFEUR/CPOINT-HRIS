@@ -339,6 +339,44 @@ router.post('/', async (req, res) => {
         } 
         // 2. Logic for Suspension - Temporarily locked out (Mananatili sa Personnel Directory as Suspended)
         else if (resolvedType === 'Suspension') {
+            // Enterprise Rule: Prevent double-suspending an employee who is already suspended or deactivated
+            const { data: targetEmp, error: empErr } = await supabase
+                .from('employees')
+                .select('id, status, is_active, first_name, last_name')
+                .eq('id', employee_id)
+                .single();
+
+            if (empErr || !targetEmp) {
+                return res.status(404).json({ error: 'Target employee not found.' });
+            }
+
+            if (targetEmp.status?.toLowerCase() === 'suspended') {
+                return res.status(400).json({ 
+                    error: `Cannot suspend ${targetEmp.first_name} ${targetEmp.last_name}: Employee is currently serving an active suspension.` 
+                });
+            }
+
+            if (targetEmp.is_active === false || targetEmp.status?.toLowerCase() === 'inactive' || targetEmp.status?.toLowerCase() === 'terminated') {
+                return res.status(400).json({ 
+                    error: `Cannot suspend ${targetEmp.first_name} ${targetEmp.last_name}: Employee is inactive or terminated.` 
+                });
+            }
+
+            // Check if there is already an active suspension record in disciplinary_logs
+            const { data: activeSuspension } = await supabase
+                .from('disciplinary_logs')
+                .select('id, date, status')
+                .eq('employee_id', employee_id)
+                .eq('type', 'Suspension')
+                .in('status', ['Active', 'Action Required', 'Under Review'])
+                .maybeSingle();
+
+            if (activeSuspension) {
+                return res.status(400).json({ 
+                    error: `Cannot suspend employee: An active suspension record is already in effect.` 
+                });
+            }
+
             durationDays = Math.max(1, Math.min(60, parseInt(duration_days, 10) || 3));
             const endObj = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
             endDateStr = endObj.toISOString().split('T')[0];
