@@ -546,16 +546,16 @@ export default function FactoryPiece({
                     </div>
 
                     {/* 3. Total Operation Output Summary Banner */}
-                    <div className="p-5 bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
+                    <div className="p-5 bg-slate-900 border border-slate-800 text-white rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
                         <div>
-                            <span className="text-xs font-bold text-blue-300 uppercase tracking-wider block">
+                            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
                                 {selectedGroup ? `${selectedGroup} Total Operation Output` : 'Overall Operation Output'}
                             </span>
                             <p className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 mt-0.5">
                                 ₱{displayTotalPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
-                        <div className="bg-white/10 px-4 py-2.5 rounded-xl text-xs font-semibold backdrop-blur-xs flex items-center gap-3">
+                        <div className="bg-slate-800 border border-slate-700 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-3">
                             <div>
                                 <span className="text-[10px] text-slate-300 uppercase font-bold block">{selectedGroup ? `${selectedGroup} Active Workers` : 'Active Workers'}</span>
                                 <span className="text-base font-mono font-bold text-white">{selectedGroup ? activeGroupEmployees.length : 0} Workers</span>

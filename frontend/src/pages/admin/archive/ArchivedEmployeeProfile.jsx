@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
@@ -21,6 +20,21 @@ function getInitials(first, last) {
   const a = (first || '').trim()[0] || '';
   const b = (last || '').trim()[0] || '';
   return (a + b).toUpperCase() || '—';
+}
+
+function getAvatarUrl(emp) {
+  if (!emp) return null;
+  const photoPath =
+    emp.biometric_baseline_path ||
+    (emp.company_id && emp.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
+  if (!photoPath) return null;
+  return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}`;
+}
+
+function isTerminatedStatus(emp) {
+  if (!emp) return false;
+  const status = (emp.status || emp.operational_status || '').toLowerCase();
+  return status === 'terminated' || status === 'inactive' || emp.is_active === false;
 }
 
 function paletteFor(seed) {
@@ -133,9 +147,6 @@ export default function ArchivedEmployeeProfile() {
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [zipProgress, setZipProgress] = useState({ done: 0, total: 0 });
 
-  const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-
   useEffect(() => {
     fetchArchivedEmployeeData();
   }, [id]);
@@ -191,91 +202,6 @@ export default function ArchivedEmployeeProfile() {
       employee.id_number ||
       'N/A'
     );
-  };
-
-  const handleRestore = async () => {
-    if (!employee) return;
-    setIsRestoring(true);
-    try {
-      const targetId = employee.id;
-
-      // Primary: Call the enterprise restore endpoint
-      let restoredSuccessfully = false;
-      try {
-        const res = await fetchWithAuth(`/api/employees/${targetId}/restore`, {
-          method: 'POST'
-        });
-        if (res.ok) {
-          const resData = await res.json();
-          if (resData.success) {
-            restoredSuccessfully = true;
-          }
-        }
-      } catch (apiErr) {
-        console.warn('API restore failed, falling back to direct Supabase restore:', apiErr);
-      }
-
-      // Fallback if backend route was not reached
-      if (!restoredSuccessfully) {
-        const user = JSON.parse(localStorage.getItem('user'));
-        const { data, error: updateError } = await supabase
-          .from('employees')
-          .update({
-            status: 'active',
-            is_active: true,
-            archived_at: null,
-            separation_reason: null,
-            separation_type: null,
-            separation_date: null,
-            separation_notes: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', targetId)
-          .select();
-
-        if (updateError) throw updateError;
-        if (!data || data.length === 0) {
-          throw new Error('No rows updated. Please check Row Level Security (RLS) policies.');
-        }
-
-        // Fix: Properly resolve all active/pending/under review disciplinary logs
-        await supabase
-          .from('disciplinary_logs')
-          .update({ status: 'Resolved' })
-          .eq('employee_id', targetId)
-          .in('status', ['Active', 'Action Required', 'Pending', 'Under Review']);
-
-        if (user?.id) {
-          await supabase.from('activity_log').insert({
-            log_name: 'employees',
-            description: `Restored employee ${employee.first_name} ${employee.last_name} to Active status.`,
-            subject_type: 'App\\Models\\Employee',
-            subject_id: targetId,
-            event: 'restored',
-            causer_id: user.id,
-            properties: { previous_status: employee.status },
-          }).catch(() => {});
-        }
-
-        // Realtime broadcast to Gate Scanner & Admin
-        try {
-          const channel = supabase.channel('disciplinary-updates');
-          await channel.send({
-            type: 'broadcast',
-            event: 'EMPLOYEE_RESTORED',
-            payload: { employee_id: targetId, timestamp: new Date().toISOString() }
-          });
-        } catch (_) {}
-      }
-
-      toast.success(`${employee.first_name} ${employee.last_name} restored successfully.`);
-      setShowRestoreModal(false);
-      navigate('/admin/archive');
-    } catch (err) {
-      toast.error(err.message || 'Failed to restore employee');
-    } finally {
-      setIsRestoring(false);
-    }
   };
 
   const downloadAllDocuments = async () => {
@@ -357,12 +283,10 @@ export default function ArchivedEmployeeProfile() {
         </button>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={() => setShowRestoreModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-600/20"
-          >
-            <i className="ti ti-rotate-clockwise text-sm"></i> Restore Employee
-          </button>
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold shadow-xs">
+            <i className="ti ti-lock text-slate-500 text-sm"></i>
+            <span>Permanent Archive · Cold Storage</span>
+          </div>
 
           <button
             onClick={downloadAllDocuments}
@@ -377,21 +301,51 @@ export default function ArchivedEmployeeProfile() {
         </div>
       </div>
 
+      {/* Statutory Retention & Compliance Banner */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+            <i className="ti ti-shield-check text-base"></i>
+          </div>
+          <div>
+            <p className="font-bold text-slate-800 text-sm">Immutable Compliance Record</p>
+            <p className="text-slate-500 font-medium">
+              This personnel record is permanently archived for statutory audit and regulatory retention. Direct restoration is prohibited to protect historical tax and payroll integrity. To re-engage this personnel, initiate a formal Re-hire onboarding process.
+            </p>
+          </div>
+        </div>
+        <span className="px-2.5 py-1 bg-white border border-slate-200 text-slate-600 font-mono text-[11px] font-bold rounded-lg shrink-0">
+          READ-ONLY AUDIT
+        </span>
+      </div>
+
       {/* Hero Banner Header - Matched to Active Employee Profile UI */}
       <div className="bg-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-            {employee.avatar_url || employee.photo_url ? (
-              <img
-                src={employee.avatar_url || employee.photo_url}
-                alt={`${employee.first_name} ${employee.last_name}`}
-                className="w-20 h-20 rounded-2xl object-cover ring-4 ring-white/10 shadow-lg shrink-0"
-              />
-            ) : (
-              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-2xl ring-4 ${avatar.bg} ${avatar.text} ${avatar.ring} shrink-0`}>
-                {getInitials(employee.first_name, employee.last_name)}
-              </div>
-            )}
+            {(() => {
+              const avatarUrl = getAvatarUrl(employee);
+              const inactive = isTerminatedStatus(employee);
+              return avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={`${employee.first_name} ${employee.last_name}`}
+                  className={`w-20 h-20 rounded-2xl object-cover ring-4 ring-white/10 shadow-lg shrink-0 ${
+                    inactive ? 'grayscale opacity-70' : ''
+                  }`}
+                />
+              ) : (
+                <div
+                  className={`w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-2xl ring-4 shrink-0 ${
+                    inactive
+                      ? 'bg-slate-700 text-slate-300 ring-white/10'
+                      : `${avatar.bg} ${avatar.text} ${avatar.ring}`
+                  }`}
+                >
+                  {getInitials(employee.first_name, employee.last_name)}
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -745,34 +699,6 @@ export default function ArchivedEmployeeProfile() {
           </div>
         )}
       </div>
-
-      {/* Restore Modal */}
-      <AnimatePresence>
-        {showRestoreModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => !isRestoring && setShowRestoreModal(false)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white rounded-2xl w-full max-w-md p-6 text-center z-10 shadow-2xl">
-              <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-md">
-                <i className="ti ti-rotate-clockwise text-3xl" />
-              </div>
-
-              <h2 className="text-xl font-black text-slate-800 mb-2">Restore Employee?</h2>
-              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-                <strong className="text-slate-800">{employee.first_name} {employee.last_name}</strong> ({getCompanyId()}) will be moved back to active status in the employee directory.
-              </p>
-
-              <div className="flex gap-3">
-                <button onClick={() => setShowRestoreModal(false)} disabled={isRestoring} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition-colors">
-                  Cancel
-                </button>
-                <button onClick={handleRestore} disabled={isRestoring} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2">
-                  {isRestoring ? <i className="ti ti-loader animate-spin text-base" /> : 'Restore Employee'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

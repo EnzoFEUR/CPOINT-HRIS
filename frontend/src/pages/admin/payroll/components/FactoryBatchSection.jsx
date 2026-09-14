@@ -26,7 +26,7 @@ const FactoryBatchSection = ({
     return (
         <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* Access Button for Factory Piece Modal */}
-            <div className="bg-gradient-to-r from-blue-50/90 via-white to-blue-50/60 p-4 sm:p-5 rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/20 shrink-0">
                         <i className="ti ti-table" />
@@ -83,7 +83,7 @@ const FactoryBatchSection = ({
                             -₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 shadow-2xs bg-gradient-to-br from-emerald-50/40 to-white">
+                    <div className="bg-white p-3.5 rounded-xl border border-emerald-300 shadow-xs">
                         <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Net Distribution</span>
                         <div className="text-base sm:text-lg font-black font-mono text-emerald-600 mt-1">
                             ₱{batchSummaryTotals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}

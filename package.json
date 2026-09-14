@@ -20,7 +20,7 @@
     "@tabler/icons-react": "^3.46.0",
     "file-saver": "^2.0.5",
     "framer-motion": "^13.2.0",
-    "jszip": "^3.10.1",
+    "jszip": "^3.10.2",
     "multer": "^2.2.0",
     "react-hot-toast": "^2.6.0"
   }

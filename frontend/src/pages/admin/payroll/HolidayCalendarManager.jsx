@@ -267,14 +267,12 @@ export default function HolidayCalendarManager() {
                         key={type}
                         className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${TYPE_STYLES[type].chip}`}
                     >
-                        <span className={`w-2 h-2 rounded-full ${TYPE_STYLES[type].dot}`}></span>
                         {HOLIDAY_TYPE_LABELS[type]}
                         <span className="font-normal opacity-70">&middot; {multiplierSummary(type)}</span>
                     </span>
                 ))}
                 {GOOGLE_CALENDAR_API_KEY && (
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-500 border-slate-200">
-                        <span className="w-2 h-2 rounded-full bg-slate-400"></span>
                         Unclassified reference date
                     </span>
                 )}

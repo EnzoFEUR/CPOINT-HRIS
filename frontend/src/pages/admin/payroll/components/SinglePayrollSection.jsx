@@ -146,7 +146,7 @@ const SinglePayrollSection = ({
                                             {(leave.end_date || leave.to_date) && extractDateStr(leave.end_date || leave.to_date) !== extractDateStr(leave.start_date || leave.from_date || leave.date) ? (
                                                 <> &rarr; <span className="font-semibold text-slate-700">{formatReadableDate(extractDateStr(leave.end_date || leave.to_date))}</span></>
                                             ) : ''}
-                                            {leave.reason ? ` — "${leave.reason}"` : ''}
+                                            {leave.reason ? ` (${leave.reason})` : ''}
                                         </p>
                                     </div>
                                     <div className="shrink-0 text-right font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">

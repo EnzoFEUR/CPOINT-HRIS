@@ -71,9 +71,9 @@ const Index = () => {
     return (
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
-                breadcrumbs={['Admin', 'Surveillance', 'Attendance Logs']}
+                breadcrumbs={['Admin', 'Attendance', 'Attendance Logs']}
                 title="Real-Time Attendance"
-                description="Live employee biometric punch records, facial verification audits, and facility access history."
+                description="Live employee check-ins, time logs, and daily attendance."
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Scans:</span>

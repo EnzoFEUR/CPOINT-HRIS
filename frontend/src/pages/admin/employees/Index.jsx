@@ -14,6 +14,21 @@ function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Terminated employees stay visible in the directory under "Pending Termination" for this
+// many days (counted from when the termination was recorded) before moving to the Archive.
+const PENDING_TERMINATION_DAYS = 14;
+
+function getTerminationTimestamp(emp) {
+    return emp?.archived_at || emp?.separation_date || emp?.updated_at || null;
+}
+
+function getDaysUntilArchive(emp) {
+    const ts = getTerminationTimestamp(emp);
+    if (!ts) return null;
+    const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
+    return Math.max(0, Math.ceil(PENDING_TERMINATION_DAYS - elapsedDays));
+}
+
 export default function EmployeesIndex() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -42,6 +57,8 @@ export default function EmployeesIndex() {
     const [copiedField, setCopiedField] = useState(null);
     const [copiedAll, setCopiedAll] = useState(false);
     const [showPassword, setShowPassword] = useState(true);
+
+
 
     const handleArchiveAccessClick = (e) => {
         if (e) e.preventDefault();
@@ -83,39 +100,65 @@ export default function EmployeesIndex() {
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
         const data = Array.isArray(result) ? result : (result.data || []);
         
-        // Filter out terminated and inactive personnel
-        return data.filter(emp => 
-            emp.status !== 'terminated' && 
-            emp.status !== 'inactive' && 
-            emp.is_active !== false
-        );
+        // Retain active and suspended employees. Terminated employees remain in the directory
+        // under "Pending Termination" for review during the cooldown window before being moved to Archive.
+        return data.filter(emp => {
+            const isTerminated = emp.operational_status === 'Terminated' || emp.is_terminated || emp.status === 'terminated';
+            if (!isTerminated) return true;
+
+            const ts = getTerminationTimestamp(emp);
+            if (!ts) return true;
+
+            const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
+            return elapsedDays < PENDING_TERMINATION_DAYS;
+        });
     };
 
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: fetchEmployees,
-        staleTime: 15_000,
+        staleTime: 60_000,
         gcTime: 300_000,
+        refetchOnWindowFocus: false,
     });
 
-    // Real-time subscription to workforce directory changes
+    // Realtime subscriptions for directory updates
     useEffect(() => {
+        const handleSync = () => {
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        };
+
+        window.addEventListener('hris_disciplinary_sync', handleSync);
+
         const channel = supabase
             .channel('admin-live-employees-directory')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'production_groups' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
+            .subscribe();
+
+        const syncChannel = supabase
+            .channel('disciplinary_realtime_sync_dir')
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
             .subscribe();
 
         return () => {
+            window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
+            supabase.removeChannel(syncChannel);
         };
     }, [queryClient]);
 
-    // Extract unique departments dynamically
+    // Extract unique department list for filtering
     const departments = useMemo(() => {
         const depts = new Set();
         employees.forEach(e => {
@@ -124,51 +167,69 @@ export default function EmployeesIndex() {
         return ['All', ...Array.from(depts)];
     }, [employees]);
 
-    // Filter employees across status, department, and search terms
+    // Filter employees by status, department, and search query, sorted alphabetically
     const filteredEmployees = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
 
-        return employees.filter(emp => {
-            const roleStr = (emp.role || emp.job_title || '').toLowerCase();
-            const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim().toLowerCase();
-            const email = (emp.email || '').toLowerCase();
+        return employees
+            .filter(emp => {
+                const roleStr = (emp.role || emp.job_title || '').toLowerCase();
+                const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim().toLowerCase();
+                const email = (emp.email || '').toLowerCase();
 
-            // Exclude system technical accounts
-            if (
-                fullName.includes('terminal guard') ||
-                fullName.includes('system admin') ||
-                email === 'guard@c-point.com' ||
-                email === 'admin@c-point.com' ||
-                roleStr.includes('admin') ||
-                roleStr.includes('security')
-            ) {
-                return false;
-            }
-
-            const isFactory = (emp.department || '').toLowerCase().includes('factory');
-            const isTerminated = emp.operational_status === 'Terminated' || emp.is_terminated;
-            const isSuspended = !isTerminated && (emp.operational_status === 'Suspended' || emp.is_suspended);
-            const isActive = !isTerminated && !isSuspended;
-
-            if (filterStatus === 'Active' && !isActive) return false;
-            if (filterStatus === 'Suspended' && !isSuspended) return false;
-            if (filterStatus === 'Terminated' && !isTerminated) return false;
-            if (filterStatus === 'Salaried' && isFactory) return false;
-            if (filterStatus === 'Piece-Rate' && !isFactory) return false;
-
-            if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
-
-            if (q) {
-                const companyId = (emp.company_id || '').toLowerCase();
-                const jobTitle = (emp.job_title || '').toLowerCase();
-
-                if (!fullName.includes(q) && !companyId.includes(q) && !email.includes(q) && !jobTitle.includes(q)) {
+                // Exclude system service accounts
+                if (
+                    fullName.includes('terminal guard') ||
+                    fullName.includes('system admin') ||
+                    email === 'guard@c-point.com' ||
+                    email === 'admin@c-point.com' ||
+                    roleStr.includes('admin') ||
+                    roleStr.includes('security')
+                ) {
                     return false;
                 }
-            }
 
-            return true;
-        });
+                const isFactory = (emp.department || '').toLowerCase().includes('factory');
+                const isTerminated = emp.operational_status === 'Terminated' || emp.is_terminated;
+                const isSuspended = !isTerminated && (emp.operational_status === 'Suspended' || emp.is_suspended);
+                const isActive = !isTerminated && !isSuspended;
+
+                if (filterStatus === 'Active' && !isActive) return false;
+                if (filterStatus === 'Suspended' && !isSuspended) return false;
+                if (filterStatus === 'Pending Termination' && !isTerminated) return false;
+                if (filterStatus === 'Salaried' && isFactory) return false;
+                if (filterStatus === 'Piece-Rate' && !isFactory) return false;
+
+                if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
+
+                if (q) {
+                    const companyId = (emp.company_id || '').toLowerCase();
+                    const jobTitle = (emp.job_title || '').toLowerCase();
+
+                    if (!fullName.includes(q) && !companyId.includes(q) && !email.includes(q) && !jobTitle.includes(q)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            })
+            .sort((a, b) => {
+                // Tiered hierarchy: Active and suspended personnel (operational workforce) first,
+                // followed by separated personnel pending final archive review.
+                const aTerm = (a.operational_status === 'Terminated' || a.is_terminated) ? 1 : 0;
+                const bTerm = (b.operational_status === 'Terminated' || b.is_terminated) ? 1 : 0;
+                if (aTerm !== bTerm) return aTerm - bTerm;
+
+                // Alphabetical sort within tier: Last Name ascending, then First Name ascending
+                const lastNameA = (a.last_name || '').trim();
+                const lastNameB = (b.last_name || '').trim();
+                const comp = lastNameA.localeCompare(lastNameB, undefined, { sensitivity: 'base' });
+                if (comp !== 0) return comp;
+
+                const firstNameA = (a.first_name || '').trim();
+                const firstNameB = (b.first_name || '').trim();
+                return firstNameA.localeCompare(firstNameB, undefined, { sensitivity: 'base' });
+            });
     }, [employees, filterStatus, selectedDepartment, searchQuery]);
 
     // Calculate directory metrics in single pass
@@ -176,7 +237,7 @@ export default function EmployeesIndex() {
         let all = 0;
         let active = 0;
         let suspended = 0;
-        let terminated = 0;
+        let pendingTermination = 0;
         let salaried = 0;
         let pieceRate = 0;
 
@@ -194,7 +255,7 @@ export default function EmployeesIndex() {
             const isSusp = !isTerminated && (e.operational_status === 'Suspended' || e.is_suspended);
 
             if (isTerminated) {
-                terminated++;
+                pendingTermination++;
             } else if (isSusp) {
                 suspended++;
             } else {
@@ -209,7 +270,7 @@ export default function EmployeesIndex() {
             }
         }
 
-        return { all, active, suspended, terminated, salaried, pieceRate };
+        return { all, active, suspended, pendingTermination, salaried, pieceRate };
     }, [employees]);
 
     const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'All');
@@ -238,9 +299,9 @@ export default function EmployeesIndex() {
             
             {/* Header */}
             <PageHeader
-                breadcrumbs={['Admin', 'Workforce', 'Personnel Directory']}
-                title="Personnel Directory"
-                description="Active workforce registry, biometric identification baselines, and statutory salary configurations."
+                breadcrumbs={['Admin', 'Employees', 'Directory']}
+                title="Employee Directory"
+                description="Employee profiles, job assignments, and salary details."
                 actions={
                     <div className="flex items-center gap-2.5 w-full sm:w-auto">
                         <button
@@ -294,11 +355,12 @@ export default function EmployeesIndex() {
                         <div className="flex items-center gap-2 justify-between lg:justify-end">
                             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar touch-pan-x bg-slate-100 p-1 rounded-xl shrink-0">
                                 {[
-                                    { id: 'All', label: 'All', count: counts.all, dot: null },
-                                    { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
-                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
-                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
-                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
+                                    { id: 'All', label: 'All', count: counts.all },
+                                    { id: 'Active', label: 'Active', count: counts.active },
+                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
+                                    { id: 'Pending Termination', label: 'Pending Termination', count: counts.pendingTermination, alert: counts.pendingTermination > 0 },
+                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried },
+                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
@@ -309,9 +371,6 @@ export default function EmployeesIndex() {
                                                 : 'text-slate-500 hover:text-slate-800'
                                         }`}
                                     >
-                                        {tab.dot && (
-                                            <span className={`w-2 h-2 rounded-full ${tab.dot} ${tab.id === 'Active' ? 'animate-pulse' : ''} shrink-0`} />
-                                        )}
                                         <span>{tab.label}</span>
                                         <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
                                             filterStatus === tab.id 
@@ -388,6 +447,33 @@ export default function EmployeesIndex() {
                     </div>
                 </div>
 
+                {/* Pending Archive Review Notice Banner */}
+                {counts.pendingTermination > 0 && filterStatus !== 'Pending Termination' && (
+                    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                                <i className="ti ti-archive text-lg" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-800 text-sm">
+                                    {counts.pendingTermination} separated {counts.pendingTermination === 1 ? 'account is' : 'accounts are'} awaiting archive review
+                                </p>
+                                <p className="text-slate-500 font-medium">
+                                    Active personnel are displayed first. Separated accounts remain in cooldown before permanent archive.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { setFilterStatus('Pending Termination'); setCurrentPage(1); }}
+                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer touch-manipulation"
+                        >
+                            <span>Review Separated Staff</span>
+                            <i className="ti ti-arrow-right text-xs" />
+                        </button>
+                    </div>
+                )}
+
                 {/* Directory Content */}
                 {paginatedEmployees.length > 0 ? (
                     viewMode === 'grid' ? (
@@ -409,7 +495,7 @@ export default function EmployeesIndex() {
                                         key={employee.id}
                                         className={`rounded-2xl p-4 sm:p-5 border shadow-xs transition-all duration-150 flex flex-col justify-between group hover:-translate-y-0.5 ${
                                             isTerminated
-                                                ? 'bg-rose-50/15 border-rose-200 hover:border-rose-400 hover:shadow-md'
+                                                ? 'bg-slate-50/90 border-slate-300 opacity-75 hover:opacity-100 hover:border-slate-400'
                                                 : isSuspended
                                                 ? 'bg-amber-50/15 border-amber-200 hover:border-amber-400 hover:shadow-md'
                                                 : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
@@ -422,21 +508,12 @@ export default function EmployeesIndex() {
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <div className="relative shrink-0">
                                                         <EmployeeAvatar employee={employee} size="h-12 w-12" />
-                                                        {isTerminated ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-600 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="DOLE Separated">
-                                                                <i className="ti ti-x" />
-                                                            </span>
-                                                        ) : isSuspended ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
-                                                                <i className="ti ti-clock-pause" />
-                                                            </span>
-                                                        ) : (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" title="Active" />
-                                                        )}
                                                     </div>
                                                     
                                                     <div className="min-w-0 flex-1">
-                                                        <h4 className="font-bold text-slate-900 text-sm sm:text-base leading-tight truncate group-hover:text-indigo-600 transition-colors">
+                                                        <h4 className={`font-bold text-sm sm:text-base leading-tight truncate transition-colors ${
+                                                            isTerminated ? 'text-slate-600' : 'text-slate-900 group-hover:text-indigo-600'
+                                                        }`}>
                                                             {employee.first_name} {employee.last_name}
                                                         </h4>
                                                         <div className="flex items-center gap-1.5 mt-0.5 text-xs font-semibold text-slate-500 truncate">
@@ -449,31 +526,39 @@ export default function EmployeesIndex() {
                                                 {/* Status indicator pill */}
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Separated
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
+                                                            Pending Termination
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Suspended
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                            Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                            Active
                                                         </span>
                                                     )}
                                                 </div>
                                             </div>
 
-                                            {/* Separation / Disciplinary Alert (if active) */}
+                                            {/* Separation Notice */}
                                             {isTerminated && (
-                                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                                                        <span className="flex items-center gap-1"><i className="ti ti-ban" /> DOLE Separated</span>
-                                                        <span className="font-mono text-rose-600">Access Revoked</span>
+                                                <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 space-y-0.5">
+                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                                        <span className="flex items-center gap-1"><i className="ti ti-archive text-slate-500" /> Pending Archive Review</span>
+                                                        <span className="font-mono text-slate-500">Separated</span>
                                                     </div>
-                                                    <p className="text-xs text-rose-800 font-medium line-clamp-1">
-                                                        {employee.termination_record?.reason || 'Contract Concluded / Terminated'}
+                                                    <p className="text-xs text-slate-600 font-medium line-clamp-1">
+                                                        {employee.termination_record?.reason || 'Account deactivated • Under review for archive'}
                                                     </p>
+                                                    {(() => {
+                                                        const daysLeft = getDaysUntilArchive(employee);
+                                                        return daysLeft !== null ? (
+                                                            <p className="text-[10px] text-slate-500 font-semibold">
+                                                                Moves to Archive in {daysLeft} day{daysLeft === 1 ? '' : 's'}
+                                                            </p>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
                                             )}
 
@@ -489,10 +574,14 @@ export default function EmployeesIndex() {
                                                 </div>
                                             )}
 
-                                            {/* Micro Bento Grid (Aligned Spec Box) */}
-                                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2.5">
+                                            {/* Employee Details Summary */}
+                                            <div className={`rounded-xl p-3 border space-y-2.5 ${
+                                                isTerminated
+                                                    ? 'bg-slate-100/70 border-slate-200/80 text-slate-500'
+                                                    : 'bg-slate-50 border-slate-100'
+                                            }`}>
                                                 
-                                                {/* Line 1: ID & Line Tag */}
+                                                {/* Line 1: ID & Department Tag */}
                                                 <div className="flex items-center justify-between gap-2">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ID:</span>
@@ -502,11 +591,13 @@ export default function EmployeesIndex() {
                                                     </div>
 
                                                     <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border flex items-center gap-1 shrink-0 ${
-                                                        isFactory
+                                                        isTerminated
+                                                            ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                                            : isFactory
                                                             ? 'bg-amber-100 text-amber-900 border-amber-300'
                                                             : 'bg-indigo-100 text-indigo-900 border-indigo-200'
                                                     }`}>
-                                                        {isFactory ? <i className="ti ti-building-factory text-amber-700 text-xs" /> : <i className="ti ti-briefcase text-indigo-700 text-xs" />}
+                                                        {isFactory ? <i className="ti ti-building-factory text-xs" /> : <i className="ti ti-briefcase text-xs" />}
                                                         {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail')}
                                                     </span>
                                                 </div>
@@ -518,12 +609,12 @@ export default function EmployeesIndex() {
                                                             {isFactory ? 'Wage Structure' : 'Daily / Hourly Rate'}
                                                         </span>
                                                         {isFactory ? (
-                                                            <span className="text-xs font-bold text-amber-800 flex items-center gap-1 mt-0.5">
-                                                                <i className="ti ti-box-multiple text-amber-600 text-xs" /> Group Piece-Rate
+                                                            <span className="text-xs font-bold text-slate-700 flex items-center gap-1 mt-0.5">
+                                                                <i className="ti ti-box-multiple text-slate-500 text-xs" /> Group Piece-Rate
                                                             </span>
                                                         ) : (
-                                                            <span className="font-mono text-xs sm:text-sm font-black text-emerald-700 block mt-0.5">
-                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-bold text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
+                                                            <span className="font-mono text-xs sm:text-sm font-bold text-slate-700 block mt-0.5">
+                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-semibold text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
                                                             </span>
                                                         )}
                                                     </div>
@@ -538,7 +629,7 @@ export default function EmployeesIndex() {
                                                     </div>
                                                 </div>
 
-                                                {/* Line 3: Email & Biometrics verification */}
+                                                {/* Line 3: Email & Biometrics */}
                                                 <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2 text-xs">
                                                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                                         <i className="ti ti-mail text-slate-400 text-xs shrink-0" />
@@ -549,8 +640,8 @@ export default function EmployeesIndex() {
 
                                                     <div className="shrink-0">
                                                         {isBiometricEnrolled ? (
-                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                                                <i className="ti ti-face-id text-xs text-emerald-600" /> Biometrics
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-700 bg-slate-200/70 px-2 py-0.5 rounded border border-slate-300">
+                                                                <i className="ti ti-face-id text-xs text-slate-500" /> Biometrics
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
@@ -564,24 +655,48 @@ export default function EmployeesIndex() {
 
                                         </div>
 
-                                        {/* Action Footer (Consistently Pinned) */}
-                                        <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center gap-2">
-                                            <Link
-                                                to={`/admin/documents?employee_id=${employee.id}`}
-                                                className="flex-1 justify-center py-2 px-3 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-xl border border-sky-200/80 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer group/docs touch-manipulation"
-                                                title="Open 201 Document Vault"
-                                            >
-                                                <i className="ti ti-folders text-sky-600 text-sm group-hover/docs:scale-110 transition-transform shrink-0" />
-                                                <span className="whitespace-nowrap">201 Vault</span>
-                                            </Link>
+                                        {/* Card Actions */}
+                                        <div className="pt-3.5 mt-3 border-t border-slate-200/80 flex items-center gap-2">
+                                            {isTerminated ? (
+                                                <>
+                                                    <Link
+                                                        to={`/admin/documents?employee_id=${employee.id}`}
+                                                        className="flex-1 justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
+                                                        title="View Documents"
+                                                    >
+                                                        <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
+                                                        <span className="whitespace-nowrap">Documents</span>
+                                                    </Link>
 
-                                            <Link
-                                                to={`/admin/employees/${employee.id}`}
-                                                className="flex-1 justify-center py-2 px-3 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
-                                            >
-                                                <span className="whitespace-nowrap">Profile</span>
-                                                <i className="ti ti-arrow-right text-xs shrink-0" />
-                                            </Link>
+                                                    <Link
+                                                        to={`/admin/employees/${employee.id}`}
+                                                        className="flex-1 justify-center py-2 px-3 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
+                                                        title="Review employee record before archive"
+                                                    >
+                                                        <i className="ti ti-file-search text-xs shrink-0" />
+                                                        <span className="whitespace-nowrap">Review</span>
+                                                    </Link>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Link
+                                                        to={`/admin/documents?employee_id=${employee.id}`}
+                                                        className="flex-1 justify-center py-2 px-3 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-xl border border-sky-200/80 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer group/docs touch-manipulation"
+                                                        title="View Documents"
+                                                    >
+                                                        <i className="ti ti-folders text-sky-600 text-sm group-hover/docs:scale-110 transition-transform shrink-0" />
+                                                        <span className="whitespace-nowrap">Documents</span>
+                                                    </Link>
+
+                                                    <Link
+                                                        to={`/admin/employees/${employee.id}`}
+                                                        className="flex-1 justify-center py-2 px-3 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
+                                                    >
+                                                        <span className="whitespace-nowrap">Profile</span>
+                                                        <i className="ti ti-arrow-right text-xs shrink-0" />
+                                                    </Link>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -605,13 +720,15 @@ export default function EmployeesIndex() {
                                     const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
 
                                     return (
-                                        <div key={`mobile-stack-${employee.id}`} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                                        <div key={`mobile-stack-${employee.id}`} className={`p-4 space-y-3 transition-colors ${
+                                            isTerminated ? 'bg-slate-50/90 border-b border-slate-200 opacity-80' : 'hover:bg-slate-50/60'
+                                        }`}>
                                             {/* Header */}
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <EmployeeAvatar employee={employee} size="h-11 w-11" />
                                                     <div className="min-w-0">
-                                                        <p className="font-bold text-slate-900 text-sm truncate">
+                                                        <p className={`font-bold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
                                                             {employee.first_name} {employee.last_name}
                                                         </p>
                                                         <p className="text-xs font-semibold text-slate-500 truncate flex items-center gap-1 mt-0.5">
@@ -623,16 +740,16 @@ export default function EmployeesIndex() {
 
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                                                            Terminated
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
+                                                            Pending Termination
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                                                             Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                            Active
                                                         </span>
                                                     )}
                                                 </div>
@@ -664,20 +781,38 @@ export default function EmployeesIndex() {
                                             </div>
 
                                             {/* Action links */}
-                                            <div className="flex items-center gap-2 pt-1">
-                                                <Link
-                                                    to={`/admin/documents?employee_id=${employee.id}`}
-                                                    className="flex-1 py-1.5 text-center bg-sky-50 text-sky-800 font-bold text-xs rounded-lg border border-sky-200"
-                                                >
-                                                    Archive
-                                                </Link>
-                                                <Link
-                                                    to={`/admin/employees/${employee.id}`}
-                                                    className="flex-1 py-1.5 text-center bg-slate-900 text-white font-bold text-xs rounded-lg"
-                                                >
-                                                    View Profile
-                                                </Link>
-                                            </div>
+                                            {isTerminated ? (
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <Link
+                                                        to={`/admin/documents?employee_id=${employee.id}`}
+                                                        className="flex-1 py-1.5 text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 transition-colors"
+                                                    >
+                                                        Documents
+                                                    </Link>
+                                                    <Link
+                                                        to={`/admin/employees/${employee.id}`}
+                                                        className="flex-1 py-1.5 text-center bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
+                                                    >
+                                                        <i className="ti ti-file-search text-xs" />
+                                                        <span>Review</span>
+                                                    </Link>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <Link
+                                                        to={`/admin/documents?employee_id=${employee.id}`}
+                                                        className="flex-1 py-1.5 text-center bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs rounded-lg border border-sky-200 transition-colors"
+                                                    >
+                                                        Documents
+                                                    </Link>
+                                                    <Link
+                                                        to={`/admin/employees/${employee.id}`}
+                                                        className="flex-1 py-1.5 text-center bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-lg transition-colors"
+                                                    >
+                                                        View Profile
+                                                    </Link>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -714,7 +849,7 @@ export default function EmployeesIndex() {
                                                     key={employee.id} 
                                                     className={`transition-colors ${
                                                         isTerminated
-                                                            ? 'bg-rose-50/20 hover:bg-rose-50/50'
+                                                            ? 'bg-slate-100/50 hover:bg-slate-100/80 text-slate-500 opacity-80 hover:opacity-100'
                                                             : isSuspended
                                                             ? 'bg-amber-50/20 hover:bg-amber-50/50'
                                                             : 'hover:bg-slate-50/80'
@@ -725,16 +860,9 @@ export default function EmployeesIndex() {
                                                         <div className="flex items-center gap-3">
                                                             <div className="relative shrink-0">
                                                                 <EmployeeAvatar employee={employee} size="h-9 w-9" />
-                                                                {isTerminated ? (
-                                                                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-600 ring-1 ring-white" />
-                                                                ) : isSuspended ? (
-                                                                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-500 ring-1 ring-white" />
-                                                                ) : (
-                                                                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-white" />
-                                                                )}
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <p className="font-bold text-slate-900 text-sm truncate">
+                                                                <p className={`font-bold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
                                                                     {employee.first_name} {employee.last_name}
                                                                 </p>
                                                                 <p className="text-slate-400 font-mono text-[11px] truncate">
@@ -747,8 +875,8 @@ export default function EmployeesIndex() {
                                                     {/* Standing */}
                                                     <td className="px-4 py-3.5">
                                                         {isTerminated ? (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-md border border-rose-300">
-                                                                <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-200 text-slate-700 text-[11px] font-bold rounded-md border border-slate-300">
+                                                                <i className="ti ti-clock-pause text-xs text-slate-500" /> Pending Termination
                                                             </span>
                                                         ) : isSuspended ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-md border border-amber-300">
@@ -756,7 +884,7 @@ export default function EmployeesIndex() {
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
+                                                                Active
                                                             </span>
                                                         )}
                                                     </td>
@@ -764,12 +892,16 @@ export default function EmployeesIndex() {
                                                     {/* Department & Craft */}
                                                     <td className="px-4 py-3.5">
                                                         <div>
-                                                            <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                                                            <p className={`font-bold flex items-center gap-1.5 ${isTerminated ? 'text-slate-600' : 'text-slate-800'}`}>
                                                                 {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
                                                                 {employee.job_title || 'Staff'}
                                                             </p>
                                                             <span className={`inline-block mt-0.5 px-2 py-0.2 rounded text-[10px] font-bold uppercase border ${
-                                                                isFactory ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                                                isTerminated
+                                                                    ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                                                    : isFactory
+                                                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                                                    : 'bg-indigo-50 text-indigo-800 border-indigo-200'
                                                             }`}>
                                                                 {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Operations')}
                                                             </span>
@@ -780,8 +912,8 @@ export default function EmployeesIndex() {
                                                     <td className="px-4 py-3.5">
                                                         {isFactory ? (
                                                             <div>
-                                                                <p className="font-mono font-bold text-xs text-amber-800 flex items-center gap-1">
-                                                                    <i className="ti ti-box-multiple text-amber-600" /> Batch Pool
+                                                                <p className="font-mono font-bold text-xs text-slate-700 flex items-center gap-1">
+                                                                    <i className="ti ti-box-multiple text-slate-500" /> Batch Pool
                                                                 </p>
                                                                 <p className="text-slate-400 text-[10px] uppercase font-bold">
                                                                     Group Piece-Rate
@@ -789,7 +921,7 @@ export default function EmployeesIndex() {
                                                             </div>
                                                         ) : (
                                                             <div>
-                                                                <p className="font-mono font-bold text-sm text-emerald-700">
+                                                                <p className="font-mono font-bold text-sm text-slate-700">
                                                                     ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-[10px] text-slate-400">/day</span>
                                                                 </p>
                                                                 <p className="text-slate-500 text-[10px] font-semibold">
@@ -802,8 +934,8 @@ export default function EmployeesIndex() {
                                                     {/* Biometrics */}
                                                     <td className="px-4 py-3.5">
                                                         {isBiometricEnrolled ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[11px] font-bold border border-emerald-200">
-                                                                <i className="ti ti-face-id text-emerald-600" /> Enrolled
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-200/70 text-slate-700 rounded text-[11px] font-bold border border-slate-300">
+                                                                <i className="ti ti-face-id text-slate-500" /> Enrolled
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[11px] font-bold border border-amber-200">
@@ -819,23 +951,44 @@ export default function EmployeesIndex() {
 
                                                     {/* Actions */}
                                                     <td className="px-5 py-3.5 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <Link
-                                                                to={`/admin/documents?employee_id=${employee.id}`}
-                                                                className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-lg border border-sky-200/80 transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                                title="View 201 Documents"
-                                                            >
-                                                                <i className="ti ti-folders text-sky-600 text-sm shrink-0" />
-                                                                <span>Vault</span>
-                                                            </Link>
-                                                            <Link
-                                                                to={`/admin/employees/${employee.id}`}
-                                                                className="px-3 py-1.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                            >
-                                                                <span>Profile</span>
-                                                                <i className="ti ti-arrow-right text-xs shrink-0" />
-                                                            </Link>
-                                                        </div>
+                                                        {isTerminated ? (
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <Link
+                                                                    to={`/admin/documents?employee_id=${employee.id}`}
+                                                                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
+                                                                    title="View Documents"
+                                                                >
+                                                                    <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
+                                                                    <span>Documents</span>
+                                                                </Link>
+                                                                <Link
+                                                                    to={`/admin/employees/${employee.id}`}
+                                                                    className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
+                                                                    title="Review record before archive"
+                                                                >
+                                                                    <i className="ti ti-file-search text-xs shrink-0" />
+                                                                    <span>Review</span>
+                                                                </Link>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <Link
+                                                                    to={`/admin/documents?employee_id=${employee.id}`}
+                                                                    className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-lg border border-sky-200/80 transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
+                                                                    title="View Documents"
+                                                                >
+                                                                    <i className="ti ti-folders text-sky-600 text-sm shrink-0" />
+                                                                    <span>Documents</span>
+                                                                </Link>
+                                                                <Link
+                                                                    to={`/admin/employees/${employee.id}`}
+                                                                    className="px-3 py-1.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
+                                                                >
+                                                                    <span>Profile</span>
+                                                                    <i className="ti ti-arrow-right text-xs shrink-0" />
+                                                                </Link>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );
@@ -848,20 +1001,34 @@ export default function EmployeesIndex() {
                 ) : (
                     /* Empty state */
                     <div className="bg-white rounded-2xl p-8 sm:p-12 text-center border border-slate-200 shadow-xs space-y-3">
-                        <div className="w-14 h-14 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center mx-auto border border-slate-200">
-                            <i className="ti ti-users text-3xl" />
-                        </div>
-                        <h3 className="text-base font-bold text-slate-900">No personnel records match your search</h3>
-                        <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
-                            Try adjusting your search keywords, clear active status filters, or pick another department.
-                        </p>
-                        {isFiltered && (
-                            <button
-                                onClick={handleClearFilters}
-                                className="mt-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer touch-manipulation"
-                            >
-                                Reset All Filters
-                            </button>
+                        {filterStatus === 'Pending Termination' && !searchQuery.trim() && selectedDepartment === 'All' ? (
+                            <>
+                                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
+                                    <i className="ti ti-circle-check text-3xl" />
+                                </div>
+                                <h3 className="text-base font-bold text-slate-900">No records pending archive review</h3>
+                                <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
+                                    All separated accounts have been processed or moved to the permanent archive.
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-14 h-14 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center mx-auto border border-slate-200">
+                                    <i className="ti ti-users text-3xl" />
+                                </div>
+                                <h3 className="text-base font-bold text-slate-900">No personnel records match your search</h3>
+                                <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
+                                    Try adjusting your search keywords, clear active status filters, or pick another department.
+                                </p>
+                                {isFiltered && (
+                                    <button
+                                        onClick={handleClearFilters}
+                                        className="mt-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer touch-manipulation"
+                                    >
+                                        Reset All Filters
+                                    </button>
+                                )}
+                            </>
                         )}
                     </div>
                 )}
@@ -1014,6 +1181,8 @@ export default function EmployeesIndex() {
                     </div>
                 </div>
             )}
+
+
 
             {/* Security Modal Component */}
             <OtpVerificationModal

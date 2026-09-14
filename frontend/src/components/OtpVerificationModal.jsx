@@ -308,8 +308,8 @@ export default function OtpVerificationModal({
                                     }}
                                     className="px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
                                 >
-                                    <span className="text-amber-500">⚡</span>
-                                    <span>Test Code: <strong>{demoOtpCode}</strong> (Auto-fill)</span>
+                                    <i className="ti ti-bolt text-amber-500" />
+                                    <span>Development Code: <strong>{demoOtpCode}</strong></span>
                                 </button>
                             </div>
                         )}

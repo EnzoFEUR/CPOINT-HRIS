@@ -17,16 +17,33 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 relative">
-      <div className="relative z-10 w-full max-w-[420px] p-8 mx-4 bg-white/70 backdrop-blur-2xl border border-white/60 rounded-3xl shadow-lg">
-        <h1 className="text-2xl font-bold text-slate-800 tracking-tight text-center mb-6">Forgot Password</h1>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 relative p-4">
+      <div className="relative z-10 w-full max-w-[420px] p-6 sm:p-8 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-center mb-6">Forgot Password</h1>
         <form onSubmit={handleReset} className="space-y-4">
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full p-3 bg-white border border-slate-200 rounded-xl" placeholder="Enter your email" />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          {msg && <p className="text-green-500 text-sm">{msg}</p>}
-          <button type="submit" className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700">Send Reset Link</button>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Workplace Email</label>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              required 
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-slate-900 transition-colors" 
+              placeholder="name@company.com" 
+            />
+          </div>
+          {error && <p className="text-rose-600 text-xs font-medium">{error}</p>}
+          {msg && <p className="text-emerald-700 text-xs font-medium">{msg}</p>}
+          <button 
+            type="submit" 
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold rounded-lg text-sm shadow-xs transition-transform duration-75 cursor-pointer"
+          >
+            Send Reset Link
+          </button>
         </form>
-        <p className="text-center mt-4 text-sm text-slate-500"><Link to="/login" className="text-blue-600">Back to Login</Link></p>
+        <p className="text-center mt-4 text-xs text-slate-500 font-medium">
+          <Link to="/login" className="text-blue-600 hover:underline font-semibold">Back to Login</Link>
+        </p>
       </div>
     </div>
   );

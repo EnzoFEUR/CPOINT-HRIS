@@ -269,8 +269,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
 
             {/* 6. Audit Status */}
             <td className="py-5 px-4 xl:px-6 text-center align-middle whitespace-nowrap">
-                <span className={`px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 mx-auto ${statusVisuals.badgeClass}`}>
-                    <span className={`w-2 h-2 rounded-full ${statusVisuals.dotClass}`} />
+                <span className={`px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto ${statusVisuals.badgeClass}`}>
                     <span>{statusVisuals.label}</span>
                 </span>
             </td>
@@ -420,17 +419,15 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
             {/* 6. Status (7%) */}
             <td className="py-5 px-4 xl:px-6 text-center align-middle whitespace-nowrap">
                 {group.pendingCount === 0 && group.completedCount > 0 ? (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 mx-auto bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <span>Paid</span>
                     </span>
                 ) : group.pendingCount > 0 ? (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 mx-auto bg-amber-50 text-amber-700 border border-amber-200">
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-amber-50 text-amber-700 border border-amber-200">
                         <span>Pending</span>
                     </span>
                 ) : (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 mx-auto bg-slate-100 text-slate-600 border border-slate-200">
+                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-slate-100 text-slate-600 border border-slate-200">
                         <span>Empty</span>
                     </span>
                 )}
@@ -501,8 +498,8 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                     </div>
                 </div>
 
-                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md flex items-center gap-1 shrink-0 ${statusVisuals.badgeClass}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${statusVisuals.dotClass}`} /> {statusVisuals.label}
+                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md flex items-center shrink-0 ${statusVisuals.badgeClass}`}>
+                    {statusVisuals.label}
                 </span>
             </div>
 
@@ -1328,9 +1325,9 @@ export default function PayrollIndex() {
     return (
         <div className="w-full pb-24 lg:pb-8 font-sans space-y-5">
             <PageHeader
-                breadcrumbs={['Admin', 'Finance', 'Payroll Ledger']}
+                breadcrumbs={['Admin', 'Payroll', 'Payroll History']}
                 title="Payroll Ledger"
-                description="Executive wage ledger, DOLE statutory compliance audit, and multi-line batch distributions."
+                description="Employee salary records, statutory deductions, and payroll history."
                 actions={
                     <div className="flex items-center gap-2 flex-wrap">
                         <button
@@ -1365,7 +1362,7 @@ export default function PayrollIndex() {
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* 1. Net Disbursement */}
-                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs bg-gradient-to-br from-emerald-50/40 via-white to-white flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider">
                             Total Net Payout
@@ -1569,8 +1566,8 @@ export default function PayrollIndex() {
                     <div className="flex bg-slate-100/80 p-0.5 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
                         {[
                             { id: 'All', label: 'All', count: metrics.totalCount },
-                            { id: 'Completed', label: 'Completed', count: metrics.completedCount, dot: 'bg-emerald-500' },
-                            { id: 'Pending', label: 'Pending', count: metrics.pendingCount, dot: 'bg-amber-500', alert: metrics.pendingCount > 0 },
+                            { id: 'Completed', label: 'Completed', count: metrics.completedCount },
+                            { id: 'Pending', label: 'Pending', count: metrics.pendingCount, alert: metrics.pendingCount > 0 },
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -1585,7 +1582,6 @@ export default function PayrollIndex() {
                                         : 'text-slate-500 hover:text-slate-900'
                                     }`}
                             >
-                                {tab.dot && <span className={`w-1.5 h-1.5 rounded-full ${tab.dot}`} />}
                                 <span>{tab.label}</span>
                                 <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${filterStatus === tab.id
                                         ? 'bg-white/20 text-white'

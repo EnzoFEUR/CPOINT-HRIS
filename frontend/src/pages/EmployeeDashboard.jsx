@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
+import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -106,6 +108,33 @@ const EmployeeDashboard = () => {
             })
             .subscribe();
 
+        const broadcastBus = supabase
+            .channel(`dashboard-disciplinary-sync-${user.id}`)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    if (payload?.type === 'Warning' || payload?.type === 'Suspension') {
+                        setShowInfractionsModal(true);
+                    }
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .subscribe();
+
         const handleRefresh = () => {
             queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
         };
@@ -130,6 +159,7 @@ const EmployeeDashboard = () => {
 
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(broadcastBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
@@ -481,26 +511,26 @@ const EmployeeDashboard = () => {
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
-                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/20 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/30 transition-colors">
+                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/15 border border-white/20 rounded-xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/25 transition-colors">
                                     <i className="ti ti-wallet text-2xl sm:text-3xl" />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {isTerminated && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Archived Records
                                         </span>
                                     )}
                                     {isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Compensation
                                         </span>
                                     )}
                                     {isFactoryWorker && !isTerminated && !isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Pakyawan Pool
                                         </span>
                                     )}
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
                                         <i className="ti ti-arrow-right text-lg sm:text-xl" />
                                     </div>
                                 </div>
@@ -509,7 +539,7 @@ const EmployeeDashboard = () => {
                                 <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
                                     {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : isFactoryWorker && !latestPayroll ? 'Compensation Model' : 'Latest Net Pay'}
                                 </p>
-                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
+                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight font-mono">
                                     {latestPayroll ? `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}` : (isFactoryWorker ? 'Batch Pool' : '₱0.00')}
                                 </h2>
                                 <p className="text-emerald-50 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
@@ -529,15 +559,15 @@ const EmployeeDashboard = () => {
                     {/* Today's shift */}
                     <div className={`relative overflow-hidden ${
                         isTerminated 
-                            ? 'bg-slate-900 border border-rose-500/20' 
+                            ? 'bg-slate-900 border border-rose-500/30' 
                             : isSuspended 
                             ? 'bg-slate-900 border border-orange-500/30' 
-                            : 'bg-slate-900'
-                    } rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group select-none`}>
+                            : 'bg-slate-900 border border-slate-800'
+                    } rounded-xl p-5 sm:p-6 md:p-8 shadow-sm text-white flex flex-col justify-between group select-none`}>
                         <div className="relative z-10 flex justify-between items-start">
-                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center ${
+                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center ${
                                 isTerminated ? 'text-rose-400' : isSuspended ? 'text-orange-400' : 'text-blue-400'
-                            } mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors`}>
+                            } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -652,7 +682,7 @@ const EmployeeDashboard = () => {
                                             Personnel Standing: Separated Account
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600" />
+                                            <i className="ti ti-circle-x" />
                                             <span>Employment Terminated</span>
                                         </span>
                                     </div>
@@ -740,7 +770,7 @@ const EmployeeDashboard = () => {
                                             Disciplinary Suspension Active
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-300">
-                                            <span className="w-2 h-2 rounded-full bg-orange-600 animate-pulse" />
+                                            <i className="ti ti-clock-pause" />
                                             <span>Suspended · Operational Hold</span>
                                         </span>
                                     </div>
@@ -826,7 +856,7 @@ const EmployeeDashboard = () => {
                                             HR Notice Awaiting Review
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                                            <i className="ti ti-alert-triangle" />
                                             <span>{unresolvedInfractions.length} Action Required</span>
                                         </span>
                                     </div>
@@ -1129,7 +1159,7 @@ const EmployeeDashboard = () => {
                 {showQrModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <div 
-                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                            className="absolute inset-0 bg-slate-950/70"
                             onClick={() => setShowQrModal(false)}
                         />
                         <div 
@@ -1183,110 +1213,385 @@ const EmployeeDashboard = () => {
                 )}
             
 
-            {/* Historical Payslip Modal */}
-            {showPayslipModal && (currentPayslip || latestPayroll) && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div 
-                        className="absolute inset-0 bg-slate-900/50 backdrop-blur-md"
-                        onClick={() => setShowPayslipModal(false)}
-                    />
-                    <div 
-                        className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] overflow-y-auto touch-scroll border border-slate-200"
-                    >
-                        <div className="bg-emerald-600 p-6 sm:p-7 text-white text-center relative">
-                            <div className="w-12 sm:w-16 h-1.5 bg-white/20 rounded-full mx-auto mb-4 sm:mb-5" />
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 backdrop-blur-md rounded-xl mx-auto flex items-center justify-center border border-white/20 mb-3 shadow-lg">
-                                <i className="ti ti-receipt-2 text-2xl sm:text-3xl" />
-                            </div>
-                            <h3 className="text-xl sm:text-2xl font-black tracking-tight">
-                                {isTerminated ? 'Separation Records / Payslip' : 'Official Payslip'}
-                            </h3>
-                            <p className="text-emerald-100 text-xs sm:text-sm font-bold mt-1 uppercase tracking-widest">
-                                {new Date((currentPayslip || latestPayroll).period_start).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})} - {new Date((currentPayslip || latestPayroll).period_end).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}
-                            </p>
-                        </div>
+            {/* Historical / Official Payslip Modal */}
+            {showPayslipModal && (currentPayslip || latestPayroll) && (() => {
+                const activePayroll = currentPayslip || latestPayroll;
+                const financials = parsePayrollFinancials(activePayroll);
+                const emp = activePayroll.employees || liveEmployee || user;
+                const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Employee' : 'Employee';
+                const voucherId = activePayroll.id ? `PAY-${String(activePayroll.id).slice(0, 8).toUpperCase()}` : 'RECORD';
+                const periodStart = activePayroll.period_start ? dayjs(activePayroll.period_start).format('MMM DD, YYYY') : 'N/A';
+                const periodEnd = activePayroll.period_end ? dayjs(activePayroll.period_end).format('MMM DD, YYYY') : 'N/A';
+                const paymentDate = activePayroll.created_at ? dayjs(activePayroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+                        {/* Print styles for payslip isolation */}
+                        <style>{`
+                            @media print {
+                                body * { visibility: hidden !important; }
+                                #employee-payslip-modal, #employee-payslip-modal * { visibility: visible !important; }
+                                #employee-payslip-modal {
+                                    position: fixed !important;
+                                    left: 0 !important;
+                                    top: 0 !important;
+                                    width: 100% !important;
+                                    height: auto !important;
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                    box-shadow: none !important;
+                                    border: none !important;
+                                }
+                                .no-print { display: none !important; }
+                            }
+                        `}</style>
                         
-                        <div className="p-5 sm:p-7 space-y-4">
-                            {/* Pay Period Selector if multiple payslips */}
-                            {allPayrolls.length > 1 && (
-                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
-                                        Select Pay Period ({allPayrolls.length} on File)
-                                    </label>
-                                    <select 
-                                        value={selectedPayslipIndex} 
-                                        onChange={(e) => setSelectedPayslipIndex(parseInt(e.target.value, 10))}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
-                                    >
-                                        {allPayrolls.map((p, idx) => (
-                                            <option key={p.id || idx} value={idx}>
-                                                {new Date(p.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(p.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} &bull; ₱{parseFloat(p.net_pay || 0).toFixed(2)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
+                        <div 
+                            className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                            onClick={() => setShowPayslipModal(false)}
+                        />
+                        
+                        <div 
+                            id="employee-payslip-modal"
+                            className="relative bg-white rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col border border-slate-200 text-left print:border-none print:shadow-none"
+                        >
+                            {/* 1. Header: Corporate Letterhead */}
+                            <div className="p-5 sm:p-6 bg-white border-b border-slate-200 print:bg-transparent">
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-black text-sm tracking-tighter">
+                                                C
+                                            </div>
+                                            <div>
+                                                <h1 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">C-Point HRIS</h1>
+                                                <p className="text-[11px] text-slate-500 font-medium tracking-wide mt-0.5">Manufacturing &amp; Human Capital Operations</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 mt-1.5 font-mono">
+                                            DOLE DO 147-15 Standard Remuneration Statement
+                                        </p>
+                                    </div>
 
-                            {/* Earnings & Deductions */}
-                            <div className="space-y-3 text-sm">
-                                <div className="flex justify-between items-center pb-2.5 border-b border-dashed border-slate-200">
-                                    <span className="text-slate-500 font-bold">Basic Pay</span>
-                                    <span className="font-mono text-slate-800 font-bold text-base">₱{parseFloat((currentPayslip || latestPayroll).basic_pay || 0).toFixed(2)}</span>
+                                    <div className="flex items-start sm:items-end justify-between sm:justify-start gap-4">
+                                        <div className="sm:text-right">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Confidential Document</span>
+                                            <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                                                {isTerminated ? 'SEPARATION PAYSLIP' : 'EMPLOYEE PAYSLIP'}
+                                            </h2>
+                                            <div className="flex items-center gap-1.5 mt-1 sm:justify-end">
+                                                <span className="font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                                    #{voucherId}
+                                                </span>
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    {activePayroll.status || 'Released'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => setShowPayslipModal(false)}
+                                            className="no-print p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                                            title="Close Modal"
+                                        >
+                                            <i className="ti ti-x text-lg" />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between items-center pb-2.5 border-b border-dashed border-slate-200">
-                                    <span className="text-slate-500 font-bold">Overtime Pay</span>
-                                    <span className="font-mono text-emerald-600 font-bold text-base">+ ₱{parseFloat((currentPayslip || latestPayroll).overtime_pay || 0).toFixed(2)}</span>
+
+                                {/* Historical Period Dropdown if multiple payslips */}
+                                {allPayrolls.length > 1 && (
+                                    <div className="mt-4 pt-3 border-t border-slate-100 no-print">
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                Select Pay Period ({allPayrolls.length} on File)
+                                            </label>
+                                            <select 
+                                                value={selectedPayslipIndex} 
+                                                onChange={(e) => setSelectedPayslipIndex(parseInt(e.target.value, 10))}
+                                                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
+                                            >
+                                                {allPayrolls.map((p, idx) => (
+                                                    <option key={p.id || idx} value={idx}>
+                                                        {dayjs(p.period_start).format('MMM DD, YYYY')} – {dayjs(p.period_end).format('MMM DD, YYYY')} • {formatCurrency(p.net_pay)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 2. Telemetry Strip */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-slate-200 bg-slate-50/75 text-xs divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+                                <div className="p-3 sm:px-4">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Pay Period</span>
+                                    <span className="font-semibold text-slate-800 block text-xs">
+                                        {periodStart} – {periodEnd}
+                                    </span>
                                 </div>
-                                <div className="flex justify-between items-center pb-2.5 border-b border-dashed border-slate-200">
-                                    <span className="text-slate-500 font-bold">Total Deductions</span>
-                                    <span className="font-mono text-rose-500 font-bold text-base">- ₱{parseFloat((currentPayslip || latestPayroll).deductions || 0).toFixed(2)}</span>
+                                <div className="p-3 sm:px-4">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Payment Date</span>
+                                    <span className="font-semibold text-slate-800 block text-xs">
+                                        {paymentDate}
+                                    </span>
+                                </div>
+                                <div className="p-3 sm:px-4">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Currency</span>
+                                    <span className="font-semibold text-slate-800 block text-xs font-mono">
+                                        PHP (₱)
+                                    </span>
                                 </div>
                             </div>
-                            
-                            {/* Total Net Pay */}
-                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex justify-between items-center">
-                                <div>
-                                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] block">Total Net Pay</span>
-                                    <span className="text-[11px] text-slate-400 font-medium">Philippine Peso (PHP)</span>
+
+                            {/* 3. Employee Profile & Statutory Identifiers */}
+                            <div className="p-4 sm:p-5 border-b border-slate-200 bg-white">
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                                    <div className="sm:col-span-6 flex items-center gap-3">
+                                        <EmployeeAvatar
+                                            employee={emp}
+                                            size="h-10 w-10"
+                                            rounded="rounded-md"
+                                            border="border border-slate-200"
+                                            shadow="shadow-2xs"
+                                            theme="emerald"
+                                        />
+                                        <div>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Employee Details</span>
+                                            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                                                {fullName}
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                                <span className="font-mono font-semibold text-slate-700">{emp?.company_id || 'ID N/A'}</span>
+                                                {' • '}
+                                                <span>{emp?.job_title || emp?.role || 'Staff'}</span>
+                                                {' • '}
+                                                <span className="text-slate-600">{emp?.department || 'Operations'}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="sm:col-span-6 border-t sm:border-t-0 sm:border-l border-slate-200 sm:pl-4">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Mandatory Statutory Identifiers</span>
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                                            <div>
+                                                <span className="text-slate-400 text-[10px]">TIN:</span>{' '}
+                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.tin || 'TRAIN Exempt'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 text-[10px]">SSS No:</span>{' '}
+                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.sss_no || 'Recorded'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 text-[10px]">PhilHealth:</span>{' '}
+                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.philhealth_no || 'Recorded'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 text-[10px]">Pag-IBIG:</span>{' '}
+                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.pagibig_no || 'Recorded'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">₱{parseFloat((currentPayslip || latestPayroll).net_pay || 0).toFixed(2)}</span>
                             </div>
 
-                            {/* DOLE Statutory / Suspension Remarks */}
-                            {(currentPayslip || latestPayroll).remarks && (
-                                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-left">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Deductions & Compliance Breakdown</p>
-                                    <p className="text-xs text-slate-600 font-medium leading-relaxed font-mono">{(currentPayslip || latestPayroll).remarks}</p>
-                                </div>
-                            )}
+                            {/* 4. Scrollable Ledger Body */}
+                            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 max-h-[50vh]">
+                                {/* Holiday Pay Callout if present */}
+                                {financials.hasHolidayPay && (
+                                    <div className="border border-amber-200 bg-amber-50/50 rounded-md p-3">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <i className="ti ti-calendar-event text-amber-700 text-xs" />
+                                                <h4 className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">DOLE Holiday Premium Compensation</h4>
+                                            </div>
+                                            <span className="font-mono font-bold text-amber-800 text-xs">
+                                                +{formatCurrency(financials.holidayPay)}
+                                            </span>
+                                        </div>
+                                        <div className="divide-y divide-amber-100 border-t border-amber-200/60 pt-1 text-xs">
+                                            {financials.paidHolidayItems.map((item, idx) => (
+                                                <div key={item.date || idx} className="py-1 flex items-center justify-between text-slate-700 text-[11px]">
+                                                    <span>
+                                                        <span className="font-semibold">{dayjs(item.date).format('MMM DD, YYYY')}</span> – {item.holidayName || HOLIDAY_LABELS[item.holidayType] || 'Holiday'}
+                                                        <span className="text-slate-400 ml-1">({item.worked ? `Worked • ${(Number(item.multiplier || 1) * 100).toFixed(0)}%` : 'Unworked • Paid'})</span>
+                                                    </span>
+                                                    <span className="font-mono font-semibold text-emerald-700">
+                                                        +{formatCurrency(item.pay)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
-                            {/* Actions */}
-                            <div className="grid grid-cols-2 gap-2.5 pt-1">
+                                {/* Dual-Ledger Corporate Table */}
+                                <div className="border border-slate-200 rounded-md overflow-hidden">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+                                        
+                                        {/* LEFT: EARNINGS */}
+                                        <div className="flex flex-col justify-between">
+                                            <div>
+                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
+                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <i className="ti ti-cash text-slate-500 text-xs" />
+                                                        <span>Earnings (Gross)</span>
+                                                    </h4>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
+                                                </div>
+
+                                                <div className="p-3.5 space-y-2 text-xs">
+                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                                                        <div>
+                                                            <span className="font-semibold text-slate-800 block">Basic Pay</span>
+                                                            <span className="text-[10px] text-slate-400">Regular Salary Cutoff</span>
+                                                        </div>
+                                                        <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">
+                                                            {formatCurrency(financials.basicPay)}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                                                        <div>
+                                                            <span className="font-semibold text-slate-800 block">Overtime Pay</span>
+                                                            <span className="text-[10px] text-slate-400">Approved Premium Hours</span>
+                                                        </div>
+                                                        <span className={`font-mono font-semibold text-xs sm:text-sm ${financials.overtimePay > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                                            {financials.overtimePay > 0 ? '+' : ''}{formatCurrency(financials.overtimePay)}
+                                                        </span>
+                                                    </div>
+
+                                                    {financials.hasHolidayPay && (
+                                                        <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                                                            <div>
+                                                                <span className="font-semibold text-slate-800 block">Holiday Premium</span>
+                                                                <span className="text-[10px] text-slate-400">DOLE Statutory Premium</span>
+                                                            </div>
+                                                            <span className="font-mono font-semibold text-emerald-700 text-xs sm:text-sm">
+                                                                +{formatCurrency(financials.holidayPay)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
+                                                <span className="text-[11px] font-bold uppercase text-slate-700 tracking-wide">Gross Earnings</span>
+                                                <span className="font-mono font-bold text-slate-900 text-sm">
+                                                    {formatCurrency(financials.grossEarnings)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* RIGHT: DEDUCTIONS */}
+                                        <div className="flex flex-col justify-between">
+                                            <div>
+                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
+                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <i className="ti ti-receipt-tax text-slate-500 text-xs" />
+                                                        <span>Deductions &amp; Withholdings</span>
+                                                    </h4>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
+                                                </div>
+
+                                                <div className="p-3.5 space-y-2 text-xs">
+                                                    {financials.deductionsList.length > 0 ? (
+                                                        financials.deductionsList.map((ded, index) => {
+                                                            let percentageDisplay = null;
+                                                            if (financials.grossEarnings > 0 && ded.amount > 0) {
+                                                                const percentage = ((ded.amount / financials.grossEarnings) * 100).toFixed(1);
+                                                                percentageDisplay = (
+                                                                    <span className="text-[9px] font-mono text-rose-600 bg-rose-50 px-1 py-0.2 rounded border border-rose-100 ml-1.5">
+                                                                        {percentage}%
+                                                                    </span>
+                                                                );
+                                                            }
+
+                                                            return (
+                                                                <div key={index} className="flex justify-between items-center py-1 border-b border-slate-100">
+                                                                    <div className="flex items-center">
+                                                                        <span className="font-semibold text-slate-800">{ded.name}</span>
+                                                                        {percentageDisplay}
+                                                                    </div>
+                                                                    <span className="font-mono font-semibold text-rose-600 text-xs sm:text-sm">
+                                                                        -{formatCurrency(ded.amount)}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <div className="py-4 text-center text-slate-400 text-xs">
+                                                            No deductions recorded for this cutoff.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
+                                                <span className="text-[11px] font-bold uppercase text-rose-700 tracking-wide">Total Deductions</span>
+                                                <span className="font-mono font-bold text-rose-600 text-sm">
+                                                    -{formatCurrency(financials.totalDeductions)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                {/* 5. Executive Net Take-Home Pay Settlement Strip */}
+                                <div className="border border-slate-900 bg-slate-900 text-white rounded-md p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs print:bg-transparent print:text-slate-900 print:border-2 print:border-slate-900">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block print:text-slate-600">Net Take-Home Pay</span>
+                                        <div className="flex items-baseline gap-2 mt-0.5">
+                                            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white print:text-slate-900">
+                                                {formatCurrency(financials.netPay)}
+                                            </span>
+                                        </div>
+                                        <span className="text-[11px] text-slate-400 mt-1 block font-mono print:text-slate-600">
+                                            Net Calculation: {formatCurrency(financials.grossEarnings)} (Gross) – {formatCurrency(financials.totalDeductions)} (Deductions)
+                                        </span>
+                                    </div>
+
+                                    <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800 w-full sm:w-auto">
+                                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block print:text-emerald-700">Account Settlement</span>
+                                        <span className="text-xs text-slate-300 print:text-slate-700 font-medium mt-0.5 block">Official Remuneration Voucher</span>
+                                        <span className="text-[10px] text-slate-500 font-mono block mt-0.5 print:hidden">Verified by System Treasury Engine</span>
+                                    </div>
+                                </div>
+
+
+                                <p className="text-[10px] text-slate-400 leading-relaxed border-t border-slate-200/80 pt-3">
+                                    <strong>DOLE Compliance Note:</strong> This statement is an official certificate of compensation prepared under Philippine Labor Standards (DOLE DO 147-15). All statutory withholdings for SSS, PhilHealth, Pag-IBIG, and Bureau of Internal Revenue (BIR) taxes are computed and remitted on behalf of the employee.
+                                </p>
+                            </div>
+
+                            {/* 6. Footer Actions */}
+                            <div className="no-print p-4 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
                                 <button 
                                     onClick={() => window.print()} 
-                                    className="py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 font-bold rounded-md text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                                 >
                                     <i className="ti ti-printer text-sm" />
-                                    <span>Print / PDF</span>
+                                    <span>Print / Export PDF</span>
                                 </button>
                                 <button 
                                     onClick={() => setShowPayslipModal(false)} 
-                                    className="py-3 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                    className="px-6 py-2 bg-slate-900 hover:bg-black active:bg-slate-800 text-white font-bold rounded-md text-xs transition-colors cursor-pointer"
                                 >
-                                    Done
+                                    Close
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
             
 
             {/* Leave request modal */}
             {showLeaveModal && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                        className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowLeaveModal(false)}
                     />
                     <div 
@@ -1366,7 +1671,7 @@ const EmployeeDashboard = () => {
             {showInfractionsModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity"
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
                     />
                     <div className="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">
