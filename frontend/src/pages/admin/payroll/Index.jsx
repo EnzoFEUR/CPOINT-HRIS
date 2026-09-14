@@ -114,7 +114,7 @@ const getStatusVisuals = (status) => {
 };
 
 // ── Memoized Table Row Component (Zero-lag rendering, Perfect Alignment, Fully Clickable) ──
-const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 'grouped', rosterCategory = 'all' }) => {
+const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 'grouped', rosterCategory = 'all', isSelected = false, onToggleSelect }) => {
     const navigate = useNavigate();
     const statusVisuals = getStatusVisuals(payroll.status);
     const empIdStr = payroll.employee_id !== undefined && payroll.employee_id !== null ? String(payroll.employee_id) : '';
@@ -144,18 +144,32 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
     }, [navigate, payroll, empIdStr]);
 
     const isGroupEmp = isFactoryDept(payroll._dept) || Boolean(payroll._line);
+    const isSelectable = !payroll.isPending && Boolean(payroll.id);
 
     return (
         <tr
             onClick={handleRowClick}
             title={payroll.isPending ? `Click to process payroll for ${payroll._fullName}` : `Click to view payslip for ${payroll._fullName}`}
-            className={`cursor-pointer transition-all duration-150 group select-none ${isGroupChild
-                    ? 'bg-slate-50/40 hover:bg-emerald-50/50 hover:shadow-2xs active:bg-emerald-100/30'
-                    : 'bg-white hover:bg-emerald-50/35 hover:shadow-2xs active:bg-emerald-100/30'
+            className={`cursor-pointer transition-all duration-150 group select-none ${isSelected ? 'bg-red-50/60 hover:bg-red-50/80' : isGroupChild
+                ? 'bg-slate-50/40 hover:bg-emerald-50/50 hover:shadow-2xs active:bg-emerald-100/30'
+                : 'bg-white hover:bg-emerald-50/35 hover:shadow-2xs active:bg-emerald-100/30'
                 }`}
         >
+            {/* 0. Select */}
+            <td className="py-5 pl-3 xl:pl-4 pr-1 align-middle" data-prevent-row-click>
+                {isSelectable && (
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelect?.(payroll.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                )}
+            </td>
+
             {/* 1. Worker & Role */}
-            <td className={`py-5 px-4 xl:px-6 align-middle ${isGroupChild ? 'pl-8 xl:pl-10' : ''}`}>
+            <td className={`py-5 px-3 xl:px-4 align-middle ${isGroupChild ? 'pl-8 xl:pl-10' : ''}`}>
                 <div className="flex items-center gap-3.5 min-w-0">
                     {isGroupChild && (
                         <i className="ti ti-corner-down-right text-emerald-600/70 shrink-0 text-sm" title="Factory Line Member" />
@@ -165,7 +179,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                            <p className="text-[15px] font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors truncate" title={payroll._fullName}>
+                            <p className="text-sm font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors truncate" title={payroll._fullName}>
                                 {payroll._fullName || 'Unknown'}
                             </p>
                             <i className="ti ti-arrow-up-right text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity text-sm shrink-0" />
@@ -199,7 +213,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
             </td>
 
             {/* 2. Pay Cycle Period */}
-            <td className="py-5 px-4 xl:px-6 align-middle">
+            <td className="py-5 px-3 xl:px-4 align-middle">
                 <div className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-slate-800 whitespace-nowrap flex items-center gap-1.5">
                         <i className="ti ti-calendar-event text-slate-400 text-sm" />
@@ -214,12 +228,12 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
             </td>
 
             {/* 3. Gross Compensation */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 {payroll.isPending ? (
                     <span className="text-slate-300 font-bold text-sm">—</span>
                 ) : (
                     <div className="flex flex-col items-end">
-                        <span className="font-bold text-slate-900 text-sm sm:text-[15px]">
+                        <span className="font-bold text-slate-900 text-sm">
                             ₱{payroll._gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {payroll.overtime_pay > 0 && (
@@ -232,24 +246,21 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
             </td>
 
             {/* 4. Statutory Deductions */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 {payroll.isPending ? (
                     <span className="text-slate-300 font-bold text-sm">—</span>
                 ) : (
                     <div className="flex flex-col items-end">
-                        <span className="font-bold text-rose-600 text-sm sm:text-[15px]">
+                        <span className="font-bold text-rose-600 text-sm">
                             -₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {(payroll._sss > 0 || payroll._philHealth > 0 || payroll._pagIbig > 0 || payroll._tax > 0) && (
                             <div
-                                className="text-[11px] text-slate-400 font-sans mt-0.5 flex items-center justify-end gap-1 cursor-help whitespace-nowrap"
+                                className="text-[10px] text-slate-400 font-sans mt-0.5 flex items-center justify-end gap-1 cursor-help whitespace-nowrap"
                                 title={`SSS: ₱${payroll._sss.toFixed(2)} | PhilHealth: ₱${payroll._philHealth.toFixed(2)} | Pag-IBIG: ₱${payroll._pagIbig.toFixed(2)} | BIR Tax: ₱${payroll._tax.toFixed(2)}`}
                             >
-                                <span>SSS {payroll._sss.toFixed(0)}</span>
-                                <span>•</span>
-                                <span>PH {payroll._philHealth.toFixed(0)}</span>
-                                <span>•</span>
-                                <span>HDMF {payroll._pagIbig.toFixed(0)}</span>
+                                <span>Breakdown</span>
+                                <i className="ti ti-info-circle text-[11px]" />
                             </div>
                         )}
                     </div>
@@ -257,26 +268,26 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
             </td>
 
             {/* 5. Net Payout */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 {payroll.isPending ? (
                     <span className="text-slate-300 font-bold text-sm">—</span>
                 ) : (
-                    <span className="text-base sm:text-[17px] font-black text-emerald-600 tracking-tight">
+                    <span className="text-sm sm:text-base font-black text-emerald-600 tracking-tight">
                         ₱{payroll._net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                 )}
             </td>
 
             {/* 6. Audit Status */}
-            <td className="py-5 px-4 xl:px-6 text-center align-middle whitespace-nowrap">
-                <span className={`px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto ${statusVisuals.badgeClass}`}>
+            <td className="py-5 px-3 xl:px-4 text-center align-middle whitespace-nowrap">
+                <span className={`px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto ${statusVisuals.badgeClass}`}>
                     <span>{statusVisuals.label}</span>
                 </span>
             </td>
 
             {/* 7. Actions */}
-            <td className="py-5 px-4 xl:px-6 text-right align-middle whitespace-nowrap">
-                <div className="flex justify-end">
+            <td className="py-5 px-3 xl:px-4 text-left align-middle whitespace-nowrap">
+                <div className="flex justify-start">
                     {payroll.isPending ? (
                         <Link
                             to={{
@@ -293,7 +304,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                                 isFactoryEmployee: isFactoryDept(payroll.employees?.department),
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
                         >
                             <i className="ti ti-player-play text-xs font-bold text-amber-700" />
                             <span>Process</span>
@@ -302,7 +313,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <Link
                             to={`/admin/payroll/${payroll.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-600 hover:text-white text-slate-700 font-bold text-xs rounded-xl shadow-2xs group-hover:border-emerald-400 group-hover:text-emerald-700 group-hover:bg-emerald-50/80 transition-all active:scale-95 cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-600 hover:text-white text-slate-700 font-bold text-xs rounded-xl shadow-2xs group-hover:border-emerald-400 group-hover:text-emerald-700 group-hover:bg-emerald-50/80 transition-all active:scale-95 cursor-pointer"
                         >
                             <i className="ti ti-receipt-2 text-xs font-bold" />
                             <span>View Slip</span>
@@ -315,33 +326,56 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
 });
 
 // ── Memoized Factory Line Banner Row (7 Dedicated Columns, 100% Header & Ledger Alignment) ───
-const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
+const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectionState = 'none', onToggleGroupSelect }) => {
     const firstItem = group.items[0] || {};
     const startText = firstItem._startFormatted || (firstItem.period_start ? dayjs(firstItem.period_start).format('MMM DD') : '');
     const endText = firstItem._endFormatted || (firstItem.period_end ? dayjs(firstItem.period_end).format('MMM DD, YYYY') : '');
+    const checkboxRef = React.useRef(null);
+    const hasSelectableItems = group.items.some(p => !p.isPending && p.id);
+
+    useEffect(() => {
+        if (checkboxRef.current) {
+            checkboxRef.current.indeterminate = selectionState === 'some';
+        }
+    }, [selectionState]);
 
     return (
         <tr
             onClick={onToggle}
-            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${isExpanded
-                    ? 'bg-emerald-50/75 border-emerald-200 shadow-2xs'
-                    : 'bg-slate-50/90 border-slate-200/90 hover:bg-slate-100/90'
+            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${selectionState !== 'none' ? 'bg-red-50/50 border-red-200' : isExpanded
+                ? 'bg-emerald-50/75 border-emerald-200 shadow-2xs'
+                : 'bg-slate-50/90 border-slate-200/90 hover:bg-slate-100/90'
                 }`}
         >
-            {/* 1. Group Identity & Role (27%) */}
-            <td className="py-5 px-4 xl:px-6 align-middle">
+            {/* 0. Select all in group */}
+            <td className="py-5 pl-3 xl:pl-4 pr-1 align-middle" data-prevent-row-click>
+                {hasSelectableItems && (
+                    <input
+                        ref={checkboxRef}
+                        type="checkbox"
+                        checked={selectionState === 'all'}
+                        onChange={() => onToggleGroupSelect?.(group.items)}
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Select all ${group.items.length} records in ${group.groupName}`}
+                        className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                )}
+            </td>
+
+            {/* 1. Group Identity & Role */}
+            <td className="py-5 px-3 xl:px-4 align-middle">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div
                         className={`w-11 h-11 rounded-2xl flex items-center justify-center text-base transition-all shadow-2xs shrink-0 ${isExpanded
-                                ? 'bg-emerald-600 text-white shadow-emerald-500/20'
-                                : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
+                            ? 'bg-emerald-600 text-white shadow-emerald-500/20'
+                            : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
                             }`}
                     >
                         <i className="ti ti-building-factory-2 text-xl" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                            <span className="text-[15px] font-extrabold text-slate-900 group-hover/line:text-emerald-800 transition-colors truncate">
+                            <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-emerald-800 transition-colors truncate">
                                 {group.groupName}
                             </span>
                             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300/60 text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
@@ -361,8 +395,8 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                 </div>
             </td>
 
-            {/* 2. Pay Cycle Period (15%) */}
-            <td className="py-5 px-4 xl:px-6 align-middle">
+            {/* 2. Pay Cycle Period */}
+            <td className="py-5 px-3 xl:px-4 align-middle">
                 <div className="flex flex-col gap-1.5">
                     {startText && endText ? (
                         <span className="text-xs font-semibold text-slate-800 whitespace-nowrap flex items-center gap-1.5">
@@ -380,10 +414,10 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                 </div>
             </td>
 
-            {/* 3. Gross Compensation (14%) */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            {/* 3. Gross Compensation */}
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
-                    <span className="font-extrabold text-slate-900 text-sm sm:text-[15px]">
+                    <span className="font-extrabold text-slate-900 text-sm">
                         ₱{group.totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 font-sans uppercase tracking-wider mt-0.5">
@@ -392,10 +426,10 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                 </div>
             </td>
 
-            {/* 4. Statutory Deductions (17%) */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            {/* 4. Statutory Deductions */}
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
-                    <span className="font-extrabold text-rose-600 text-sm sm:text-[15px]">
+                    <span className="font-extrabold text-rose-600 text-sm">
                         -₱{group.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 font-sans uppercase tracking-wider mt-0.5">
@@ -404,10 +438,10 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                 </div>
             </td>
 
-            {/* 5. Net Payout (13%) */}
-            <td className="py-5 px-4 xl:px-6 text-right font-mono tabular-nums align-middle">
+            {/* 5. Net Payout */}
+            <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
-                    <span className="text-base sm:text-[17px] font-black text-emerald-600 tracking-tight">
+                    <span className="text-sm sm:text-base font-black text-emerald-600 tracking-tight">
                         ₱{group.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold text-emerald-700 font-sans uppercase tracking-wider mt-0.5">
@@ -416,35 +450,35 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
                 </div>
             </td>
 
-            {/* 6. Status (7%) */}
-            <td className="py-5 px-4 xl:px-6 text-center align-middle whitespace-nowrap">
+            {/* 6. Status */}
+            <td className="py-5 px-3 xl:px-4 text-center align-middle whitespace-nowrap">
                 {group.pendingCount === 0 && group.completedCount > 0 ? (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <span>Paid</span>
                     </span>
                 ) : group.pendingCount > 0 ? (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-amber-50 text-amber-700 border border-amber-200">
                         <span>Pending</span>
                     </span>
                 ) : (
-                    <span className="px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-slate-100 text-slate-600 border border-slate-200">
+                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-slate-100 text-slate-600 border border-slate-200">
                         <span>Empty</span>
                     </span>
                 )}
             </td>
 
-            {/* 7. Actions (7%) */}
-            <td className="py-5 px-4 xl:px-6 text-right align-middle whitespace-nowrap">
-                <div className="flex justify-end">
+            {/* 7. Actions */}
+            <td className="py-5 px-3 xl:px-4 text-left align-middle whitespace-nowrap">
+                <div className="flex justify-start">
                     <button
                         type="button"
                         onClick={(e) => {
                             e.stopPropagation();
                             onToggle();
                         }}
-                        className={`inline-flex items-center gap-1.5 px-4 py-2 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${isExpanded
-                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
-                                : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50/60'
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${isExpanded
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50/60'
                             }`}
                         title={isExpanded ? `Collapse ${group.groupName}` : `Inspect workers in ${group.groupName}`}
                     >
@@ -458,18 +492,27 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle }) => {
 });
 
 // ── Memoized Mobile Card Component ───────────────────────────────────────────
-const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode = 'grouped', rosterCategory = 'all' }) => {
+const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode = 'grouped', rosterCategory = 'all', isSelected = false, onToggleSelect }) => {
     const statusVisuals = getStatusVisuals(payroll.status);
     const empIdStr = payroll.employee_id !== undefined && payroll.employee_id !== null ? String(payroll.employee_id) : '';
     const isGroupEmp = isFactoryDept(payroll._dept) || Boolean(payroll._line);
+    const isSelectable = !payroll.isPending && Boolean(payroll.id);
 
     return (
         <div
-            className={`p-4 space-y-3 rounded-2xl border transition-all ${isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200/90 hover:border-emerald-300 shadow-xs'
+            className={`p-4 space-y-3 rounded-2xl border transition-all ${isSelected ? 'bg-red-50/60 border-red-300' : isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200/90 hover:border-emerald-300 shadow-xs'
                 }`}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
+                    {isSelectable && (
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggleSelect?.(payroll.id)}
+                            className="w-4 h-4 mt-0.5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer shrink-0"
+                        />
+                    )}
                     <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="emerald" />
                     <div className="min-w-0">
                         <p className="text-sm font-black text-slate-800 truncate">
@@ -588,13 +631,17 @@ export default function PayrollIndex() {
     const deferredSearch = useDeferredValue(searchQuery);
 
     const [selectedDepartment, setSelectedDepartment] = useState('All');
-    const [filterStatus, setFilterStatus] = useState('All'); // 'All' | 'Completed' | 'Pending'
-    const [viewMode, setViewMode] = useState('grouped'); // 'grouped' (default: Group rows + Regular rows) | 'flat'
+    const [filterStatus, setFilterStatus] = useState('Pending'); // 'All' | 'Completed' | 'Pending'
+    const [viewMode, setViewMode] = useState('grouped'); // 'grouped' | 'flat'
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [expandedGroups, setExpandedGroups] = useState({});
+    const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState('');
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
-    // Sorting Configuration: Default to 'hierarchy' (Group Paid -> Group Pending -> Regular Paid -> Regular Pending)
+    // Sorting Configuration: Default to 'hierarchy'
     const [sortConfig, setSortConfig] = useState({ key: 'hierarchy', direction: 'asc' });
 
     const handleSort = useCallback((key) => {
@@ -617,6 +664,59 @@ export default function PayrollIndex() {
             [groupId]: !prev[groupId]
         }));
     }, []);
+
+    // ── Bulk selection & delete ──────────────────────────────────────────────
+    const toggleSelectPayroll = useCallback((id) => {
+        if (!id) return;
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const toggleSelectGroup = useCallback((groupItems) => {
+        const realIds = groupItems.filter(p => !p.isPending && p.id).map(p => p.id);
+        if (realIds.length === 0) return;
+        setSelectedIds(prev => {
+            const allSelected = realIds.every(id => prev.has(id));
+            const next = new Set(prev);
+            realIds.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
+            return next;
+        });
+    }, []);
+
+    const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+    const handleBulkDelete = async () => {
+        if (bulkDeleteConfirmText !== 'DELETE') {
+            toast.error('Please type DELETE to confirm.');
+            return;
+        }
+        setIsBulkDeleting(true);
+        try {
+            const user = JSON.parse(localStorage.getItem('user'));
+            const res = await fetchWithAuth('/api/payroll/bulk-delete', {
+                method: 'POST',
+                body: JSON.stringify({ ids: Array.from(selectedIds), admin_id: user?.id }),
+            });
+            const resultData = await res.json();
+            if (res.ok && resultData.success) {
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
+                toast.success(`${resultData.deleted_count} payroll record(s) deleted.`);
+                setSelectedIds(new Set());
+                setIsBulkDeleteModalOpen(false);
+                setBulkDeleteConfirmText('');
+            } else {
+                toast.error('Error deleting records: ' + (resultData.error || resultData.message));
+            }
+        } catch (err) {
+            console.error('Failed to bulk delete payrolls:', err);
+            toast.error('Network error deleting records');
+        } finally {
+            setIsBulkDeleting(false);
+        }
+    };
 
     // Realtime Supabase subscription for live ledger updates
     useEffect(() => {
@@ -648,7 +748,7 @@ export default function PayrollIndex() {
             if (e.key === 'ArrowLeft') {
                 setCurrentPage(prev => Math.max(prev - 1, 1));
             } else if (e.key === 'ArrowRight') {
-                setCurrentPage(prev => prev + 1); // clamped by the auto-clamp effect
+                setCurrentPage(prev => prev + 1);
             } else if (e.key === 'Escape' && searchQuery) {
                 setSearchQuery('');
                 setCurrentPage(1);
@@ -663,7 +763,7 @@ export default function PayrollIndex() {
         if (cat === 'group' || cat === 'regular') {
             params.set('category', cat);
         } else {
-            params.delete('category'); // 'all' is the default
+            params.delete('category');
         }
         setSearchParams(params);
         setCurrentPage(1);
@@ -769,7 +869,7 @@ export default function PayrollIndex() {
 
     const isActiveCycle = cycleBounds.year === currentYearNum && cycleBounds.month === (new Date().getMonth() + 1);
 
-    // ── Single-Pass Precomputation & Enriched Records (High-Performance Core) ──
+    // ── Single-Pass Precomputation & Enriched Records ──
     const enrichedRecords = useMemo(() => {
         const computedEmployeeIds = new Set();
         const employeeLastKnownLineMap = {};
@@ -889,7 +989,6 @@ export default function PayrollIndex() {
         return ['All', ...Array.from(depts)];
     }, [enrichedRecords]);
 
-    // Live counts across regular, factory groups, and total ledger entries
     const categoryCounts = useMemo(() => {
         const groupSet = new Set();
         let regular = 0;
@@ -938,7 +1037,6 @@ export default function PayrollIndex() {
         };
     }, [enrichedRecords, currentMonth, currentYear, selectedDepartment, viewMode]);
 
-    // ── Instant Filter (Sub-millisecond deferred lookup) ────────────────────────
     const filteredPayrolls = useMemo(() => {
         const q = deferredSearch.trim().toLowerCase();
         const targetMonth = currentMonth ? parseInt(currentMonth, 10) : null;
@@ -958,7 +1056,6 @@ export default function PayrollIndex() {
                 if (pDate.isValid() && pDate.year() !== targetYear) return false;
             }
 
-            // Worker Category Filter: 'regular' (default) | 'group' | 'all'
             const isGroupWorker = isFactoryDept(p._dept) || Boolean(p._line);
             if (rosterCategory === 'regular' && isGroupWorker) return false;
             if (rosterCategory === 'group' && !isGroupWorker) return false;
@@ -976,15 +1073,10 @@ export default function PayrollIndex() {
         });
     }, [enrichedRecords, currentMonth, currentYear, rosterCategory, filterStatus, selectedDepartment, deferredSearch]);
 
-    // ── High-Performance Client-Side Sorting ───────────────────────────────────
     const sortedPayrolls = useMemo(() => {
         const getTierScores = (p) => {
             const isGroup = isFactoryDept(p._dept) || Boolean(p._line);
             const isPaid = !p.isPending && (p.status === 'Completed' || p.status === 'Paid');
-            // Tier 0: Group - Paid
-            // Tier 1: Group - Pending
-            // Tier 2: Regular - Paid
-            // Tier 3: Regular - Pending
             const groupScore = isGroup ? 0 : 1;
             const statusScore = isPaid ? 0 : 1;
             return { isGroup, isPaid, tier: groupScore * 2 + statusScore };
@@ -995,13 +1087,10 @@ export default function PayrollIndex() {
                 const scoreA = getTierScores(a);
                 const scoreB = getTierScores(b);
 
-                // 1. Primary sort: Enterprise Hierarchy Tier
-                // Group Paid (0) -> Group Pending (1) -> Regular Paid (2) -> Regular Pending (3)
                 if (scoreA.tier !== scoreB.tier) {
                     return scoreA.tier - scoreB.tier;
                 }
 
-                // 2. Secondary sort within tier:
                 if (scoreA.isGroup) {
                     const lineA = a._line || '';
                     const lineB = b._line || '';
@@ -1014,7 +1103,6 @@ export default function PayrollIndex() {
                     if (deptComp !== 0) return deptComp;
                 }
 
-                // 3. Tertiary sort: by worker name
                 return a._fullName.localeCompare(b._fullName);
             });
         }
@@ -1023,23 +1111,15 @@ export default function PayrollIndex() {
         const factor = direction === 'asc' ? 1 : -1;
 
         return [...filteredPayrolls].sort((a, b) => {
-            if (key === 'name') {
-                return factor * a._fullName.localeCompare(b._fullName);
-            }
+            if (key === 'name') return factor * a._fullName.localeCompare(b._fullName);
             if (key === 'date') {
                 const dateA = a.period_start ? new Date(a.period_start).getTime() : 0;
                 const dateB = b.period_start ? new Date(b.period_start).getTime() : 0;
                 return factor * (dateA - dateB);
             }
-            if (key === 'gross') {
-                return factor * (a._gross - b._gross);
-            }
-            if (key === 'deductions') {
-                return factor * (a._deductions - b._deductions);
-            }
-            if (key === 'net') {
-                return factor * (a._net - b._net);
-            }
+            if (key === 'gross') return factor * (a._gross - b._gross);
+            if (key === 'deductions') return factor * (a._deductions - b._deductions);
+            if (key === 'net') return factor * (a._net - b._net);
             if (key === 'status') {
                 const statusA = (a.status || 'Pending').toLowerCase();
                 const statusB = (b.status || 'Pending').toLowerCase();
@@ -1049,7 +1129,6 @@ export default function PayrollIndex() {
         });
     }, [filteredPayrolls, sortConfig]);
 
-    // ── Executive KPI Metrics (Live financial summary) ──────────────────────────
     const metrics = useMemo(() => {
         let totalNet = 0;
         let totalGross = 0;
@@ -1095,7 +1174,6 @@ export default function PayrollIndex() {
         };
     }, [filteredPayrolls]);
 
-    // ── Hierarchical Grouping for 'grouped' View Mode ──────────────────────────
     const ledgerDisplayItems = useMemo(() => {
         const factoryGroupsMap = {};
         const factoryGroupsList = [];
@@ -1142,12 +1220,10 @@ export default function PayrollIndex() {
             }
         });
 
-        // Split factory groups into Paid (0 pending) and Pending (>0 pending)
         const groupPaidList = [];
         const groupPendingList = [];
 
         factoryGroupsList.forEach(grp => {
-            // Ensure workers within each factory group are sorted Paid first, then Pending
             grp.items.sort((a, b) => {
                 const aPaid = !a.isPending && (a.status === 'Completed' || a.status === 'Paid') ? 0 : 1;
                 const bPaid = !b.isPending && (b.status === 'Completed' || b.status === 'Paid') ? 0 : 1;
@@ -1165,7 +1241,6 @@ export default function PayrollIndex() {
         groupPaidList.sort((a, b) => a.groupName.localeCompare(b.groupName));
         groupPendingList.sort((a, b) => a.groupName.localeCompare(b.groupName));
 
-        // Split regular staff into Paid and Pending
         const regularPaidItems = [];
         const regularPendingItems = [];
 
@@ -1182,13 +1257,6 @@ export default function PayrollIndex() {
         regularPaidItems.sort((a, b) => a.data._fullName.localeCompare(b.data._fullName));
         regularPendingItems.sort((a, b) => a.data._fullName.localeCompare(b.data._fullName));
 
-        // Strict 4-Tier Hierarchy Order requested by user:
-        // group - paid
-        // group - paid
-        // group - pending
-        // regular - paid
-        // regular - paid
-        // regular - pending
         return [
             ...groupPaidList,
             ...groupPendingList,
@@ -1219,7 +1287,6 @@ export default function PayrollIndex() {
         });
     }, [ledgerDisplayItems]);
 
-    // ── 1-Click Enterprise CSV Export ───────────────────────────────────────────
     const handleExportCSV = useCallback(() => {
         if (filteredPayrolls.length === 0) {
             toast.error('No payroll records to export');
@@ -1227,23 +1294,10 @@ export default function PayrollIndex() {
         }
 
         const headers = [
-            'Payroll ID',
-            'Employee ID',
-            'Company ID',
-            'Employee Name',
-            'Department',
-            'Production Line',
-            'Position / Title',
-            'Period Start',
-            'Period End',
-            'Gross Pay',
-            'SSS Deduction',
-            'PhilHealth Deduction',
-            'Pag-IBIG Deduction',
-            'Withholding Tax',
-            'Total Deductions',
-            'Net Take-Home Pay',
-            'Status'
+            'Payroll ID', 'Employee ID', 'Company ID', 'Employee Name', 'Department',
+            'Production Line', 'Position / Title', 'Period Start', 'Period End',
+            'Gross Pay', 'SSS Deduction', 'PhilHealth Deduction', 'Pag-IBIG Deduction',
+            'Withholding Tax', 'Total Deductions', 'Net Take-Home Pay', 'Status'
         ];
 
         const escapeCSV = (val) => {
@@ -1296,9 +1350,6 @@ export default function PayrollIndex() {
         filterStatus !== 'All'
     );
 
-    // Dynamic Display Items based on View Mode:
-    // 'grouped': shows section banners for factory lines + non-factory workers
-    // 'flat': shows individual rows for every worker directly
     const displayList = useMemo(() => {
         if (viewMode === 'flat') {
             return sortedPayrolls.map(p => ({
@@ -1313,7 +1364,6 @@ export default function PayrollIndex() {
     const totalItems = displayList.length;
     const totalPages = Math.ceil(totalItems / pageSize) || 1;
 
-    // Auto-clamp page when filters reduce total pages below current page
     useEffect(() => {
         if (currentPage > totalPages) {
             setCurrentPage(totalPages);
@@ -1321,6 +1371,20 @@ export default function PayrollIndex() {
     }, [currentPage, totalPages]);
 
     const paginatedDisplayItems = displayList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+    const allVisibleSelectableIds = useMemo(() => {
+        const ids = [];
+        paginatedDisplayItems.forEach(item => {
+            if (item.type === 'individual') {
+                if (!item.data.isPending && item.data.id) ids.push(item.data.id);
+            } else {
+                item.items.forEach(p => {
+                    if (!p.isPending && p.id) ids.push(p.id);
+                });
+            }
+        });
+        return ids;
+    }, [paginatedDisplayItems]);
 
     return (
         <div className="w-full pb-24 lg:pb-8 font-sans space-y-5">
@@ -1361,7 +1425,6 @@ export default function PayrollIndex() {
 
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {/* 1. Net Disbursement */}
                 <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider">
@@ -1381,7 +1444,6 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                {/* 2. Total Gross Compensation */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -1401,7 +1463,6 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                {/* 3. Statutory Deductions Remittance */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -1424,7 +1485,6 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                {/* 4. Audit Coverage / Status Progress */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -1456,7 +1516,6 @@ export default function PayrollIndex() {
             {/* Filter & Search Toolbar */}
             <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-2xs border border-slate-200 space-y-3">
                 <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-                    {/* Search input */}
                     <div className="relative flex-1 min-w-[240px]">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
                         <input
@@ -1478,16 +1537,15 @@ export default function PayrollIndex() {
                         )}
                     </div>
 
-                    {/* Worker Category Switcher (All Personnel = Default, Factory Groups, Regular Staff) */}
                     <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
                         <button
                             type="button"
                             onClick={() => handleCategoryChange('all')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'all'
-                                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
-                                    : 'text-slate-500 hover:text-slate-800'
+                                ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                                : 'text-slate-500 hover:text-slate-800'
                                 }`}
-                            title="All Personnel (Default: Group Paid -> Group Pending -> Regular Paid -> Regular Pending)"
+                            title="All Personnel"
                         >
                             <i className="ti ti-users text-sm" />
                             <span>All</span>
@@ -1500,10 +1558,10 @@ export default function PayrollIndex() {
                             type="button"
                             onClick={() => handleCategoryChange('group')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'group'
-                                    ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
-                                    : 'text-slate-500 hover:text-slate-800'
+                                ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
+                                : 'text-slate-500 hover:text-slate-800'
                                 }`}
-                            title="Factory Production Lines & Groups (Paid first, then Pending)"
+                            title="Factory Production Lines & Groups"
                         >
                             <i className="ti ti-building-factory-2 text-sm" />
                             <span>Group</span>
@@ -1516,10 +1574,10 @@ export default function PayrollIndex() {
                             type="button"
                             onClick={() => handleCategoryChange('regular')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'regular'
-                                    ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
-                                    : 'text-slate-500 hover:text-slate-800'
+                                ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
+                                : 'text-slate-500 hover:text-slate-800'
                                 }`}
-                            title="Regular Corporate / Individual Staff (Paid first, then Pending)"
+                            title="Regular Corporate / Individual Staff"
                         >
                             <i className="ti ti-user text-sm" />
                             <span>Regular</span>
@@ -1530,15 +1588,14 @@ export default function PayrollIndex() {
                         </button>
                     </div>
 
-                    {/* View Mode Toggle: Grouped vs Flat */}
                     {rosterCategory !== 'regular' && (
                         <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('grouped'); setCurrentPage(1); }}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
-                                        ? 'bg-white text-slate-900 shadow-2xs'
-                                        : 'text-slate-500 hover:text-slate-800'
+                                    ? 'bg-white text-slate-900 shadow-2xs'
+                                    : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 title="Group factory workers under line summary units"
                             >
@@ -1550,8 +1607,8 @@ export default function PayrollIndex() {
                                 type="button"
                                 onClick={() => { setViewMode('flat'); setCurrentPage(1); }}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
-                                        ? 'bg-white text-slate-900 shadow-2xs'
-                                        : 'text-slate-500 hover:text-slate-800'
+                                    ? 'bg-white text-slate-900 shadow-2xs'
+                                    : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 title="Show flat list of all workers"
                             >
@@ -1562,7 +1619,6 @@ export default function PayrollIndex() {
                         </div>
                     )}
 
-                    {/* Status Pill Tabs */}
                     <div className="flex bg-slate-100/80 p-0.5 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
                         {[
                             { id: 'All', label: 'All', count: metrics.totalCount },
@@ -1574,20 +1630,20 @@ export default function PayrollIndex() {
                                 type="button"
                                 onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${filterStatus === tab.id
-                                        ? (tab.id === 'Completed'
-                                            ? 'bg-emerald-600 text-white shadow-2xs'
-                                            : tab.id === 'Pending'
-                                                ? 'bg-amber-500 text-white shadow-2xs'
-                                                : 'bg-slate-900 text-white shadow-2xs')
-                                        : 'text-slate-500 hover:text-slate-900'
+                                    ? (tab.id === 'Completed'
+                                        ? 'bg-emerald-600 text-white shadow-2xs'
+                                        : tab.id === 'Pending'
+                                            ? 'bg-amber-500 text-white shadow-2xs'
+                                            : 'bg-slate-900 text-white shadow-2xs')
+                                    : 'text-slate-500 hover:text-slate-900'
                                     }`}
                             >
                                 <span>{tab.label}</span>
                                 <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${filterStatus === tab.id
-                                        ? 'bg-white/20 text-white'
-                                        : tab.alert
-                                            ? 'bg-amber-100 text-amber-800 font-bold'
-                                            : 'bg-slate-200/80 text-slate-600'
+                                    ? 'bg-white/20 text-white'
+                                    : tab.alert
+                                        ? 'bg-amber-100 text-amber-800 font-bold'
+                                        : 'bg-slate-200/80 text-slate-600'
                                     }`}>
                                     {tab.count}
                                 </span>
@@ -1596,10 +1652,8 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                {/* Filter controls row */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100">
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                        {/* Worker Category Select (All Personnel = Default) */}
                         <div className="relative min-w-[145px] flex-1 sm:flex-initial">
                             <select
                                 value={rosterCategory}
@@ -1613,7 +1667,6 @@ export default function PayrollIndex() {
                             <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
                         </div>
 
-                        {/* Month Select */}
                         <div className="relative min-w-[130px] flex-1 sm:flex-initial">
                             <select
                                 value={currentMonth}
@@ -1630,7 +1683,6 @@ export default function PayrollIndex() {
                             <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
                         </div>
 
-                        {/* Year Select */}
                         <div className="relative min-w-[110px] flex-1 sm:flex-initial">
                             <select
                                 value={currentYear}
@@ -1721,37 +1773,70 @@ export default function PayrollIndex() {
                 </div>
             </div>
 
+            {/* Bulk Actions Bar */}
+            {selectedIds.size > 0 && (
+                <div className="sticky top-2 z-20 bg-red-600 text-white rounded-2xl shadow-lg px-4 sm:px-5 py-3 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                            <i className="ti ti-checkbox text-lg" />
+                        </div>
+                        <span className="text-sm font-extrabold">
+                            {selectedIds.size} record{selectedIds.size === 1 ? '' : 's'} selected
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                            type="button"
+                            onClick={clearSelection}
+                            className="flex-1 sm:flex-none px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                        >
+                            Clear
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsBulkDeleteModalOpen(true)}
+                            className="flex-1 sm:flex-none px-4 py-2 bg-white hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                            <i className="ti ti-trash text-sm" />
+                            <span>Delete Selected</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Table & Content Container */}
             <div className="bg-white rounded-2xl shadow-2xs border border-slate-200 overflow-hidden">
                 {isLoading ? (
-                    /* Enterprise Skeleton — matches real table structure for zero layout shift */
                     <div className="animate-pulse">
-                        <div className="hidden md:block w-full overflow-hidden">
-                            <table className="w-full text-left border-collapse">
+                        <div className="hidden lg:block w-full overflow-x-auto">
+                            <table className="w-full min-w-[1080px] table-fixed text-left border-collapse">
                                 <colgroup>
-                                    <col className="w-[27%]" />
-                                    <col className="w-[15%]" />
-                                    <col className="w-[14%]" />
-                                    <col className="w-[17%]" />
-                                    <col className="w-[13%]" />
-                                    <col className="w-[7%]" />
-                                    <col className="w-[7%]" />
+                                    <col className="w-[40px]" />
+                                    <col className="w-[24%]" />
+                                    <col className="w-[16%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[12%]" />
+                                    <col className="w-[110px]" />
+                                    <col className="w-[145px]" />
                                 </colgroup>
                                 <thead className="bg-slate-50/90 border-b border-slate-200">
                                     <tr>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-32 bg-slate-200 rounded" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-24 bg-slate-200 rounded" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-20 bg-slate-200 rounded ml-auto" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-24 bg-slate-200 rounded ml-auto" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-20 bg-slate-200 rounded ml-auto" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-14 bg-slate-200 rounded mx-auto" /></th>
-                                        <th className="px-4 xl:px-6 py-4.5"><div className="h-3.5 w-14 bg-slate-200 rounded ml-auto" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-4 bg-slate-200 rounded" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-32 bg-slate-200 rounded" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-24 bg-slate-200 rounded" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-20 bg-slate-200 rounded ml-auto" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-24 bg-slate-200 rounded ml-auto" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-20 bg-slate-200 rounded ml-auto" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-14 bg-slate-200 rounded mx-auto" /></th>
+                                        <th className="px-3 xl:px-4 py-4.5"><div className="h-3.5 w-14 bg-slate-200 rounded ml-auto" /></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                                         <tr key={n}>
-                                            <td className="px-4 xl:px-6 py-5">
+                                            <td className="px-3 xl:px-4 py-5"><div className="h-4 w-4 bg-slate-200 rounded" /></td>
+                                            <td className="px-3 xl:px-4 py-5">
                                                 <div className="flex items-center gap-3.5">
                                                     <div className="h-11 w-11 rounded-full bg-slate-200 shrink-0" />
                                                     <div className="space-y-2 flex-1">
@@ -1760,18 +1845,18 @@ export default function PayrollIndex() {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-4 xl:px-6 py-5"><div className="h-3.5 w-28 bg-slate-100 rounded" /><div className="h-2.5 w-16 bg-slate-100 rounded mt-2" /></td>
-                                            <td className="px-4 xl:px-6 py-5 text-right"><div className="h-4 w-24 bg-slate-200 rounded ml-auto" /></td>
-                                            <td className="px-4 xl:px-6 py-5 text-right"><div className="h-4 w-28 bg-rose-100 rounded ml-auto" /><div className="h-2.5 w-20 bg-slate-100 rounded ml-auto mt-1.5" /></td>
-                                            <td className="px-4 xl:px-6 py-5 text-right"><div className="h-4.5 w-24 bg-emerald-100 rounded ml-auto" /></td>
-                                            <td className="px-4 xl:px-6 py-5 text-center"><div className="h-6 w-20 bg-slate-100 rounded-lg mx-auto" /></td>
-                                            <td className="px-4 xl:px-6 py-5 text-right"><div className="h-8 w-24 bg-slate-100 rounded-xl ml-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5"><div className="h-3.5 w-28 bg-slate-100 rounded" /><div className="h-2.5 w-16 bg-slate-100 rounded mt-2" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-24 bg-slate-200 rounded ml-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-28 bg-rose-100 rounded ml-auto" /><div className="h-2.5 w-20 bg-slate-100 rounded ml-auto mt-1.5" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4.5 w-24 bg-emerald-100 rounded ml-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-center"><div className="h-6 w-20 bg-slate-100 rounded-lg mx-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-8 w-24 bg-slate-100 rounded-xl ml-auto" /></td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                        <div className="block md:hidden p-3 space-y-3">
+                        <div className="block lg:hidden p-3 space-y-3">
                             {[1, 2, 3, 4].map(n => (
                                 <div key={n} className="p-4 rounded-2xl border border-slate-200 space-y-3">
                                     <div className="flex items-center gap-3">
@@ -1794,13 +1879,25 @@ export default function PayrollIndex() {
                 ) : (
                     <>
                         {/* Mobile View */}
-                        <div className="block md:hidden p-3 space-y-3">
+                        <div className="block lg:hidden p-3 space-y-3">
                             {paginatedDisplayItems.length > 0 ? paginatedDisplayItems.map((item) => {
                                 if (item.type === 'individual') {
-                                    return <PayrollMobileCard key={item.id} payroll={item.data} viewMode={viewMode} rosterCategory={rosterCategory} />;
+                                    return (
+                                        <PayrollMobileCard
+                                            key={item.id}
+                                            payroll={item.data}
+                                            viewMode={viewMode}
+                                            rosterCategory={rosterCategory}
+                                            isSelected={selectedIds.has(item.data.id)}
+                                            onToggleSelect={toggleSelectPayroll}
+                                        />
+                                    );
                                 }
 
                                 const isExpanded = Boolean(expandedGroups[item.id]);
+                                const groupSelectableIdsM = item.items.filter(p => !p.isPending && p.id).map(p => p.id);
+                                const groupSelectedCountM = groupSelectableIdsM.filter(id => selectedIds.has(id)).length;
+                                const isGroupFullySelectedM = groupSelectableIdsM.length > 0 && groupSelectedCountM === groupSelectableIdsM.length;
 
                                 return (
                                     <div key={item.id} className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
@@ -1810,6 +1907,16 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2.5">
+                                                    {groupSelectableIdsM.length > 0 && (
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isGroupFullySelectedM}
+                                                            onChange={() => toggleSelectGroup(item.items)}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title={`Select all ${item.items.length} records in ${item.groupName}`}
+                                                            className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer shrink-0"
+                                                        />
+                                                    )}
                                                     <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
                                                         <i className="ti ti-building-factory-2" />
                                                     </div>
@@ -1874,7 +1981,15 @@ export default function PayrollIndex() {
                                         {isExpanded && (
                                             <div className="p-3 bg-slate-50 border-t border-slate-200 space-y-3">
                                                 {item.items.map(payroll => (
-                                                    <PayrollMobileCard key={payroll.id || `m-${payroll.employee_id}`} payroll={payroll} isGroupChild={true} viewMode={viewMode} rosterCategory={rosterCategory} />
+                                                    <PayrollMobileCard
+                                                        key={payroll.id || `m-${payroll.employee_id}`}
+                                                        payroll={payroll}
+                                                        isGroupChild={true}
+                                                        viewMode={viewMode}
+                                                        rosterCategory={rosterCategory}
+                                                        isSelected={selectedIds.has(payroll.id)}
+                                                        onToggleSelect={toggleSelectPayroll}
+                                                    />
                                                 ))}
                                             </div>
                                         )}
@@ -1889,31 +2004,53 @@ export default function PayrollIndex() {
                             )}
                         </div>
 
-                        {/* Desktop Table View - 7 Dedicated Perfectly Aligned Columns */}
-                        <div className="hidden md:block w-full overflow-hidden">
-                            <table className="w-full text-left border-collapse">
+                        {/* Desktop Table View - 8 Columns */}
+                        <div className="hidden lg:block w-full overflow-x-auto">
+                            <table className="w-full min-w-[1080px] table-fixed text-left border-collapse">
                                 <colgroup>
-                                    <col className="w-[27%]" />
-                                    <col className="w-[15%]" />
-                                    <col className="w-[14%]" />
-                                    <col className="w-[17%]" />
-                                    <col className="w-[13%]" />
-                                    <col className="w-[7%]" />
-                                    <col className="w-[7%]" />
+                                    <col className="w-[40px]" />
+                                    <col className="w-[24%]" />
+                                    <col className="w-[16%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[12%]" />
+                                    <col className="w-[110px]" />
+                                    <col className="w-[145px]" />
                                 </colgroup>
                                 <thead className="bg-slate-50/95 backdrop-blur-sm text-slate-500 text-[11px] uppercase tracking-wider font-bold border-b border-slate-200 select-none sticky top-0 z-10">
                                     <tr>
+                                        {/* 0. Select */}
+                                        <th className="px-3 xl:px-4 py-4.5 align-middle">
+                                            <input
+                                                type="checkbox"
+                                                checked={allVisibleSelectableIds.length > 0 && allVisibleSelectableIds.every(id => selectedIds.has(id))}
+                                                ref={(el) => {
+                                                    if (el) el.indeterminate = allVisibleSelectableIds.some(id => selectedIds.has(id)) && !allVisibleSelectableIds.every(id => selectedIds.has(id));
+                                                }}
+                                                onChange={() => {
+                                                    const allSelected = allVisibleSelectableIds.length > 0 && allVisibleSelectableIds.every(id => selectedIds.has(id));
+                                                    setSelectedIds(prev => {
+                                                        const next = new Set(prev);
+                                                        allVisibleSelectableIds.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
+                                                        return next;
+                                                    });
+                                                }}
+                                                title="Select all on this page"
+                                                className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                            />
+                                        </th>
+
                                         {/* 1. Worker & Role */}
                                         <th
                                             onClick={() => handleSort('name')}
-                                            className="px-4 xl:px-6 py-4.5 cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle text-left"
+                                            className="px-3 xl:px-4 py-4.5 cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle text-left"
                                             title="Sort by Worker Name"
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span>Worker &amp; Role</span>
                                                 <i className={`ti ${sortConfig.key === 'name'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
                                         </th>
@@ -1921,14 +2058,14 @@ export default function PayrollIndex() {
                                         {/* 2. Pay Cycle Period */}
                                         <th
                                             onClick={() => handleSort('date')}
-                                            className="px-4 xl:px-6 py-4.5 cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle text-left"
+                                            className="px-3 xl:px-4 py-4.5 cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle text-left"
                                             title="Sort by Period Date"
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span>Cycle Period</span>
                                                 <i className={`ti ${sortConfig.key === 'date'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
                                         </th>
@@ -1936,13 +2073,13 @@ export default function PayrollIndex() {
                                         {/* 3. Gross Compensation */}
                                         <th
                                             onClick={() => handleSort('gross')}
-                                            className="px-4 xl:px-6 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
+                                            className="px-3 xl:px-4 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
                                             title="Sort by Gross Pay"
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'gross'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Gross Pay</span>
                                             </div>
@@ -1951,13 +2088,13 @@ export default function PayrollIndex() {
                                         {/* 4. Statutory Deductions */}
                                         <th
                                             onClick={() => handleSort('deductions')}
-                                            className="px-4 xl:px-6 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
+                                            className="px-3 xl:px-4 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
                                             title="Sort by Deductions"
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'deductions'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Deductions</span>
                                             </div>
@@ -1966,13 +2103,13 @@ export default function PayrollIndex() {
                                         {/* 5. Net Payout */}
                                         <th
                                             onClick={() => handleSort('net')}
-                                            className="px-4 xl:px-6 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
+                                            className="px-3 xl:px-4 py-4.5 text-right cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
                                             title="Sort by Net Payout"
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'net'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Net Payout</span>
                                             </div>
@@ -1981,20 +2118,20 @@ export default function PayrollIndex() {
                                         {/* 6. Status */}
                                         <th
                                             onClick={() => handleSort('status')}
-                                            className="px-4 xl:px-6 py-4.5 text-center cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
+                                            className="px-3 xl:px-4 py-4.5 text-center cursor-pointer hover:bg-slate-100/80 transition-colors group align-middle"
                                             title="Sort by Status"
                                         >
                                             <div className="flex items-center justify-center gap-2">
                                                 <span>Status</span>
                                                 <i className={`ti ${sortConfig.key === 'status'
-                                                        ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
-                                                        : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
                                         </th>
 
                                         {/* 7. Actions */}
-                                        <th className="px-4 xl:px-6 py-4.5 text-right align-middle">
+                                        <th className="px-3 xl:px-4 py-4.5 text-left align-middle">
                                             <span>Actions</span>
                                         </th>
                                     </tr>
@@ -2002,44 +2139,51 @@ export default function PayrollIndex() {
                                 <tbody className="divide-y divide-slate-100/80 text-xs [&>tr:nth-child(even):not(:hover)]:bg-slate-50/20">
                                     {paginatedDisplayItems.length > 0 ? paginatedDisplayItems.map((item) => {
                                         if (item.type === 'individual') {
-                                            return <PayrollTableRow key={item.id} payroll={item.data} viewMode={viewMode} rosterCategory={rosterCategory} />;
+                                            return (
+                                                <PayrollTableRow
+                                                    key={item.id}
+                                                    payroll={item.data}
+                                                    viewMode={viewMode}
+                                                    rosterCategory={rosterCategory}
+                                                    isSelected={selectedIds.has(item.data.id)}
+                                                    onToggleSelect={toggleSelectPayroll}
+                                                />
+                                            );
                                         }
 
                                         const isExpanded = Boolean(expandedGroups[item.id]);
+                                        const groupSelectableIds = item.items.filter(p => !p.isPending && p.id).map(p => p.id);
+                                        const groupSelectedCount = groupSelectableIds.filter(id => selectedIds.has(id)).length;
+                                        const groupSelectionState = groupSelectedCount === 0 ? 'none' : (groupSelectedCount === groupSelectableIds.length ? 'all' : 'some');
 
                                         return (
                                             <React.Fragment key={item.id}>
-                                                {/* Factory Line Banner Row - 7 Dedicated Aligned Columns */}
                                                 <FactoryLineBannerRow
                                                     group={item}
                                                     isExpanded={isExpanded}
                                                     onToggle={() => toggleGroup(item.id)}
+                                                    selectionState={groupSelectionState}
+                                                    onToggleGroupSelect={toggleSelectGroup}
                                                 />
-
-                                                {/* Expanded Child Rows */}
                                                 {isExpanded && item.items.map(payroll => (
                                                     <PayrollTableRow
-                                                        key={payroll.id || `r-${payroll.employee_id}`}
+                                                        key={payroll.id || `child-${payroll.employee_id}`}
                                                         payroll={payroll}
                                                         isGroupChild={true}
                                                         viewMode={viewMode}
                                                         rosterCategory={rosterCategory}
+                                                        isSelected={selectedIds.has(payroll.id)}
+                                                        onToggleSelect={toggleSelectPayroll}
                                                     />
                                                 ))}
                                             </React.Fragment>
                                         );
                                     }) : (
                                         <tr>
-                                            <td colSpan={7} className="px-8 py-20 text-center">
-                                                <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
-                                                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 text-3xl shadow-2xs">
-                                                        <i className="ti ti-receipt-off" />
-                                                    </div>
-                                                    <p className="text-base font-black text-slate-800 tracking-tight">No Records Found</p>
-                                                    <p className="text-xs text-slate-400 font-medium max-w-sm">
-                                                        No payroll entries matched your search or cycle filters. Click "Compute Payroll" to generate new entries.
-                                                    </p>
-                                                </div>
+                                            <td colSpan={8} className="py-12 text-center text-slate-400">
+                                                <i className="ti ti-receipt-off text-4xl text-slate-300 block mb-2" />
+                                                <p className="text-sm font-bold text-slate-600">No payroll records found</p>
+                                                <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or search terms.</p>
                                             </td>
                                         </tr>
                                     )}
@@ -2047,65 +2191,112 @@ export default function PayrollIndex() {
                             </table>
                         </div>
 
-                        {/* Pagination Footer */}
-                        <div className="px-4 sm:px-8 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
-                            <div className="flex items-center gap-4 flex-wrap">
-                                {totalItems > 0 ? (
-                                    <span>
-                                        Showing <span className="text-slate-800 font-black">{(currentPage - 1) * pageSize + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * pageSize, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span> {rosterCategory === 'regular' ? 'regular staff' : (rosterCategory === 'group' ? (viewMode === 'grouped' ? (totalItems === 1 ? 'factory group' : 'factory groups') : 'factory workers') : (viewMode === 'grouped' ? 'entries' : 'personnel'))}
-                                    </span>
-                                ) : (
-                                    <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
-                                )}
-
-                                <div className="flex items-center gap-1.5 text-slate-400 font-medium">
-                                    <span>Show</span>
-                                    <select
-                                        value={pageSize}
-                                        onChange={(e) => {
-                                            setPageSize(Number(e.target.value));
-                                            setCurrentPage(1);
-                                        }}
-                                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:border-slate-300 shadow-2xs"
-                                    >
-                                        <option value={10}>10</option>
-                                        <option value={25}>25</option>
-                                        <option value={50}>50</option>
-                                        <option value={100}>100</option>
-                                    </select>
-                                    <span>per page</span>
-                                </div>
+                        {/* Pagination Bar */}
+                        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                                <span>Show</span>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-slate-700 outline-none cursor-pointer"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                                <span>per page</span>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
                                 >
-                                    <i className="ti ti-chevron-left text-sm" />
-                                    <span>Prev</span>
+                                    Previous
                                 </button>
-
-                                <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs shadow-2xs">
-                                    {currentPage} / {totalPages}
+                                <span className="text-xs font-bold text-slate-600 px-2">
+                                    Page {currentPage} of {totalPages}
                                 </span>
-
                                 <button
                                     type="button"
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                    disabled={currentPage >= totalPages}
-                                    className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                                    disabled={currentPage === totalPages || totalPages === 0}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
                                 >
-                                    <span>Next</span>
-                                    <i className="ti ti-chevron-right text-sm" />
+                                    Next
                                 </button>
                             </div>
                         </div>
                     </>
                 )}
             </div>
+
+            {/* Bulk Delete Modal */}
+            {isBulkDeleteModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in duration-150">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 text-rose-600">
+                                <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-xl">
+                                    <i className="ti ti-alert-triangle" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">Confirm Bulk Delete</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { setIsBulkDeleteModalOpen(false); setBulkDeleteConfirmText(''); }}
+                                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                            You are about to permanently delete <strong className="text-slate-900">{selectedIds.size} payroll record(s)</strong>.
+                            This action cannot be undone. To proceed, please type <span className="font-mono font-bold text-rose-600">DELETE</span> below.
+                        </p>
+
+                        <input
+                            type="text"
+                            placeholder="Type DELETE to confirm"
+                            value={bulkDeleteConfirmText}
+                            onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+                        />
+
+                        <div className="flex items-center justify-end gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => { setIsBulkDeleteModalOpen(false); setBulkDeleteConfirmText(''); }}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleBulkDelete}
+                                disabled={bulkDeleteConfirmText !== 'DELETE' || isBulkDeleting}
+                                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                                {isBulkDeleting ? (
+                                    <>
+                                        <i className="ti ti-loader animate-spin text-sm" />
+                                        <span>Deleting...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="ti ti-trash text-sm" />
+                                        <span>Delete {selectedIds.size} Record(s)</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
