@@ -157,7 +157,7 @@ export const MobileNav = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-black tracking-tight text-white">System Tools & Modules</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Quick Launch Center</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">All Modules</p>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -177,7 +177,7 @@ export const MobileNav = ({
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-black text-white truncate">Install C-Point App</p>
-                    <p className="text-[9px] text-blue-200 truncate">Run fullscreen without browser bars</p>
+                    <p className="text-[9px] text-blue-200 truncate">Add shortcut to home screen</p>
                   </div>
                 </div>
                 <button

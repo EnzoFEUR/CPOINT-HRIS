@@ -579,7 +579,7 @@ export default function BiometricSetup() {
         const ob = (phaseIdx / PHASE_LIST.length) * 100;
         const op = Math.min(ob + (pp / PHASE_LIST.length), 100);
         dispatch({ type: 'SET_PROGRESS', payload: { overall: op, phase: pp } });
-        dispatch({ type: 'SET_STATUS', payload: `${target.instruction} — Hold...` });
+        dispatch({ type: 'SET_STATUS', payload: `${target.instruction}. Hold steady.` });
 
         if (vault.holdCount >= ENV.HOLD_FRAMES) {
           const img = await snapFrame();
@@ -673,7 +673,7 @@ export default function BiometricSetup() {
       {/* Header bar */}
       <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-0.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
-          <span className={`w-1.5 h-1.5 rounded-full ${state.isOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+          <i className={`ti ${state.isOnline ? 'ti-wifi' : 'ti-wifi-off'} text-xs ${state.isOnline ? 'text-emerald-400' : 'text-rose-400'}`} />
           {deviceInfo.isMobile ? 'Mobile Station' : 'Workstation'}
         </div>
         <h1 className="text-base sm:text-lg font-bold text-white">Biometric Registration</h1>

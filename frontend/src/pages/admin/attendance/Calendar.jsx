@@ -209,7 +209,7 @@ const Calendar = () => {
             <PageHeader
                 breadcrumbs={['Admin', 'Attendance', 'Workforce Timeline']}
                 title="Workforce Timeline"
-                description="Chronological arrival tracking, daily punctuality distributions, and biometric verification logs."
+                description="Daily attendance records, check-in times, and punctuality logs."
             />
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">

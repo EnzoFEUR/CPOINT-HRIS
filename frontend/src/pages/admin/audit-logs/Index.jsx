@@ -107,7 +107,7 @@ export default function AuditLogsIndex() {
             <PageHeader
                 breadcrumbs={['Admin', 'System', 'Audit Trail']}
                 title="System Audit Trail"
-                description="Immutable chronological ledger of administrative operations, security authorizations, and data modifications."
+                description="Log of user actions, administrative changes, and security events."
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Events:</span>

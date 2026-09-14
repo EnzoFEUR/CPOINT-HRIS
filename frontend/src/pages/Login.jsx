@@ -363,8 +363,7 @@ export default function Login() {
                                     </>
                                 ) : (
                                     <>
-                                        <span>Continue</span>
-                                        <i className="ti ti-arrow-right text-sm" />
+                                        <span>Login</span>
                                     </>
                                 )}
                             </button>

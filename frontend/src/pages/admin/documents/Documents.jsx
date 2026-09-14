@@ -498,7 +498,7 @@ useEffect(() => {
                     </div>
                     <div>
                         <div className="flex flex-wrap items-center gap-2.5">
-                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">201 Documents</h1>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Documents</h1>
                             {isTerminated && (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
                                     <i className="ti ti-lock text-xs" /> Separated · Read-Only Audit
@@ -533,7 +533,7 @@ useEffect(() => {
                                 </span>
                             </div>
                             <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
-                                This employee account is officially separated / terminated. In compliance with Philippine DOLE labor standards and audit governance, new document uploads and file edits are locked. All historical 201 records remain accessible below for review and compliance export.
+                                This employee is separated from the company. To comply with Philippine DOLE labor standards and record-keeping rules, document uploads and edits are locked. Historical 201 records remain available below for review and export.
                             </p>
                         </div>
                     </div>
@@ -775,7 +775,7 @@ useEffect(() => {
                                         <i className="ti ti-file-upload text-xl" />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-black text-slate-800">Upload 201 Document</h2>
+                                        <h2 className="text-lg font-black text-slate-800">Upload Document</h2>
                                         <p className="text-xs text-slate-400 font-medium">Attach PDF, images, or documents</p>
                                     </div>
                                 </div>

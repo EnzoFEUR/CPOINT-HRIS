@@ -77,8 +77,48 @@ const MyQr = () => {
       })
       .subscribe();
 
+    const broadcastBus = supabase
+      .channel('disciplinary_realtime_sync')
+      .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          if (payload.type === 'Suspension') {
+            const statusObj = { type: 'Suspension', record: payload, isSuspended: true };
+            setDisciplinaryCache(user.id, statusObj);
+            setDisciplinaryState(statusObj);
+          } else if (payload.type === 'Termination') {
+            const statusObj = { type: 'Termination', record: payload, isTerminated: true };
+            setDisciplinaryCache(user.id, statusObj);
+            setDisciplinaryState(statusObj);
+          }
+          checkDisciplinary();
+        }
+      })
+      .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          clearDisciplinaryCache(user.id);
+          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          checkDisciplinary();
+        }
+      })
+      .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          clearDisciplinaryCache(user.id);
+          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          checkDisciplinary();
+        }
+      })
+      .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          clearDisciplinaryCache(user.id);
+          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          checkDisciplinary();
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(broadcastBus);
     };
   }, [user?.id, checkDisciplinary]);
 

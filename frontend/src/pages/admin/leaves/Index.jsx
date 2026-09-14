@@ -193,7 +193,7 @@ export default function LeavesIndex() {
             <PageHeader
                 breadcrumbs={['Admin', 'Time Off', 'Leave Approvals']}
                 title="Leave Approvals"
-                description="Review, audit, and authorize paid time off, medical leaves, and vacation requests across all departments."
+                description="Manage employee leave requests and approvals across departments."
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pending Action:</span>
@@ -250,25 +250,22 @@ export default function LeavesIndex() {
                                     </div>
 
                                     {leave.status === 'New' && (
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-amber-50 text-amber-600 border border-amber-200 flex items-center gap-1 shrink-0">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Pending
+                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-amber-50 text-amber-600 border border-amber-200 flex items-center shrink-0">
+                                            Pending
                                         </span>
                                     )}
                                     {leave.status === 'Approved' && (
-                                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center gap-1 shrink-0 ${
+                                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center shrink-0 ${
                                             leave.pay_type === 'without_pay' || leave.is_paid === false
                                                 ? 'bg-amber-50 text-amber-700 border-amber-300'
                                                 : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                                         }`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${
-                                                leave.pay_type === 'without_pay' || leave.is_paid === false ? 'bg-amber-500' : 'bg-emerald-500'
-                                            }`} />
                                             {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • Paid'}
                                         </span>
                                     )}
                                     {leave.status === 'Rejected' && (
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-red-50 text-red-600 border border-red-200 flex items-center gap-1 shrink-0">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Rejected
+                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-red-50 text-red-600 border border-red-200 flex items-center shrink-0">
+                                            Rejected
                                         </span>
                                     )}
                                 </div>
@@ -385,25 +382,22 @@ export default function LeavesIndex() {
 
                                         <td className="px-6 lg:px-8 py-4 text-center">
                                             {leave.status === 'New' && (
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-xs flex w-max items-center gap-1.5 mx-auto">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Pending
+                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-xs flex w-max items-center mx-auto">
+                                                    Pending
                                                 </span>
                                             )}
                                             {leave.status === 'Approved' && (
-                                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center gap-1.5 mx-auto ${
+                                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center mx-auto ${
                                                     leave.pay_type === 'without_pay' || leave.is_paid === false
                                                         ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-xs'
                                                         : 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs'
                                                 }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                                        leave.pay_type === 'without_pay' || leave.is_paid === false ? 'bg-amber-500' : 'bg-emerald-500'
-                                                    }`} />
                                                     {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • With Pay'}
                                                 </span>
                                             )}
                                             {leave.status === 'Rejected' && (
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-red-50 text-red-600 border border-red-200 flex w-max items-center gap-1.5 mx-auto">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Rejected
+                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-red-50 text-red-600 border border-red-200 flex w-max items-center mx-auto">
+                                                    Rejected
                                                 </span>
                                             )}
                                         </td>

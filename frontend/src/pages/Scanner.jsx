@@ -341,6 +341,65 @@ const Scanner = () => {
     dispatch({ type: 'SET_MODE', payload: MODES.QR });
   }, [vault, stopFaceCamera, dispatch]);
 
+  // Real-time security gate broadcast listener: cancels scan and alerts guard instantly if personnel is sanctioned
+  useEffect(() => {
+    const channel = supabase
+      .channel('scanner_disciplinary_realtime')
+      .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+        if (!payload) return;
+        const isSuspOrTerm = payload.type === 'Suspension' || payload.type === 'Termination' || payload.employee_status === 'suspended';
+        if (isSuspOrTerm && vault.employeeId && vault.employeeId === payload.employee_id) {
+          handleReset();
+          playSound('error');
+          haptic('error');
+          toast.error(`SECURITY ALERT: ${payload.employee_name || 'Personnel'} was just suspended/terminated by HR. Premise entry revoked.`, {
+            id: 'gate-security-alert',
+            duration: 6000
+          });
+        }
+      })
+      .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
+        if (payload && vault.employeeId && vault.employeeId === payload.employee_id) {
+          handleReset();
+          playSound('error');
+          haptic('error');
+          toast.error('SECURITY ALERT: Employment terminated by HR. Gate pass revoked.', {
+            id: 'gate-security-alert',
+            duration: 6000
+          });
+        }
+      })
+      .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+        if (payload?.employee_id) {
+          toast.success('Access Restored: Personnel record cleared by HR.', {
+            id: 'gate-restored-alert',
+            duration: 4000
+          });
+        }
+      })
+      .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+        if (payload?.employee_id) {
+          toast.success('Access Restored: Personnel record cleared by HR.', {
+            id: 'gate-restored-alert',
+            duration: 4000
+          });
+        }
+      })
+      .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+        if (payload?.employee_id) {
+          toast.success('Access Restored: Personnel record cleared by HR.', {
+            id: 'gate-restored-alert',
+            duration: 4000
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [vault, handleReset]);
+
   // Capture frame and submit to backend
   const captureAndSubmit = useCallback(async (finalScore, blinkCount, earHistory) => {
     if (vault.submitLock) return;
@@ -521,7 +580,7 @@ const Scanner = () => {
       if (!matched) {
         vault.lockFrames = 0;
         throttledDispatch({ scanProgress: 0, matchScore: currentScore });
-        updateStatus(`IDENTITY MISMATCH [${currentScore}%] — ACCESS DENIED`);
+        updateStatus(`IDENTITY MISMATCH [${currentScore}%]: ACCESS DENIED`);
         drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
         return;
       }
@@ -635,7 +694,10 @@ const Scanner = () => {
       
       const emp = data.data;
 
-      if (!emp.is_active) {
+      const empStatus = String(emp.status || '').toLowerCase();
+      if (!emp.is_active || empStatus === 'suspended' || empStatus === 'inactive' || empStatus === 'terminated') {
+        if (empStatus === 'suspended') throw new Error('EMPLOYEE_SUSPENDED');
+        if (empStatus === 'terminated' || empStatus === 'inactive') throw new Error('EMPLOYEE_TERMINATED');
         throw new Error('EMPLOYEE_INACTIVE');
       }
 
@@ -711,9 +773,16 @@ const Scanner = () => {
       dispatch({ type: 'SET_BASELINE', payload: null });
       dispatch({ type: 'SET_LOADING', payload: '' });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
-      toast.error(err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
-                  err.message === 'EMPLOYEE_INACTIVE' ? 'Account deactivated.' :
-                  'Identification error.');
+      const errFriendly =
+        err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
+        err.message === 'EMPLOYEE_SUSPENDED' ? 'ACCESS DENIED: Account under active disciplinary suspension.' :
+        err.message === 'EMPLOYEE_TERMINATED' ? 'ACCESS DENIED: Employment terminated. Pass revoked.' :
+        err.message === 'EMPLOYEE_INACTIVE' ? 'ACCESS DENIED: Account deactivated.' :
+        'Identification error.';
+      toast.error(errFriendly, { id: 'qr-scan-error', duration: 4500 });
+      playSound('error');
+      haptic('error');
+      updateStatus(errFriendly);
     }
   }, [vault, dispatch]);
 
@@ -1193,7 +1262,7 @@ const Scanner = () => {
               {/* Status Badge */}
               <span className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide border shadow-md ${statusMeta.pill}`}>
                 {state.liveness.status === 'BLINK_TO_VERIFY' ? 'Please blink once to verify' :
-                 state.liveness.status === 'PASSED' && state.scanProgress < 100 ? 'Liveness confirmed — hold still' :
+                 state.liveness.status === 'PASSED' && state.scanProgress < 100 ? 'Liveness confirmed. Hold still.' :
                  state.scanProgress >= 100 ? 'Processing attendance...' :
                  state.matchScore !== null && state.matchScore < 50 ? 'Photo mismatch' :
                  'Verifying face...'}
@@ -1389,7 +1458,7 @@ const Scanner = () => {
       {/* Status indicator */}
       {state.mode !== MODES.BOOT && state.loadingMsg && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-1.5 bg-slate-900 border border-slate-700 rounded-full shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
-          <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+          <i className="ti ti-loader-2 animate-spin text-blue-400 text-xs shrink-0" />
           <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
         </div>
       )}
@@ -1397,7 +1466,7 @@ const Scanner = () => {
       {/* Debug panel */}
       {state.debugMode && (
         <div className="absolute top-20 left-4 z-[55] bg-black/80 border border-white/10 rounded-xl p-4 w-64 text-[10px] font-mono text-slate-300">
-          <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Telemetry</h3>
+          <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Info</h3>
           <div className="space-y-1">
             <p>Mode: {state.mode}</p>
             <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>

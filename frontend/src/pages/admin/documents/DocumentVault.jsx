@@ -360,7 +360,7 @@ export default function DocumentVault() {
                                 <i className="ti ti-folders text-xl" />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-slate-800">201 Documents</h2>
+                                <h2 className="text-lg font-black text-slate-800">Documents</h2>
                                 <p className="text-xs text-slate-500 font-medium">
                                     {employee.name} ({employee.company_id || 'No ID'}) · {employee.department || 'General'}
                                 </p>
@@ -600,7 +600,7 @@ export default function DocumentVault() {
             {isUploadOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
-                        <h2 className="text-lg font-black text-slate-800 mb-4">Upload 201 Document</h2>
+                        <h2 className="text-lg font-black text-slate-800 mb-4">Upload Document</h2>
                         <form onSubmit={handleUploadSubmit} className="space-y-4">
                             {!employeeId && (
                                 <div>
@@ -616,7 +616,7 @@ export default function DocumentVault() {
                                             const isTerm = emp.operational_status === 'Terminated' || emp.is_terminated;
                                             return (
                                                 <option key={emp.id} value={emp.id} disabled={isTerm}>
-                                                    {emp.first_name} {emp.last_name} ({emp.company_id}){isTerm ? ' — Separated' : ''}
+                                                    {emp.first_name} {emp.last_name} ({emp.company_id}){isTerm ? ' (Separated)' : ''}
                                                 </option>
                                             );
                                         })}
@@ -667,7 +667,9 @@ export default function DocumentVault() {
                     <div className="bg-white rounded-2xl max-w-3xl w-full h-[80vh] flex flex-col p-4">
                         <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
                             <h3 className="font-bold text-slate-800">{previewDoc.title || previewDoc.file_name}</h3>
-                            <button onClick={() => setPreviewDoc(null)} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer">✕</button>
+                            <button onClick={() => setPreviewDoc(null)} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Close preview">
+                                <i className="ti ti-x text-base" />
+                            </button>
                         </div>
                         <iframe src={getDocumentUrl(previewDoc.file_path)} className="w-full flex-1 rounded bg-slate-50" title="Document Preview" />
                     </div>

@@ -108,6 +108,33 @@ const EmployeeDashboard = () => {
             })
             .subscribe();
 
+        const broadcastBus = supabase
+            .channel(`dashboard-disciplinary-sync-${user.id}`)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    if (payload?.type === 'Warning' || payload?.type === 'Suspension') {
+                        setShowInfractionsModal(true);
+                    }
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .subscribe();
+
         const handleRefresh = () => {
             queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
         };
@@ -132,6 +159,7 @@ const EmployeeDashboard = () => {
 
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(broadcastBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
@@ -654,7 +682,7 @@ const EmployeeDashboard = () => {
                                             Personnel Standing: Separated Account
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600" />
+                                            <i className="ti ti-circle-x" />
                                             <span>Employment Terminated</span>
                                         </span>
                                     </div>
@@ -742,7 +770,7 @@ const EmployeeDashboard = () => {
                                             Disciplinary Suspension Active
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-300">
-                                            <span className="w-2 h-2 rounded-full bg-orange-600 animate-pulse" />
+                                            <i className="ti ti-clock-pause" />
                                             <span>Suspended · Operational Hold</span>
                                         </span>
                                     </div>
@@ -828,7 +856,7 @@ const EmployeeDashboard = () => {
                                             HR Notice Awaiting Review
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                                            <i className="ti ti-alert-triangle" />
                                             <span>{unresolvedInfractions.length} Action Required</span>
                                         </span>
                                     </div>
@@ -1256,7 +1284,6 @@ const EmployeeDashboard = () => {
                                                     #{voucherId}
                                                 </span>
                                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
                                                     {activePayroll.status || 'Released'}
                                                 </span>
                                             </div>

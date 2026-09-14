@@ -224,8 +224,8 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                             Every file in the zip is added to this employee's 201 file.
                         </p>
                     </div>
-                    <button onClick={handleClose} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer">
-                        ✕
+                    <button onClick={handleClose} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Close modal">
+                        <i className="ti ti-x text-base" />
                     </button>
                 </div>
 
@@ -233,11 +233,10 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                     {step === 'select' && (
                         <div className="space-y-4">
                             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium leading-relaxed">
-                                Structure your zip with a folder per category — <span className="font-bold">Contract/</span>,{' '}
+                                Structure the zip archive with folders by category (<span className="font-bold">Contract/</span>,{' '}
                                 <span className="font-bold">Government ID/</span>, <span className="font-bold">Clearance/</span>,{' '}
-                                <span className="font-bold">Certificate/</span>, <span className="font-bold">Performance/</span> — or
-                                leave files flat and we'll guess the category from the filename. Anything unrecognized is filed under
-                                "Other" so nothing is silently dropped.
+                                <span className="font-bold">Certificate/</span>, <span className="font-bold">Performance/</span>) or
+                                upload flat files. Uncategorized files are assigned to "Other".
                             </div>
 
                             <label className="flex flex-col items-center justify-center gap-2 py-12 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors">

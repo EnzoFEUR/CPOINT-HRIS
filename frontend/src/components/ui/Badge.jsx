@@ -38,7 +38,7 @@ export const Badge = ({
     variant = 'neutral', 
     size = 'sm', 
     children, 
-    withDot = true, 
+    withDot = false, 
     className = '' 
 }) => {
     const v = String(variant).toLowerCase();

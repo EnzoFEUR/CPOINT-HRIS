@@ -18,6 +18,74 @@ export default function Show() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [isReinstateModalOpen, setIsReinstateModalOpen] = useState(false);
+    const [isReinstating, setIsReinstating] = useState(false);
+
+    const handleReinstate = async () => {
+        if (!employee) return;
+        setIsReinstating(true);
+
+        // 0ms Optimistic UI updates
+        queryClient.setQueryData(['employeeDetails', id], (old) => {
+            if (!old) return old;
+            return {
+                ...old,
+                data: {
+                    ...old.data,
+                    status: 'active',
+                    is_active: true,
+                    archived_at: null,
+                    separation_reason: null,
+                    separation_type: null,
+                    separation_date: null,
+                    separation_notes: null,
+                    operational_status: 'Active',
+                    is_suspended: false,
+                    is_terminated: false
+                }
+            };
+        });
+
+        queryClient.setQueryData(['adminEmployees'], (old) => {
+            if (!Array.isArray(old)) return old;
+            return old.map(e => String(e.id) === String(id) ? {
+                ...e,
+                status: 'active',
+                is_active: true,
+                archived_at: null,
+                operational_status: 'Active',
+                is_suspended: false,
+                is_terminated: false
+            } : e);
+        });
+
+        window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
+
+        try {
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/restore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: 'Reinstated from pending termination review' })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to reinstate employee');
+            }
+
+            toast.success(`${employee.first_name} ${employee.last_name} has been reinstated to Active standing.`);
+            setIsReinstateModalOpen(false);
+
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
+        } catch (err) {
+            toast.error(err.message || 'Failed to reinstate employee');
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } finally {
+            setIsReinstating(false);
+        }
+    };
 
     // Temporary credentials state for unregistered accounts
     const [showTempPassword, setShowTempPassword] = useState(true);
@@ -113,20 +181,36 @@ export default function Show() {
     // Subscribe to live employee and disciplinary changes
     useEffect(() => {
         if (!id || id === 'undefined') return;
+
+        const handleSync = () => {
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        };
+
+        window.addEventListener('hris_disciplinary_sync', handleSync);
+
         const channel = supabase
             .channel(`admin-live-employee-${id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
+            .subscribe();
+
+        const syncChannel = supabase
+            .channel(`dashboard-disciplinary-sync-${id}`)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
             .subscribe();
 
         return () => {
+            window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
+            supabase.removeChannel(syncChannel);
         };
     }, [id, queryClient]);
 
@@ -236,9 +320,21 @@ export default function Show() {
                     </Link>
                     
                     <div className="flex flex-wrap gap-2 sm:gap-2.5">
+                        {isTerminated && (
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(true)}
+                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer touch-manipulation"
+                                title="Reinstate employee to active operational status"
+                            >
+                                <i className="ti ti-rotate-clockwise text-base" />
+                                <span>Reinstate Employee</span>
+                            </button>
+                        )}
+
                         {/* Document Vault link (201 documents now live here, not inline on the profile) */}
                         <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
-                            <i className="ti ti-folders text-slate-500 text-base" /> Document Vault
+                            <i className="ti ti-folders text-slate-500 text-base" /> Documents
                         </Link>
 
                         <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5 cursor-pointer">
@@ -276,9 +372,7 @@ export default function Show() {
                                 <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
                                     <i className="ti ti-clock-pause" /> Suspended
                                 </span>
-                            ) : (
-                                <span className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Active Personnel" />
-                            )}
+                            ) : null}
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -297,8 +391,8 @@ export default function Show() {
                                         <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active Personnel
+                                    <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        Active Personnel
                                     </span>
                                 )}
 
@@ -509,12 +603,19 @@ export default function Show() {
                                 </div>
                             </div>
                         </div>
-                        <div className="shrink-0 self-stretch sm:self-center">
+                        <div className="shrink-0 self-stretch sm:self-center flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(true)}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer touch-manipulation"
+                            >
+                                <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
+                            </button>
                             <Link
                                 to={`/admin/documents?employee_id=${employee.id}`}
                                 className="px-3.5 py-2 bg-white hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg border border-rose-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
                             >
-                                <i className="ti ti-folders text-sm" /> Review 201 Vault
+                                <i className="ti ti-folders text-sm" /> Review Documents
                             </Link>
                         </div>
                     </div>
@@ -761,18 +862,12 @@ export default function Show() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
+                            <span className={`inline-flex items-center px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
                                 isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
                                 isSuspended ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-50 text-amber-800 border-amber-200' :
                                 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                    isTerminated ? 'bg-rose-600' :
-                                    isSuspended ? 'bg-amber-600 animate-pulse' :
-                                    disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-600 animate-pulse' :
-                                    'bg-emerald-500'
-                                }`} />
                                 {isTerminated ? 'Separated' :
                                  isSuspended ? 'Suspended' :
                                  disciplinaryLogs.some(l => l.status === 'Active') ? 'Active Notice' :
@@ -864,7 +959,7 @@ export default function Show() {
                                                     {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
                                                     {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
                                                     {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
-                                                    {log.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                                                    {log.status === 'Active' && <i className="ti ti-alert-triangle" />}
                                                     <span>
                                                         {log.status === 'Resolved' ? 'Resolved' :
                                                          log.status === 'Overturned' ? 'Cleared' :
@@ -995,6 +1090,66 @@ export default function Show() {
                     </div>      
                 )}
             
+            {/* Reinstatement Confirmation Modal */}
+            {isReinstateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                        onClick={() => !isReinstating && setIsReinstateModalOpen(false)}
+                    />
+                    <div className="relative bg-white rounded-3xl p-6 sm:p-7 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10 space-y-4">
+                        <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
+                            <i className="ti ti-rotate-clockwise text-2xl" />
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900">Reinstate Employee</h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1">
+                                Restore <strong className="text-slate-900">{employee.name || `${employee.first_name} ${employee.last_name}`}</strong> ({employee.company_id || 'N/A'}) to active operational standing.
+                            </p>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 text-left text-xs space-y-2 text-slate-600">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                <span className="font-semibold text-slate-400 uppercase text-[10px] tracking-wider">Current Standing</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">Pending Termination</span>
+                            </div>
+                            <p className="text-[11px] leading-relaxed">
+                                Reinstatement will revoke the separation notice, clear the pending archive cooldown, unblock gate attendance scanner permissions, and return this record to the operational workforce directory.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(false)}
+                                disabled={isReinstating}
+                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReinstate}
+                                disabled={isReinstating}
+                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {isReinstating ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span>Reinstating...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="ti ti-rotate-clockwise text-sm" />
+                                        <span>Confirm Reinstatement</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </>
     );

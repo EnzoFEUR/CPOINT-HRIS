@@ -266,7 +266,7 @@ export default function Dashboard() {
                 <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center animate-pulse">
                     <i className="ti ti-chart-pie-3 text-3xl text-blue-600" />
                 </div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting Real-Time Telemetry...</p>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting to live updates...</p>
             </div>
         );
     }
@@ -319,7 +319,7 @@ export default function Dashboard() {
                         <div className="space-y-4 animate-pulse pt-1">
                             <div className="h-7 bg-slate-800 rounded-lg w-4/5 border-l-4 border-emerald-500 pl-4 py-1 flex items-center">
                                 <span className="text-xs text-slate-400 font-medium tracking-wide">
-                                    Gemini 2.0 analyzing real-time workforce telemetry...
+                                    Analyzing workforce attendance data...
                                 </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -379,7 +379,7 @@ export default function Dashboard() {
                                         <i className="ti ti-bulb text-amber-400" /> Operational Observations
                                     </span>
                                     <ul className="mt-2.5 space-y-1.5">
-                                        {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough telemetry yet to generate observations.']).map((insight, i) => (
+                                        {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough attendance data yet to generate observations.']).map((insight, i) => (
                                             <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5 leading-relaxed">
                                                 <span className="text-emerald-400 mt-0.5">&bull;</span>
                                                 <span>{insight}</span>
@@ -506,9 +506,9 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-flame text-rose-600 text-lg" /> Predictive Burnout & Turnover Radar
+                                <i className="ti ti-flame text-rose-600 text-lg" /> Burnout & Overtime Risk
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Telemetry anomaly detection for fatigue & pattern shifts</p>
+                            <p className="text-xs text-slate-500 font-medium">Overtime patterns and fatigue indicators</p>
                         </div>
                         <span className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase rounded-md border border-rose-200">
                             {isAnomalyLoading ? '...' : `${riskFlags.length} Flags Active`}
@@ -614,9 +614,9 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Labor Standard Health Meter
+                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Statutory Compliance
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Automated Philippine statutory compliance audit</p>
+                            <p className="text-xs text-slate-500 font-medium">Philippine labor standards rest day and overtime audit</p>
                         </div>
                         <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-300">
                             {doleCompliance ? `${doleCompliance.restDay.compliancePercent}% Audit-Ready` : '—'}
@@ -705,7 +705,7 @@ export default function Dashboard() {
                 <div className="lg:col-span-5 bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Live Gate Feed
+                            <i className="ti ti-broadcast text-blue-600" /> Live Gate Feed
                         </h3>
                         <Link to="/admin/attendance" className="text-xs font-semibold text-blue-600 hover:underline">View All &rarr;</Link>
                     </div>

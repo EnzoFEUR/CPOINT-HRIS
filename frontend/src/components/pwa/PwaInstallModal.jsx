@@ -24,7 +24,7 @@ export const PwaInstallModal = ({
             </div>
             <div>
               <h4 className="text-sm sm:text-base font-black tracking-tight">Install C-Point HRIS</h4>
-              <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Fast Fullscreen App</p>
+              <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider">Standalone Application</p>
             </div>
           </div>
           <button
@@ -42,7 +42,7 @@ export const PwaInstallModal = ({
             onClick={handleInstallApp}
             className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/30 tap-active flex items-center justify-center gap-2 cursor-pointer"
           >
-            <i className="ti ti-download text-base" /> 1-Tap Quick Install
+            <i className="ti ti-download text-base" /> Install Application
           </button>
         )}
 

@@ -177,7 +177,6 @@ export const Sidebar = ({ user, handleLogout }) => {
             <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
               {user?.name ? user.name.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : '?')}
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
           </div>
           <div className="ml-3 overflow-hidden min-w-0 flex-1">
             <p className="text-xs font-bold text-white truncate hover:text-blue-400">
