@@ -96,6 +96,40 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/employee-documents/:id/url - Get a short-lived signed URL to view/download one document
+router.get('/:id/url', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { data: doc, error: docErr } = await supabase
+            .from('employee_documents')
+            .select('file_path, employee_id')
+            .eq('id', id)
+            .single();
+
+        if (docErr || !doc) {
+            return res.status(404).json({ success: false, message: 'Document not found' });
+        }
+
+        // Ownership check: regular employees can only open their own documents
+        const isAdmin = ['admin', 'hr', 'superadmin'].includes(req.user?.role);
+        if (!isAdmin && req.user?.id !== doc.employee_id && req.user?.employee_id !== doc.employee_id) {
+            return res.status(403).json({ success: false, message: 'Unauthorized to view this document.' });
+        }
+
+        const { data, error } = await supabase.storage
+            .from('documents')
+            .createSignedUrl(doc.file_path, 60 * 5); // 5 min expiry
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, url: data.signedUrl });
+    } catch (err) {
+        console.error('Error creating signed URL:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/employee-documents
 router.post('/', upload.single('file'), async (req, res) => {
     try {
