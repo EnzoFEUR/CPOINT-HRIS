@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { isAdmin, isSecurity } from '../routes/guards';
+import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 
 export const Sidebar = ({ user, handleLogout }) => {
   const location = useLocation();
@@ -70,6 +70,12 @@ export const Sidebar = ({ user, handleLogout }) => {
             >
               <i className="ti ti-qrcode text-xl"></i>
               <span className="ml-3 font-medium tracking-wide">Digital Pass (QR)</span>
+              {isMedicalExempt(user) && (
+                <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                  <i className="ti ti-bandage text-xs" />
+                  Grace
+                </span>
+              )}
             </Link>
           </>
         )}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { isAdmin, isSecurity } from '../routes/guards';
+import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 
 export const MobileNav = ({
   user,
@@ -107,17 +107,28 @@ export const MobileNav = ({
                     className={`relative w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center ring-4 ring-slate-900 transition-transform active:scale-95 ${
                       location.pathname === '/employee/qr'
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40 border border-white/30'
+                        : isMedicalExempt(user)
+                        ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 border border-amber-300'
                         : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 shadow-md border border-white/10'
                     }`}
                   >
                     <i className={`ti ti-qrcode text-xl sm:text-2xl ${location.pathname === '/employee/qr' ? 'scale-110' : ''}`} />
+                    {isMedicalExempt(user) && (
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 border-2 border-slate-900 rounded-full flex items-center justify-center text-[7px] text-slate-950 font-black" title="Medical Grace Active">
+                        +
+                      </span>
+                    )}
                   </div>
                   <span
                     className={`text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-1 font-bold ${
-                      location.pathname === '/employee/qr' ? 'text-white font-black' : 'text-slate-400 group-hover:text-slate-200'
+                      location.pathname === '/employee/qr' 
+                        ? 'text-white font-black' 
+                        : isMedicalExempt(user)
+                        ? 'text-amber-300 font-bold'
+                        : 'text-slate-400 group-hover:text-slate-200'
                     }`}
                   >
-                    QR Code
+                    {isMedicalExempt(user) ? 'Grace Pass' : 'QR Code'}
                   </span>
                 </Link>
               </div>

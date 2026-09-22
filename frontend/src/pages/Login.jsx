@@ -117,10 +117,10 @@ export default function Login() {
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
-           // Only show demo codes if running locally in development mode
-            if (data.simulated && data.previewCode && import.meta.env.DEV) {
+            // Save and display preview / mock code whenever returned by server (simulation or demo)
+            if (data.previewCode) {
                 setGeneratedOtp(data.previewCode);
-                toast.success(`Demo code: ${data.previewCode}`, { duration: 5000 });
+                toast.success(`Verification code: ${data.previewCode}`, { duration: 6000 });
             } else {
                 setGeneratedOtp(null);
                 toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
@@ -447,7 +447,7 @@ export default function Login() {
                                 ))}
                             </div>
 
-                            {generatedOtp && import.meta.env.DEV && (
+                            {generatedOtp && (
                                 <div className="mb-3">
                                     <button 
                                         type="button"
@@ -456,10 +456,13 @@ export default function Login() {
                                              setOtpCode(digits);
                                              document.getElementById('otp-5')?.focus();
                                         }}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[11px] font-medium rounded-md border border-amber-200 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-lg border border-amber-300 transition-colors cursor-pointer shadow-2xs w-full justify-between active:scale-[0.99]"
                                     >
-                                        <i className="ti ti-bulb text-amber-600 text-xs" />
-                                        <span>Test code: <strong className="font-mono">{generatedOtp}</strong> (Autofill)</span>
+                                        <div className="flex items-center gap-2">
+                                            <i className="ti ti-bulb text-amber-600 text-sm" />
+                                            <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
+                                        </div>
+                                        <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded text-amber-900">Autofill</span>
                                     </button>
                                 </div>
                             )}

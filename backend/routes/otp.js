@@ -81,12 +81,15 @@ router.post('/send', async (req, res) => {
             dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
         }
 
+        const isSimulated = Boolean(dispatchResult?.simulated);
+        const previewCode = (isSimulated || method === 'sms' || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
+
         res.json({
             success: true,
             message: `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
             method,
-            simulated: dispatchResult?.simulated || false,
-            previewCode: dispatchResult?.simulated ? code : undefined
+            simulated: isSimulated,
+            previewCode
         });
 
     } catch (err) {

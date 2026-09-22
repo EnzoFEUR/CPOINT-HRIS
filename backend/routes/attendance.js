@@ -365,7 +365,7 @@ router.get(
     
     let query = supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department');
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, medical_record_url');
 
     if (isUUID) {
       query = query.eq('id', target);
@@ -379,7 +379,7 @@ router.get(
     if (!employee) {
       const { data: fallbackEmp } = await supabase
         .from('employees')
-        .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department')
+        .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, medical_record_url')
         .or(`company_id.ilike.${target},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${target}`)
         .maybeSingle();
 
@@ -391,10 +391,27 @@ router.get(
       throw new NotFoundError(`Employee not found for QR value: ${target}`);
     }
 
+    let isMedicalGrace = false;
+    let medicalExemption = null;
+    if (employee.medical_record_url) {
+      try {
+        const parsed = JSON.parse(employee.medical_record_url);
+        if (parsed?.exempt) {
+          const today = getTodayString();
+          if (!parsed.valid_until || parsed.valid_until >= today) {
+            isMedicalGrace = true;
+            medicalExemption = parsed;
+          }
+        }
+      } catch (_) {}
+    }
+
     res.json({
       status: 'success',
       data: {
         ...employee,
+        is_medical_exempt: isMedicalGrace,
+        medical_exemption: medicalExemption,
         name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Employee'
       }
     });
@@ -430,7 +447,7 @@ router.post(
     // Fetch Employee (with row-level locking intent via single())
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change')
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change, medical_record_url')
       .eq('id', employee_id)
       .single();
 
@@ -460,8 +477,24 @@ router.post(
       throw new AuthorizationError(errorMessage);
     }
 
-    // Biometric Enforcement
-    if (employee.has_registered_biometrics) {
+    // Check if Employee has active Medical Grace Exemption
+    let isMedicalGrace = false;
+    let medicalExemption = null;
+    if (employee.medical_record_url) {
+      try {
+        const parsed = JSON.parse(employee.medical_record_url);
+        if (parsed?.exempt) {
+          const today = getTodayString();
+          if (!parsed.valid_until || parsed.valid_until >= today) {
+            isMedicalGrace = true;
+            medicalExemption = parsed;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Biometric Enforcement (Skipped if employee has no biometrics OR is on verified Medical Grace Mode)
+    if (employee.has_registered_biometrics && !isMedicalGrace) {
       if (face_match_score === undefined || face_match_score === null) {
         await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing face match score.', req.ip);
         throw new AuthorizationError('BIOMETRIC BYPASS DETECTED: Missing face match score.');
@@ -478,6 +511,8 @@ router.post(
         throw new AuthorizationError(`IDENTITY MISMATCH: Face verification failed (${score}%). Incident logged.`);
       }
       logger.info(reqId, 'Biometric identity passed', { employee_id, score });
+    } else if (isMedicalGrace) {
+      logger.info(reqId, 'Biometric face matching bypassed via Medical Grace Protocol', { employee_id, reason: medicalExemption?.reason });
     }
 
     const todayStr = getTodayString();
@@ -496,12 +531,12 @@ router.post(
       throw new ConflictError('You have already completed your attendance for today.');
     }
 
-    // AI Liveness Verification
-    let livenessPassed = false;
-    let livenessConfidence = null;
-    let livenessReason = 'Not performed';
+    // AI Liveness Verification (Skipped if Medical Grace is active)
+    let livenessPassed = isMedicalGrace ? true : false;
+    let livenessConfidence = isMedicalGrace ? 1.0 : null;
+    let livenessReason = isMedicalGrace ? 'Exempted: Medical Grace Protocol Active' : 'Not performed';
 
-    if (image_data) {
+    if (image_data && !isMedicalGrace) {
       const base64Data = image_data.replace(/^data:image\/\w+;base64,/, '');
       try {
         const result = await performBiometricVerification(reqId, base64Data, employee, false);
@@ -542,12 +577,16 @@ router.post(
       const graceDeadline = new Date(callTime.getTime() + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES * 60_000);
 
       let status = 'Present';
-      let message = `TIME IN SUCCESS: Welcome, ${employee.first_name} ${employee.last_name}!`;
+      let message = isMedicalGrace 
+        ? `TIME IN SUCCESS: Welcome, ${employee.first_name}! (Medical Grace Protocol Active)`
+        : `TIME IN SUCCESS: Welcome, ${employee.first_name} ${employee.last_name}!`;
 
       if (now > graceDeadline) {
         status = 'Late';
         const minutesLate = Math.floor((now - callTime) / 60_000);
-        message = `TIME IN SUCCESS: Welcome, ${employee.first_name}! (You are ${minutesLate} minutes late).`;
+        message = isMedicalGrace
+          ? `TIME IN SUCCESS: Welcome, ${employee.first_name}! (${minutesLate}m late • Medical Grace Mode)`
+          : `TIME IN SUCCESS: Welcome, ${employee.first_name}! (You are ${minutesLate} minutes late).`;
       }
 
       const { error: insertErr } = await supabase.from('attendances').insert({
@@ -569,7 +608,14 @@ router.post(
         throw new AppError(`Database error: ${insertErr.message}`, 500, 'DB_ERROR');
       }
 
-      logger.info(reqId, 'Time-in recorded', { employee_id, status, minutesLate: status === 'Late' ? Math.floor((now - callTime) / 60_000) : 0 });
+      logger.info(reqId, 'Time-in recorded', { employee_id, status, isMedicalGrace, minutesLate: status === 'Late' ? Math.floor((now - callTime) / 60_000) : 0 });
+
+      await auditLog(reqId, {
+        employee_id,
+        action: isMedicalGrace ? 'TIME_IN_MEDICAL_GRACE' : 'TIME_IN',
+        details: { status, is_medical_exempt: isMedicalGrace, reason: medicalExemption?.reason },
+        ip_address: req.ip
+      });
 
       invalidateCache(['/api/attendance', '/api/dashboard']);
 
@@ -577,7 +623,7 @@ router.post(
         status: 'success',
         code: 'TIME_IN',
         message,
-        data: { employee_id, date: todayStr, status, time_in: now.toISOString() },
+        data: { employee_id, date: todayStr, status, time_in: now.toISOString(), is_medical_exempt: isMedicalGrace },
       });
     } else {
       // TIME OUT
@@ -599,17 +645,24 @@ router.post(
         throw new ConflictError('Attendance already updated. Please refresh.');
       }
 
-      logger.info(reqId, 'Time-out recorded', { employee_id, attendance_id: existing.id });
+      logger.info(reqId, 'Time-out recorded', { employee_id, attendance_id: existing.id, isMedicalGrace });
 
-      await auditLog(reqId, { employee_id, action: 'TIME_OUT', details: { attendance_id: existing.id }, ip_address: req.ip });
+      await auditLog(reqId, {
+        employee_id,
+        action: isMedicalGrace ? 'TIME_OUT_MEDICAL_GRACE' : 'TIME_OUT',
+        details: { attendance_id: existing.id, is_medical_exempt: isMedicalGrace, reason: medicalExemption?.reason },
+        ip_address: req.ip
+      });
 
       invalidateCache(['/api/attendance', '/api/dashboard']);
 
       return res.json({
         status: 'success',
         code: 'TIME_OUT',
-        message: `TIME OUT SUCCESS: Goodbye, ${employee.first_name} ${employee.last_name}!`,
-        data: { employee_id, date: todayStr, time_out: now.toISOString() },
+        message: isMedicalGrace
+          ? `TIME OUT SUCCESS: Goodbye, ${employee.first_name}! (Medical Grace Protocol Active)`
+          : `TIME OUT SUCCESS: Goodbye, ${employee.first_name} ${employee.last_name}!`,
+        data: { employee_id, date: todayStr, time_out: now.toISOString(), is_medical_exempt: isMedicalGrace },
       });
     }
   })

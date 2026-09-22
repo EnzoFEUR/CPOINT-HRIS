@@ -337,6 +337,8 @@ const Scanner = () => {
     vault.matchScore = null;
     vault.employeeId = null;
     vault.baseline = null;
+    vault.isMedicalExempt = false;
+    vault.medicalExemption = null;
     dispatch({ type: 'RESET' });
     dispatch({ type: 'SET_MODE', payload: MODES.QR });
   }, [vault, stopFaceCamera, dispatch]);
@@ -391,6 +393,17 @@ const Scanner = () => {
             id: 'gate-restored-alert',
             duration: 4000
           });
+        }
+      })
+      .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
+        if (payload?.employee_id && vault.employeeId === payload.employee_id) {
+          vault.isMedicalExempt = Boolean(payload.is_exempt);
+          toast.success(
+            payload.is_exempt 
+              ? 'Medical Grace Exemption authorized by HR. Face matching bypassed.' 
+              : 'Medical Grace Exemption ended by HR. Standard dual-factor restored.',
+            { id: 'biometric-exemption-sync', duration: 4000 }
+          );
         }
       })
       .subscribe();
@@ -525,6 +538,23 @@ const Scanner = () => {
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Handle Medical Grace / Trauma Exemption (Bypasses Euclidean landmark & blink requirements)
+      if (vault.isMedicalExempt) {
+        vault.lockFrames += 1;
+        const targetFrames = 4; // ~480ms stabilization for camera auto-exposure
+        const progress = Math.min((vault.lockFrames / targetFrames) * 100, 100);
+        throttledDispatch({ scanProgress: progress, matchScore: 100 });
+        updateStatus('RECORDING MEDICAL ATTENDANCE SNAPSHOT...');
+
+        if (vault.lockFrames >= targetFrames) {
+          clearInterval(detectionRef.current);
+          detectionRef.current = null;
+          updateStatus('SNAPSHOT ACQUIRED');
+          captureAndSubmit(100, 0, [0.35]);
+        }
+        return;
+      }
 
       // Face detection using TinyFaceDetector
       const det = await faceapi
@@ -702,11 +732,13 @@ const Scanner = () => {
       }
 
       vault.employeeId = emp.id;
+      vault.isMedicalExempt = Boolean(emp.is_medical_exempt);
+      vault.medicalExemption = emp.medical_exemption || null;
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // Proceed if employee has no biometrics registered
-      if (!emp.has_registered_biometrics || !emp.biometric_baseline_path) {
+      // Proceed if employee is under Medical Grace OR has no biometrics registered
+      if (emp.is_medical_exempt || !emp.has_registered_biometrics || !emp.biometric_baseline_path) {
         vault.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
         dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
@@ -1211,15 +1243,34 @@ const Scanner = () => {
               <span className="inline-block px-2.5 py-0.5 mt-1 rounded-md bg-slate-800 text-slate-300 font-mono text-xs">
                 {state.employee?.company_id || 'NO ID'}
               </span>
-              <p className="text-slate-400 text-xs mt-3 mb-6 leading-relaxed">
-                Please look directly at the camera to verify your clock-in.
-              </p>
+
+              {state.employee?.is_medical_exempt ? (
+                <div className="w-full my-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-2xl text-left">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                    <i className="ti ti-first-aid-kit text-base text-amber-400 shrink-0" />
+                    <span>Medical Grace Protocol Active</span>
+                  </div>
+                  <p className="text-[11px] text-amber-200/80 mt-1 leading-tight">
+                    Facial Euclidean comparison bypassed for physical trauma. An optical camera snapshot will be archived for audit compliance.
+                  </p>
+                  {state.employee?.medical_exemption?.valid_until && (
+                    <div className="mt-1.5 text-[10px] text-amber-400/90 font-mono">
+                      Valid through: {state.employee.medical_exemption.valid_until}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-slate-400 text-xs mt-3 mb-6 leading-relaxed">
+                  Please look directly at the camera to verify your clock-in.
+                </p>
+              )}
+
               <button
                 onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                className={`w-full py-3.5 ${state.employee?.is_medical_exempt ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'} text-white rounded-xl font-bold text-xs tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg`}
               >
-                <i className="ti ti-face-id text-base" />
-                <span>Start Face Verification</span>
+                <i className={`ti ${state.employee?.is_medical_exempt ? 'ti-camera' : 'ti-face-id'} text-base`} />
+                <span>{state.employee?.is_medical_exempt ? 'Capture Medical Attendance Photo' : 'Start Face Verification'}</span>
               </button>
               <button
                 onClick={handleReset}
@@ -1261,7 +1312,8 @@ const Scanner = () => {
 
               {/* Status Badge */}
               <span className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide border shadow-md ${statusMeta.pill}`}>
-                {state.liveness.status === 'BLINK_TO_VERIFY' ? 'Please blink once to verify' :
+                {state.employee?.is_medical_exempt ? 'Medical Grace Active: Recording Evidentiary Photo...' :
+                 state.liveness.status === 'BLINK_TO_VERIFY' ? 'Please blink once to verify' :
                  state.liveness.status === 'PASSED' && state.scanProgress < 100 ? 'Liveness confirmed. Hold still.' :
                  state.scanProgress >= 100 ? 'Processing attendance...' :
                  state.matchScore !== null && state.matchScore < 50 ? 'Photo mismatch' :
@@ -1312,10 +1364,17 @@ const Scanner = () => {
                     Confidence: {state.matchScore}%
                   </p>
                 )}
-                <div className={`flex items-center justify-center gap-1 mt-1 text-[11px] font-medium ${state.liveness.passed ? 'text-emerald-400' : 'text-amber-300'}`}>
-                  <i className={`ti ${state.liveness.passed ? 'ti-check' : 'ti-eye'}`} />
-                  <span>{state.liveness.passed ? 'Liveness confirmed' : 'Blink to verify'}</span>
-                </div>
+                {state.employee?.is_medical_exempt ? (
+                  <div className="flex items-center justify-center gap-1 mt-1 text-[11px] font-bold text-amber-300">
+                    <i className="ti ti-first-aid-kit text-sm text-amber-400" />
+                    <span>Medical Grace Protocol Active</span>
+                  </div>
+                ) : (
+                  <div className={`flex items-center justify-center gap-1 mt-1 text-[11px] font-medium ${state.liveness.passed ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    <i className={`ti ${state.liveness.passed ? 'ti-check' : 'ti-eye'}`} />
+                    <span>{state.liveness.passed ? 'Liveness confirmed' : 'Blink to verify'}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

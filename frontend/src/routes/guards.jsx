@@ -65,6 +65,22 @@ export const getPageTitle = (pathname) => {
   return 'Dashboard';
 };
 
+export const isMedicalExempt = (user) => {
+  if (!user) return false;
+  if (user.is_medical_exempt) return true;
+  if (!user.medical_record_url) return false;
+  try {
+    const med = typeof user.medical_record_url === 'string' ? JSON.parse(user.medical_record_url) : user.medical_record_url;
+    if (med?.exempt) {
+      const today = new Date().toISOString().split('T')[0];
+      return !med.valid_until || med.valid_until >= today;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+};
+
 // Route Guard: Protected Routes
 export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometrics = false }) => {
   const user = getUser();
@@ -77,7 +93,7 @@ export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometric
     return <Navigate to="/force-password-change" replace />;
   }
 
-  if (requireBiometrics && !user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) {
+  if (requireBiometrics && !user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) {
     return <Navigate to="/biometric-setup" replace />;
   }
 
@@ -103,7 +119,7 @@ export const PublicOnlyRoute = ({ children }) => {
   const user = getUser();
   if (user) {
     if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-    if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+    if (!user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
     if (isSecurity(user)) return <Navigate to="/scanner" replace />;
     if (isAdmin(user)) return <Navigate to="/" replace />;
     return <Navigate to="/employee/dashboard" replace />;
@@ -116,7 +132,7 @@ export const RootRoute = () => {
   const user = getUser();
   if (!user) return <Navigate to="/login" replace />;
   if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-  if (!user.has_registered_biometrics && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
+  if (!user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
   if (isSecurity(user)) return <Navigate to="/scanner" replace />;
   if (isAdmin(user)) return <Dashboard />;
   return <Navigate to="/employee/dashboard" replace />;

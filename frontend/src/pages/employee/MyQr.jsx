@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import QRCode from '../../components/QRCode';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 import { fetchWithAuth } from '../../utils/api';
@@ -19,6 +20,29 @@ const MyQr = () => {
 
   // Read initial disciplinary status from cache
   const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(user?.id));
+
+  // Medical Grace / Biometric Exemption State
+  const [medicalExemption, setMedicalExemption] = useState(() => {
+    if (!user?.medical_record_url) return null;
+    try {
+      const parsed = typeof user.medical_record_url === 'string' ? JSON.parse(user.medical_record_url) : user.medical_record_url;
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isMedicalExempt = useMemo(() => {
+    if (!medicalExemption?.exempt) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return !medicalExemption.valid_until || medicalExemption.valid_until >= today;
+  }, [medicalExemption]);
+
+  const daysRemaining = useMemo(() => {
+    if (!isMedicalExempt || !medicalExemption?.valid_until) return null;
+    const diff = Math.ceil((new Date(medicalExemption.valid_until).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+    return Math.max(0, diff);
+  }, [isMedicalExempt, medicalExemption]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -63,8 +87,28 @@ const MyQr = () => {
     }
   }, [user?.id]);
 
+  const syncProfile = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetchWithAuth('/api/profile');
+      if (res.ok) {
+        const data = await res.json();
+        const emp = data.employee || data.user || null;
+        if (emp?.medical_record_url) {
+          try {
+            const parsed = typeof emp.medical_record_url === 'string' ? JSON.parse(emp.medical_record_url) : emp.medical_record_url;
+            setMedicalExemption(parsed);
+          } catch (_) {}
+        } else if (emp && emp.medical_record_url === null) {
+          setMedicalExemption(null);
+        }
+      }
+    } catch (_) {}
+  }, [user?.id]);
+
   useEffect(() => {
     checkDisciplinary();
+    syncProfile();
 
     if (!user?.id) return;
     const channel = supabase
@@ -74,6 +118,24 @@ const MyQr = () => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
         checkDisciplinary();
+        syncProfile();
+      })
+      .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          if (payload.is_exempt && payload.exemption) {
+            setMedicalExemption(payload.exemption);
+            toast.success('Medical Grace active: Face scan bypassed at kiosk.');
+          } else {
+            setMedicalExemption(null);
+            toast('Medical Grace ended: Standard dual-factor verification restored.');
+          }
+          syncProfile();
+        }
+      })
+      .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          syncProfile();
+        }
       })
       .subscribe();
 
@@ -116,11 +178,26 @@ const MyQr = () => {
       })
       .subscribe();
 
+    const scannerChannel = supabase
+      .channel('scanner_disciplinary_realtime')
+      .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
+        if (payload?.employee_id === user.id) {
+          if (payload.is_exempt && payload.exemption) {
+            setMedicalExemption(payload.exemption);
+          } else if (!payload.is_exempt) {
+            setMedicalExemption(null);
+          }
+          syncProfile();
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(broadcastBus);
+      supabase.removeChannel(scannerChannel);
     };
-  }, [user?.id, checkDisciplinary]);
+  }, [user?.id, checkDisciplinary, syncProfile]);
 
   const isSuspended = disciplinaryState.isSuspended || (user?.status === 'inactive' && !disciplinaryState.isTerminated);
   const isTerminated = disciplinaryState.isTerminated;
@@ -181,7 +258,7 @@ const MyQr = () => {
           </div>
 
           {/* Status / Company ID badge */}
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-1.5">
             {isTerminated ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
                 Separated
@@ -189,6 +266,11 @@ const MyQr = () => {
             ) : isSuspended ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
                 Suspended
+              </span>
+            ) : isMedicalExempt ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1">
+                <i className="ti ti-first-aid-kit text-xs text-amber-700" />
+                <span>Medical Grace</span>
               </span>
             ) : (
               <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 block shadow-2xs">
@@ -273,6 +355,35 @@ const MyQr = () => {
               bgColor="#ffffff"
               className="rounded-xl"
             />
+          </div>
+        )}
+
+        {/* Medical Grace Exemption Status Callout */}
+        {isMedicalExempt && !isTerminated && !isSuspended && (
+          <div className="w-full mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left shadow-2xs">
+            <div className="flex items-center gap-2 text-amber-950 font-bold text-xs">
+              <i className="ti ti-first-aid-kit text-base text-amber-700 shrink-0" />
+              <span>Medical Grace Protocol Active</span>
+            </div>
+            <p className="text-[11px] text-amber-900/85 mt-1 leading-relaxed font-medium">
+              Facial biometric comparison is waived for temporary recovery. Hold this QR badge up to the kiosk camera to record attendance.
+            </p>
+            {medicalExemption?.valid_until && (
+              <div className="mt-2 pt-2 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-mono text-amber-950 font-bold">
+                <span>Valid through: {medicalExemption.valid_until}</span>
+                {daysRemaining !== null && (
+                  <span className="px-2 py-0.5 bg-amber-200/70 text-amber-950 rounded text-[10px] font-sans font-bold">
+                    {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining
+                  </span>
+                )}
+              </div>
+            )}
+            {medicalExemption?.granted_by && (
+              <p className="mt-1.5 text-[10px] text-amber-900/80 font-medium flex items-center gap-1">
+                <i className="ti ti-user-check text-amber-700" />
+                <span>Authorized by: <strong>{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
+              </p>
+            )}
           </div>
         )}
 

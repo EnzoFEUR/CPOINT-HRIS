@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
@@ -133,6 +133,28 @@ const EmployeeDashboard = () => {
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
                 }
             })
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Medical Grace protocol status updated');
+                }
+            })
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Biometrics baseline reset by HR');
+                }
+            })
+            .subscribe();
+
+        const employeeLiveBus = supabase
+            .channel(`employee-live-dashboard-${user.id}`)
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
             .subscribe();
 
         const handleRefresh = () => {
@@ -160,6 +182,7 @@ const EmployeeDashboard = () => {
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(broadcastBus);
+            supabase.removeChannel(employeeLiveBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
@@ -189,16 +212,58 @@ const EmployeeDashboard = () => {
     const currentStatus = (liveEmployee?.status || user?.status || 'active').toLowerCase();
     const currentIsActive = liveEmployee?.is_active !== undefined ? liveEmployee.is_active : (user?.is_active !== undefined ? user.is_active : true);
 
-    // Sync live employee status to user state and localStorage
+    // Sync live employee status, biometrics, and medical exemption to user state and localStorage
     useEffect(() => {
-        if (liveEmployee && liveEmployee.status && (liveEmployee.status !== user?.status || liveEmployee.is_active !== user?.is_active)) {
-            setUser(prev => ({ ...prev, status: liveEmployee.status, is_active: liveEmployee.is_active }));
+        if (liveEmployee && (
+            (liveEmployee.status && liveEmployee.status !== user?.status) || 
+            liveEmployee.is_active !== user?.is_active ||
+            liveEmployee.medical_record_url !== user?.medical_record_url ||
+            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics
+        )) {
+            setUser(prev => ({ 
+                ...prev, 
+                status: liveEmployee.status || prev?.status, 
+                is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
+                medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
+                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics
+            }));
             try {
                 const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, status: liveEmployee.status, is_active: liveEmployee.is_active }));
+                localStorage.setItem('user', JSON.stringify({ 
+                    ...stored, 
+                    status: liveEmployee.status || stored?.status, 
+                    is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
+                    medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
+                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics
+                }));
             } catch (e) {}
         }
     }, [liveEmployee]);
+
+    // Medical grace protocol state
+    const medicalExemption = useMemo(() => {
+        const rawUrl = liveEmployee?.medical_record_url || user?.medical_record_url;
+        if (!rawUrl) return null;
+        try {
+            const parsed = typeof rawUrl === 'string' ? JSON.parse(rawUrl) : rawUrl;
+            if (parsed && typeof parsed === 'object' && parsed.type === 'MEDICAL_GRACE_EXEMPTION') {
+                return parsed;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }, [liveEmployee?.medical_record_url, user?.medical_record_url]);
+
+    const isMedicalExempt = useMemo(() => {
+        if (!medicalExemption?.expires_at) return false;
+        return new Date(medicalExemption.expires_at).getTime() > Date.now();
+    }, [medicalExemption]);
+
+    const daysRemaining = useMemo(() => {
+        if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
+        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    }, [isMedicalExempt, medicalExemption]);
 
     const rawDisc = data?.discData?.data || data?.discData;
     const queryHasLoaded = data !== undefined && rawDisc !== undefined;
@@ -465,6 +530,11 @@ const EmployeeDashboard = () => {
                             )}
                             {isTerminated && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Separated</span>}
                             {isSuspended && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">Suspended</span>}
+                            {isMedicalExempt && (
+                                <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                    <i className="ti ti-bandage" /> Medical Grace ({daysRemaining}d)
+                                </span>
+                            )}
                         </p>
                     </div>
                     
@@ -666,6 +736,100 @@ const EmployeeDashboard = () => {
                         </span>
                     </div>
                 </div>
+
+                {/* Medical Grace Protocol Status Card */}
+                {isMedicalExempt && !isTerminated && (
+                    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border border-amber-200 transition-all">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-amber-100">
+                            <div className="flex items-start sm:items-center gap-3.5">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                    <i className="ti ti-bandage" />
+                                </div>
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                                            Biometric Medical Grace Protocol Active
+                                        </h3>
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                                            <i className="ti ti-shield-check" />
+                                            <span>QR Pass Authorized ({daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Left)</span>
+                                        </span>
+                                    </div>
+                                    <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
+                                        Facial biometric matching is temporarily bypassed due to medical dressings or injury. Present your QR pass at turnstiles.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <Link 
+                                to="/employee/qr"
+                                className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-xs"
+                            >
+                                <i className="ti ti-qrcode text-sm" />
+                                <span>Open Gate Pass QR</span>
+                            </Link>
+                        </div>
+
+                        {/* Protocol details */}
+                        <div className="my-4 p-4 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2 font-bold text-amber-950">
+                                    <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
+                                    <span>Authorized Medical Reason: {medicalExemption.reason || 'Medical Condition / Facial Trauma'}</span>
+                                </div>
+                                <span className="font-mono text-slate-600 font-semibold">
+                                    Valid Through: {new Date(medicalExemption.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                            </div>
+                            {medicalExemption.notes && (
+                                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                                    HR Advisory: {medicalExemption.notes}
+                                </p>
+                            )}
+                            {medicalExemption.granted_by && (
+                                <p className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
+                                    <i className="ti ti-user-check text-slate-400" />
+                                    <span>Authorized by: <strong className="text-slate-700">{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
+                                </p>
+                            )}
+                            <p className="text-[11px] text-amber-800 font-semibold pt-1 flex items-center gap-1.5">
+                                <i className="ti ti-info-circle text-amber-700 shrink-0" />
+                                <span>Gate Scanner Note: The turnstile will authenticate your QR code and capture an evidentiary entry snapshot automatically. No facial matching required.</span>
+                            </p>
+                        </div>
+
+                        {/* Quick highlights bar */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-qrcode text-sm font-bold" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gate QR Pass</p>
+                                    <p className="font-bold text-emerald-700 truncate">Authorized (QR Only)</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-camera text-sm" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Turnstile Camera</p>
+                                    <p className="font-bold text-slate-800 truncate">Evidentiary Audit Snapshot</p>
+                                </div>
+                            </div>
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-calendar-time text-sm" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining Grace</p>
+                                    <p className="font-bold text-slate-800 truncate">{daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Remaining</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Disciplinary record card */}
                 {isTerminated ? (
@@ -1103,11 +1267,19 @@ const EmployeeDashboard = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                            {log.status || 'Present'}
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                            {(log.verification_method === 'TIME_IN_MEDICAL_GRACE' || log.verification_type === 'MEDICAL_GRACE') && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
+                                                    <i className="ti ti-bandage text-xs" />
+                                                    Medical Grace
+                                                </span>
+                                            )}
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                                            }`}>
+                                                {log.status || 'Present'}
+                                            </span>
+                                        </div>
                                     </div>
                                 );
                             }) : (
@@ -1195,13 +1367,26 @@ const EmployeeDashboard = () => {
                                         {getInitial(user.name)}
                                     </div>
                                     <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{user.name}</h2>
-                                    <p className="text-slate-500 font-medium mt-1 text-sm">{user.department}</p>
+                                    <p className="text-slate-500 font-medium mt-0.5 text-sm">{user.department}</p>
 
-                                    <div className="my-6 sm:my-8 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
+                                    {isMedicalExempt && (
+                                        <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                                            <i className="ti ti-bandage text-sm" />
+                                            <span>Medical Grace Active ({daysRemaining}d left)</span>
+                                        </div>
+                                    )}
+
+                                    <div className="my-5 sm:my-6 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
                                         <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
                                     </div>
 
-                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
+                                    {isMedicalExempt ? (
+                                        <p className="text-amber-800 font-semibold text-xs mb-4">
+                                            Scan QR at gate · Camera will record audit snapshot
+                                        </p>
+                                    ) : (
+                                        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
+                                    )}
                                 </div>
                             )}
 

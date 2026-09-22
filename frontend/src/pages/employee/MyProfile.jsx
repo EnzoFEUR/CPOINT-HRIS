@@ -36,6 +36,7 @@ export default function MyProfile() {
                     avatar_url: u.avatar_url || u.photo_url || null,
                     photo_url: u.photo_url || u.avatar_url || null,
                     has_registered_biometrics: u.has_registered_biometrics ?? true,
+                    medical_record_url: u.medical_record_url || null,
                 };
             }
         } catch { }
@@ -76,8 +77,34 @@ export default function MyProfile() {
             avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
             photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
             has_registered_biometrics: raw.has_registered_biometrics ?? true,
+            medical_record_url: raw.medical_record_url || initialUser?.medical_record_url || null,
         };
     }, [raw, initialUser]);
+
+    // Medical grace protocol state
+    const medicalExemption = useMemo(() => {
+        const rawUrl = profile?.medical_record_url;
+        if (!rawUrl) return null;
+        try {
+            const parsed = typeof rawUrl === 'string' ? JSON.parse(rawUrl) : rawUrl;
+            if (parsed && typeof parsed === 'object' && parsed.type === 'MEDICAL_GRACE_EXEMPTION') {
+                return parsed;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }, [profile?.medical_record_url]);
+
+    const isMedicalExempt = useMemo(() => {
+        if (!medicalExemption?.expires_at) return false;
+        return new Date(medicalExemption.expires_at).getTime() > Date.now();
+    }, [medicalExemption]);
+
+    const daysRemaining = useMemo(() => {
+        if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
+        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    }, [isMedicalExempt, medicalExemption]);
 
     const documents = profileResponse?.documents || [];
     const disciplinaryLogs = profileResponse?.disciplinary_logs || [];
@@ -109,6 +136,14 @@ export default function MyProfile() {
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${profile.id}` }, () => {
                 queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+            })
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                toast.success('Biometric protocol updated');
+            })
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                toast.success('Biometrics baseline reset by HR');
             })
             .subscribe();
 
@@ -502,6 +537,153 @@ export default function MyProfile() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Biometric Authentication & Gate Access */}
+            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center border ${
+                            isMedicalExempt 
+                                ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                : profile?.has_registered_biometrics 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                            <i className={`ti ${isMedicalExempt ? 'ti-bandage' : 'ti-fingerprint'} text-lg`} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Biometric Authentication & Gate Access</h3>
+                            <p className="text-[11px] text-slate-500">Turnstile credentials, biometric verification status, and medical protocols</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
+                            isMedicalExempt 
+                                ? 'bg-amber-50 text-amber-900 border-amber-300' 
+                                : profile?.has_registered_biometrics 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                            <i className={`ti ${
+                                isMedicalExempt ? 'ti-shield-check' :
+                                profile?.has_registered_biometrics ? 'ti-circle-check' : 'ti-alert-circle'
+                            }`} />
+                            {isMedicalExempt 
+                                ? `Medical Grace Active (${daysRemaining}d Left)` 
+                                : profile?.has_registered_biometrics 
+                                ? 'Dual-Factor Active' 
+                                : 'Setup Required'}
+                        </span>
+                    </div>
+                </div>
+
+                {isMedicalExempt ? (
+                    <div className="space-y-3">
+                        <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-2 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                                    <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
+                                    Medical Grace Protocol Active
+                                </span>
+                                <span className="font-mono text-slate-600 font-semibold">
+                                    Valid Through: {new Date(medicalExemption.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                            </div>
+                            <p className="text-slate-700 leading-relaxed font-medium">
+                                Authorized Reason: <strong className="text-slate-900">{medicalExemption.reason}</strong>
+                                {medicalExemption.notes ? ` — ${medicalExemption.notes}` : ''}
+                            </p>
+                            {medicalExemption.granted_by && (
+                                <p className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
+                                    <i className="ti ti-user-check text-slate-400" />
+                                    <span>Authorized by: <strong className="text-slate-700">{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
+                                </p>
+                            )}
+                            <p className="text-amber-800 text-[11px] font-semibold pt-1 flex items-center gap-1.5">
+                                <i className="ti ti-info-circle text-amber-700 shrink-0" />
+                                <span>Turnstile Instructions: Your Digital Gate Pass QR is authorized for single-step badge access. The turnstile camera logs an evidentiary snapshot automatically. No facial matching required.</span>
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Turnstile Mode</p>
+                                <p className="font-bold text-slate-800 flex items-center gap-1">
+                                    <i className="ti ti-qrcode text-emerald-600" />
+                                    QR-Only (Medical Grace)
+                                </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Audit Trail</p>
+                                <p className="font-bold text-slate-800 flex items-center gap-1">
+                                    <i className="ti ti-camera text-blue-600" />
+                                    Camera Snapshot Logged
+                                </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Digital Pass</p>
+                                    <p className="font-bold text-slate-800">Ready to Scan</p>
+                                </div>
+                                <Link
+                                    to="/employee/qr"
+                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-xs transition-all cursor-pointer"
+                                >
+                                    View QR
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                ) : profile?.has_registered_biometrics ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Facial Biometric</p>
+                            <p className="font-bold text-emerald-700 flex items-center gap-1">
+                                <i className="ti ti-circle-check text-emerald-600" />
+                                Calibrated & Registered
+                            </p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Authentication Mode</p>
+                            <p className="font-bold text-slate-800 flex items-center gap-1">
+                                <i className="ti ti-shield-check text-blue-600" />
+                                Dual Factor (QR + Face)
+                            </p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Digital Gate Pass</p>
+                                <p className="font-bold text-slate-800">Active Credential</p>
+                            </div>
+                            <Link
+                                to="/employee/qr"
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg font-bold text-xs shadow-xs transition-all cursor-pointer"
+                            >
+                                View QR
+                            </Link>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <p className="font-bold text-blue-900 flex items-center gap-1.5">
+                                <i className="ti ti-scan text-blue-600 text-sm" />
+                                Facial Biometric Setup Required
+                            </p>
+                            <p className="text-blue-700 mt-0.5">
+                                Your account needs biometric face calibration to enable turnstile entrance credentials.
+                            </p>
+                        </div>
+                        <Link
+                            to="/biometric-setup"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-xs text-center shrink-0 transition-all cursor-pointer"
+                        >
+                            Calibrate Face Biometrics
+                        </Link>
+                    </div>
+                )}
             </div>
 
             {/* Compliance & Disciplinary Standing */}

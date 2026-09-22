@@ -564,7 +564,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .maybeSingle(),
             supabase
                 .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics')
                 .eq('id', id)
                 .single(),
             supabase
@@ -724,43 +724,6 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         });
     } catch (err) {
         console.error('[DASHBOARD_ROUTE] Admin dashboard error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Employee dashboard overview endpoint
-router.get('/employee/:id', cacheResponse(15), async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const [
-            { data: attendanceData, error: attErr },
-            { data: payrollData, error: payErr },
-            { data: shiftData, error: shiftErr },
-            { data: discData, error: discErr },
-            { data: leaveData, error: leaveErr }
-        ] = await Promise.all([
-            supabase.from('attendances').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(10),
-            supabase.from('payrolls').select('*').eq('employee_id', id).order('period_start', { ascending: false }).limit(12),
-            supabase.from('employees').select('id, shift, department, job_title, first_name, last_name, company_id, status, is_active').eq('id', id).limit(1),
-            supabase.from('disciplinary_logs').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(50),
-            supabase.from('leave_requests').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(10)
-        ]);
-
-        if (attErr || payErr || shiftErr || discErr || leaveErr) {
-            const err = attErr || payErr || shiftErr || discErr || leaveErr;
-            throw err;
-        }
-
-        res.json({
-            attendanceData: attendanceData || [],
-            payrollData: payrollData || [],
-            shiftData: shiftData || [],
-            employee: shiftData?.[0] || null,
-            discData: discData || [],
-            leaveData: leaveData || []
-        });
-    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
