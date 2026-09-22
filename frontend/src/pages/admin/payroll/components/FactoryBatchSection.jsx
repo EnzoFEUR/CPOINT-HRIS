@@ -11,6 +11,7 @@ const FactoryBatchSection = ({
     workerPayrollMap,
     holidayRateMultiplier,
     isLoadingEmployees,
+    isLoadingGroupAttendance,
     breakdownSearch,
     setBreakdownSearch,
     breakdownFilter,
@@ -21,8 +22,14 @@ const FactoryBatchSection = ({
     setIsGroupModalOpen,
     isSubmitting,
     isInvalidDateRange,
-    handleSubmitBatch
+    handleSubmitBatch,
+    absenteeInfo = {},
+    absenteeValidation = { missing: [], overDeclaredRows: [], absenteeCount: 0, isComplete: true },
+    setIsAbsenteeModalOpen,
+    expectedWorkingDays = 0
 }) => {
+    const absenteeCount = absenteeValidation.absenteeCount || 0;
+    const needsDeclaration = absenteeCount > 0 && !absenteeValidation.isComplete;
     return (
         <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* Access Button for Factory Piece Modal */}
@@ -58,6 +65,49 @@ const FactoryBatchSection = ({
                     <span>{selectedGroup ? 'Edit Operations & Rates' : 'Select Group & Configure'}</span>
                 </button>
             </div>
+
+            {selectedGroup && isLoadingGroupAttendance && (
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl text-xs text-blue-800 font-semibold flex items-center gap-2">
+                    <i className="ti ti-loader-2 animate-spin text-base" />
+                    Checking attendance for {selectedGroup} - piece-rate shares will be prorated by days present once loaded.
+                </div>
+            )}
+
+            {/* Absent workers need their real output declared before the batch can be saved */}
+            {selectedGroup && absenteeCount > 0 && (
+                <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${needsDeclaration
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-emerald-50 border-emerald-200'
+                    }`}>
+                    <div className="flex items-start gap-3 min-w-0">
+                        <i className={`ti ${needsDeclaration ? 'ti-user-exclamation text-amber-600' : 'ti-circle-check text-emerald-600'} text-xl shrink-0 mt-0.5`} />
+                        <div className="min-w-0">
+                            <p className={`text-xs font-extrabold ${needsDeclaration ? 'text-amber-900' : 'text-emerald-900'}`}>
+                                {absenteeCount} worker{absenteeCount === 1 ? '' : 's'} missed days this cutoff
+                                {expectedWorkingDays > 0 && (
+                                    <span className="font-semibold"> (out of {expectedWorkingDays} expected)</span>
+                                )}
+                            </p>
+                            <p className={`text-[11px] font-medium mt-0.5 ${needsDeclaration ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                {needsDeclaration
+                                    ? (absenteeValidation.missing.length > 0
+                                        ? `Enter how much each one actually made before saving. ${absenteeValidation.missing.length} quantit${absenteeValidation.missing.length === 1 ? 'y is' : 'ies are'} still blank.`
+                                        : 'Their declared output adds up to more than the quantity logged for a process. Lower it before saving.')
+                                    : 'Declared output recorded. Their pay is based on their own quantity, and the rest of each process goes to the workers who were present.'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsAbsenteeModalOpen && setIsAbsenteeModalOpen(true)}
+                        className={`w-full sm:w-auto px-5 py-2.5 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                            }`}
+                    >
+                        <i className="ti ti-clipboard-text text-base" />
+                        <span>{needsDeclaration ? 'Declare output' : 'Review declared output'}</span>
+                    </button>
+                </div>
+            )}
 
             {/* Executive KPI Summary Ribbon */}
             {selectedGroup && activeGroupEmployees.length > 0 && (
@@ -375,7 +425,7 @@ const FactoryBatchSection = ({
 
             <button
                 type="submit"
-                disabled={isSubmitting || !selectedGroup || grandTotalFactoryPayout <= 0 || activeGroupEmployees.length === 0 || isInvalidDateRange}
+                disabled={isSubmitting || !selectedGroup || grandTotalFactoryPayout <= 0 || activeGroupEmployees.length === 0 || isInvalidDateRange || isLoadingGroupAttendance || needsDeclaration}
                 className="w-full min-h-[52px] py-4 bg-slate-900 hover:bg-blue-600 text-white font-black text-base rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
                 {isSubmitting ? (
@@ -385,8 +435,14 @@ const FactoryBatchSection = ({
                     </>
                 ) : (
                     <>
-                        <i className="ti ti-cash text-xl"></i>
-                        <span>{selectedGroup ? `Save & Distribute ${selectedGroup} Process Payroll` : 'Select Factory Group to Distribute'}</span>
+                        <i className={`ti ${needsDeclaration ? 'ti-lock' : 'ti-cash'} text-xl`}></i>
+                        <span>
+                            {needsDeclaration
+                                ? 'Declare absent workers\u2019 output to continue'
+                                : selectedGroup
+                                    ? `Save & Distribute ${selectedGroup} Process Payroll`
+                                    : 'Select Factory Group to Distribute'}
+                        </span>
                     </>
                 )}
             </button>

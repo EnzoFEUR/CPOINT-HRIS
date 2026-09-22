@@ -1028,7 +1028,18 @@ router.post('/batch', async (req, res) => {
                 ? entry.operations_breakdown.map(op => `${op.operation}: ₱${toSafeNumber(op.share).toFixed(2)}`).join(', ')
                 : '';
 
-            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
+            // Workers who missed days are paid on declared output (quantity made x rate)
+            // rather than an attendance-weighted share. Record that basis on the payslip
+            // so the figure can be audited later.
+            const declaredOutput = Array.isArray(entry.declared_output) ? entry.declared_output : [];
+            const absenceSummary = entry.is_absent
+                ? ` | ABSENT ${toSafeNumber(entry.days_absent)} of ${toSafeNumber(entry.expected_working_days)} day(s), present ${toSafeNumber(entry.days_present)} - paid on declared output${declaredOutput.length > 0
+                    ? `: ${declaredOutput.map(d => `${d.operation} ${toSafeNumber(d.declared_quantity)} x ₱${toSafeNumber(d.rate).toFixed(2)} = ₱${toSafeNumber(d.amount).toFixed(2)}`).join(', ')}`
+                    : ''
+                }`
+                : '';
+
+            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''}${absenceSummary} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
 
             let insertPayload = {
                 employee_id,

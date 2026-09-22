@@ -1073,6 +1073,42 @@ export default function PayrollIndex() {
         });
     }, [enrichedRecords, currentMonth, currentYear, rosterCategory, filterStatus, selectedDepartment, deferredSearch]);
 
+    // Same filters as filteredPayrolls, but WITHOUT the status filter - used only for
+    // the All/Completed/Pending tab count badges, so they always show true totals
+    // regardless of which tab is currently active.
+    const statusAgnosticPayrolls = useMemo(() => {
+        const q = deferredSearch.trim().toLowerCase();
+        const targetMonth = currentMonth ? parseInt(currentMonth, 10) : null;
+        const targetYear = currentYear ? parseInt(currentYear, 10) : null;
+
+        return enrichedRecords.filter(p => {
+            const roleStr = (p.employees?.role || '').toLowerCase();
+            if (roleStr === 'admin' || roleStr === 'security') return false;
+
+            if (targetMonth) {
+                const pDate = dayjs(p.period_start || p.period_end);
+                if (pDate.isValid() && (pDate.month() + 1) !== targetMonth) return false;
+            }
+
+            if (targetYear) {
+                const pDate = dayjs(p.period_start || p.period_end);
+                if (pDate.isValid() && pDate.year() !== targetYear) return false;
+            }
+
+            const isGroupWorker = isFactoryDept(p._dept) || Boolean(p._line);
+            if (rosterCategory === 'regular' && isGroupWorker) return false;
+            if (rosterCategory === 'group' && !isGroupWorker) return false;
+
+            if (selectedDepartment !== 'All' && p._dept !== selectedDepartment) return false;
+
+            if (q && !p._searchTokens.includes(q)) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [enrichedRecords, currentMonth, currentYear, rosterCategory, selectedDepartment, deferredSearch]);
+
     const sortedPayrolls = useMemo(() => {
         const getTierScores = (p) => {
             const isGroup = isFactoryDept(p._dept) || Boolean(p._line);
@@ -1140,8 +1176,8 @@ export default function PayrollIndex() {
         let completedCount = 0;
         let pendingCount = 0;
 
-        for (let i = 0; i < filteredPayrolls.length; i++) {
-            const p = filteredPayrolls[i];
+        for (let i = 0; i < statusAgnosticPayrolls.length; i++) {
+            const p = statusAgnosticPayrolls[i];
             if (p.isPending) {
                 pendingCount++;
             } else {
@@ -1172,7 +1208,7 @@ export default function PayrollIndex() {
             totalCount,
             completionRate,
         };
-    }, [filteredPayrolls]);
+    }, [statusAgnosticPayrolls]);
 
     const ledgerDisplayItems = useMemo(() => {
         const factoryGroupsMap = {};
