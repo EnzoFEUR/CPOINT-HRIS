@@ -114,16 +114,16 @@ export default function PayrollShow() {
                 </Link>
 
                 <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => window.print()} 
+                    <button
+                        onClick={() => window.print()}
                         className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                     >
                         <i className="ti ti-printer text-sm"></i> Print / Export PDF
                     </button>
 
                     <form onSubmit={handleDelete}>
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold rounded-md border border-rose-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                             <i className="ti ti-trash text-sm"></i> Delete
@@ -134,7 +134,7 @@ export default function PayrollShow() {
 
             {/* Official Payslip Document */}
             <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
-                
+
                 {/* 1. Header: Corporate Letterhead */}
                 <div className="p-6 sm:p-8 bg-white border-b border-slate-200 print:bg-transparent">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
@@ -274,7 +274,7 @@ export default function PayrollShow() {
                     {/* Dual Table Grid */}
                     <div className="border border-slate-200 rounded-md overflow-hidden">
                         <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
-                            
+
                             {/* LEFT: EARNINGS */}
                             <div className="flex flex-col justify-between">
                                 <div>
@@ -360,7 +360,7 @@ export default function PayrollShow() {
                                                             {percentageDisplay}
                                                         </div>
                                                         <span className="font-mono font-semibold text-rose-600 text-sm">
-                                                            -₱{ded.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            ₱{ded.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </span>
                                                     </div>
                                                 );
@@ -376,7 +376,7 @@ export default function PayrollShow() {
                                 <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
                                     <span className="text-xs font-bold uppercase text-rose-700 tracking-wide">Total Deductions</span>
                                     <span className="font-mono font-bold text-rose-600 text-base">
-                                        -₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        ₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                             </div>

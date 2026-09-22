@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -252,7 +252,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                 ) : (
                     <div className="flex flex-col items-end">
                         <span className="font-bold text-rose-600 text-sm">
-                            -₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {(payroll._sss > 0 || payroll._philHealth > 0 || payroll._pagIbig > 0 || payroll._tax > 0) && (
                             <div
@@ -430,7 +430,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
             <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
                     <span className="font-extrabold text-rose-600 text-sm">
-                        -₱{group.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₱{group.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 font-sans uppercase tracking-wider mt-0.5">
                         Combined Ded.
@@ -570,7 +570,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                             <div className="text-right">
                                 <span className="text-[10px] font-bold text-red-400 uppercase">Deductions</span>
                                 <p className="font-mono font-bold text-red-500 text-xs">
-                                    -₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    ₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </p>
                             </div>
                         </div>
@@ -769,24 +769,6 @@ export default function PayrollIndex() {
         setCurrentPage(1);
     }, [searchParams, setSearchParams]);
 
-    const handleMonthChange = (e) => {
-        const month = e.target.value;
-        const params = new URLSearchParams(searchParams);
-        if (month) params.set('month', month);
-        else params.delete('month');
-        setSearchParams(params);
-        setCurrentPage(1);
-    };
-
-    const handleYearChange = (e) => {
-        const year = e.target.value;
-        const params = new URLSearchParams(searchParams);
-        if (year) params.set('year', year);
-        else params.delete('year');
-        setSearchParams(params);
-        setCurrentPage(1);
-    };
-
     const handleClearFilters = () => {
         setSearchQuery('');
         setSelectedDepartment('All');
@@ -795,6 +777,49 @@ export default function PayrollIndex() {
         setSearchParams(new URLSearchParams());
         setCurrentPage(1);
     };
+
+    // ── Calendar (month/year) picker ─────────────────────────────────────────
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [calendarViewYear, setCalendarViewYear] = useState(() => currentYear ? parseInt(currentYear, 10) : currentYearNum);
+    const calendarRef = useRef(null);
+
+    useEffect(() => {
+        if (!isCalendarOpen) return;
+        const handleClickOutside = (e) => {
+            if (calendarRef.current && !calendarRef.current.contains(e.target)) {
+                setIsCalendarOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isCalendarOpen]);
+
+    const openCalendar = () => {
+        setCalendarViewYear(currentYear ? parseInt(currentYear, 10) : currentYearNum);
+        setIsCalendarOpen(prev => !prev);
+    };
+
+    const handleCalendarSelect = (monthNum) => {
+        const params = new URLSearchParams(searchParams);
+        params.set('month', String(monthNum).padStart(2, '0'));
+        params.set('year', String(calendarViewYear));
+        setSearchParams(params);
+        setCurrentPage(1);
+        setIsCalendarOpen(false);
+    };
+
+    const handleCalendarClear = () => {
+        const params = new URLSearchParams(searchParams);
+        params.delete('month');
+        params.delete('year');
+        setSearchParams(params);
+        setCurrentPage(1);
+        setIsCalendarOpen(false);
+    };
+
+    const calendarLabel = currentMonth && currentYear
+        ? `${new Date(2000, parseInt(currentMonth, 10) - 1, 1).toLocaleString('default', { month: 'short' })} ${currentYear}`
+        : currentYear || 'All Time';
 
     const jumpToCurrentCycle = () => {
         const now = new Date();
@@ -1301,28 +1326,6 @@ export default function PayrollIndex() {
         ];
     }, [sortedPayrolls]);
 
-    const hasFactoryGroups = useMemo(() => {
-        return ledgerDisplayItems.some(i => i.type === 'group');
-    }, [ledgerDisplayItems]);
-
-    const isAllGroupsExpanded = useMemo(() => {
-        const groupItems = ledgerDisplayItems.filter(i => i.type === 'group');
-        if (groupItems.length === 0) return false;
-        return groupItems.every(g => expandedGroups[g.id]);
-    }, [ledgerDisplayItems, expandedGroups]);
-
-    const toggleAllGroups = useCallback(() => {
-        setExpandedGroups(prev => {
-            const groupIds = ledgerDisplayItems.filter(i => i.type === 'group').map(g => g.id);
-            const areAllExpanded = groupIds.length > 0 && groupIds.every(id => prev[id]);
-            const next = {};
-            groupIds.forEach(id => {
-                next[id] = !areAllExpanded;
-            });
-            return next;
-        });
-    }, [ledgerDisplayItems]);
-
     const handleExportCSV = useCallback(() => {
         if (filteredPayrolls.length === 0) {
             toast.error('No payroll records to export');
@@ -1510,7 +1513,7 @@ export default function PayrollIndex() {
                     </div>
                     <div className="mt-2.5">
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-rose-500 tracking-tight">
-                            -₱{metrics.totalDeductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₱{metrics.totalDeductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <p
                             className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate"
@@ -1573,88 +1576,6 @@ export default function PayrollIndex() {
                         )}
                     </div>
 
-                    <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
-                        <button
-                            type="button"
-                            onClick={() => handleCategoryChange('all')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'all'
-                                ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
-                                : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            title="All Personnel"
-                        >
-                            <i className="ti ti-users text-sm" />
-                            <span>All</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : 'bg-slate-200/70 text-slate-500'
-                                }`}>
-                                {categoryCounts.all}
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleCategoryChange('group')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'group'
-                                ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
-                                : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            title="Factory Production Lines & Groups"
-                        >
-                            <i className="ti ti-building-factory-2 text-sm" />
-                            <span>Group</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'group' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
-                                }`}>
-                                {categoryCounts.group}
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleCategoryChange('regular')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${rosterCategory === 'regular'
-                                ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
-                                : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            title="Regular Corporate / Individual Staff"
-                        >
-                            <i className="ti ti-user text-sm" />
-                            <span>Regular</span>
-                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${rosterCategory === 'regular' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
-                                }`}>
-                                {categoryCounts.regular}
-                            </span>
-                        </button>
-                    </div>
-
-                    {rosterCategory !== 'regular' && (
-                        <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => { setViewMode('grouped'); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
-                                    ? 'bg-white text-slate-900 shadow-2xs'
-                                    : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                title="Group factory workers under line summary units"
-                            >
-                                <i className="ti ti-layout-distribute-vertical text-sm" />
-                                <span className="hidden sm:inline">Grouped</span>
-                                <span className="sm:hidden">Grouped</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setViewMode('flat'); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
-                                    ? 'bg-white text-slate-900 shadow-2xs'
-                                    : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                title="Show flat list of all workers"
-                            >
-                                <i className="ti ti-list text-sm" />
-                                <span className="hidden sm:inline">Flat Roster</span>
-                                <span className="sm:hidden">Flat</span>
-                            </button>
-                        </div>
-                    )}
-
                     <div className="flex bg-slate-100/80 p-0.5 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
                         {[
                             { id: 'All', label: 'All', count: metrics.totalCount },
@@ -1690,47 +1611,6 @@ export default function PayrollIndex() {
 
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100">
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                        <div className="relative min-w-[145px] flex-1 sm:flex-initial">
-                            <select
-                                value={rosterCategory}
-                                onChange={(e) => handleCategoryChange(e.target.value)}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
-                            >
-                                <option value="all">All Personnel ({categoryCounts.all})</option>
-                                <option value="group">Factory Groups ({categoryCounts.group})</option>
-                                <option value="regular">Regular Staff ({categoryCounts.regular})</option>
-                            </select>
-                            <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
-                        </div>
-
-                        <div className="relative min-w-[130px] flex-1 sm:flex-initial">
-                            <select
-                                value={currentMonth}
-                                onChange={handleMonthChange}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
-                            >
-                                <option value="">All Months</option>
-                                {months.map(m => {
-                                    const date = new Date(2000, m - 1, 1);
-                                    const monthName = date.toLocaleString('default', { month: 'short' });
-                                    return <option key={m} value={m.toString().padStart(2, '0')}>{monthName}</option>;
-                                })}
-                            </select>
-                            <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
-                        </div>
-
-                        <div className="relative min-w-[110px] flex-1 sm:flex-initial">
-                            <select
-                                value={currentYear}
-                                onChange={handleYearChange}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
-                            >
-                                <option value="">All Years</option>
-                                {years.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                            <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
-                        </div>
-
                         {departments.length > 2 && (
                             <div className="relative min-w-[140px] flex-1 sm:flex-initial">
                                 <select
@@ -1744,6 +1624,98 @@ export default function PayrollIndex() {
                                     ))}
                                 </select>
                                 <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                            </div>
+                        )}
+
+                        <div className="relative" ref={calendarRef}>
+                            <button
+                                type="button"
+                                onClick={openCalendar}
+                                className="min-w-[130px] flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-3 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:border-emerald-500 transition-colors flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-calendar text-sm text-slate-400" />
+                                <span>{calendarLabel}</span>
+                            </button>
+
+                            {isCalendarOpen && (
+                                <div className="absolute z-20 mt-1.5 left-0 bg-white border border-slate-200 rounded-xl shadow-lg p-3 w-64">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCalendarViewYear(y => Math.max(y - 1, years[0]))}
+                                            disabled={calendarViewYear <= years[0]}
+                                            className="p-1 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                        >
+                                            <i className="ti ti-chevron-left text-sm" />
+                                        </button>
+                                        <span className="text-sm font-bold text-slate-800">{calendarViewYear}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCalendarViewYear(y => Math.min(y + 1, years[years.length - 1]))}
+                                            disabled={calendarViewYear >= years[years.length - 1]}
+                                            className="p-1 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                        >
+                                            <i className="ti ti-chevron-right text-sm" />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {months.map(m => {
+                                            const isSelected = currentMonth === m.toString().padStart(2, '0') && currentYear === String(calendarViewYear);
+                                            const monthName = new Date(2000, m - 1, 1).toLocaleString('default', { month: 'short' });
+                                            return (
+                                                <button
+                                                    key={m}
+                                                    type="button"
+                                                    onClick={() => handleCalendarSelect(m)}
+                                                    className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${isSelected
+                                                        ? 'bg-emerald-600 text-white'
+                                                        : 'text-slate-600 hover:bg-slate-100'
+                                                        }`}
+                                                >
+                                                    {monthName}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleCalendarClear}
+                                        className="w-full mt-2.5 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 cursor-pointer text-center"
+                                    >
+                                        All Time
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {rosterCategory !== 'regular' && (
+                            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => { setViewMode('grouped'); setCurrentPage(1); }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
+                                        ? 'bg-white text-slate-900 shadow-2xs'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    title="Group factory workers under line summary units"
+                                >
+                                    <i className="ti ti-layout-distribute-vertical text-sm" />
+                                    <span className="hidden sm:inline">Grouped</span>
+                                    <span className="sm:hidden">Grouped</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setViewMode('flat'); setCurrentPage(1); }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
+                                        ? 'bg-white text-slate-900 shadow-2xs'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    title="Show flat list of all workers"
+                                >
+                                    <i className="ti ti-list text-sm" />
+                                    <span className="hidden sm:inline">Flat Roster</span>
+                                    <span className="sm:hidden">Flat</span>
+                                </button>
                             </div>
                         )}
 
@@ -1761,35 +1733,6 @@ export default function PayrollIndex() {
                     </div>
 
                     <div className="flex items-center gap-2.5 ml-auto flex-wrap">
-                        {sortConfig.key === 'hierarchy' ? (
-                            <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-[11px] font-bold">
-                                <i className="ti ti-arrows-sort text-xs text-emerald-600" />
-                                <span>Group (Paid → Pending) → Regular (Paid → Pending)</span>
-                            </span>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={() => setSortConfig({ key: 'hierarchy', direction: 'asc' })}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                title="Restore Group/Regular Paid-First Order"
-                            >
-                                <i className="ti ti-rotate-clockwise text-xs" />
-                                <span>Restore Hierarchy Order</span>
-                            </button>
-                        )}
-
-                        {rosterCategory !== 'regular' && viewMode === 'grouped' && hasFactoryGroups && (
-                            <button
-                                type="button"
-                                onClick={toggleAllGroups}
-                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                title={isAllGroupsExpanded ? 'Collapse all factory lines' : 'Expand all factory lines'}
-                            >
-                                <i className={`ti ti-${isAllGroupsExpanded ? 'fold' : 'unfold'} text-xs`} />
-                                <span>{isAllGroupsExpanded ? 'Collapse Lines' : 'Expand Lines'}</span>
-                            </button>
-                        )}
-
                         <span className="text-[11px] font-bold text-slate-400">
                             {totalItems} {totalItems === 1 ? 'entry' : 'entries'} listed
                         </span>
@@ -1983,7 +1926,7 @@ export default function PayrollIndex() {
                                                 <div className="flex justify-between font-sans">
                                                     <span className="text-red-500 font-bold">Processed Line Deductions</span>
                                                     <span className="font-mono font-bold text-red-500">
-                                                        -₱{item.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                        ₱{item.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
                                                 <div className="pt-2 border-t border-slate-100 flex justify-between items-center font-sans">
