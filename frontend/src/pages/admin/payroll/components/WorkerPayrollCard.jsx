@@ -68,7 +68,7 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                         Deductions
                     </span>
                     <span className="font-mono font-bold text-red-500 text-[11px] block">
-                        -₱{workerData.totalDeductions.toFixed(2)}
+                        ₱{workerData.totalDeductions.toFixed(2)}
                     </span>
                     <span className="text-[9px] text-slate-400 block" title={`SSS: ₱${workerData.sss} | PH: ₱${workerData.philHealth} | Pag-IBIG: ₱${workerData.pagIbig} | Tax: ₱${workerData.tax}`}>
                         SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}

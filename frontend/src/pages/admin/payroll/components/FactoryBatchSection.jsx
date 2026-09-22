@@ -80,7 +80,7 @@ const FactoryBatchSection = ({
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Deductions</span>
                         <div className="text-base sm:text-lg font-black font-mono text-red-500 mt-1">
-                            -₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            ₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
                     <div className="bg-white p-3.5 rounded-xl border border-emerald-300 shadow-xs">
@@ -344,7 +344,7 @@ const FactoryBatchSection = ({
                                             </td>
                                             <td className="p-3 text-right">
                                                 <span className="font-mono font-bold text-xs text-red-500 block">
-                                                    -₱{workerData.totalDeductions.toFixed(2)}
+                                                    ₱{workerData.totalDeductions.toFixed(2)}
                                                 </span>
                                                 <span className="text-[9px] text-slate-400 block" title={`SSS: ₱${workerData.sss} | PH: ₱${workerData.philHealth} | Pag-IBIG: ₱${workerData.pagIbig} | Tax: ₱${workerData.tax}`}>
                                                     SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}

@@ -1,17 +1,24 @@
 import React from 'react';
 import { formatReadableDate } from '../utils/payrollHelpers';
 
+const CUTOFF_MODE_META = {
+    '7day': { label: '7 Days', hint: 'Mon\u2013Sun', badge: '7-Day Lock' },
+    '5day': { label: '5 Days', hint: 'Mon\u2013Fri', badge: '5-Day Lock' },
+    'free': { label: 'Free Mode', hint: 'Custom range', badge: 'Free Choice Mode' }
+};
+
 const CutoffPeriodSelector = ({
     periodStart,
     periodEnd,
     handleStartDateChange,
     handleEndDateChange,
     activePreset,
-    includeWeekends,
-    toggleWeekends,
+    cutoffMode,
+    handleCutoffModeChange,
     periodDaysCount,
     isInvalidDateRange
 }) => {
+    const isEndDateLocked = cutoffMode !== 'free';
     return (
         <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100 space-y-4 mb-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -29,23 +36,33 @@ const CutoffPeriodSelector = ({
 
                 {activePreset === 'custom' && (
                     <span className="text-[10px] sm:text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1">
-                        <i className="ti ti-edit"></i> {includeWeekends ? 'Auto-Week Lock' : 'Free Choice Mode'}
+                        <i className="ti ti-edit"></i> {CUTOFF_MODE_META[cutoffMode]?.badge || 'Custom'}
                     </span>
                 )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-                <button
-                    type="button"
-                    onClick={toggleWeekends}
-                    className={`shrink-0 whitespace-nowrap min-h-[38px] sm:min-h-[42px] px-3.5 sm:px-4 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-2 ${includeWeekends
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        : 'bg-slate-200 text-slate-700 border border-slate-300'
-                        }`}
-                >
-                    <i className={`ti ${includeWeekends ? 'ti-calendar-check text-emerald-600' : 'ti-calendar-minus text-slate-500'} text-base`}></i>
-                    <span>{includeWeekends ? 'Auto-Weekends: Active (1 Week Auto)' : 'Auto-Weekends: Inactive (Free Choice)'}</span>
-                </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
+                <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1 w-full sm:w-auto">
+                    {Object.entries(CUTOFF_MODE_META).map(([key, meta]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => handleCutoffModeChange(key)}
+                            title={meta.hint}
+                            className={`flex-1 sm:flex-none px-3.5 py-2 min-h-[38px] sm:min-h-[42px] rounded-lg text-xs font-bold transition-all cursor-pointer ${cutoffMode === key
+                                    ? 'bg-white text-blue-700 shadow-xs'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                        >
+                            {meta.label}
+                        </button>
+                    ))}
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
+                    {isEndDateLocked
+                        ? `End date follows the start date automatically (${CUTOFF_MODE_META[cutoffMode]?.hint}).`
+                        : 'Pick any start and end date.'}
+                </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -67,10 +84,16 @@ const CutoffPeriodSelector = ({
                     />
                 </div>
 
-                <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100 transition-all">
+                <div className={`bg-white p-3.5 sm:p-4 rounded-xl border transition-all ${isEndDateLocked
+                        ? 'border-slate-200'
+                        : 'border-slate-200 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100'
+                    }`}>
                     <div className="flex items-center justify-between mb-2 gap-1">
                         <label htmlFor="cutoff-end-date" className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 truncate cursor-pointer">
-                            <i className="ti ti-flag text-emerald-600 text-sm shrink-0"></i> End Date
+                            <i className={`ti ${isEndDateLocked ? 'ti-lock text-slate-400' : 'ti-flag text-emerald-600'} text-sm shrink-0`}></i> End Date
+                            {isEndDateLocked && (
+                                <span className="text-[9px] font-bold text-slate-400 normal-case tracking-normal">(auto)</span>
+                            )}
                         </label>
                         <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
                             {formatReadableDate(periodEnd)}
@@ -81,7 +104,12 @@ const CutoffPeriodSelector = ({
                         type="date"
                         value={periodEnd}
                         onChange={(e) => handleEndDateChange(e.target.value)}
-                        className="w-full p-2.5 min-h-[44px] bg-slate-50 hover:bg-white focus:bg-white text-slate-800 font-bold rounded-lg border border-slate-200 focus:border-emerald-500 outline-none transition-all text-sm sm:text-base cursor-pointer"
+                        disabled={isEndDateLocked}
+                        title={isEndDateLocked ? `Locked to start date + ${CUTOFF_MODE_META[cutoffMode]?.hint}. Switch to Free Mode to edit directly.` : undefined}
+                        className={`w-full p-2.5 min-h-[44px] font-bold rounded-lg border outline-none transition-all text-sm sm:text-base ${isEndDateLocked
+                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                : 'bg-slate-50 hover:bg-white focus:bg-white text-slate-800 border-slate-200 focus:border-emerald-500 cursor-pointer'
+                            }`}
                     />
                 </div>
             </div>
