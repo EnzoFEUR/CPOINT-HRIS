@@ -203,9 +203,10 @@ export default function StatutorySettings({ onBack }) {
                     <button
                         type="button"
                         onClick={() => setSuccessMessage('')}
-                        className="text-emerald-600 hover:text-emerald-800 text-sm font-bold ml-2 cursor-pointer shrink-0 min-h-[32px] min-w-[32px]"
+                        className="text-emerald-600 hover:text-emerald-800 text-sm font-bold ml-2 cursor-pointer shrink-0 min-h-[32px] min-w-[32px] flex items-center justify-center"
+                        aria-label="Dismiss success message"
                     >
-                        ✕
+                        <i className="ti ti-x text-sm" />
                     </button>
                 </div>
             )}
@@ -222,9 +223,10 @@ export default function StatutorySettings({ onBack }) {
                     <button
                         type="button"
                         onClick={() => setErrorMessage('')}
-                        className="text-amber-700 hover:text-amber-900 text-sm font-bold ml-2 cursor-pointer shrink-0 min-h-[32px] min-w-[32px]"
+                        className="text-amber-700 hover:text-amber-900 text-sm font-bold ml-2 cursor-pointer shrink-0 min-h-[32px] min-w-[32px] flex items-center justify-center"
+                        aria-label="Dismiss error message"
                     >
-                        ✕
+                        <i className="ti ti-x text-sm" />
                     </button>
                 </div>
             )}

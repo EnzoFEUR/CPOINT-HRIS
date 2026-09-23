@@ -11,6 +11,7 @@ const FactoryBatchSection = ({
     workerPayrollMap,
     holidayRateMultiplier,
     isLoadingEmployees,
+    isLoadingGroupAttendance,
     breakdownSearch,
     setBreakdownSearch,
     breakdownFilter,
@@ -21,12 +22,19 @@ const FactoryBatchSection = ({
     setIsGroupModalOpen,
     isSubmitting,
     isInvalidDateRange,
-    handleSubmitBatch
+    handleSubmitBatch,
+    absenteeInfo,
+    absenteeValidation,
+    setIsAbsenteeModalOpen,
+    expectedWorkingDays
 }) => {
+    const absenteeCount = absenteeValidation?.absenteeCount || 0;
+    const needsDeclaration = absenteeCount > 0 && !absenteeValidation?.isComplete;
+
     return (
         <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* Access Button for Factory Piece Modal */}
-            <div className="bg-gradient-to-r from-blue-50/90 via-white to-blue-50/60 p-4 sm:p-5 rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/20 shrink-0">
                         <i className="ti ti-table" />
@@ -59,6 +67,42 @@ const FactoryBatchSection = ({
                 </button>
             </div>
 
+            {/* Absentee Warning & Declaration Trigger */}
+            {selectedGroup && absenteeCount > 0 && (
+                <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${needsDeclaration
+                    ? 'bg-amber-50/80 border-amber-200'
+                    : 'bg-emerald-50/80 border-emerald-200'
+                    }`}>
+                    <div className="flex items-start gap-3 min-w-0">
+                        <i className={`ti ${needsDeclaration ? 'ti-user-exclamation text-amber-600' : 'ti-circle-check text-emerald-600'} text-xl shrink-0 mt-0.5`} />
+                        <div className="min-w-0">
+                            <p className={`text-xs font-extrabold ${needsDeclaration ? 'text-amber-900' : 'text-emerald-900'}`}>
+                                {absenteeCount} worker{absenteeCount === 1 ? '' : 's'} missed days this cutoff
+                                {expectedWorkingDays > 0 && (
+                                    <span className="font-semibold"> (out of {expectedWorkingDays} expected)</span>
+                                )}
+                            </p>
+                            <p className={`text-[11px] font-medium mt-0.5 ${needsDeclaration ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                {needsDeclaration
+                                    ? (absenteeValidation.missing.length > 0
+                                        ? `Enter how much each one actually made before saving. ${absenteeValidation.missing.length} quantit${absenteeValidation.missing.length === 1 ? 'y is' : 'ies are'} still blank.`
+                                        : 'Their declared output adds up to more than the quantity logged for a process. Lower it before saving.')
+                                    : 'Declared output recorded. Their pay is based on their own quantity, and the rest of each process goes to the workers who were present.'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsAbsenteeModalOpen && setIsAbsenteeModalOpen(true)}
+                        className={`w-full sm:w-auto px-5 py-2.5 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                            }`}
+                    >
+                        <i className="ti ti-clipboard-text text-base" />
+                        <span>{needsDeclaration ? 'Declare output' : 'Review declared output'}</span>
+                    </button>
+                </div>
+            )}
+
             {/* Executive KPI Summary Ribbon */}
             {selectedGroup && activeGroupEmployees.length > 0 && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -80,10 +124,10 @@ const FactoryBatchSection = ({
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Deductions</span>
                         <div className="text-base sm:text-lg font-black font-mono text-red-500 mt-1">
-                            -₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            ₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 shadow-2xs bg-gradient-to-br from-emerald-50/40 to-white">
+                    <div className="bg-white p-3.5 rounded-xl border border-emerald-300 shadow-xs">
                         <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Net Distribution</span>
                         <div className="text-base sm:text-lg font-black font-mono text-emerald-600 mt-1">
                             ₱{batchSummaryTotals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -344,7 +388,7 @@ const FactoryBatchSection = ({
                                             </td>
                                             <td className="p-3 text-right">
                                                 <span className="font-mono font-bold text-xs text-red-500 block">
-                                                    -₱{workerData.totalDeductions.toFixed(2)}
+                                                    ₱{workerData.totalDeductions.toFixed(2)}
                                                 </span>
                                                 <span className="text-[9px] text-slate-400 block" title={`SSS: ₱${workerData.sss} | PH: ₱${workerData.philHealth} | Pag-IBIG: ₱${workerData.pagIbig} | Tax: ₱${workerData.tax}`}>
                                                     SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}
@@ -375,7 +419,7 @@ const FactoryBatchSection = ({
 
             <button
                 type="submit"
-                disabled={isSubmitting || !selectedGroup || grandTotalFactoryPayout <= 0 || activeGroupEmployees.length === 0 || isInvalidDateRange}
+                disabled={isSubmitting || !selectedGroup || grandTotalFactoryPayout <= 0 || activeGroupEmployees.length === 0 || isInvalidDateRange || isLoadingGroupAttendance || needsDeclaration}
                 className="w-full min-h-[52px] py-4 bg-slate-900 hover:bg-blue-600 text-white font-black text-base rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
                 {isSubmitting ? (
@@ -385,8 +429,14 @@ const FactoryBatchSection = ({
                     </>
                 ) : (
                     <>
-                        <i className="ti ti-cash text-xl"></i>
-                        <span>{selectedGroup ? `Save & Distribute ${selectedGroup} Process Payroll` : 'Select Factory Group to Distribute'}</span>
+                        <i className={`ti ${needsDeclaration ? 'ti-lock' : 'ti-cash'} text-xl`}></i>
+                        <span>
+                            {needsDeclaration
+                                ? 'Declare absent workers\u2019 output to continue'
+                                : selectedGroup
+                                    ? `Save & Distribute ${selectedGroup} Process Payroll`
+                                    : 'Select Factory Group to Distribute'}
+                        </span>
                     </>
                 )}
             </button>

@@ -25,6 +25,19 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                     </span>
                 </div>
 
+                {typeof workerData.daysPresent === 'number' && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {workerData.daysPresent} day{workerData.daysPresent === 1 ? '' : 's'} present this cutoff
+                        </span>
+                        {workerData.isAbsent && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                {workerData.daysAbsent} absent &middot; paid on declared output
+                            </span>
+                        )}
+                    </div>
+                )}
+
                 {/* Operation Shares Breakdown */}
                 <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -44,9 +57,18 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                             {(isExpanded ? workerData.assignedOperations : workerData.assignedOperations.slice(0, 2)).map((op, idx) => (
                                 <div key={idx} className="flex justify-between items-center text-[11px]">
                                     <span className="text-slate-600 font-medium truncate">
-                                        &bull; {op.operation} ({op.workerCount} worker{op.workerCount > 1 ? 's' : ''})
+                                        &bull; {op.operation}
+                                        {op.isDeclaredOutput
+                                            ? ` (${op.declaredQty === null ? '\u2014' : op.declaredQty.toLocaleString('en-US')} made \u00d7 \u20b1${op.amt.toFixed(2)})`
+                                            : ` (${op.workerCount} worker${op.workerCount > 1 ? 's' : ''})`}
                                         {holidayRateMultiplier > 1 && (
                                             <span className="text-[9px] text-amber-600 font-bold ml-1">(Hol. Rate)</span>
+                                        )}
+                                        {op.isProrated && (
+                                            <span className="text-[9px] text-blue-600 font-bold ml-1">(Prorated)</span>
+                                        )}
+                                        {op.isMissingDeclaration && (
+                                            <span className="text-[9px] text-red-500 font-bold ml-1">(Qty needed)</span>
                                         )}
                                     </span>
                                     <span className="font-mono font-semibold text-slate-800">
@@ -68,7 +90,7 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                         Deductions
                     </span>
                     <span className="font-mono font-bold text-red-500 text-[11px] block">
-                        -₱{workerData.totalDeductions.toFixed(2)}
+                        ₱{workerData.totalDeductions.toFixed(2)}
                     </span>
                     <span className="text-[9px] text-slate-400 block" title={`SSS: ₱${workerData.sss} | PH: ₱${workerData.philHealth} | Pag-IBIG: ₱${workerData.pagIbig} | Tax: ₱${workerData.tax}`}>
                         SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}

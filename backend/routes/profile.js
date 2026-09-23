@@ -43,10 +43,13 @@ router.patch('/', verifyToken, async (req, res) => {
             if (authError) throw authError;
         }
 
+        const updatePayload = { first_name, last_name };
+        if (email) updatePayload.email = email.trim().toLowerCase();
+
         // Update Employees table
         const { data, error } = await supabase
             .from('employees')
-            .update({ first_name, last_name })
+            .update(updatePayload)
             .eq('id', req.user.id)
             .select()
             .single();

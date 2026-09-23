@@ -32,13 +32,127 @@ export default function Dashboard() {
     const [trendView, setTrendView] = useState('weekly');
     const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
 
-    // Overview data query
+    // Overview data query with Dual-Layer API + Direct Supabase Fallback
     const { data: overviewData, isLoading } = useQuery({
         queryKey: ['adminDashboardOverview'],
         queryFn: async () => {
-            const res = await fetchWithAuth('/api/dashboard/overview');
-            if (!res.ok) throw new Error('Failed to load dashboard overview');
-            return res.json();
+            try {
+                const res = await fetchWithAuth('/api/dashboard/overview');
+                if (res.ok) {
+                    return await res.json();
+                }
+            } catch (err) {
+                console.warn('[DASHBOARD] API overview fallback to direct Supabase query:', err);
+            }
+
+            // Direct Supabase Fallback for Low-Latency & High Availability
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const toManilaDate = (d = new Date()) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+            const todayStr = toManilaDate(new Date());
+            const thirtyFiveDaysAgo = toManilaDate(new Date(Date.now() - 35 * DAY_MS));
+
+            const [
+                { data: rawEmployees },
+                { data: rawAttendances },
+                { data: rawLeaves }
+            ] = await Promise.all([
+                supabase
+                    .from('employees')
+                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status')
+                    .not('company_id', 'is', null)
+                    .neq('role', 'admin')
+                    .neq('role', 'security'),
+                supabase
+                    .from('attendances')
+                    .select('id, employee_id, date, status, created_at, time_in, time_out')
+                    .gte('date', thirtyFiveDaysAgo)
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('leave_requests')
+                    .select('status, start_date, end_date')
+            ]);
+
+            const employees = rawEmployees || [];
+            const attendances = rawAttendances || [];
+            const leaves = rawLeaves || [];
+
+            const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
+            const empMap = new Map();
+            employees.forEach(emp => {
+                empMap.set(emp.id, emp);
+                const dept = emp.department || 'Other';
+                if (dept === 'Factory') deptBreakdown.Factory++;
+                else if (dept === 'Retail') deptBreakdown.Retail++;
+                else if (dept === 'IT') deptBreakdown.IT++;
+                else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
+            });
+
+            let presentTodayCount = 0;
+            let lateTodayCount = 0;
+            const recentLogs = [];
+
+            attendances.forEach(att => {
+                if (att.date === todayStr) {
+                    presentTodayCount++;
+                    if ((att.status || '').toLowerCase().includes('late')) {
+                        lateTodayCount++;
+                    }
+                    if (recentLogs.length < 5) {
+                        const emp = empMap.get(att.employee_id);
+                        recentLogs.push({
+                            ...att,
+                            employees: emp ? {
+                                id: emp.id,
+                                company_id: emp.company_id,
+                                first_name: emp.first_name,
+                                last_name: emp.last_name,
+                                department: emp.department,
+                                shift: emp.shift
+                            } : null
+                        });
+                    }
+                }
+            });
+
+            let onLeaveCount = 0;
+            let pendingLeavesCount = 0;
+            leaves.forEach(l => {
+                if (l.status === 'New') pendingLeavesCount++;
+                if (l.status === 'Approved' && l.start_date <= todayStr && l.end_date >= todayStr) {
+                    onLeaveCount++;
+                }
+            });
+
+            const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const last7Days = Array.from({ length: 7 }, (_, i) => toManilaDate(new Date(Date.now() - (6 - i) * DAY_MS)));
+            const countsByDate = {};
+            attendances.forEach(r => { countsByDate[r.date] = (countsByDate[r.date] || 0) + 1; });
+
+            const weeklyTrends = last7Days.map(dateStr => {
+                const count = countsByDate[dateStr] || 0;
+                const value = employees.length > 0 ? Math.round((count / employees.length) * 100) : 0;
+                const label = dayLabels[new Date(dateStr + 'T00:00:00').getDay()];
+                return { day: label, date: dateStr, value };
+            });
+
+            return {
+                admin: {
+                    totalStaff: employees.length,
+                    deptBreakdown,
+                    presentTodayCount,
+                    lateTodayCount,
+                    onLeaveCount,
+                    pendingLeavesCount,
+                    recentLogs,
+                    weeklyTrends,
+                    monthlyTrends: [],
+                    deptPunctuality: [],
+                    doleCompliance: null
+                },
+                payrollData: null,
+                aiData: null,
+                anomalyData: null
+            };
         },
         staleTime: 30000,
         refetchInterval: 60000,
@@ -52,9 +166,13 @@ export default function Dashboard() {
     } = useQuery({
         queryKey: ['adminDashboardAI'],
         queryFn: async () => {
-            const res = await fetchWithAuth('/api/dashboard/ai-briefing');
-            if (!res.ok) throw new Error('Failed to load AI briefing');
-            return res.json();
+            try {
+                const res = await fetchWithAuth('/api/dashboard/ai-briefing');
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[DASHBOARD] AI briefing query fallback:', err);
+            }
+            return { briefing: null, payrollInsight: null };
         },
         staleTime: 5 * 60 * 1000,
         refetchOnWindowFocus: false,
@@ -148,7 +266,7 @@ export default function Dashboard() {
                 <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center animate-pulse">
                     <i className="ti ti-chart-pie-3 text-3xl text-blue-600" />
                 </div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting Real-Time Telemetry...</p>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting to live updates...</p>
             </div>
         );
     }
@@ -173,12 +291,12 @@ export default function Dashboard() {
             </div>
 
             {/* AI Executive Briefing */}
-            <div className="bg-slate-900 rounded-3xl border border-slate-800 text-white shadow-xl shadow-emerald-500/5 relative overflow-hidden">
+            <div className="bg-slate-900 rounded-xl border border-slate-800 text-white shadow-xs relative overflow-hidden">
                 <div className="relative z-10 space-y-4 p-6 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-inner">
-                                <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Daily Briefing
+                            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                <i className="ti ti-sparkles text-emerald-400" /> Google Gemini 2.0 Workforce Briefing
                             </span>
                             {isManualRefreshingAI && (
                                 <span className="text-[11px] text-emerald-400/80 font-semibold flex items-center gap-1">
@@ -189,7 +307,7 @@ export default function Dashboard() {
                         <button
                             onClick={handleRefreshAI}
                             disabled={isAILoading}
-                            className="self-start sm:self-center px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/20 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer tap-active disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="self-start sm:self-center px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-[0.98] border border-slate-700 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <i className={`ti ti-refresh text-emerald-400 ${isAILoading ? 'animate-spin' : ''}`} />
                             <span>{isAILoading ? 'Analyzing...' : 'Refresh AI'}</span>
@@ -197,58 +315,58 @@ export default function Dashboard() {
                     </div>
 
                     {isAILoading && !briefing ? (
-                        /* Enterprise Skeleton Shimmer State when AI briefing is cold / loading */
+                        /* Enterprise Skeleton State when AI briefing is cold / loading */
                         <div className="space-y-4 animate-pulse pt-1">
-                            <div className="h-7 bg-slate-800/80 rounded-xl w-4/5 border-l-4 border-emerald-500/50 pl-4 py-1 flex items-center">
-                                <span className="text-xs text-slate-400 font-bold tracking-wide">
-                                    Gemini 2.0 analyzing real-time workforce telemetry...
+                            <div className="h-7 bg-slate-800 rounded-lg w-4/5 border-l-4 border-emerald-500 pl-4 py-1 flex items-center">
+                                <span className="text-xs text-slate-400 font-medium tracking-wide">
+                                    Analyzing workforce attendance data...
                                 </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <div className="h-6 w-32 bg-slate-800/70 rounded-lg"></div>
-                                <div className="h-6 w-28 bg-slate-800/70 rounded-lg"></div>
-                                <div className="h-6 w-36 bg-slate-800/70 rounded-lg"></div>
+                                <div className="h-6 w-32 bg-slate-800 rounded-md"></div>
+                                <div className="h-6 w-28 bg-slate-800 rounded-md"></div>
+                                <div className="h-6 w-36 bg-slate-800 rounded-md"></div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-2.5">
+                                <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-2.5">
                                     <div className="flex items-center gap-2">
-                                        <i className="ti ti-bulb text-amber-400/40 text-sm" />
-                                        <div className="h-3 w-24 bg-slate-800 rounded"></div>
+                                        <i className="ti ti-bulb text-amber-400 text-sm" />
+                                        <div className="h-3 w-24 bg-slate-700 rounded"></div>
                                     </div>
-                                    <div className="h-2.5 w-full bg-slate-800/60 rounded"></div>
-                                    <div className="h-2.5 w-4/5 bg-slate-800/60 rounded"></div>
+                                    <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
+                                    <div className="h-2.5 w-4/5 bg-slate-700/60 rounded"></div>
                                 </div>
-                                <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 space-y-2.5">
+                                <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-2.5">
                                     <div className="flex items-center gap-2">
-                                        <i className="ti ti-target-arrow text-blue-400/40 text-sm" />
-                                        <div className="h-3 w-32 bg-slate-800 rounded"></div>
+                                        <i className="ti ti-target-arrow text-blue-400 text-sm" />
+                                        <div className="h-3 w-32 bg-slate-700 rounded"></div>
                                     </div>
-                                    <div className="h-2.5 w-full bg-slate-800/60 rounded"></div>
-                                    <div className="h-2.5 w-4/5 bg-slate-800/60 rounded"></div>
+                                    <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
+                                    <div className="h-2.5 w-4/5 bg-slate-700/60 rounded"></div>
                                 </div>
                             </div>
                         </div>
                     ) : (
                         /* Loaded AI Briefing */
                         <>
-                            <p className="text-base sm:text-lg font-bold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
+                            <p className="text-base sm:text-lg font-semibold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
                                 {briefing?.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
                             </p>
 
                             {/* Badges pulled straight from the AI briefing */}
                             {briefing && (
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                    <span className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                                         Punctuality Grade: {briefing.punctuality_grade || 'N/A'}
                                     </span>
                                     {briefing.top_performing_department && (
-                                        <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-blue-300">
+                                        <span className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-[11px] font-bold uppercase tracking-wider text-blue-300">
                                             Top Dept: {briefing.top_performing_department}
                                         </span>
                                     )}
                                     {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
-                                        <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1 animate-pulse">
-                                            <i className="ti ti-alert-triangle-filled text-[11px]" /> Needs Attention: {briefing.department_needs_attention}
+                                        <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                                            <i className="ti ti-alert-triangle-filled text-xs" /> Needs Attention: {briefing.department_needs_attention}
                                         </span>
                                     )}
                                 </div>
@@ -256,26 +374,26 @@ export default function Dashboard() {
 
                             {/* AI-Generated Descriptive Analytics */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
-                                    <span className="text-amber-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
-                                        <i className="ti ti-bulb text-amber-400" /> Key Insights
+                                <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+                                    <span className="text-amber-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                        <i className="ti ti-bulb text-amber-400" /> Operational Observations
                                     </span>
-                                    <ul className="mt-2 space-y-1.5">
-                                        {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough data yet to generate insights.']).map((insight, i) => (
-                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                    <ul className="mt-2.5 space-y-1.5">
+                                        {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough attendance data yet to generate observations.']).map((insight, i) => (
+                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5 leading-relaxed">
                                                 <span className="text-emerald-400 mt-0.5">&bull;</span>
                                                 <span>{insight}</span>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
-                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
-                                    <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+                                    <span className="text-blue-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
                                         <i className="ti ti-target-arrow text-blue-400" /> Recommended Actions
                                     </span>
-                                    <ul className="mt-2 space-y-1.5">
-                                        {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No action items at this time.']).map((rec, i) => (
-                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5">
+                                    <ul className="mt-2.5 space-y-1.5">
+                                        {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No critical action items at this time.']).map((rec, i) => (
+                                            <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5 leading-relaxed">
                                                 <span className="text-blue-400 mt-0.5">&bull;</span>
                                                 <span>{rec}</span>
                                             </li>
@@ -290,55 +408,55 @@ export default function Dashboard() {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-users text-5xl text-blue-600" />
                     </div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Workforce</p>
-                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Workforce</p>
+                    <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {totalStaff}
                     </h3>
-                    <span className="text-xs font-bold text-emerald-600 mt-2 block flex items-center gap-1">
-                        <i className="ti ti-check" /> Active Staff
+                    <span className="text-xs font-semibold text-emerald-700 mt-2 block flex items-center gap-1">
+                        <i className="ti ti-check" /> Active Personnel
                     </span>
                 </div>
 
-                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-user-check text-5xl text-emerald-600" />
                     </div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Present Rate</p>
-                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Present Rate</p>
+                    <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {presentPercentage}%
                     </h3>
-                    <span className="text-xs font-bold text-slate-500 mt-2 block">
+                    <span className="text-xs font-semibold text-slate-600 mt-2 block">
                         {presentTodayCount} of {totalStaff} on-site
                     </span>
                 </div>
 
-                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-xs relative overflow-hidden group">
+                <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-clock-exclamation text-5xl text-amber-600" />
                     </div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Late Arrivals</p>
-                    <h3 className="text-3xl sm:text-4xl font-black text-slate-800 mt-1 tracking-tight">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Late Arrivals</p>
+                    <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {lateTodayCount}
                     </h3>
-                    <span className="text-xs font-bold text-amber-600 mt-2 block flex items-center gap-1">
+                    <span className="text-xs font-semibold text-amber-700 mt-2 block flex items-center gap-1">
                         <i className="ti ti-alert-triangle" /> Past grace period
                     </span>
                 </div>
 
-                <Link to="/admin/leaves" className="bg-indigo-600 hover:bg-indigo-700 transition-colors p-5 sm:p-6 rounded-3xl shadow-sm text-white block cursor-pointer relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-5 opacity-20 group-hover:scale-110 transition-transform duration-500 hidden sm:block">
+                <Link to="/admin/leaves" className="bg-slate-900 hover:bg-slate-800 transition-colors p-5 sm:p-6 rounded-xl border border-slate-800 shadow-xs text-white block cursor-pointer relative overflow-hidden group">
+                    <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-plane-departure text-5xl text-white" />
                     </div>
-                    <p className="text-[11px] font-bold text-blue-200 uppercase tracking-wider">Pending Leaves</p>
-                    <h3 className="text-3xl sm:text-4xl font-black text-white mt-1 tracking-tight">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Leaves</p>
+                    <h3 className="text-3xl sm:text-4xl font-bold text-white mt-1 tracking-tight font-mono tabular-nums">
                         {pendingLeavesCount}
                     </h3>
-                    <span className="text-xs font-bold text-white mt-2 block flex items-center justify-between">
-                        <span>Requires Review</span>
+                    <span className="text-xs font-semibold text-blue-400 mt-2 block flex items-center justify-between">
+                        <span>Action Required</span>
                         <span>&rarr;</span>
                     </span>
                 </Link>
@@ -348,15 +466,15 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
                 {/* Department Punctuality Scorecard */}
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-trophy text-amber-500 text-lg" /> Department Punctuality Scorecard
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-trophy text-amber-600 text-lg" /> Department Punctuality Scorecard
                             </h3>
-                            <p className="text-xs text-slate-400 font-medium">Evaluated against shift start & grace periods</p>
+                            <p className="text-xs text-slate-500 font-medium">Evaluated against shift start & grace periods</p>
                         </div>
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-black rounded-lg">
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200">
                             30-Day Index
                         </span>
                     </div>
@@ -364,61 +482,61 @@ export default function Dashboard() {
                     <div className="space-y-3.5 pt-1">
                         {deptList.length > 0 ? deptList.map((d) => (
                             <div key={d.name} className="space-y-1.5">
-                                <div className="flex items-center justify-between text-xs font-bold">
+                                <div className="flex items-center justify-between text-xs font-semibold">
                                     <span className="text-slate-700">{d.name}</span>
                                     <div className="flex items-center gap-2">
                                         <span className="font-mono text-slate-500">{d.score}%</span>
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${d.bgCol} ${d.textCol} border border-current/20`}>
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${d.bgCol} ${d.textCol} border border-current/20`}>
                                             Grade: {d.grade}
                                         </span>
                                     </div>
                                 </div>
                                 <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                    <div className={`${d.color} h-2 rounded-full transition-all duration-1000`} style={{ width: `${d.score}%` }} />
+                                    <div className={`${d.color} h-2 rounded-full transition-all duration-500`} style={{ width: `${d.score}%` }} />
                                 </div>
                             </div>
                         )) : (
-                            <p className="text-xs text-slate-400 font-bold py-6 text-center">No attendance records in the last 30 days yet.</p>
+                            <p className="text-xs text-slate-400 font-medium py-6 text-center">No attendance records in the last 30 days yet.</p>
                         )}
                     </div>
                 </div>
 
                 {/* Predictive Burnout & Turnover Radar */}
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-flame text-red-500 text-lg" /> Predictive Burnout & Turnover Radar
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-flame text-rose-600 text-lg" /> Burnout & Overtime Risk
                             </h3>
-                            <p className="text-xs text-slate-400 font-medium">AI anomaly detection for fatigue & pattern shifts</p>
+                            <p className="text-xs text-slate-500 font-medium">Overtime patterns and fatigue indicators</p>
                         </div>
-                        <span className="px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-md border border-red-200">
+                        <span className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase rounded-md border border-rose-200">
                             {isAnomalyLoading ? '...' : `${riskFlags.length} Flags Active`}
                         </span>
                     </div>
 
                     <div className="space-y-2.5">
                         {riskFlags.length > 0 ? riskFlags.map((flag, i) => (
-                            <div key={i} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
+                            <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                    <p className="text-xs font-black text-slate-800 truncate">{formatDisplayName(flag.employee_name)}</p>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
+                                    <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(flag.employee_name)}</p>
+                                    <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
                                         {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
                                     </p>
                                 </div>
-                                <span className={`px-2 py-1 text-[10px] font-black uppercase rounded-lg border shrink-0 ${RISK_STYLES[flag.severity] || RISK_STYLES.Low}`}>
+                                <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 ${RISK_STYLES[flag.severity] || RISK_STYLES.Low}`}>
                                     {flag.severity || 'Flagged'}
                                 </span>
                             </div>
                         )) : (
-                            <p className="text-xs text-slate-400 font-bold py-6 text-center">
+                            <p className="text-xs text-slate-400 font-medium py-6 text-center">
                                 {isAnomalyLoading ? 'Scanning 30-day attendance history...' : 'No burnout or turnover risk signals detected.'}
                             </p>
                         )}
                     </div>
 
                     {anomalyData?.report?.general_health_assessment && (
-                        <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
+                        <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
                             <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
                             <p>{anomalyData.report.general_health_assessment}</p>
                         </div>
@@ -431,16 +549,16 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 
                 {/* Weekly Cutoff Payroll Forecaster */}
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                                 <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly Cutoff'} Payroll Forecaster
                             </h3>
-                            <p className="text-xs text-slate-400 font-medium">Projected payout based on active timecards</p>
+                            <p className="text-xs text-slate-500 font-medium">Projected payout based on active timecards</p>
                         </div>
                         {payrollData?.employeesWithPayrate > 0 && (
-                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-black rounded-lg border border-emerald-200 shrink-0">
+                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-200 shrink-0">
                                 Day {payrollData.elapsedWorkingDays}/{payrollData.totalCutoffWorkingDays}
                             </span>
                         )}
@@ -449,15 +567,15 @@ export default function Dashboard() {
                     {payrollData?.employeesWithPayrate > 0 ? (
                         <>
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-50 rounded-2xl p-4">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accrued So Far</p>
-                                    <p className="text-xl font-black text-slate-800 mt-1">
+                                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 sm:p-4">
+                                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Accrued So Far</p>
+                                    <p className="text-xl font-bold font-mono text-slate-900 mt-1">
                                         ₱{payrollData.actualPayToDate.toLocaleString()}
                                     </p>
                                 </div>
-                                <div className="bg-slate-900 rounded-2xl p-4">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Cutoff Total</p>
-                                    <p className="text-xl font-black text-white mt-1">
+                                <div className="bg-slate-900 border border-slate-800 rounded-lg p-3.5 sm:p-4">
+                                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Projected Cutoff Total</p>
+                                    <p className="text-xl font-bold font-mono text-white mt-1">
                                         ₱{payrollData.projectedCutoffTotal.toLocaleString()}
                                     </p>
                                 </div>
@@ -467,24 +585,24 @@ export default function Dashboard() {
                                 <div className="space-y-2 pt-1">
                                     {payrollData.deptBreakdown.slice(0, 4).map(d => (
                                         <div key={d.name} className="flex items-center justify-between text-xs">
-                                            <span className="font-bold text-slate-600">{d.name}</span>
-                                            <span className="font-mono font-black text-slate-800">₱{d.projected.toLocaleString()}</span>
+                                            <span className="font-semibold text-slate-600">{d.name}</span>
+                                            <span className="font-mono font-bold text-slate-900">₱{d.projected.toLocaleString()}</span>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
                             {(payrollInsight || payrollData.insight) && (
-                                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
+                                <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
                                     <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
                                     <p>{payrollInsight || payrollData.insight}</p>
                                 </div>
                             )}
                         </>
                     ) : (
-                        <div className="bg-slate-900 rounded-2xl p-5 text-white flex flex-col items-center justify-center text-center gap-2">
+                        <div className="bg-slate-900 rounded-xl p-5 text-white flex flex-col items-center justify-center text-center gap-2">
                             <i className="ti ti-currency-peso text-3xl text-slate-500" />
-                            <p className="text-xs font-bold text-slate-400 max-w-xs">
+                            <p className="text-xs font-semibold text-slate-400 max-w-xs">
                                 {isPayrollLoading ? 'Calculating projected payroll...' : 'No active employees have a configured salary yet.'}
                             </p>
                         </div>
@@ -492,15 +610,15 @@ export default function Dashboard() {
                 </div>
 
                 {/* DOLE Labor Standard Compliance */}
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Labor Standard Health Meter
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Statutory Compliance
                             </h3>
-                            <p className="text-xs text-slate-400 font-medium">Automated Philippine statutory compliance audit</p>
+                            <p className="text-xs text-slate-500 font-medium">Philippine labor standards rest day and overtime audit</p>
                         </div>
-                        <span className="px-3 py-1 bg-emerald-500/10 text-emerald-700 text-xs font-black rounded-lg border border-emerald-500/20">
+                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-300">
                             {doleCompliance ? `${doleCompliance.restDay.compliancePercent}% Audit-Ready` : '—'}
                         </span>
                     </div>
@@ -508,25 +626,25 @@ export default function Dashboard() {
                     <div className="space-y-2.5">
                         {doleCompliance ? (
                             <>
-                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 font-bold text-slate-700">
-                                        <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-500' : 'ti-alert-circle-filled text-amber-500'} text-base`} />
+                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 font-semibold text-slate-700">
+                                        <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-600' : 'ti-alert-circle-filled text-amber-600'} text-base`} />
                                         <span>{doleCompliance.restDay.label}</span>
                                     </div>
-                                    <span className={`font-mono text-[11px] font-black ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                    <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
                                         {doleCompliance.restDay.status}
                                     </span>
                                 </div>
-                                <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 font-bold text-slate-700">
-                                        <i className="ti ti-circle-check-filled text-emerald-500 text-base" />
+                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 font-semibold text-slate-700">
+                                        <i className="ti ti-circle-check-filled text-emerald-600 text-base" />
                                         <span>{doleCompliance.holidayMultiplier.label}</span>
                                     </div>
-                                    <span className="font-mono text-[11px] font-black text-emerald-600">{doleCompliance.holidayMultiplier.status}</span>
+                                    <span className="font-mono text-[11px] font-bold text-emerald-700">{doleCompliance.holidayMultiplier.status}</span>
                                 </div>
                             </>
                         ) : (
-                            <p className="text-xs text-slate-400 font-bold py-6 text-center">Compliance data unavailable.</p>
+                            <p className="text-xs text-slate-400 font-medium py-6 text-center">Compliance data unavailable.</p>
                         )}
                     </div>
                 </div>
@@ -537,22 +655,22 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 
                 {/* 7-Day Trend Chart */}
-                <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col justify-between">
+                <div className="lg:col-span-7 bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <h3 className="text-base font-black text-slate-800">Workforce Attendance Volume Trend</h3>
-                            <p className="text-xs text-slate-400 font-medium">{trendView === 'monthly' ? '5-Week' : '7-Day'} calendar presence percentage</p>
+                            <h3 className="text-base font-bold text-slate-900">Workforce Attendance Volume Trend</h3>
+                            <p className="text-xs text-slate-500 font-medium">{trendView === 'monthly' ? '5-Week' : '7-Day'} presence tracking</p>
                         </div>
-                        <div className="bg-slate-100 rounded-xl p-1 flex text-xs font-bold text-slate-500">
+                        <div className="bg-slate-100 rounded-lg p-1 flex text-xs font-semibold text-slate-600 border border-slate-200">
                             <button
                                 onClick={() => setTrendView('weekly')}
-                                className={`px-3 py-1 rounded-lg transition-all ${trendView === 'weekly' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-800'}`}
+                                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${trendView === 'weekly' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'hover:text-slate-900'}`}
                             >
                                 Weekly
                             </button>
                             <button
                                 onClick={() => setTrendView('monthly')}
-                                className={`px-3 py-1 rounded-lg transition-all ${trendView === 'monthly' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-800'}`}
+                                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${trendView === 'monthly' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'hover:text-slate-900'}`}
                             >
                                 Monthly
                             </button>
@@ -584,37 +702,37 @@ export default function Dashboard() {
                 </div>
 
                 {/* Live Biometric Activity Feed */}
-                <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col">
+                <div className="lg:col-span-5 bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs flex flex-col">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                            <span className="" /> Live Gate Feed
+                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i className="ti ti-broadcast text-blue-600" /> Live Gate Feed
                         </h3>
-                        <Link to="/admin/attendance" className="text-xs font-bold text-blue-600 hover:underline">View All &rarr;</Link>
+                        <Link to="/admin/attendance" className="text-xs font-semibold text-blue-600 hover:underline">View All &rarr;</Link>
                     </div>
 
-                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-1">
+                    <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[300px] pr-1">
                         {recentLogs.length > 0 ? recentLogs.map((log) => (
                             <div
                                 key={log.id}
-                                className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100 transition-colors"
+                                className="p-3 bg-slate-50 rounded-lg flex items-center justify-between border border-slate-200 transition-colors"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black flex items-center justify-center text-xs shrink-0">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
                                         {log.employees ? `${log.employees.first_name?.[0] || 'C'}${log.employees.last_name?.[0] || 'P'}` : 'CP'}
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-xs font-black text-slate-800 truncate">
+                                        <p className="text-xs font-bold text-slate-900 truncate">
                                             {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Staff'}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase truncate">
+                                        <p className="text-[10px] text-slate-500 font-medium uppercase truncate font-mono">
                                             {log.employees?.department || 'Production'} • {new Date(log.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
                                 </div>
-                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-lg border shrink-0 ${
-                                    log.status?.toLowerCase().includes('absent') ? 'bg-red-50 text-red-700 border-red-200' :
-                                    log.status?.includes('Late') ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-                                    'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
+                                    log.status?.toLowerCase().includes('absent') ? 'bg-rose-50 text-rose-800 border-rose-300' :
+                                    log.status?.includes('Late') ? 'bg-amber-50 text-amber-900 border-amber-300' : 
+                                    'bg-emerald-50 text-emerald-800 border-emerald-300'
                                 }`}>
                                     {log.status}
                                 </span>

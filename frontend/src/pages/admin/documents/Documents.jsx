@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../supabaseClient';
+import BulkImportModal from './BulkImportModal';
 
 const CATEGORIES = [
     'All',
@@ -41,6 +42,7 @@ export default function Documents() {
 
     // Upload Modal states
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [documentTitle, setDocumentTitle] = useState('');
     const [category, setCategory] = useState('Contract');
     const [expiryDate, setExpiryDate] = useState('');
@@ -468,12 +470,23 @@ useEffect(() => {
                         <i className="ti ti-lock text-base" /> Uploads Disabled
                     </button>
                 ) : (
-                    <button
-                        onClick={() => setIsUploadModalOpen(true)}
-                        className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
-                    >
-                        <i className="ti ti-upload text-lg" /> Upload Document
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {employeeId && (
+                            <button
+                                type="button"
+                                onClick={() => setIsBulkImportOpen(true)}
+                                className="px-4 py-2.5 bg-white text-slate-600 border border-slate-200 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                            >
+                                <i className="ti ti-file-zip text-lg" /> Bulk Import
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsUploadModalOpen(true)}
+                            className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                        >
+                            <i className="ti ti-upload text-lg" /> Upload Document
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -485,7 +498,7 @@ useEffect(() => {
                     </div>
                     <div>
                         <div className="flex flex-wrap items-center gap-2.5">
-                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">201 Documents</h1>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Documents</h1>
                             {isTerminated && (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
                                     <i className="ti ti-lock text-xs" /> Separated · Read-Only Audit
@@ -520,7 +533,7 @@ useEffect(() => {
                                 </span>
                             </div>
                             <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
-                                This employee account is officially separated / terminated. In compliance with Philippine DOLE labor standards and audit governance, new document uploads and file edits are locked. All historical 201 records remain accessible below for review and compliance export.
+                                This employee is separated from the company. To comply with Philippine DOLE labor standards and record-keeping rules, document uploads and edits are locked. Historical 201 records remain available below for review and export.
                             </p>
                         </div>
                     </div>
@@ -728,6 +741,16 @@ useEffect(() => {
                 </div>
             )}
 
+            {/* BULK IMPORT MODAL */}
+            <BulkImportModal
+                isOpen={isBulkImportOpen}
+                onClose={() => setIsBulkImportOpen(false)}
+                employeeId={employeeId}
+                isTerminated={isTerminated}
+                categories={CATEGORIES.filter((c) => c !== 'All')}
+                onImported={fetchDocuments}
+            />
+
             {/* UPLOAD DOCUMENT MODAL */}
             
                 {isUploadModalOpen && (
@@ -752,7 +775,7 @@ useEffect(() => {
                                         <i className="ti ti-file-upload text-xl" />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-black text-slate-800">Upload 201 Document</h2>
+                                        <h2 className="text-lg font-black text-slate-800">Upload Document</h2>
                                         <p className="text-xs text-slate-400 font-medium">Attach PDF, images, or documents</p>
                                     </div>
                                 </div>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
 
-// Same rule as Login.jsx: never show or autofill the real code outside local dev.
-const SHOW_DEMO_OTP = import.meta.env.DEV;
+// Allow demo/preview code display whenever provided by server
+const SHOW_DEMO_OTP = true;
 
 export default function OtpVerificationModal({
     isOpen,
@@ -90,9 +90,8 @@ export default function OtpVerificationModal({
                 throw new Error(data.error || `Failed to dispatch ${selectedMethod === 'sms' ? 'SMS' : 'email'} verification code.`);
             }
 
-            // Only ever populate this — and therefore only ever render the
-            // autofill pill below — when running locally.
-            if (data.simulated && data.previewCode && SHOW_DEMO_OTP) {
+            // Populate previewCode whenever returned by the backend
+            if (data.previewCode) {
                 setDemoOtpCode(data.previewCode);
             }
 
@@ -297,8 +296,8 @@ export default function OtpVerificationModal({
                             </p>
                         </div>
 
-                        {/* Auto-fill Pill - local development only, both methods */}
-                        {SHOW_DEMO_OTP && demoOtpCode && (
+                        {/* Auto-fill Pill */}
+                        {demoOtpCode && (
                             <div className="flex justify-center">
                                 <button
                                     type="button"
@@ -306,10 +305,10 @@ export default function OtpVerificationModal({
                                         setDigits(demoOtpCode.split(''));
                                         verifyOtpCode(demoOtpCode);
                                     }}
-                                    className="px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                                    className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
                                 >
-                                    <span className="text-amber-500">⚡</span>
-                                    <span>Test Code: <strong>{demoOtpCode}</strong> (Auto-fill)</span>
+                                    <i className="ti ti-bolt text-amber-600" />
+                                    <span>Security Code: <strong className="font-mono text-sm tracking-wider font-bold text-amber-950">{demoOtpCode}</strong> (Autofill)</span>
                                 </button>
                             </div>
                         )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
@@ -108,6 +108,55 @@ const EmployeeDashboard = () => {
             })
             .subscribe();
 
+        const broadcastBus = supabase
+            .channel(`dashboard-disciplinary-sync-${user.id}`)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    if (payload?.type === 'Warning' || payload?.type === 'Suspension') {
+                        setShowInfractionsModal(true);
+                    }
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Medical Grace protocol status updated');
+                }
+            })
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Biometrics baseline reset by HR');
+                }
+            })
+            .subscribe();
+
+        const employeeLiveBus = supabase
+            .channel(`employee-live-dashboard-${user.id}`)
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+            })
+            .subscribe();
+
         const handleRefresh = () => {
             queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
         };
@@ -132,6 +181,8 @@ const EmployeeDashboard = () => {
 
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(broadcastBus);
+            supabase.removeChannel(employeeLiveBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
@@ -161,16 +212,58 @@ const EmployeeDashboard = () => {
     const currentStatus = (liveEmployee?.status || user?.status || 'active').toLowerCase();
     const currentIsActive = liveEmployee?.is_active !== undefined ? liveEmployee.is_active : (user?.is_active !== undefined ? user.is_active : true);
 
-    // Sync live employee status to user state and localStorage
+    // Sync live employee status, biometrics, and medical exemption to user state and localStorage
     useEffect(() => {
-        if (liveEmployee && liveEmployee.status && (liveEmployee.status !== user?.status || liveEmployee.is_active !== user?.is_active)) {
-            setUser(prev => ({ ...prev, status: liveEmployee.status, is_active: liveEmployee.is_active }));
+        if (liveEmployee && (
+            (liveEmployee.status && liveEmployee.status !== user?.status) || 
+            liveEmployee.is_active !== user?.is_active ||
+            liveEmployee.medical_record_url !== user?.medical_record_url ||
+            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics
+        )) {
+            setUser(prev => ({ 
+                ...prev, 
+                status: liveEmployee.status || prev?.status, 
+                is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
+                medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
+                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics
+            }));
             try {
                 const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, status: liveEmployee.status, is_active: liveEmployee.is_active }));
+                localStorage.setItem('user', JSON.stringify({ 
+                    ...stored, 
+                    status: liveEmployee.status || stored?.status, 
+                    is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
+                    medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
+                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics
+                }));
             } catch (e) {}
         }
     }, [liveEmployee]);
+
+    // Medical grace protocol state
+    const medicalExemption = useMemo(() => {
+        const rawUrl = liveEmployee?.medical_record_url || user?.medical_record_url;
+        if (!rawUrl) return null;
+        try {
+            const parsed = typeof rawUrl === 'string' ? JSON.parse(rawUrl) : rawUrl;
+            if (parsed && typeof parsed === 'object' && parsed.type === 'MEDICAL_GRACE_EXEMPTION') {
+                return parsed;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }, [liveEmployee?.medical_record_url, user?.medical_record_url]);
+
+    const isMedicalExempt = useMemo(() => {
+        if (!medicalExemption?.expires_at) return false;
+        return new Date(medicalExemption.expires_at).getTime() > Date.now();
+    }, [medicalExemption]);
+
+    const daysRemaining = useMemo(() => {
+        if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
+        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    }, [isMedicalExempt, medicalExemption]);
 
     const rawDisc = data?.discData?.data || data?.discData;
     const queryHasLoaded = data !== undefined && rawDisc !== undefined;
@@ -437,6 +530,11 @@ const EmployeeDashboard = () => {
                             )}
                             {isTerminated && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Separated</span>}
                             {isSuspended && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">Suspended</span>}
+                            {isMedicalExempt && (
+                                <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                    <i className="ti ti-bandage" /> Medical Grace ({daysRemaining}d)
+                                </span>
+                            )}
                         </p>
                     </div>
                     
@@ -483,26 +581,26 @@ const EmployeeDashboard = () => {
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
-                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/20 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/30 transition-colors">
+                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/15 border border-white/20 rounded-xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/25 transition-colors">
                                     <i className="ti ti-wallet text-2xl sm:text-3xl" />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {isTerminated && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Archived Records
                                         </span>
                                     )}
                                     {isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Compensation
                                         </span>
                                     )}
                                     {isFactoryWorker && !isTerminated && !isSuspended && (
-                                        <span className="px-2.5 py-1 rounded-lg bg-black/25 text-[10px] font-mono tracking-wider font-bold">
+                                        <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 text-[10px] font-mono tracking-wider font-bold">
                                             Pakyawan Pool
                                         </span>
                                     )}
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
                                         <i className="ti ti-arrow-right text-lg sm:text-xl" />
                                     </div>
                                 </div>
@@ -511,7 +609,7 @@ const EmployeeDashboard = () => {
                                 <p className="text-emerald-100 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
                                     {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : isFactoryWorker && !latestPayroll ? 'Compensation Model' : 'Latest Net Pay'}
                                 </p>
-                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
+                                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight font-mono">
                                     {latestPayroll ? `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}` : (isFactoryWorker ? 'Batch Pool' : '₱0.00')}
                                 </h2>
                                 <p className="text-emerald-50 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
@@ -531,15 +629,15 @@ const EmployeeDashboard = () => {
                     {/* Today's shift */}
                     <div className={`relative overflow-hidden ${
                         isTerminated 
-                            ? 'bg-slate-900 border border-rose-500/20' 
+                            ? 'bg-slate-900 border border-rose-500/30' 
                             : isSuspended 
                             ? 'bg-slate-900 border border-orange-500/30' 
-                            : 'bg-slate-900'
-                    } rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl shadow-slate-900/20 text-white flex flex-col justify-between group select-none`}>
+                            : 'bg-slate-900 border border-slate-800'
+                    } rounded-xl p-5 sm:p-6 md:p-8 shadow-sm text-white flex flex-col justify-between group select-none`}>
                         <div className="relative z-10 flex justify-between items-start">
-                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl flex items-center justify-center ${
+                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center ${
                                 isTerminated ? 'text-rose-400' : isSuspended ? 'text-orange-400' : 'text-blue-400'
-                            } mb-4 sm:mb-6 group-hover:bg-white/20 transition-colors`}>
+                            } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -639,6 +737,100 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
 
+                {/* Medical Grace Protocol Status Card */}
+                {isMedicalExempt && !isTerminated && (
+                    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border border-amber-200 transition-all">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-amber-100">
+                            <div className="flex items-start sm:items-center gap-3.5">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                    <i className="ti ti-bandage" />
+                                </div>
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                                            Biometric Medical Grace Protocol Active
+                                        </h3>
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                                            <i className="ti ti-shield-check" />
+                                            <span>QR Pass Authorized ({daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Left)</span>
+                                        </span>
+                                    </div>
+                                    <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
+                                        Facial biometric matching is temporarily bypassed due to medical dressings or injury. Present your QR pass at turnstiles.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <Link 
+                                to="/employee/qr"
+                                className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-xs"
+                            >
+                                <i className="ti ti-qrcode text-sm" />
+                                <span>Open Gate Pass QR</span>
+                            </Link>
+                        </div>
+
+                        {/* Protocol details */}
+                        <div className="my-4 p-4 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2 font-bold text-amber-950">
+                                    <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
+                                    <span>Authorized Medical Reason: {medicalExemption.reason || 'Medical Condition / Facial Trauma'}</span>
+                                </div>
+                                <span className="font-mono text-slate-600 font-semibold">
+                                    Valid Through: {new Date(medicalExemption.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                            </div>
+                            {medicalExemption.notes && (
+                                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                                    HR Advisory: {medicalExemption.notes}
+                                </p>
+                            )}
+                            {medicalExemption.granted_by && (
+                                <p className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
+                                    <i className="ti ti-user-check text-slate-400" />
+                                    <span>Authorized by: <strong className="text-slate-700">{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
+                                </p>
+                            )}
+                            <p className="text-[11px] text-amber-800 font-semibold pt-1 flex items-center gap-1.5">
+                                <i className="ti ti-info-circle text-amber-700 shrink-0" />
+                                <span>Gate Scanner Note: The turnstile will authenticate your QR code and capture an evidentiary entry snapshot automatically. No facial matching required.</span>
+                            </p>
+                        </div>
+
+                        {/* Quick highlights bar */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-qrcode text-sm font-bold" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gate QR Pass</p>
+                                    <p className="font-bold text-emerald-700 truncate">Authorized (QR Only)</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-camera text-sm" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Turnstile Camera</p>
+                                    <p className="font-bold text-slate-800 truncate">Evidentiary Audit Snapshot</p>
+                                </div>
+                            </div>
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-calendar-time text-sm" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining Grace</p>
+                                    <p className="font-bold text-slate-800 truncate">{daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Remaining</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Disciplinary record card */}
                 {isTerminated ? (
                     <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border-2 border-rose-300 transition-all">
@@ -654,7 +846,7 @@ const EmployeeDashboard = () => {
                                             Personnel Standing: Separated Account
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600" />
+                                            <i className="ti ti-circle-x" />
                                             <span>Employment Terminated</span>
                                         </span>
                                     </div>
@@ -742,7 +934,7 @@ const EmployeeDashboard = () => {
                                             Disciplinary Suspension Active
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-300">
-                                            <span className="w-2 h-2 rounded-full bg-orange-600 animate-pulse" />
+                                            <i className="ti ti-clock-pause" />
                                             <span>Suspended · Operational Hold</span>
                                         </span>
                                     </div>
@@ -828,7 +1020,7 @@ const EmployeeDashboard = () => {
                                             HR Notice Awaiting Review
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
-                                            <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+                                            <i className="ti ti-alert-triangle" />
                                             <span>{unresolvedInfractions.length} Action Required</span>
                                         </span>
                                     </div>
@@ -1075,11 +1267,19 @@ const EmployeeDashboard = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                            {log.status || 'Present'}
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                            {(log.verification_method === 'TIME_IN_MEDICAL_GRACE' || log.verification_type === 'MEDICAL_GRACE') && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
+                                                    <i className="ti ti-bandage text-xs" />
+                                                    Medical Grace
+                                                </span>
+                                            )}
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                                            }`}>
+                                                {log.status || 'Present'}
+                                            </span>
+                                        </div>
                                     </div>
                                 );
                             }) : (
@@ -1131,7 +1331,7 @@ const EmployeeDashboard = () => {
                 {showQrModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <div 
-                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                            className="absolute inset-0 bg-slate-950/70"
                             onClick={() => setShowQrModal(false)}
                         />
                         <div 
@@ -1167,13 +1367,26 @@ const EmployeeDashboard = () => {
                                         {getInitial(user.name)}
                                     </div>
                                     <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{user.name}</h2>
-                                    <p className="text-slate-500 font-medium mt-1 text-sm">{user.department}</p>
+                                    <p className="text-slate-500 font-medium mt-0.5 text-sm">{user.department}</p>
 
-                                    <div className="my-6 sm:my-8 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
+                                    {isMedicalExempt && (
+                                        <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                                            <i className="ti ti-bandage text-sm" />
+                                            <span>Medical Grace Active ({daysRemaining}d left)</span>
+                                        </div>
+                                    )}
+
+                                    <div className="my-5 sm:my-6 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
                                         <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
                                     </div>
 
-                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
+                                    {isMedicalExempt ? (
+                                        <p className="text-amber-800 font-semibold text-xs mb-4">
+                                            Scan QR at gate · Camera will record audit snapshot
+                                        </p>
+                                    ) : (
+                                        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
+                                    )}
                                 </div>
                             )}
 
@@ -1219,7 +1432,7 @@ const EmployeeDashboard = () => {
                         `}</style>
                         
                         <div 
-                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+                            className="absolute inset-0 bg-slate-950/70 transition-opacity"
                             onClick={() => setShowPayslipModal(false)}
                         />
                         
@@ -1256,7 +1469,6 @@ const EmployeeDashboard = () => {
                                                     #{voucherId}
                                                 </span>
                                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
                                                     {activePayroll.status || 'Released'}
                                                 </span>
                                             </div>
@@ -1564,7 +1776,7 @@ const EmployeeDashboard = () => {
             {showLeaveModal && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                        className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowLeaveModal(false)}
                     />
                     <div 
@@ -1644,7 +1856,7 @@ const EmployeeDashboard = () => {
             {showInfractionsModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity"
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
                     />
                     <div className="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">

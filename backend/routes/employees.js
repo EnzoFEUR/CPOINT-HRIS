@@ -76,7 +76,8 @@ router.get('/', cacheResponse(15), async (req, res) => {
                     id, type, reason, status, date, created_at
                 )
             `)
-            .order('created_at', { ascending: false });
+            .order('last_name', { ascending: true })
+            .order('first_name', { ascending: true });
 
         if (req.query.employee_id) {
             query = query.eq('id', req.query.employee_id);
@@ -92,6 +93,19 @@ router.get('/', cacheResponse(15), async (req, res) => {
                 ...emp,
                 ...standing
             };
+        });
+
+        // Priority ordering: active workforce first, separated records last. Both groups sorted alphabetically (A-Z).
+        enriched.sort((a, b) => {
+            const aTerm = a.is_terminated ? 1 : 0;
+            const bTerm = b.is_terminated ? 1 : 0;
+            if (aTerm !== bTerm) return aTerm - bTerm;
+
+            const lastNameA = (a.last_name || '').trim();
+            const lastNameB = (b.last_name || '').trim();
+            const comp = lastNameA.localeCompare(lastNameB, undefined, { sensitivity: 'base' });
+            if (comp !== 0) return comp;
+            return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), undefined, { sensitivity: 'base' });
         });
 
         res.json({ success: true, data: enriched });
@@ -112,6 +126,17 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
         if (empRes.error) throw empRes.error;
 
         const emp = empRes.data;
+        if (emp && emp.medical_record_url) {
+            try {
+                const parsed = typeof emp.medical_record_url === 'string' ? JSON.parse(emp.medical_record_url) : emp.medical_record_url;
+                if (parsed && parsed.granted_by && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.granted_by)) {
+                    parsed.granted_by_id = parsed.granted_by;
+                    parsed.granted_by = 'System Administrator';
+                    parsed.granted_by_role = parsed.granted_by_role || 'HR Administrator';
+                    emp.medical_record_url = JSON.stringify(parsed);
+                }
+            } catch (_) {}
+        }
         const logs = discRes.data || [];
         const now = new Date();
         const standing = evaluateOperationalStanding(emp, logs, now);
@@ -504,13 +529,16 @@ router.put('/:id', async (req, res) => {
                     sender_name: empName,
                     sender_avatar: avatarUrl
                 });
-            } else if (parsedSalary !== null || parsedPieceRate !== null) {
+            } else if (parsedDailyRate !== null || parsedHourlyRate !== null || monthly_salary || piece_rate) {
+                const displaySalary = parsedDailyRate !== null
+                    ? `₱${(parsedDailyRate * 26).toLocaleString('en-US', { minimumFractionDigits: 2 })} (Daily: ₱${parsedDailyRate.toFixed(2)})`
+                    : monthly_salary
+                    ? `₱${Number(monthly_salary).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                    : `Piece Rate: ₱${piece_rate || 0}`;
                 await createNotification({
                     target: req.params.id,
                     title: 'Compensation Updated',
-                    text: parsedSalary !== null
-                        ? `Your monthly compensation is set to ₱${parsedSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`
-                        : `Your piece rate has been updated.`,
+                    text: `Your compensation schedule has been updated: ${displaySalary}.`,
                     type: 'payroll',
                     sender_id: emp?.id,
                     company_id: emp?.company_id,
@@ -541,15 +569,46 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// POST /api/employees/:id/restore - High-speed enterprise restoration from Archive
+// POST /api/employees/:id/restore - Enterprise reinstatement from Pending Termination
 router.post('/:id/restore', async (req, res) => {
     try {
         const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
         if (!isAdmin) {
-            return res.status(403).json({ success: false, error: 'Administrative privileges required to restore employees.' });
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to reinstate employees.' });
         }
 
         const targetId = req.params.id;
+
+        // Fetch current employee record to check lifecycle state
+        const { data: targetEmp, error: fetchErr } = await supabase
+            .from('employees')
+            .select('id, first_name, last_name, status, is_active, archived_at, separation_date, updated_at')
+            .eq('id', targetId)
+            .single();
+
+        if (fetchErr || !targetEmp) {
+            return res.status(404).json({ success: false, error: 'Employee record not found.' });
+        }
+
+        // Check if employee has passed the 14-day reversible cooldown and entered permanent archive
+        const ts = targetEmp.archived_at || targetEmp.separation_date || targetEmp.updated_at;
+        const PENDING_COOLDOWN_DAYS = 14;
+        let isPermanentlyArchived = false;
+        if (ts) {
+            const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
+            if (elapsedDays >= PENDING_COOLDOWN_DAYS && (targetEmp.status === 'inactive' || targetEmp.status === 'terminated')) {
+                isPermanentlyArchived = true;
+            }
+        }
+
+        // In an enterprise model, cold storage records in the Archive Vault cannot be casually restored.
+        // Returning employees must undergo formal Re-hire onboarding.
+        if (isPermanentlyArchived && !req.body.force_rehire) {
+            return res.status(400).json({
+                success: false,
+                error: 'This employee record is permanently archived in cold storage for statutory audit compliance. To re-engage this personnel, initiate a formal Re-hire requisition.'
+            });
+        }
 
         // 1. Restore employee to active status and clear archive/separation fields
         const { data: updatedEmp, error: updateError } = await supabase
@@ -580,7 +639,7 @@ router.post('/:id/restore', async (req, res) => {
 
         if (openLogs && openLogs.length > 0) {
             for (const log of openLogs) {
-                const updatedReason = `[REINSTATED FROM ARCHIVE - ${todayStr}] Sanction revoked upon employee reinstatement.\n---\n${log.reason || ''}`;
+                const updatedReason = `[REINSTATED - ${todayStr}] Sanction revoked upon employee reinstatement from pending termination review.\n---\n${log.reason || ''}`;
                 await supabase
                     .from('disciplinary_logs')
                     .update({ 
@@ -596,26 +655,56 @@ router.post('/:id/restore', async (req, res) => {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
-                description: `Restored employee ${updatedEmp.first_name} ${updatedEmp.last_name} (${updatedEmp.company_id || targetId}) to Active standing.`,
+                description: `Reinstated employee ${updatedEmp.first_name} ${updatedEmp.last_name} (${updatedEmp.company_id || targetId}) to Active operational standing.`,
                 subject_type: 'App\\Models\\Employee',
                 subject_id: targetId,
-                event: 'restored',
+                event: 'reinstated',
                 causer_id: req.user.id,
                 properties: { restored_at: new Date().toISOString() },
             }).catch(() => {});
         }
 
-        // 4. Send Realtime broadcast to unblock Gate Scanner & update directory
+        // 4. Send Realtime broadcast to unblock Gate Scanner & update directory across all channels
         try {
-            const channel = supabase.channel('disciplinary-updates');
-            await channel.send({
-                type: 'broadcast',
-                event: 'EMPLOYEE_RESTORED',
-                payload: {
-                    employee_id: targetId,
-                    company_id: updatedEmp.company_id,
-                    timestamp: new Date().toISOString()
-                }
+            const broadcastPayload = {
+                employee_id: targetId,
+                company_id: updatedEmp.company_id,
+                status: 'active',
+                is_active: true,
+                timestamp: new Date().toISOString()
+            };
+
+            const targetTopics = [
+                'disciplinary_realtime_sync',
+                'disciplinary-updates',
+                'scanner_disciplinary_realtime',
+                `dashboard-disciplinary-sync-${targetId}`,
+                `qr-disciplinary-sync-${targetId}`,
+                `qr-realtime-${targetId}`
+            ];
+
+            targetTopics.forEach(topic => {
+                try {
+                    const ch = supabase.channel(topic);
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'EMPLOYEE_RESTORED',
+                        payload: broadcastPayload
+                    }).catch(() => {});
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'DISCIPLINARY_RESOLVED',
+                        payload: broadcastPayload
+                    }).catch(() => {});
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'DISCIPLINARY_STATUS_UPDATED',
+                        payload: {
+                            ...broadcastPayload,
+                            status: 'Resolved'
+                        }
+                    }).catch(() => {});
+                } catch (_) {}
             });
         } catch (_) {}
 
@@ -623,12 +712,247 @@ router.post('/:id/restore', async (req, res) => {
 
         res.json({
             success: true,
-            message: `${updatedEmp.first_name} ${updatedEmp.last_name} restored successfully to Active status.`,
+            message: `${updatedEmp.first_name} ${updatedEmp.last_name} reinstated successfully to Active standing.`,
             data: updatedEmp
         });
     } catch (error) {
-        console.error('Error restoring employee:', error);
+        console.error('Error reinstating employee:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// PATCH /api/employees/:id/biometric-exemption - Enterprise Medical Grace / Trauma Exemption
+router.patch('/:id/biometric-exemption', async (req, res) => {
+    try {
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        if (!isAdmin) {
+            return res.status(403).json({ success: false, error: 'Unauthorized: Administrative privileges required.' });
+        }
+
+        const targetId = req.params.id;
+        const { action, reason, cert_ref, valid_until, document_url } = req.body;
+
+        const { data: emp, error: fetchErr } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, has_registered_biometrics, biometric_baseline_path, medical_record_url')
+            .eq('id', targetId)
+            .single();
+
+        if (fetchErr || !emp) {
+            return res.status(404).json({ success: false, error: 'Employee record not found.' });
+        }
+
+        let updatePayload = {};
+        let auditAction = '';
+        let auditDetails = {};
+
+        if (action === 'enable') {
+            const granterName = [req.user?.first_name, req.user?.last_name].filter(Boolean).join(' ') || 
+                                req.user?.name || 
+                                (req.user?.email && req.user.email !== 'admin@c-point.com' ? req.user.email.split('@')[0] : 'System Administrator');
+            const granterRole = req.user?.role === 'admin' ? 'HR Administrator' : (req.user?.job_title || 'HR Officer');
+            const targetDate = valid_until || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
+            const exemptionData = {
+                exempt: true,
+                type: 'MEDICAL_GRACE',
+                reason: reason || 'Physical facial trauma / medical dressing per physician clearance',
+                cert_ref: cert_ref || 'PENDING_DOCUMENTATION',
+                valid_until: targetDate,
+                expires_at: targetDate,
+                document_url: document_url || null,
+                granted_by: granterName,
+                granted_by_id: req.user?.id || 'admin',
+                granted_by_role: granterRole,
+                granted_at: new Date().toISOString()
+            };
+
+            updatePayload = {
+                has_registered_biometrics: false,
+                medical_record_url: JSON.stringify(exemptionData),
+                updated_at: new Date().toISOString()
+            };
+
+            auditAction = 'BIOMETRIC_MEDICAL_EXEMPTION_GRANTED';
+            auditDetails = exemptionData;
+        } else {
+            // Revoke exemption
+            let hadBaseline = Boolean(emp.biometric_baseline_path);
+            let prevExemption = null;
+            try {
+                prevExemption = emp.medical_record_url ? JSON.parse(emp.medical_record_url) : null;
+            } catch (_) {}
+
+            updatePayload = {
+                has_registered_biometrics: hadBaseline,
+                medical_record_url: prevExemption ? JSON.stringify({ ...prevExemption, exempt: false, revoked_at: new Date().toISOString(), revoked_by: req.user?.id }) : null,
+                updated_at: new Date().toISOString()
+            };
+
+            auditAction = 'BIOMETRIC_MEDICAL_EXEMPTION_REVOKED';
+            auditDetails = { previous_exemption: prevExemption, restored_baseline: hadBaseline };
+        }
+
+        const { data: updatedEmp, error: updateErr } = await supabase
+            .from('employees')
+            .update(updatePayload)
+            .eq('id', targetId)
+            .select()
+            .single();
+
+        if (updateErr) throw updateErr;
+
+        // Structured Audit Trail
+        const { createAuditLog } = await import('./auditLogs.js');
+        await createAuditLog({
+            log_name: 'employees',
+            description: `${auditAction === 'BIOMETRIC_MEDICAL_EXEMPTION_GRANTED' ? 'Activated Medical Grace Exemption (QR-Only Mode)' : 'Revoked Medical Grace Exemption (Restored Dual-Factor)'} for ${emp.first_name} ${emp.last_name} (${emp.company_id || targetId})`,
+            subject_type: 'App\\Models\\Employee',
+            subject_id: targetId,
+            event: auditAction,
+            causer_id: req.user?.id,
+            properties: auditDetails
+        }).catch(() => {});
+
+        // Instant Realtime sync across channels so Kiosk, Admin, and Employee update in 0ms
+        try {
+            const broadcastPayload = {
+                employee_id: targetId,
+                company_id: emp.company_id,
+                is_exempt: action === 'enable',
+                exemption: action === 'enable' ? exemptionData : null,
+                timestamp: new Date().toISOString()
+            };
+
+            const chScanner = supabase.channel('scanner_disciplinary_realtime');
+            chScanner.send({ type: 'broadcast', event: 'BIOMETRIC_EXEMPTION_UPDATED', payload: broadcastPayload }).catch(() => {});
+
+            const chEmp = supabase.channel(`employee-live-dashboard-${targetId}`);
+            chEmp.send({ type: 'broadcast', event: 'BIOMETRIC_EXEMPTION_UPDATED', payload: broadcastPayload }).catch(() => {});
+
+            const chProfile = supabase.channel(`myprofile-realtime-${targetId}`);
+            chProfile.send({ type: 'broadcast', event: 'BIOMETRIC_EXEMPTION_UPDATED', payload: broadcastPayload }).catch(() => {});
+
+            const chQr = supabase.channel(`qr-realtime-${targetId}`);
+            chQr.send({ type: 'broadcast', event: 'BIOMETRIC_EXEMPTION_UPDATED', payload: broadcastPayload }).catch(() => {});
+        } catch (_) {}
+
+        invalidateCache([
+            '/api/employees', 
+            `/api/employees/${targetId}`, 
+            '/api/attendance', 
+            '/api/dashboard', 
+            `/api/dashboard/employee/${targetId}`,
+            '/api/profile'
+        ]);
+
+        res.json({
+            success: true,
+            message: action === 'enable' 
+                ? `Medical Grace Exemption activated for ${emp.first_name} ${emp.last_name}. QR-Only kiosk verification is now active.`
+                : `Medical Grace Exemption revoked. Standard dual-factor biometric verification restored.`,
+            data: updatedEmp
+        });
+    } catch (err) {
+        console.error('Error toggling biometric exemption:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/employees/:id/reset-biometrics - Wipe baseline for post-healing re-registration
+router.post('/:id/reset-biometrics', async (req, res) => {
+    try {
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        if (!isAdmin) {
+            return res.status(403).json({ success: false, error: 'Unauthorized: Administrative privileges required.' });
+        }
+
+        const targetId = req.params.id;
+        const { data: emp, error: fetchErr } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, biometric_baseline_path')
+            .eq('id', targetId)
+            .single();
+
+        if (fetchErr || !emp) {
+            return res.status(404).json({ success: false, error: 'Employee not found.' });
+        }
+
+        // 1. Shred old baseline file from public-bucket
+        if (emp.biometric_baseline_path) {
+            await supabase.storage.from('public-bucket').remove([emp.biometric_baseline_path]).catch(() => {});
+        }
+        if (emp.company_id) {
+            await supabase.storage.from('public-bucket').remove([`face-baselines/${emp.company_id}/${emp.id}.jpg`]).catch(() => {});
+        }
+
+        // 2. Reset biometric columns
+        const { data: updatedEmp, error: updateErr } = await supabase
+            .from('employees')
+            .update({
+                has_registered_biometrics: false,
+                biometric_baseline_path: null,
+                biometric_registered_at: null,
+                biometric_liveness_confidence: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', targetId)
+            .select()
+            .single();
+
+        if (updateErr) throw updateErr;
+
+        // 3. Log to audit trail
+        const { createAuditLog } = await import('./auditLogs.js');
+        await createAuditLog({
+            log_name: 'employees',
+            description: `Reset biometric profile for ${emp.first_name} ${emp.last_name} (${emp.company_id || targetId}). Shredded historical facial baseline vectors.`,
+            subject_type: 'App\\Models\\Employee',
+            subject_id: targetId,
+            event: 'BIOMETRICS_RESET',
+            causer_id: req.user?.id,
+            properties: { shredded_path: emp.biometric_baseline_path }
+        }).catch(() => {});
+
+        // Realtime broadcast to Kiosks, Admin, and Employee channels
+        try {
+            const broadcastPayload = {
+                employee_id: targetId,
+                company_id: emp.company_id,
+                has_registered_biometrics: false,
+                timestamp: new Date().toISOString()
+            };
+
+            const chScanner = supabase.channel('scanner_disciplinary_realtime');
+            chScanner.send({ type: 'broadcast', event: 'BIOMETRICS_RESET', payload: broadcastPayload }).catch(() => {});
+
+            const chEmp = supabase.channel(`employee-live-dashboard-${targetId}`);
+            chEmp.send({ type: 'broadcast', event: 'BIOMETRICS_RESET', payload: broadcastPayload }).catch(() => {});
+
+            const chProfile = supabase.channel(`myprofile-realtime-${targetId}`);
+            chProfile.send({ type: 'broadcast', event: 'BIOMETRICS_RESET', payload: broadcastPayload }).catch(() => {});
+
+            const chQr = supabase.channel(`qr-realtime-${targetId}`);
+            chQr.send({ type: 'broadcast', event: 'BIOMETRICS_RESET', payload: broadcastPayload }).catch(() => {});
+        } catch (_) {}
+
+        invalidateCache([
+            '/api/employees', 
+            `/api/employees/${targetId}`, 
+            '/api/attendance',
+            '/api/dashboard',
+            `/api/dashboard/employee/${targetId}`,
+            '/api/profile'
+        ]);
+
+        res.json({
+            success: true,
+            message: `Biometric profile reset successfully. Personnel can now perform a fresh registration in the Biometric Setup portal.`,
+            data: updatedEmp
+        });
+    } catch (err) {
+        console.error('Error resetting biometrics:', err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 

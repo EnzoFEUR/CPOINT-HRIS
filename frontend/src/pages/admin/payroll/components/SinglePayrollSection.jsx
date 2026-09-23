@@ -97,20 +97,20 @@ const SinglePayrollSection = ({
                             </div>
                             <div>
                                 <h4 className="text-xs sm:text-sm font-extrabold text-emerald-950 flex items-center gap-2">
-                                <span>Leave with Pay Status</span>
-                                {isLoadingLeaves ? (
-                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full animate-pulse">
-                                        Checking leaves...
-                                    </span>
-                                ) : paidLeaves.length > 0 ? (
-                                    <span className="text-[10px] font-black text-white bg-emerald-600 px-2 py-0.5 rounded-full">
-                                        {totalPaidLeaveDays} Day{totalPaidLeaveDays > 1 ? 's' : ''} Leave with Pay
-                                    </span>
-                                ) : (
-                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded-full">
-                                        No Leave with Pay in Cutoff
-                                    </span>
-                                )}
+                                    <span>Leave with Pay Status</span>
+                                    {isLoadingLeaves ? (
+                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full animate-pulse">
+                                            Checking leaves...
+                                        </span>
+                                    ) : paidLeaves.length > 0 ? (
+                                        <span className="text-[10px] font-black text-white bg-emerald-600 px-2 py-0.5 rounded-full">
+                                            {totalPaidLeaveDays} Day{totalPaidLeaveDays > 1 ? 's' : ''} Leave with Pay
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded-full">
+                                            No Leave with Pay in Cutoff
+                                        </span>
+                                    )}
                                 </h4>
                                 <p className="text-[11px] text-emerald-800 font-medium">
                                     Approved leave with pay records overlapping this cutoff period ({formatReadableDate(periodStart)} – {formatReadableDate(periodEnd)})
@@ -146,7 +146,7 @@ const SinglePayrollSection = ({
                                             {(leave.end_date || leave.to_date) && extractDateStr(leave.end_date || leave.to_date) !== extractDateStr(leave.start_date || leave.from_date || leave.date) ? (
                                                 <> &rarr; <span className="font-semibold text-slate-700">{formatReadableDate(extractDateStr(leave.end_date || leave.to_date))}</span></>
                                             ) : ''}
-                                            {leave.reason ? ` — "${leave.reason}"` : ''}
+                                            {leave.reason ? ` (${leave.reason})` : ''}
                                         </p>
                                     </div>
                                     <div className="shrink-0 text-right font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
@@ -176,7 +176,7 @@ const SinglePayrollSection = ({
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Days Worked (Present)</label>
                             <input
                                 type="number"
-                                step="0.5"
+                                step="0.01"
                                 name="days_worked"
                                 value={formData.days_worked}
                                 readOnly
@@ -197,7 +197,7 @@ const SinglePayrollSection = ({
                             </div>
                             <input
                                 type="number"
-                                step="0.5"
+                                step="0.01"
                                 value={totalPaidLeaveDays}
                                 readOnly
                                 className="w-full p-3 bg-white border border-emerald-200 rounded-xl font-mono text-lg font-black text-emerald-800 outline-none"
@@ -221,7 +221,7 @@ const SinglePayrollSection = ({
                         </div>
                         <input
                             type="number"
-                            step="0.5"
+                            step="0.01"
                             min="0"
                             name="overtime_hours"
                             value={formData.overtime_hours}
@@ -266,11 +266,10 @@ const SinglePayrollSection = ({
                 <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-red-600 uppercase">Late Deductions / Tardiness (₱)</label>
                     {Number(formData.late_minutes) > 0 && (
-                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                            Number(formData.late_minutes) >= 120 
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                                : 'bg-red-100 text-red-700'
-                        }`}>
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${Number(formData.late_minutes) >= 120
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-red-100 text-red-700'
+                            }`}>
                             {formData.late_minutes} mins late {Number(formData.late_minutes) >= 120 ? '(≥ 2 hrs: Hourly Pay Rule)' : '(< 2 hrs: Per-Min Deduction)'}
                         </span>
                     )}

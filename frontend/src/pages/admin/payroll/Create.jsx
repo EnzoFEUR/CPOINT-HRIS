@@ -20,6 +20,7 @@ import {
 // Subcomponents
 import CutoffPeriodSelector from './components/CutoffPeriodSelector';
 import FactoryBatchSection from './components/FactoryBatchSection';
+import AbsenteeOutputModal from './components/AbsenteeOutputModal';
 import SinglePayrollSection from './components/SinglePayrollSection';
 import GroupSelectionModal from './components/GroupSelectionModal';
 import EmployeeSelectionModal from './components/EmployeeSelectionModal';
@@ -49,6 +50,22 @@ const PayrollCreate = () => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState([]);
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+
+    // Attendance-Based Proration for Factory Batch Payout
+    // Maps employee_id -> { daysPresent, daysInPeriod } for the current cutoff period.
+    // Used so a worker's piece-rate share reflects days actually present, not a flat
+    // equal split across everyone assigned to an operation.
+    const [groupAttendanceMap, setGroupAttendanceMap] = useState({});
+    const [isLoadingGroupAttendance, setIsLoadingGroupAttendance] = useState(false);
+
+    // Absentee output declaration.
+    // Shape: { [employeeId]: { [factoryRowId]: quantityString } }
+    // When a worker misses even one day of the cutoff, HR must declare the quantity
+    // that worker actually finished per operation. That quantity x the price rate is
+    // the worker's own pay, and it is carved out of the operation's total price before
+    // the remainder is split among the workers who were present.
+    const [absenteeOutputs, setAbsenteeOutputs] = useState({});
+    const [isAbsenteeModalOpen, setIsAbsenteeModalOpen] = useState(false);
 
     // Breakdown UI Friendly Mode: 'table' | 'cards'
     const [breakdownViewMode, setBreakdownViewMode] = useState('table');
@@ -110,7 +127,13 @@ const PayrollCreate = () => {
     const [empSearch, setEmpSearch] = useState('');
     const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
     const [activePreset, setActivePreset] = useState('current_week');
-    const [includeWeekends, setIncludeWeekends] = useState(true);
+
+    // Cutoff length: '7day' (Mon-Sun), '5day' (Mon-Fri, weekends excluded from the
+    // count), or 'free' (HR picks both ends, every calendar day in the range counts).
+    const [cutoffMode, setCutoffMode] = useState('7day');
+    // Kept as a derived flag rather than its own state so every existing computation
+    // that already reads includeWeekends (expected days, attendance, etc.) keeps working.
+    const includeWeekends = cutoffMode !== '5day';
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
@@ -885,7 +908,11 @@ const PayrollCreate = () => {
         setSelectedGroupMemberIds([]);
     };
 
-    const applyCutoffPreset = useCallback((presetKey = 'current_week', withWeekends = includeWeekends) => {
+    // Span (in extra calendar days added to the start) for each fixed mode.
+    // Free mode has no fixed span, so it's absent here on purpose.
+    const CUTOFF_MODE_SPAN_DAYS = { '7day': 6, '5day': 4 };
+
+    const applyCutoffPreset = useCallback((presetKey = 'current_week', mode = cutoffMode) => {
         setActivePreset(presetKey);
         const now = new Date();
 
@@ -895,12 +922,12 @@ const PayrollCreate = () => {
             const start = new Date(now);
             start.setDate(now.getDate() - distanceToMon);
             const end = new Date(start);
-            end.setDate(start.getDate() + (withWeekends ? 6 : 4));
+            end.setDate(start.getDate() + (CUTOFF_MODE_SPAN_DAYS[mode] ?? 6));
 
             setPeriodStart(formatLocalDate(start));
             setPeriodEnd(formatLocalDate(end));
         }
-    }, [includeWeekends]);
+    }, [cutoffMode]);
 
     // Cutoff Presets
     useEffect(() => {
@@ -908,20 +935,27 @@ const PayrollCreate = () => {
             setActivePreset('custom');
             return;
         }
-        applyCutoffPreset('current_week', includeWeekends);
-    }, [hasPrefilledPeriod, applyCutoffPreset, includeWeekends]);
+        applyCutoffPreset('current_week', cutoffMode);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasPrefilledPeriod]);
 
-    const toggleWeekends = () => {
-        const nextState = !includeWeekends;
-        setIncludeWeekends(nextState);
+    // Switching modes re-derives the cutoff from whatever start date is already set
+    // (or from this week, if it's still on the initial preset). Free mode makes no
+    // change on its own - the existing start/end simply stop auto-syncing from here.
+    const handleCutoffModeChange = (nextMode) => {
+        if (nextMode === cutoffMode) return;
+        setCutoffMode(nextMode);
+
+        const span = CUTOFF_MODE_SPAN_DAYS[nextMode];
+        if (span === undefined) return;
 
         if (activePreset === 'current_week') {
-            applyCutoffPreset('current_week', nextState);
-        } else if (nextState && periodStart) {
+            applyCutoffPreset('current_week', nextMode);
+        } else if (periodStart) {
             const s = new Date(periodStart + 'T00:00:00');
             if (!isNaN(s.getTime())) {
                 const e = new Date(s);
-                e.setDate(s.getDate() + 6);
+                e.setDate(s.getDate() + span);
                 setPeriodEnd(formatLocalDate(e));
             }
         }
@@ -940,11 +974,14 @@ const PayrollCreate = () => {
         setActivePreset('custom');
         setPeriodStart(dateStr);
 
-        if (includeWeekends) {
+        // Fixed-length modes keep the end date locked to (start + span); free mode
+        // leaves whatever end date is already set untouched.
+        const span = CUTOFF_MODE_SPAN_DAYS[cutoffMode];
+        if (span !== undefined) {
             const date = new Date(dateStr + 'T00:00:00');
             if (!isNaN(date.getTime())) {
                 const end = new Date(date);
-                end.setDate(date.getDate() + 6);
+                end.setDate(date.getDate() + span);
                 setPeriodEnd(formatLocalDate(end));
             }
         }
@@ -961,16 +998,13 @@ const PayrollCreate = () => {
         }
         if (!dateStr) return;
         setActivePreset('custom');
-        setPeriodEnd(dateStr);
 
-        if (includeWeekends) {
-            const date = new Date(dateStr + 'T00:00:00');
-            if (!isNaN(date.getTime())) {
-                const start = new Date(date);
-                start.setDate(date.getDate() - 6);
-                setPeriodStart(formatLocalDate(start));
-            }
-        }
+        // Fixed-length modes: the end date is derived from the start, so a direct
+        // edit here is ignored rather than allowed to desync the cutoff length.
+        const span = CUTOFF_MODE_SPAN_DAYS[cutoffMode];
+        if (span !== undefined) return;
+
+        setPeriodEnd(dateStr);
     };
 
     const { periodDaysCount, isInvalidDateRange } = useMemo(() => {
@@ -984,9 +1018,98 @@ const PayrollCreate = () => {
         return { periodDaysCount: count, isInvalidDateRange: false };
     }, [periodStart, periodEnd]);
 
+    // Factory Batch: fetch each active worker's attendance for the cutoff period
+    // so piece-rate shares can be prorated by days present instead of a flat equal split.
+    useEffect(() => {
+        if (entryMode !== 'batch' || activeGroupEmployees.length === 0 || !periodStart || !periodEnd || isInvalidDateRange) {
+            return;
+        }
+
+        let isMounted = true;
+
+        const loadGroupAttendance = async () => {
+            setIsLoadingGroupAttendance(true);
+            try {
+                const results = await Promise.all(
+                    activeGroupEmployees.map(async (emp) => {
+                        const empId = String(emp.id);
+                        try {
+                            const res = await fetchWithAuth(
+                                `/api/attendance?employee_id=${empId}&start_date=${periodStart}&end_date=${periodEnd}`
+                            );
+                            const rawLogs = await res.json();
+                            const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
+                            const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
+
+                            const workedDatesSet = new Set();
+                            completedLogs.forEach(log => {
+                                const dateStr = extractDateStr(log.date || log.time_in);
+                                if (dateStr) workedDatesSet.add(dateStr);
+                            });
+
+                            return { empId, daysPresent: workedDatesSet.size };
+                        } catch (err) {
+                            console.error(`Attendance fetch failed for worker ${empId}:`, err);
+                            return { empId, daysPresent: 0 };
+                        }
+                    })
+                );
+
+                if (isMounted) {
+                    const map = {};
+                    results.forEach(r => { map[r.empId] = r.daysPresent; });
+                    setGroupAttendanceMap(map);
+                }
+            } catch (err) {
+                console.error('Group attendance load error:', err);
+            } finally {
+                if (isMounted) setIsLoadingGroupAttendance(false);
+            }
+        };
+
+        loadGroupAttendance();
+
+        return () => { isMounted = false; };
+    }, [entryMode, activeGroupEmployees, periodStart, periodEnd, isInvalidDateRange]);
+
     const activeGroupEmployeeIdSet = useMemo(() => {
         return new Set(activeGroupEmployees.map(e => String(e.id)));
     }, [activeGroupEmployees]);
+
+    // How many days a worker was expected to show up for this cutoff.
+    // Honours the weekend toggle so a Mon-Fri group is not flagged for Sat/Sun.
+    const expectedWorkingDays = useMemo(() => {
+        if (!periodStart || !periodEnd || isInvalidDateRange) return 0;
+        const cur = new Date(periodStart + 'T00:00:00');
+        const end = new Date(periodEnd + 'T00:00:00');
+        if (isNaN(cur.getTime()) || isNaN(end.getTime())) return 0;
+        let count = 0;
+        while (cur <= end) {
+            const dow = cur.getDay();
+            if (includeWeekends || (dow !== 0 && dow !== 6)) count++;
+            cur.setDate(cur.getDate() + 1);
+        }
+        return count;
+    }, [periodStart, periodEnd, includeWeekends, isInvalidDateRange]);
+
+    // Anyone short of even one expected day. Held back until attendance has actually
+    // loaded so the whole roster isn't flagged mid-fetch.
+    const absenteeInfo = useMemo(() => {
+        const map = {};
+        if (entryMode !== 'batch') return map;
+        if (isLoadingGroupAttendance || expectedWorkingDays <= 0) return map;
+        if (Object.keys(groupAttendanceMap).length === 0) return map;
+
+        activeGroupEmployees.forEach(emp => {
+            const idStr = String(emp.id);
+            const daysPresent = groupAttendanceMap[idStr] || 0;
+            const daysAbsent = Math.max(0, expectedWorkingDays - daysPresent);
+            if (daysAbsent > 0) {
+                map[idStr] = { employee: emp, daysPresent, daysAbsent, expectedWorkingDays };
+            }
+        });
+        return map;
+    }, [entryMode, activeGroupEmployees, groupAttendanceMap, expectedWorkingDays, isLoadingGroupAttendance]);
 
     // Computed Factory Operation Rows
     const computedFactoryRows = useMemo(() => {
@@ -1017,6 +1140,85 @@ const PayrollCreate = () => {
                 effectiveAssignedIds = jobMatchedEmployees.map(e => String(e.id));
             }
 
+            // A worker who is the ONLY one assigned to a process has nobody to split it
+            // with, so the whole operation is theirs whether they were absent or not.
+            // There is nothing for HR to declare, so they are never asked about this row.
+            const isSoloAssignment = effectiveAssignedIds.length === 1;
+
+            // Otherwise split the roster on this operation into workers who completed the
+            // cutoff and workers who missed at least one day.
+            const absenteeIdsOnRow = isSoloAssignment
+                ? []
+                : effectiveAssignedIds.filter(id => !!absenteeInfo[id]);
+            const presentIdsOnRow = isSoloAssignment
+                ? effectiveAssignedIds
+                : effectiveAssignedIds.filter(id => !absenteeInfo[id]);
+
+            // Absent workers are paid on declared output, not on a day-weighted share:
+            //     worker amount = declared quantity x price rate
+            // A missing or invalid entry pays ₱0 and blocks the batch from saving.
+            const declaredForRow = {};
+            let declaredQtyTotal = 0;
+            let hasMissingDeclaration = false;
+
+            absenteeIdsOnRow.forEach(id => {
+                const raw = absenteeOutputs?.[id]?.[row.id];
+                const declaredQty = (raw === undefined || raw === null || raw === '')
+                    ? NaN
+                    : parseFloat(raw);
+
+                if (isNaN(declaredQty) || declaredQty < 0) {
+                    declaredForRow[id] = null;
+                    hasMissingDeclaration = true;
+                    return;
+                }
+                declaredForRow[id] = declaredQty;
+                declaredQtyTotal += declaredQty;
+            });
+
+            // Hard cap in QUANTITY, not pesos: the combined output declared by every
+            // absent worker on this operation can never exceed the batch quantity HR
+            // logged for it. 100 pairs logged means at most 100 pairs can be claimed
+            // between all absentees, however many of them there are.
+            const declaredQtyRemaining = Math.max(0, qty - declaredQtyTotal);
+            const isOverDeclared = declaredQtyTotal > qty + 0.0001;
+
+            const cappedDeclaredQty = Math.min(declaredQtyTotal, qty);
+            const carveOutTotal = cappedDeclaredQty * effectiveAmt;
+            const carveOutScale = declaredQtyTotal > 0 ? (cappedDeclaredQty / declaredQtyTotal) : 1;
+
+            // What is left after the absentees' own output is taken out is the pool
+            // the workers who were present share between them.
+            const remainingPool = Math.max(0, totalPrice - carveOutTotal);
+
+            const shareByEmployeeId = {};
+
+            absenteeIdsOnRow.forEach(id => {
+                const declaredQty = declaredForRow[id];
+                shareByEmployeeId[id] = declaredQty === null
+                    ? 0
+                    : declaredQty * effectiveAmt * carveOutScale;
+            });
+
+            // Attendance-weighted proration for the present workers: each one's cut of
+            // the remaining pool is proportional to their days present during the cutoff,
+            // not a flat equal split. Falls back to an equal split if no attendance data
+            // is available yet (e.g. still loading), so the payout doesn't show ₱0 while
+            // attendance is being fetched.
+            const presentWeights = presentIdsOnRow.map(id => groupAttendanceMap[id] || 0);
+            const totalAttendanceWeight = presentWeights.reduce((sum, d) => sum + d, 0);
+
+            presentIdsOnRow.forEach((id, idx) => {
+                if (totalAttendanceWeight > 0) {
+                    shareByEmployeeId[id] = remainingPool * (presentWeights[idx] / totalAttendanceWeight);
+                } else {
+                    shareByEmployeeId[id] = presentIdsOnRow.length > 0 ? remainingPool / presentIdsOnRow.length : 0;
+                }
+            });
+
+            // Nobody present on this operation means the remainder has no one to go to.
+            const unallocated = presentIdsOnRow.length === 0 ? remainingPool : 0;
+
             return {
                 ...row,
                 qty,
@@ -1024,10 +1226,22 @@ const PayrollCreate = () => {
                 effectiveAmt,
                 totalPrice,
                 effectiveAssignedIds,
-                perWorkerShare: effectiveAssignedIds.length > 0 ? totalPrice / effectiveAssignedIds.length : 0
+                shareByEmployeeId,
+                isProrated: totalAttendanceWeight > 0,
+                absenteeIdsOnRow,
+                presentIdsOnRow,
+                declaredForRow,
+                carveOutTotal,
+                declaredQtyTotal,
+                declaredQtyRemaining,
+                remainingPool,
+                hasMissingDeclaration,
+                isOverDeclared,
+                unallocated,
+                isSoloAssignment
             };
         });
-    }, [factoryRows, activeGroupEmployees, activeGroupEmployeeIdSet, holidayRateMultiplier]);
+    }, [factoryRows, activeGroupEmployees, activeGroupEmployeeIdSet, holidayRateMultiplier, groupAttendanceMap, absenteeInfo, absenteeOutputs]);
 
     const grandTotalFactoryPayout = useMemo(() => {
         if (!selectedGroup) return 0;
@@ -1049,7 +1263,12 @@ const PayrollCreate = () => {
                 pagIbig: 0,
                 tax: 0,
                 totalDeductions: 0,
-                netPay: 0
+                netPay: 0,
+                daysPresent: groupAttendanceMap[idStr] || 0,
+                isAbsent: !!absenteeInfo[idStr],
+                daysAbsent: absenteeInfo[idStr] ? absenteeInfo[idStr].daysAbsent : 0,
+                expectedWorkingDays,
+                declaredOutputTotal: 0
             };
         });
 
@@ -1057,10 +1276,12 @@ const PayrollCreate = () => {
             const assignedIds = row.effectiveAssignedIds;
             if (assignedIds.length === 0) return;
 
-            const share = row.perWorkerShare;
-
             assignedIds.forEach(empId => {
                 if (map[empId]) {
+                    const share = row.shareByEmployeeId[empId] || 0;
+                    const declaredQty = row.declaredForRow ? row.declaredForRow[empId] : undefined;
+                    const isDeclaredOutput = declaredQty !== undefined;
+
                     map[empId].assignedOperations.push({
                         operation: row.operation || 'Unnamed Process',
                         stock_no: row.stock_no,
@@ -1068,10 +1289,19 @@ const PayrollCreate = () => {
                         amt: row.effectiveAmt,
                         baseAmt: row.amt,
                         totalPrice: row.totalPrice,
-                        workerCount: assignedIds.length,
-                        share
+                        // Declared-output workers are paid on their own quantity, so the
+                        // "shared between N workers" framing doesn't apply to them.
+                        workerCount: isDeclaredOutput ? 1 : (row.presentIdsOnRow || assignedIds).length,
+                        share,
+                        isProrated: row.isProrated && !isDeclaredOutput,
+                        isDeclaredOutput,
+                        declaredQty: isDeclaredOutput ? declaredQty : null,
+                        isMissingDeclaration: isDeclaredOutput && declaredQty === null && row.totalPrice > 0
                     });
                     map[empId].grossPay += share;
+                    if (isDeclaredOutput && declaredQty !== null) {
+                        map[empId].declaredOutputTotal += share;
+                    }
                 }
             });
         });
@@ -1138,7 +1368,54 @@ const PayrollCreate = () => {
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows]);
+    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, absenteeInfo, expectedWorkingDays]);
+
+    // Gate for saving: every absent worker needs a quantity on every paid operation
+    // they are assigned to, and no operation may be over-declared.
+    const absenteeValidation = useMemo(() => {
+        const missing = [];
+        const overDeclaredRows = [];
+
+        computedFactoryRows.forEach(row => {
+            if (row.totalPrice <= 0) return;
+            (row.absenteeIdsOnRow || []).forEach(id => {
+                if (row.declaredForRow[id] === null || row.declaredForRow[id] === undefined) {
+                    const info = absenteeInfo[id];
+                    missing.push({
+                        employeeId: id,
+                        rowId: row.id,
+                        operation: row.operation || 'Unnamed Process',
+                        name: info ? `${info.employee.first_name || ''} ${info.employee.last_name || ''}`.trim() : id
+                    });
+                }
+            });
+            if (row.isOverDeclared) overDeclaredRows.push(row);
+        });
+
+        // Only absentees who share a process with someone else need declaring.
+        // Someone absent but working alone on every process they're assigned to is
+        // paid their full operation total and never shows up in the modal.
+        const declarableIds = new Set();
+        computedFactoryRows.forEach(row => {
+            if (row.totalPrice <= 0) return;
+            (row.absenteeIdsOnRow || []).forEach(id => declarableIds.add(id));
+        });
+
+        return {
+            missing,
+            overDeclaredRows,
+            absenteeCount: declarableIds.size,
+            totalAbsentCount: Object.keys(absenteeInfo).length,
+            isComplete: missing.length === 0 && overDeclaredRows.length === 0
+        };
+    }, [computedFactoryRows, absenteeInfo]);
+
+    // Drop stale declarations when the group, the cutoff or the operation list changes,
+    // so a quantity typed for one batch can never leak into the next one.
+    useEffect(() => {
+        setAbsenteeOutputs({});
+        setIsAbsenteeModalOpen(false);
+    }, [selectedGroup, periodStart, periodEnd]);
 
     const batchSummaryTotals = useMemo(() => {
         let gross = 0;
@@ -1343,6 +1620,26 @@ const PayrollCreate = () => {
             return;
         }
 
+        if (isLoadingGroupAttendance) {
+            setError('Still checking attendance for this group. Try again in a moment.');
+            return;
+        }
+
+        // Absent workers must have their real output declared before any payslip is saved.
+        if (absenteeValidation.absenteeCount > 0 && !absenteeValidation.isComplete) {
+            if (absenteeValidation.missing.length > 0) {
+                setError(
+                    `${absenteeValidation.absenteeCount} worker(s) missed days this cutoff. ` +
+                    `Enter how much each one actually made before saving the payslips ` +
+                    `(${absenteeValidation.missing.length} quantit${absenteeValidation.missing.length === 1 ? 'y' : 'ies'} still blank).`
+                );
+            } else {
+                setError('Absent workers have claimed more output than the quantity logged for one or more processes. Lower the quantities before saving.');
+            }
+            setIsAbsenteeModalOpen(true);
+            return;
+        }
+
         setError(null);
         setSuccess(null);
         setIsSubmitting(true);
@@ -1356,6 +1653,18 @@ const PayrollCreate = () => {
                 const workerData = workerPayrollMap[empIdStr];
                 const empGrossPay = workerData ? workerData.grossPay : 0;
                 const empOpsBreakdown = workerData ? workerData.assignedOperations : [];
+                const absence = absenteeInfo[empIdStr];
+
+                const declaredOutput = computedFactoryRows
+                    .filter(row => row.declaredForRow && row.declaredForRow[empIdStr] !== undefined && row.declaredForRow[empIdStr] !== null)
+                    .map(row => ({
+                        row_id: row.id,
+                        operation: row.operation || 'Unnamed Process',
+                        stock_no: row.stock_no,
+                        declared_quantity: row.declaredForRow[empIdStr],
+                        rate: row.effectiveAmt,
+                        amount: row.shareByEmployeeId[empIdStr] || 0
+                    }));
 
                 return {
                     employee_id: emp.id,
@@ -1374,6 +1683,12 @@ const PayrollCreate = () => {
                     total_deductions: workerData ? workerData.totalDeductions : 0,
                     net_payout: workerData ? workerData.netPay : empGrossPay,
                     operations_breakdown: empOpsBreakdown,
+                    days_present: workerData ? workerData.daysPresent : 0,
+                    days_absent: absence ? absence.daysAbsent : 0,
+                    expected_working_days: expectedWorkingDays,
+                    is_absent: !!absence,
+                    pay_basis: absence ? 'declared_output' : 'attendance_prorated',
+                    declared_output: declaredOutput,
                     holiday_rate_multiplier: holidayRateMultiplier,
                     admin_id: user?.id,
                     overtime_hours: 0,
@@ -1642,7 +1957,7 @@ const PayrollCreate = () => {
 
                 {/* Automatic Holiday Banner Indicator */}
                 {holidayPreview.items.length > 0 && (
-                    <div className="mb-6 bg-gradient-to-r from-amber-50 via-amber-50/70 to-amber-100/50 border border-amber-200/80 p-3.5 sm:p-4 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="mb-6 bg-amber-50 border border-amber-300 p-3.5 sm:p-4 rounded-xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
                                 <i className="ti ti-calendar-event"></i>
@@ -1676,8 +1991,8 @@ const PayrollCreate = () => {
                     handleStartDateChange={handleStartDateChange}
                     handleEndDateChange={handleEndDateChange}
                     activePreset={activePreset}
-                    includeWeekends={includeWeekends}
-                    toggleWeekends={toggleWeekends}
+                    cutoffMode={cutoffMode}
+                    handleCutoffModeChange={handleCutoffModeChange}
                     periodDaysCount={periodDaysCount}
                     isInvalidDateRange={isInvalidDateRange}
                 />
@@ -1699,6 +2014,18 @@ const PayrollCreate = () => {
                     holidayRateMultiplier={holidayRateMultiplier}
                 />
 
+                {/* Blocking declaration step for workers who missed days this cutoff */}
+                <AbsenteeOutputModal
+                    isOpen={isAbsenteeModalOpen}
+                    onClose={() => setIsAbsenteeModalOpen(false)}
+                    absenteeInfo={absenteeInfo}
+                    computedFactoryRows={computedFactoryRows}
+                    absenteeOutputs={absenteeOutputs}
+                    setAbsenteeOutputs={setAbsenteeOutputs}
+                    absenteeValidation={absenteeValidation}
+                    holidayRateMultiplier={holidayRateMultiplier}
+                />
+
                 {/* Sliced Section Views: Batch vs Single */}
                 {entryMode === 'batch' ? (
                     <FactoryBatchSection
@@ -1710,6 +2037,7 @@ const PayrollCreate = () => {
                         workerPayrollMap={workerPayrollMap}
                         holidayRateMultiplier={holidayRateMultiplier}
                         isLoadingEmployees={isLoadingEmployees}
+                        isLoadingGroupAttendance={isLoadingGroupAttendance}
                         breakdownSearch={breakdownSearch}
                         setBreakdownSearch={setBreakdownSearch}
                         breakdownFilter={breakdownFilter}
@@ -1721,6 +2049,10 @@ const PayrollCreate = () => {
                         isSubmitting={isSubmitting}
                         isInvalidDateRange={isInvalidDateRange || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitBatch={handleSubmitBatch}
+                        absenteeInfo={absenteeInfo}
+                        absenteeValidation={absenteeValidation}
+                        setIsAbsenteeModalOpen={setIsAbsenteeModalOpen}
+                        expectedWorkingDays={expectedWorkingDays}
                     />
                 ) : (
                     <SinglePayrollSection

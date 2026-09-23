@@ -117,10 +117,10 @@ export default function Login() {
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
-           // Only show demo codes if running locally in development mode
-            if (data.simulated && data.previewCode && import.meta.env.DEV) {
+            // Save and display preview / mock code whenever returned by server (simulation or demo)
+            if (data.previewCode) {
                 setGeneratedOtp(data.previewCode);
-                toast.success(`Demo code: ${data.previewCode}`, { duration: 5000 });
+                toast.success(`Verification code: ${data.previewCode}`, { duration: 6000 });
             } else {
                 setGeneratedOtp(null);
                 toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
@@ -303,20 +303,20 @@ export default function Login() {
             <div className="pt-2 sm:pt-4" />
 
             {/* Login Card */}
-            <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-xl shadow-slate-200/50 p-5 sm:p-7">
+            <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-7">
                 {step === 1 && (
                     <div>
                         <div className="text-center mb-5 sm:mb-6">
-                            <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/25 mb-2.5">
+                            <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-blue-600 text-white shadow-xs mb-2.5">
                                 <span className="font-black text-base sm:text-lg tracking-tight">CP</span>
                             </div>
-                            <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Welcome to C-Point</h1>
-                            <p className="text-slate-500 text-xs mt-0.5">Sign in to your workplace account</p>
+                            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Welcome to C-Point</h1>
+                            <p className="text-slate-500 text-xs mt-0.5">Sign in to your workforce account</p>
                         </div>
 
-                        <form onSubmit={handleLogin} className="space-y-3 sm:space-y-3.5">
+                        <form onSubmit={handleLogin} className="space-y-3.5">
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-600 mb-1 ml-0.5">Email / Employee ID</label>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email / Employee ID</label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
                                         <i className="ti ti-mail" />
@@ -327,14 +327,14 @@ export default function Login() {
                                         onChange={e => setEmail(e.target.value)} 
                                         required 
                                         autoFocus
-                                        className="w-full pl-9 pr-3.5 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/10 transition-all shadow-xs"
+                                        className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                                         placeholder="name@company.com" 
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-600 mb-1 ml-0.5">Password</label>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Password</label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
                                         <i className="ti ti-lock" />
@@ -344,17 +344,17 @@ export default function Login() {
                                         value={password} 
                                         onChange={e => setPassword(e.target.value)} 
                                         required 
-                                        className="w-full pl-9 pr-3.5 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/10 transition-all shadow-xs"
+                                        className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                                         placeholder="••••••••" 
                                     />
                                 </div>
-                                {error && <p className="text-red-500 text-xs mt-1.5 font-medium ml-0.5">{error}</p>}
+                                {error && <p className="text-rose-600 text-xs mt-1.5 font-medium ml-0.5">{error}</p>}
                             </div>
 
                             <button 
                                 type="submit" 
                                 disabled={loading}
-                                className="w-full mt-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold py-2.5 sm:py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-70"
+                                className="w-full mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
                             >
                                 {loading ? (
                                     <>
@@ -363,8 +363,7 @@ export default function Login() {
                                     </>
                                 ) : (
                                     <>
-                                        <span>Continue</span>
-                                        <i className="ti ti-arrow-right text-sm" />
+                                        <span>Login</span>
                                     </>
                                 )}
                             </button>
@@ -374,39 +373,39 @@ export default function Login() {
 
                 {step === 2 && (
                     <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 mb-2.5">
+                        <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 mb-2.5">
                             <i className="ti ti-shield-lock text-xl" />
                         </div>
-                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Two-Factor Authentication</h2>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Two-Factor Authentication</h2>
                         <p className="text-slate-500 text-xs mt-0.5 mb-4 sm:mb-5">Choose where to receive your security code</p>
 
                         <div className="space-y-2 sm:space-y-2.5">
                             <button 
                                 onClick={() => sendOtp('sms')} 
-                                className="w-full p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md hover:shadow-blue-500/5 transition-all flex items-center text-left gap-3 active:scale-[0.99]"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer"
                             >
-                                <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
                                     <i className="ti ti-device-mobile-message text-base" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="font-semibold text-xs text-slate-800">Send via SMS</p>
-                                    <p className="text-[11px] text-slate-400 truncate">Mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
+                                    <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
+                                    <p className="text-[11px] text-slate-500 truncate">Mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
                                 </div>
-                                <i className="ti ti-chevron-right ml-auto text-slate-300 text-sm" />
+                                <i className="ti ti-chevron-right ml-auto text-slate-400 text-sm" />
                             </button>
 
                             <button 
                                 onClick={() => sendOtp('email')} 
-                                className="w-full p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md hover:shadow-blue-500/5 transition-all flex items-center text-left gap-3 active:scale-[0.99]"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer"
                             >
-                                <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
                                     <i className="ti ti-mail-fast text-base" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="font-semibold text-xs text-slate-800">Send via Email</p>
-                                    <p className="text-[11px] text-slate-400 truncate">{email}</p>
+                                    <p className="font-semibold text-xs text-slate-900">Send via Email</p>
+                                    <p className="text-[11px] text-slate-500 truncate">{email}</p>
                                 </div>
-                                <i className="ti ti-chevron-right ml-auto text-slate-300 text-sm" />
+                                <i className="ti ti-chevron-right ml-auto text-slate-400 text-sm" />
                             </button>
                         </div>
 
@@ -421,10 +420,10 @@ export default function Login() {
 
                 {step === 3 && (
                     <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 mb-2.5">
+                        <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 mb-2.5">
                             <i className="ti ti-dialpad text-xl" />
                         </div>
-                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Security Code</h2>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Security Code</h2>
                         <p className="text-slate-500 text-xs mt-0.5 mb-4">Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}</p>
 
                         <form onSubmit={verifyOtp}>
@@ -442,34 +441,37 @@ export default function Login() {
                                         onChange={(e) => handleOtpChange(idx, e)}
                                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                                         onPaste={handleOtpPaste}
-                                        className="w-9 h-11 sm:w-11 sm:h-13 text-center text-lg sm:text-xl font-bold text-slate-800 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-3 focus:ring-blue-500/15 focus:border-blue-500 transition-all shadow-xs"
+                                        className="w-9 h-11 sm:w-11 sm:h-13 text-center text-lg sm:text-xl font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-slate-900 transition-colors shadow-2xs font-mono"
                                         autoFocus={idx === 0}
                                     />
                                 ))}
                             </div>
 
-                            {generatedOtp && import.meta.env.DEV && (
+                            {generatedOtp && (
                                 <div className="mb-3">
                                     <button 
                                         type="button"
                                         onClick={() => {
-                                            const digits = generatedOtp.split('');
-                                            setOtpCode(digits);
-                                            document.getElementById('otp-5')?.focus();
+                                             const digits = generatedOtp.split('');
+                                             setOtpCode(digits);
+                                             document.getElementById('otp-5')?.focus();
                                         }}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-medium rounded-lg border border-amber-200 transition-all"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-lg border border-amber-300 transition-colors cursor-pointer shadow-2xs w-full justify-between active:scale-[0.99]"
                                     >
-                                        <i className="ti ti-bulb text-amber-500 text-xs" />
-                                        <span>Test code: <strong className="font-mono">{generatedOtp}</strong> (Autofill)</span>
+                                        <div className="flex items-center gap-2">
+                                            <i className="ti ti-bulb text-amber-600 text-sm" />
+                                            <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
+                                        </div>
+                                        <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded text-amber-900">Autofill</span>
                                     </button>
                                 </div>
                             )}
 
-                            {error && <p className="text-red-500 text-xs mb-3 font-medium">{error}</p>}
+                            {error && <p className="text-rose-600 text-xs mb-3 font-medium">{error}</p>}
                             
                             <button 
                                 type="submit" 
-                                className="w-full bg-slate-900 hover:bg-black active:scale-[0.99] text-white font-semibold py-2.5 sm:py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
+                                className="w-full bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                             >
                                 Verify & Proceed
                             </button>

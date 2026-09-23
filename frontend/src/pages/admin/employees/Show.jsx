@@ -8,6 +8,18 @@ import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
+const formatAuthorizer = (authorizer, role) => {
+    if (!authorizer) return 'System Administrator (HR)';
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authorizer);
+    if (isUuid) {
+        return role ? `System Administrator (${role})` : 'System Administrator (HR)';
+    }
+    if (role && !authorizer.toLowerCase().includes(role.toLowerCase())) {
+        return `${authorizer} (${role})`;
+    }
+    return authorizer;
+};
+
 export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -18,11 +30,201 @@ export default function Show() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [isReinstateModalOpen, setIsReinstateModalOpen] = useState(false);
+    const [isReinstating, setIsReinstating] = useState(false);
+
+    const handleReinstate = async () => {
+        if (!employee) return;
+        setIsReinstating(true);
+
+        // 0ms Optimistic UI updates
+        queryClient.setQueryData(['employeeDetails', id], (old) => {
+            if (!old) return old;
+            return {
+                ...old,
+                data: {
+                    ...old.data,
+                    status: 'active',
+                    is_active: true,
+                    archived_at: null,
+                    separation_reason: null,
+                    separation_type: null,
+                    separation_date: null,
+                    separation_notes: null,
+                    operational_status: 'Active',
+                    is_suspended: false,
+                    is_terminated: false
+                }
+            };
+        });
+
+        queryClient.setQueryData(['adminEmployees'], (old) => {
+            if (!Array.isArray(old)) return old;
+            return old.map(e => String(e.id) === String(id) ? {
+                ...e,
+                status: 'active',
+                is_active: true,
+                archived_at: null,
+                operational_status: 'Active',
+                is_suspended: false,
+                is_terminated: false
+            } : e);
+        });
+
+        window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
+
+        try {
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/restore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: 'Reinstated from pending termination review' })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to reinstate employee');
+            }
+
+            toast.success(`${employee.first_name} ${employee.last_name} has been reinstated to Active standing.`);
+            setIsReinstateModalOpen(false);
+
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
+        } catch (err) {
+            toast.error(err.message || 'Failed to reinstate employee');
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } finally {
+            setIsReinstating(false);
+        }
+    };
 
     // Temporary credentials state for unregistered accounts
     const [showTempPassword, setShowTempPassword] = useState(true);
     const [copiedKey, setCopiedKey] = useState(null);
     const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+    // Biometric Security & Medical Grace Protocol State
+    const [isExemptionModalOpen, setIsExemptionModalOpen] = useState(false);
+    const [isSubmittingExemption, setIsSubmittingExemption] = useState(false);
+    const [isResettingBiometrics, setIsResettingBiometrics] = useState(false);
+    const [exemptionForm, setExemptionForm] = useState({
+        reason: 'Physical facial injury / surgical bandages per physician certification',
+        cert_ref: '',
+        duration_days: 14,
+        document_url: ''
+    });
+
+    const handleEnableExemption = async (e) => {
+        if (e) e.preventDefault();
+        if (!employee) return;
+        setIsSubmittingExemption(true);
+        try {
+            const validUntil = new Date(Date.now() + Number(exemptionForm.duration_days) * 86400000).toISOString().split('T')[0];
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'enable',
+                    reason: exemptionForm.reason,
+                    cert_ref: exemptionForm.cert_ref,
+                    valid_until: validUntil,
+                    document_url: exemptionForm.document_url
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to activate medical exemption');
+            }
+            toast.success('Medical Grace Exemption activated. QR-Only attendance mode is now active.');
+            setIsExemptionModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } catch (err) {
+            toast.error(err.message || 'Failed to activate medical exemption');
+        } finally {
+            setIsSubmittingExemption(false);
+        }
+    };
+
+    const handleRevokeExemption = async () => {
+        if (!employee) return;
+        if (!window.confirm(`Revoke Medical Grace Exemption for ${employee.first_name} ${employee.last_name}? Dual-factor biometric verification (QR + Face) will be re-enforced immediately at the kiosk.`)) return;
+        setIsSubmittingExemption(true);
+        try {
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'revoke' })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to revoke medical exemption');
+            }
+            toast.success('Medical Grace Exemption revoked. Dual-factor biometrics restored.');
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } catch (err) {
+            toast.error(err.message || 'Failed to revoke exemption');
+        } finally {
+            setIsSubmittingExemption(false);
+        }
+    };
+
+    const handleExtendExemption = async (daysToAdd = 7) => {
+        if (!employee || !medicalExemption) return;
+        setIsSubmittingExemption(true);
+        try {
+            const currentValidUntil = medicalExemption.valid_until ? new Date(medicalExemption.valid_until) : new Date();
+            const baseTime = currentValidUntil.getTime() > Date.now() ? currentValidUntil.getTime() : Date.now();
+            const newValidUntil = new Date(baseTime + Number(daysToAdd) * 86400000).toISOString().split('T')[0];
+
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'enable',
+                    reason: medicalExemption.reason || 'Extended recovery period per medical observation',
+                    cert_ref: medicalExemption.cert_ref || 'EXTENSION_REQUEST',
+                    valid_until: newValidUntil,
+                    document_url: medicalExemption.document_url || ''
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to extend medical grace duration');
+            }
+            toast.success(`Medical Grace extended by +${daysToAdd} days (Valid through ${newValidUntil}).`);
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } catch (err) {
+            toast.error(err.message || 'Failed to extend exemption');
+        } finally {
+            setIsSubmittingExemption(false);
+        }
+    };
+
+    const handleResetBiometrics = async () => {
+        if (!employee) return;
+        if (!window.confirm(`Are you sure you want to shred ${employee.first_name} ${employee.last_name}'s enrolled facial baseline? The employee will be required to re-enroll a fresh facial scan at the kiosk upon recovery.`)) return;
+        setIsResettingBiometrics(true);
+        try {
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/reset-biometrics`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to reset biometric profile');
+            }
+            toast.success('Biometric profile shredded. Employee can now re-enroll a fresh facial scan.');
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } catch (err) {
+            toast.error(err.message || 'Failed to reset biometrics');
+        } finally {
+            setIsResettingBiometrics(false);
+        }
+    };
 
     const copyToClipboard = (text, key) => {
         if (!text) return;
@@ -110,23 +312,84 @@ export default function Show() {
     const employee = employeeData?.data || cachedEmp || null;
     const isLoading = isEmpLoading && !employee;
 
-    // Subscribe to live employee and disciplinary changes
+    // Memoized disciplinary logs
+    const disciplinaryLogs = useMemo(() => Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [], [employee?.disciplinary_logs]);
+
+    // Parse Medical Exemption and Biometric Metadata
+    const medicalExemption = useMemo(() => {
+        if (!employee?.medical_record_url) return null;
+        try {
+            const parsed = JSON.parse(employee.medical_record_url);
+            return (parsed && typeof parsed === 'object') ? parsed : null;
+        } catch {
+            return null;
+        }
+    }, [employee?.medical_record_url]);
+
+    const isMedicalExemptActive = useMemo(() => {
+        if (!medicalExemption?.exempt) return false;
+        const today = new Date().toISOString().split('T')[0];
+        return !medicalExemption.valid_until || medicalExemption.valid_until >= today;
+    }, [medicalExemption]);
+
+    const daysRemaining = useMemo(() => {
+        if (!isMedicalExemptActive || !medicalExemption?.valid_until) return null;
+        const diff = Math.ceil((new Date(medicalExemption.valid_until).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+        return Math.max(0, diff);
+    }, [isMedicalExemptActive, medicalExemption]);
+
+    // Subscribe to live employee, disciplinary, and biometric changes (Real-time 0ms sync)
     useEffect(() => {
         if (!id || id === 'undefined') return;
+
+        const handleSync = () => {
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        };
+
+        window.addEventListener('hris_disciplinary_sync', handleSync);
+
         const channel = supabase
             .channel(`admin-live-employee-${id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, handleSync)
+            .subscribe();
+
+        const syncChannel = supabase
+            .channel(`dashboard-disciplinary-sync-${id}`)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, handleSync)
+            .subscribe();
+
+        const scannerChannel = supabase
+            .channel('scanner_disciplinary_realtime')
+            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, (payload) => {
+                if (payload?.payload?.employee_id === id) {
+                    handleSync();
+                }
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            .on('broadcast', { event: 'BIOMETRICS_RESET' }, (payload) => {
+                if (payload?.payload?.employee_id === id) {
+                    handleSync();
+                }
             })
             .subscribe();
 
         return () => {
+            window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
+            supabase.removeChannel(syncChannel);
+            supabase.removeChannel(scannerChannel);
         };
     }, [id, queryClient]);
 
@@ -172,6 +435,7 @@ export default function Show() {
         return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+    // Unconditional hook declarations complete - now safe for conditional early return
     if (isLoading || !employee) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
@@ -211,7 +475,6 @@ export default function Show() {
         !isTerminated
     );
     const employeeFullName = employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
-    const disciplinaryLogs = useMemo(() => Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [], [employee?.disciplinary_logs]);
 
     return (
         <>
@@ -236,9 +499,21 @@ export default function Show() {
                     </Link>
                     
                     <div className="flex flex-wrap gap-2 sm:gap-2.5">
+                        {isTerminated && (
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(true)}
+                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer touch-manipulation"
+                                title="Reinstate employee to active operational status"
+                            >
+                                <i className="ti ti-rotate-clockwise text-base" />
+                                <span>Reinstate Employee</span>
+                            </button>
+                        )}
+
                         {/* Document Vault link (201 documents now live here, not inline on the profile) */}
                         <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
-                            <i className="ti ti-folders text-slate-500 text-base" /> Document Vault
+                            <i className="ti ti-folders text-slate-500 text-base" /> Documents
                         </Link>
 
                         <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5 cursor-pointer">
@@ -276,9 +551,7 @@ export default function Show() {
                                 <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
                                     <i className="ti ti-clock-pause" /> Suspended
                                 </span>
-                            ) : (
-                                <span className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Active Personnel" />
-                            )}
+                            ) : null}
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -297,8 +570,8 @@ export default function Show() {
                                         <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active Personnel
+                                    <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        Active Personnel
                                     </span>
                                 )}
 
@@ -509,12 +782,19 @@ export default function Show() {
                                 </div>
                             </div>
                         </div>
-                        <div className="shrink-0 self-stretch sm:self-center">
+                        <div className="shrink-0 self-stretch sm:self-center flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(true)}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer touch-manipulation"
+                            >
+                                <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
+                            </button>
                             <Link
                                 to={`/admin/documents?employee_id=${employee.id}`}
                                 className="px-3.5 py-2 bg-white hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg border border-rose-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
                             >
-                                <i className="ti ti-folders text-sm" /> Review 201 Vault
+                                <i className="ti ti-folders text-sm" /> Review Documents
                             </Link>
                         </div>
                     </div>
@@ -743,6 +1023,183 @@ export default function Show() {
                     </div>
                 </div>
 
+                {/* Biometric Authentication & Medical Exemption Card */}
+                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-6">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className={`h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl flex items-center justify-center border ${
+                                isMedicalExemptActive
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+                                    : employee?.has_registered_biometrics
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200/70'
+                            }`}>
+                                <i className={`ti ${isMedicalExemptActive ? 'ti-first-aid-kit' : 'ti-face-id'} text-xl sm:text-2xl`} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                                    Biometric Authentication
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    Facial recognition verification and medical grace protocol
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-3 py-1 text-xs font-bold rounded-xl border uppercase tracking-wider ${
+                                isMedicalExemptActive
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : employee?.has_registered_biometrics
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                                {isMedicalExemptActive
+                                    ? 'Medical Exemption Active'
+                                    : employee?.has_registered_biometrics
+                                    ? 'Enrolled'
+                                    : 'Not Enrolled'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {isMedicalExemptActive ? (
+                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 sm:p-5 text-xs text-slate-700 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-amber-200/60">
+                                <div>
+                                    <h4 className="font-bold text-amber-950 text-sm flex items-center gap-1.5">
+                                        <i className="ti ti-first-aid-kit text-amber-700 text-base" />
+                                        Medical Grace Exemption Active (QR-Only Clock-In)
+                                    </h4>
+                                    <p className="text-amber-900/80 mt-0.5">
+                                        Facial recognition verification is temporarily bypassed. Clock-in requires QR badge only, and the kiosk takes an audit photo.
+                                    </p>
+                                </div>
+                                {daysRemaining !== null && (
+                                    <span className="px-2.5 py-1 rounded-md bg-amber-200/70 text-amber-900 font-bold text-xs shrink-0 self-start sm:self-auto">
+                                        {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                                <div>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Valid Until</span>
+                                    <span className="font-bold text-slate-800">{formatDate(medicalExemption?.valid_until)}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Medical Ref / Cert ID</span>
+                                    <span className="font-mono font-bold text-slate-800">{medicalExemption?.cert_ref || 'N/A'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Authorized By</span>
+                                    <span className="font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
+                                        <i className="ti ti-user-check text-slate-500 text-sm" />
+                                        {formatAuthorizer(medicalExemption?.granted_by, medicalExemption?.granted_by_role)}
+                                    </span>
+                                    {medicalExemption?.granted_at && (
+                                        <span className="text-[10px] text-slate-400 font-mono block">
+                                            on {formatDate(medicalExemption.granted_at)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {medicalExemption?.reason && (
+                                <div className="pt-1">
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Reason</span>
+                                    <p className="text-slate-700 italic">{medicalExemption.reason}</p>
+                                </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200/60">
+                                <button
+                                    type="button"
+                                    onClick={() => handleExtendExemption(7)}
+                                    disabled={isSubmittingExemption}
+                                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 active:scale-95 text-amber-900 font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    +7 Days Extension
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleRevokeExemption}
+                                    disabled={isSubmittingExemption}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    Revoke Exemption
+                                </button>
+                                {employee?.has_registered_biometrics && (
+                                    <button
+                                        type="button"
+                                        onClick={handleResetBiometrics}
+                                        disabled={isResettingBiometrics}
+                                        className="px-3 py-1.5 bg-white hover:bg-rose-50 active:scale-95 text-rose-700 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 ml-auto"
+                                    >
+                                        {isResettingBiometrics ? 'Resetting...' : 'Reset Biometrics'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : employee?.has_registered_biometrics ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                            <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                                    <i className="ti ti-check text-lg" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 text-sm">Facial Biometrics Registered</h4>
+                                    <p className="text-slate-500 mt-0.5 leading-relaxed">
+                                        Dual-factor authentication (QR badge + facial recognition) is required at the gate kiosk.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsExemptionModalOpen(true)}
+                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    <i className="ti ti-first-aid-kit text-sm" />
+                                    <span>Grant Medical Grace</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleResetBiometrics}
+                                    disabled={isResettingBiometrics}
+                                    className="px-3.5 py-2 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors text-xs cursor-pointer disabled:opacity-50"
+                                >
+                                    {isResettingBiometrics ? 'Resetting...' : 'Reset Biometrics'}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                            <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-user-scan text-lg" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 text-sm">Biometric Profile Pending Enrollment</h4>
+                                    <p className="text-slate-500 mt-0.5 leading-relaxed">
+                                        No facial template registered yet. The employee will be enrolled during their first scan at the gate kiosk.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setIsExemptionModalOpen(true)}
+                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors text-xs flex items-center gap-1.5 cursor-pointer shrink-0 self-stretch sm:self-auto justify-center"
+                            >
+                                <i className="ti ti-first-aid-kit text-sm" />
+                                <span>Grant Medical Grace</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 {/* Disciplinary & Compliance Records */}
                 <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-6">
@@ -761,18 +1218,12 @@ export default function Show() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
+                            <span className={`inline-flex items-center px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
                                 isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
                                 isSuspended ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-50 text-amber-800 border-amber-200' :
                                 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                    isTerminated ? 'bg-rose-600' :
-                                    isSuspended ? 'bg-amber-600 animate-pulse' :
-                                    disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-600 animate-pulse' :
-                                    'bg-emerald-500'
-                                }`} />
                                 {isTerminated ? 'Separated' :
                                  isSuspended ? 'Suspended' :
                                  disciplinaryLogs.some(l => l.status === 'Active') ? 'Active Notice' :
@@ -864,7 +1315,7 @@ export default function Show() {
                                                     {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
                                                     {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
                                                     {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
-                                                    {log.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                                                    {log.status === 'Active' && <i className="ti ti-alert-triangle" />}
                                                     <span>
                                                         {log.status === 'Resolved' ? 'Resolved' :
                                                          log.status === 'Overturned' ? 'Cleared' :
@@ -995,6 +1446,200 @@ export default function Show() {
                     </div>      
                 )}
             
+            {/* Reinstatement Confirmation Modal */}
+            {isReinstateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                        onClick={() => !isReinstating && setIsReinstateModalOpen(false)}
+                    />
+                    <div className="relative bg-white rounded-3xl p-6 sm:p-7 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10 space-y-4">
+                        <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
+                            <i className="ti ti-rotate-clockwise text-2xl" />
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900">Reinstate Employee</h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1">
+                                Restore <strong className="text-slate-900">{employee.name || `${employee.first_name} ${employee.last_name}`}</strong> ({employee.company_id || 'N/A'}) to active operational standing.
+                            </p>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 text-left text-xs space-y-2 text-slate-600">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                <span className="font-semibold text-slate-400 uppercase text-[10px] tracking-wider">Current Standing</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">Pending Termination</span>
+                            </div>
+                            <p className="text-[11px] leading-relaxed">
+                                Reinstatement will revoke the separation notice, clear the pending archive cooldown, unblock gate attendance scanner permissions, and return this record to the operational workforce directory.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setIsReinstateModalOpen(false)}
+                                disabled={isReinstating}
+                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReinstate}
+                                disabled={isReinstating}
+                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {isReinstating ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span>Reinstating...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="ti ti-rotate-clockwise text-sm" />
+                                        <span>Confirm Reinstatement</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Medical Grace Exemption Modal */}
+            {isExemptionModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                        onClick={() => !isSubmittingExemption && setIsExemptionModalOpen(false)}
+                    />
+                    <div className="relative bg-white rounded-3xl p-6 sm:p-7 shadow-2xl w-full max-w-lg border border-slate-200 z-10 space-y-5">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 bg-amber-50 text-amber-700 rounded-2xl flex items-center justify-center border border-amber-200">
+                                    <i className="ti ti-first-aid-kit text-2xl" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900">
+                                        Biometric Medical Grace Exemption
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Temporary physical trauma & facial dressing protocol
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsExemptionModalOpen(false)}
+                                disabled={isSubmittingExemption}
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                                <i className="ti ti-x text-sm" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleEnableExemption} className="space-y-4 text-xs">
+                            <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 leading-relaxed font-medium">
+                                <p className="font-bold flex items-center gap-1.5 text-amber-950 mb-0.5">
+                                    <i className="ti ti-info-circle text-base text-amber-600" />
+                                    How this protocol functions:
+                                </p>
+                                <span>
+                                    Enabling Medical Grace allows <strong className="text-amber-950">{employeeFullName}</strong> to clock in/out using their QR code without triggering Euclidean facial distance or eye-blink rejections. The kiosk camera will still capture a high-resolution snapshot for evidentiary verification.
+                                </span>
+                            </div>
+
+                            <div>
+                                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Clinical Reason / Trauma Description <span className="text-rose-500">*</span>
+                                </label>
+                                <textarea
+                                    required
+                                    rows={2}
+                                    value={exemptionForm.reason}
+                                    onChange={(e) => setExemptionForm({ ...exemptionForm, reason: e.target.value })}
+                                    placeholder="e.g., Facial lacerations and gauze dressing following road accident per attending physician..."
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        Medical Cert / Ref ID <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={exemptionForm.cert_ref}
+                                        onChange={(e) => setExemptionForm({ ...exemptionForm, cert_ref: e.target.value })}
+                                        placeholder="e.g., MC-2026-DR-SANTOS-88"
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        Exemption Duration
+                                    </label>
+                                    <select
+                                        value={exemptionForm.duration_days}
+                                        onChange={(e) => setExemptionForm({ ...exemptionForm, duration_days: Number(e.target.value) })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                    >
+                                        <option value={7}>7 Days (Minor injury / swelling)</option>
+                                        <option value={14}>14 Days (Standard trauma / sutures)</option>
+                                        <option value={30}>30 Days (Major trauma / fracture recovery)</option>
+                                        <option value={60}>60 Days (Extended reconstructive care)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Document Link / Vault File URL (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={exemptionForm.document_url}
+                                    onChange={(e) => setExemptionForm({ ...exemptionForm, document_url: e.target.value })}
+                                    placeholder="e.g., /admin/documents?employee_id=... or Medical Certificate scan"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                />
+                            </div>
+
+                            <div className="flex gap-2.5 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsExemptionModalOpen(false)}
+                                    disabled={isSubmittingExemption}
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingExemption}
+                                    className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    {isSubmittingExemption ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <span>Activating Protocol...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ti ti-shield-check text-sm" />
+                                            <span>Authorize Medical Grace</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
         </>
     );
