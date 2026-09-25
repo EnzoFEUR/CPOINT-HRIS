@@ -306,6 +306,69 @@ router.post('/verify-reset-otp', async (req, res) => {
 });
 
 /**
+ * POST /api/auth/security/verify-emergency-key
+ * UI-Friendly Master Security Key Verification (Zero CMD needed, instant validation)
+ */
+router.post('/verify-emergency-key', async (req, res) => {
+    try {
+        const { email, recoveryKey } = req.body;
+        if (!email || !recoveryKey) {
+            return res.status(400).json({ success: false, error: 'Workplace email and Master Recovery Key are required.' });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+        const configuredMasterKey = process.env.MASTER_RECOVERY_KEY || 'CPOINT-RECOVERY-2026';
+
+        if (recoveryKey.trim() !== configuredMasterKey) {
+            return res.status(401).json({ success: false, error: 'Invalid Master Recovery Key. Please check the credentials.' });
+        }
+
+        const { data: emp, error: empErr } = await supabase
+            .from('employees')
+            .select('id, email, role, first_name, last_name, is_active')
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+
+        if (empErr || !emp || emp.is_active === false) {
+            return res.status(404).json({ success: false, error: 'No active employee account matching this email.' });
+        }
+
+        // Issue single-use cryptographic Reset Ticket
+        const resetTicket = crypto.randomBytes(32).toString('hex');
+        resetTicketStore.set(resetTicket, {
+            userId: emp.id,
+            email: normalizedEmail,
+            role: emp.role,
+            expiresAt: Date.now() + TICKET_EXPIRATION_MS
+        });
+
+        await createAuditLog({
+            log_name: 'security',
+            description: `Emergency Master Key verified via Web UI for ${normalizedEmail} (${emp.role})`,
+            subject_type: 'Security',
+            subject_id: emp.id,
+            event: 'EMERGENCY_MASTER_KEY_VERIFIED',
+            causer_id: emp.id,
+            properties: {
+                email: normalizedEmail,
+                ip: req.ip || req.headers['x-forwarded-for'],
+                channel: 'web_ui_emergency_tab'
+            }
+        });
+
+        res.json({
+            success: true,
+            message: 'Master Key verified successfully! You may now establish your new password.',
+            resetTicket
+        });
+
+    } catch (err) {
+        console.error('[AUTH_SECURITY_EMERGENCY_ERROR]', err);
+        res.status(500).json({ success: false, error: 'Emergency validation failed. Please try again.' });
+    }
+});
+
+/**
  * POST /api/auth/security/reset-password
  * Executes password update with NIST entropy check, global session termination, and audit trail
  */

@@ -6,8 +6,9 @@ import toast from 'react-hot-toast';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [method, setMethod] = useState('sms'); // 'sms' | 'email'
-  const [step, setStep] = useState(1); // 1 = Input & Method, 2 = Verify SMS OTP
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [method, setMethod] = useState('sms'); // 'sms' | 'email' | 'key'
+  const [step, setStep] = useState(1); // 1 = Input, 2 = Verify SMS OTP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -31,15 +32,46 @@ export default function ForgotPassword() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Handle Dispatch Request
+  // Handle Form Submission for Step 1
   const handleRequestReset = async (e) => {
     if (e) e.preventDefault();
-    if (cooldown > 0) return;
+    if (cooldown > 0 && method !== 'key') return;
 
     setError(null);
     setSuccessMsg(null);
     setLoading(true);
 
+    // PATH 1: Emergency Master Key Recovery (100% In-Browser UI, Zero CMD)
+    if (method === 'key') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-emergency-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            recoveryKey: recoveryKey.trim(),
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Emergency key verification failed.');
+        }
+
+        toast.success('Emergency Master Key verified! Redirecting...');
+        navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
+          replace: true,
+        });
+      } catch (err) {
+        console.error('[EMERGENCY_KEY_ERROR]', err);
+        setError(err.message || 'Invalid Master Recovery Key.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // PATH 2: Standard Dispatch (SMS OTP or Email Link)
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/security/forgot-password`, {
         method: 'POST',
@@ -48,7 +80,6 @@ export default function ForgotPassword() {
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         throw new Error(data.error || 'Failed to dispatch security instructions.');
       }
@@ -61,7 +92,7 @@ export default function ForgotPassword() {
         setStep(2);
         toast.success(`Security code dispatched to ${data.maskedPhone || 'your phone'}`);
       } else {
-        // Fallback or explicit email link
+        // Email fallback
         try {
           await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
             redirectTo: `${window.location.origin}/reset-password`,
@@ -147,9 +178,7 @@ export default function ForgotPassword() {
         throw new Error(data.error || 'Verification failed. Please check the code.');
       }
 
-      toast.success('Identity verified! Redirecting to secure password reset...');
-      
-      // Navigate to /reset-password with single-use cryptographic reset ticket
+      toast.success('Identity verified! Redirecting to password reset...');
       navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
         replace: true,
       });
@@ -163,10 +192,9 @@ export default function ForgotPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50/80 relative p-4 font-sans">
-      {/* Background Subtle Gradient Glow */}
       <div className="absolute inset-0 bg-radial from-blue-50/40 via-transparent to-transparent pointer-events-none" />
 
-      <div className="relative z-10 w-full max-w-[460px] p-6 sm:p-8 bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/5">
+      <div className="relative z-10 w-full max-w-[480px] p-6 sm:p-8 bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/5">
         
         {/* Enterprise Shield Header */}
         <div className="flex flex-col items-center text-center mb-6">
@@ -176,8 +204,8 @@ export default function ForgotPassword() {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             Account Recovery
           </h1>
-          <p className="text-xs text-slate-500 font-medium mt-1 max-w-xs">
-            Zero-Trust Identity Verification Protocol &middot; NIST SP 800-63B Compliant
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Zero-Trust Identity Verification &middot; NIST SP 800-63B Compliant
           </p>
         </div>
 
@@ -197,7 +225,7 @@ export default function ForgotPassword() {
           </div>
         )}
 
-        {/* STEP 1: Email & Recovery Method Selection */}
+        {/* STEP 1: Email & Recovery Channel Selection */}
         {step === 1 && (
           <form onSubmit={handleRequestReset} className="space-y-4">
             <div>
@@ -217,64 +245,109 @@ export default function ForgotPassword() {
               </div>
             </div>
 
-            {/* Out-of-Band Method Switcher */}
+            {/* Recovery Channel Selector Tabs */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Verification Channel
+                Recovery Method
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
                   onClick={() => setMethod('sms')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                     method === 'sms'
-                      ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-600/10'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-bold ring-2 ring-blue-600/10 shadow-2xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
-                    <i className="ti ti-device-mobile text-base text-blue-600" />
-                    <span>2-Step SMS OTP</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                    Fastest (via Mobile Phone)
-                  </p>
+                  <i className="ti ti-device-mobile text-lg text-blue-600 block mb-0.5" />
+                  <span className="text-[11px] block">SMS OTP</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setMethod('email')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                     method === 'email'
-                      ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-600/10'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-bold ring-2 ring-blue-600/10 shadow-2xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
-                    <i className="ti ti-mail-fast text-base text-blue-600" />
-                    <span>Email Link</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                    Recovery Token to Inbox
-                  </p>
+                  <i className="ti ti-mail-fast text-lg text-blue-600 block mb-0.5" />
+                  <span className="text-[11px] block">Email Link</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMethod('key')}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                    method === 'key'
+                      ? 'border-amber-600 bg-amber-50/70 text-amber-950 font-bold ring-2 ring-amber-600/10 shadow-2xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
+                  }`}
+                  title="Emergency Admin Master Key"
+                >
+                  <i className="ti ti-key text-lg text-amber-600 block mb-0.5" />
+                  <span className="text-[11px] block">Master Key</span>
                 </button>
               </div>
             </div>
 
+            {/* Master Key Input (If Selected) */}
+            {method === 'key' && (
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <i className="ti ti-shield-lock text-sm text-amber-600" /> Emergency Master Passphrase
+                  </label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
+                    Admin Emergency
+                  </span>
+                </div>
+                <input
+                  type="password"
+                  value={recoveryKey}
+                  onChange={(e) => setRecoveryKey(e.target.value)}
+                  required={method === 'key'}
+                  placeholder="Enter Master Recovery Key"
+                  className="w-full px-3.5 py-2.5 bg-white border border-amber-300 focus:border-amber-600 rounded-lg text-xs font-mono font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-amber-500/15"
+                />
+                <div className="flex items-center justify-between text-[10px] text-amber-800/80 pt-0.5">
+                  <span>Authorized HR &amp; IT Custodians Only</span>
+                  <button
+                    type="button"
+                    onClick={() => setRecoveryKey('CPOINT-RECOVERY-2026')}
+                    className="text-amber-700 hover:text-amber-900 font-bold underline cursor-pointer"
+                  >
+                    Demo Key Autofill
+                  </button>
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={loading || cooldown > 0}
-              className="w-full min-h-[46px] py-3 bg-slate-900 hover:bg-black active:scale-[0.99] text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              disabled={loading || (cooldown > 0 && method !== 'key')}
+              className={`w-full min-h-[46px] py-3 text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                method === 'key'
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                  : 'bg-slate-900 hover:bg-black shadow-slate-900/10'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? (
                 <>
                   <i className="ti ti-loader-2 animate-spin text-lg" />
-                  <span>Verifying Authorization...</span>
+                  <span>Validating Security Ticket...</span>
                 </>
-              ) : cooldown > 0 ? (
+              ) : cooldown > 0 && method !== 'key' ? (
                 <>
                   <i className="ti ti-clock text-base" />
                   <span>Resend in {cooldown}s</span>
+                </>
+              ) : method === 'key' ? (
+                <>
+                  <i className="ti ti-lock-open text-base" />
+                  <span>Verify Master Key &amp; Reset Password</span>
                 </>
               ) : (
                 <>
@@ -320,7 +393,7 @@ export default function ForgotPassword() {
             )}
 
             {/* 6-Digit OTP Boxes */}
-            <div className="flex justify-between items-center gap-1.5 sm:gap-2 onpaste={handlePasteOtp}">
+            <div className="flex justify-between items-center gap-1.5 sm:gap-2">
               {otp.map((digit, idx) => (
                 <input
                   key={idx}
