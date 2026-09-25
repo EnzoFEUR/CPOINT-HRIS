@@ -8,13 +8,13 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
   const [method, setMethod] = useState('sms'); // 'sms' | 'email' | 'key'
-  const [step, setStep] = useState(1); // 1 = Input, 2 = Verify SMS OTP
+  const [step, setStep] = useState(1); // 1 = Request, 2 = Verify SMS OTP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [maskedPhone, setMaskedPhone] = useState('');
   
-  // OTP state (for 2FA SMS flow)
+  // OTP state (for SMS flow)
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [previewCode, setPreviewCode] = useState(null);
   const otpInputsRef = useRef([]);
@@ -58,7 +58,7 @@ export default function ForgotPassword() {
           throw new Error(data.error || 'Emergency key verification failed.');
         }
 
-        toast.success('Emergency Master Key verified! Redirecting...');
+        toast.success('Identity verified. Redirecting to password reset...');
         navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
           replace: true,
         });
@@ -84,15 +84,14 @@ export default function ForgotPassword() {
         throw new Error(data.error || 'Failed to dispatch security instructions.');
       }
 
-      setCooldown(60); // 60s cooldown
+      setCooldown(60);
 
       if (method === 'sms') {
         setMaskedPhone(data.maskedPhone || 'your registered corporate phone');
         if (data.previewCode) setPreviewCode(data.previewCode);
         setStep(2);
-        toast.success(`Security code dispatched to ${data.maskedPhone || 'your phone'}`);
+        toast.success(`Verification code sent to ${data.maskedPhone || 'your phone'}`);
       } else {
-        // Email fallback
         try {
           await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
             redirectTo: `${window.location.origin}/reset-password`,
@@ -101,7 +100,7 @@ export default function ForgotPassword() {
 
         setSuccessMsg(
           data.message ||
-            'If an active workplace account matches that email, security instructions have been dispatched. Please check your inbox and spam folder.'
+            'If an active workplace account matches that email, security instructions have been dispatched.'
         );
         toast.success('Instructions dispatched to your inbox');
       }
@@ -121,12 +120,10 @@ export default function ForgotPassword() {
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
 
-    // Auto-advance cursor
     if (value && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
     }
 
-    // Auto-submit when all 6 digits entered
     if (newOtp.every((digit) => digit !== '') && index === 5) {
       handleVerifyOtp(newOtp.join(''));
     }
@@ -160,7 +157,7 @@ export default function ForgotPassword() {
   const handleVerifyOtp = async (codeToVerify) => {
     const code = codeToVerify || otp.join('');
     if (code.length < 6) {
-      return setError('Please enter the complete 6-digit security code.');
+      return setError('Please enter the complete 6-digit code.');
     }
 
     setError(null);
@@ -178,7 +175,7 @@ export default function ForgotPassword() {
         throw new Error(data.error || 'Verification failed. Please check the code.');
       }
 
-      toast.success('Identity verified! Redirecting to password reset...');
+      toast.success('Identity verified. Redirecting to password reset...');
       navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
         replace: true,
       });
@@ -191,136 +188,122 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50/80 relative p-4 font-sans">
-      <div className="absolute inset-0 bg-radial from-blue-50/40 via-transparent to-transparent pointer-events-none" />
+    <div className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 select-none p-4 sm:p-6 overflow-y-auto">
+      <div className="pt-2 sm:pt-4" />
 
-      <div className="relative z-10 w-full max-w-[480px] p-6 sm:p-8 bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/5">
+      {/* Corporate Auth Card (Aligned with Login.jsx) */}
+      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-7">
         
-        {/* Enterprise Shield Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 mb-3.5">
-            <i className="ti ti-shield-lock text-2xl" />
+        {/* Header */}
+        <div className="text-center mb-5 sm:mb-6">
+          <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-900 text-white shadow-xs mb-2.5">
+            <i className="ti ti-shield-lock text-xl" />
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Account Recovery
-          </h1>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            Zero-Trust Identity Verification &middot; NIST SP 800-63B Compliant
-          </p>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Account Recovery</h1>
+          <p className="text-slate-500 text-xs mt-0.5">Verify your identity to reset your password</p>
         </div>
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200/80 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 animate-in fade-in duration-200">
-            <i className="ti ti-alert-circle text-base shrink-0 mt-0.5" />
-            <div className="flex-1 font-semibold">{error}</div>
+          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600 font-medium leading-relaxed">
+            {error}
           </div>
         )}
 
         {/* Global Success Banner */}
         {successMsg && (
-          <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-start gap-2.5 text-xs text-emerald-800 animate-in fade-in duration-200">
-            <i className="ti ti-circle-check text-base shrink-0 mt-0.5 text-emerald-600" />
-            <div className="flex-1 font-medium leading-relaxed">{successMsg}</div>
+          <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium leading-relaxed">
+            {successMsg}
           </div>
         )}
 
-        {/* STEP 1: Email & Recovery Channel Selection */}
+        {/* STEP 1: Input and Method Selection */}
         {step === 1 && (
-          <form onSubmit={handleRequestReset} className="space-y-4">
+          <form onSubmit={handleRequestReset} className="space-y-3.5">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Workplace Email
-              </label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email</label>
               <div className="relative">
-                <i className="ti ti-mail absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                  <i className="ti ti-mail" />
+                </div>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="admin@cpoint.com"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50/60 hover:bg-white focus:bg-white border border-slate-200 focus:border-slate-900 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-slate-900/10"
+                  autoFocus
+                  placeholder="name@company.com"
+                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                 />
               </div>
             </div>
 
-            {/* Recovery Channel Selector Tabs */}
+            {/* Segmented Control for Recovery Method */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Recovery Method
-              </label>
-              <div className="grid grid-cols-3 gap-1.5">
+              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Recovery Method</label>
+              <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs">
                 <button
                   type="button"
                   onClick={() => setMethod('sms')}
-                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
                     method === 'sms'
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-bold ring-2 ring-blue-600/10 shadow-2xs'
-                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
+                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <i className="ti ti-device-mobile text-lg text-blue-600 block mb-0.5" />
-                  <span className="text-[11px] block">SMS OTP</span>
+                  SMS OTP
                 </button>
-
                 <button
                   type="button"
                   onClick={() => setMethod('email')}
-                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
                     method === 'email'
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-bold ring-2 ring-blue-600/10 shadow-2xs'
-                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
+                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <i className="ti ti-mail-fast text-lg text-blue-600 block mb-0.5" />
-                  <span className="text-[11px] block">Email Link</span>
+                  Email Link
                 </button>
-
                 <button
                   type="button"
                   onClick={() => setMethod('key')}
-                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
                     method === 'key'
-                      ? 'border-amber-600 bg-amber-50/70 text-amber-950 font-bold ring-2 ring-amber-600/10 shadow-2xs'
-                      : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600 font-medium'
+                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
-                  title="Emergency Admin Master Key"
+                  title="Emergency Master Recovery Key"
                 >
-                  <i className="ti ti-key text-lg text-amber-600 block mb-0.5" />
-                  <span className="text-[11px] block">Master Key</span>
+                  Master Key
                 </button>
               </div>
             </div>
 
-            {/* Master Key Input (If Selected) */}
+            {/* Emergency Master Key Input (Only visible when Master Key selected) */}
             {method === 'key' && (
-              <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <i className="ti ti-shield-lock text-sm text-amber-600" /> Emergency Master Passphrase
-                  </label>
-                  <span className="text-[9px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
-                    Admin Emergency
-                  </span>
-                </div>
-                <input
-                  type="password"
-                  value={recoveryKey}
-                  onChange={(e) => setRecoveryKey(e.target.value)}
-                  required={method === 'key'}
-                  placeholder="Enter Master Recovery Key"
-                  className="w-full px-3.5 py-2.5 bg-white border border-amber-300 focus:border-amber-600 rounded-lg text-xs font-mono font-bold text-slate-900 placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-amber-500/15"
-                />
-                <div className="flex items-center justify-between text-[10px] text-amber-800/80 pt-0.5">
-                  <span>Authorized HR &amp; IT Custodians Only</span>
+              <div className="space-y-1 pt-0.5">
+                <div className="flex items-center justify-between ml-0.5">
+                  <label className="block text-xs font-semibold text-slate-700">Master Passphrase</label>
                   <button
                     type="button"
                     onClick={() => setRecoveryKey('CPOINT-RECOVERY-2026')}
-                    className="text-amber-700 hover:text-amber-900 font-bold underline cursor-pointer"
+                    className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
                   >
-                    Demo Key Autofill
+                    Demo key
                   </button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                    <i className="ti ti-key" />
+                  </div>
+                  <input
+                    type="password"
+                    value={recoveryKey}
+                    onChange={(e) => setRecoveryKey(e.target.value)}
+                    required={method === 'key'}
+                    placeholder="Enter Master Recovery Key"
+                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs font-mono"
+                  />
                 </div>
               </div>
             )}
@@ -328,32 +311,21 @@ export default function ForgotPassword() {
             <button
               type="submit"
               disabled={loading || (cooldown > 0 && method !== 'key')}
-              className={`w-full min-h-[46px] py-3 text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                method === 'key'
-                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
-                  : 'bg-slate-900 hover:bg-black shadow-slate-900/10'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
-                  <i className="ti ti-loader-2 animate-spin text-lg" />
-                  <span>Validating Security Ticket...</span>
+                  <i className="ti ti-loader-2 animate-spin text-sm" />
+                  <span>Processing...</span>
                 </>
               ) : cooldown > 0 && method !== 'key' ? (
-                <>
-                  <i className="ti ti-clock text-base" />
-                  <span>Resend in {cooldown}s</span>
-                </>
+                <span>Resend in {cooldown}s</span>
               ) : method === 'key' ? (
-                <>
-                  <i className="ti ti-lock-open text-base" />
-                  <span>Verify Master Key &amp; Reset Password</span>
-                </>
+                <span>Verify Master Key</span>
+              ) : method === 'sms' ? (
+                <span>Send SMS Code</span>
               ) : (
-                <>
-                  <i className="ti ti-shield-check text-base" />
-                  <span>{method === 'sms' ? 'Dispatch SMS Security Code' : 'Send Recovery Link'}</span>
-                </>
+                <span>Send Email Link</span>
               )}
             </button>
           </form>
@@ -361,22 +333,18 @@ export default function ForgotPassword() {
 
         {/* STEP 2: 6-Digit SMS OTP Verification */}
         {step === 2 && (
-          <div className="space-y-5 animate-in fade-in duration-200">
-            <div className="bg-blue-50/70 border border-blue-200/80 p-3.5 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
-              <i className="ti ti-device-mobile-message text-lg text-blue-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Enter 6-Digit Verification Code</p>
-                <p className="text-[11px] text-blue-800/80 mt-0.5">
-                  Dispatched to corporate mobile <span className="font-mono font-bold">{maskedPhone}</span>. Valid for 5 minutes.
-                </p>
-              </div>
+          <div className="space-y-4">
+            <div className="text-center">
+              <p className="text-xs text-slate-600">
+                Enter the 6-digit code sent to <span className="font-semibold text-slate-900">{maskedPhone}</span>
+              </p>
             </div>
 
-            {/* Development / Simulation 1-Click Autofill Banner */}
+            {/* Test Sandbox 1-Click Code (if available) */}
             {previewCode && (
-              <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between gap-2 text-xs text-amber-900">
-                <span className="font-medium text-[11px] truncate">
-                  Test Sandbox Code: <strong className="font-mono font-bold">{previewCode}</strong>
+              <div className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900">
+                <span className="text-[11px] truncate">
+                  Code: <strong className="font-mono">{previewCode}</strong>
                 </span>
                 <button
                   type="button"
@@ -385,14 +353,14 @@ export default function ForgotPassword() {
                     setOtp(digits);
                     handleVerifyOtp(previewCode);
                   }}
-                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] rounded-lg shadow-2xs transition-colors shrink-0 cursor-pointer"
+                  className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded cursor-pointer"
                 >
-                  1-Click Autofill
+                  Autofill
                 </button>
               </div>
             )}
 
-            {/* 6-Digit OTP Boxes */}
+            {/* 6 Digit Input Boxes */}
             <div className="flex justify-between items-center gap-1.5 sm:gap-2">
               {otp.map((digit, idx) => (
                 <input
@@ -405,7 +373,7 @@ export default function ForgotPassword() {
                   onChange={(e) => handleOtpChange(idx, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                   onPaste={handlePasteOtp}
-                  className="w-12 h-13 sm:w-14 sm:h-14 text-center font-mono font-black text-xl bg-slate-50/80 focus:bg-white border border-slate-300 focus:border-blue-600 rounded-xl outline-none focus:ring-4 focus:ring-blue-600/10 transition-all text-slate-900"
+                  className="w-10 h-11 sm:w-11 sm:h-12 text-center font-mono font-bold text-base sm:text-lg bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                 />
               ))}
             </div>
@@ -414,18 +382,15 @@ export default function ForgotPassword() {
               type="button"
               onClick={() => handleVerifyOtp()}
               disabled={loading || otp.join('').length < 6}
-              className="w-full min-h-[46px] py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
-                  <i className="ti ti-loader-2 animate-spin text-lg" />
-                  <span>Validating Security Ticket...</span>
+                  <i className="ti ti-loader-2 animate-spin text-sm" />
+                  <span>Verifying...</span>
                 </>
               ) : (
-                <>
-                  <i className="ti ti-key text-base" />
-                  <span>Verify Identity &amp; Proceed</span>
-                </>
+                <span>Verify &amp; Continue</span>
               )}
             </button>
 
@@ -436,34 +401,36 @@ export default function ForgotPassword() {
                   setStep(1);
                   setOtp(['', '', '', '', '', '']);
                 }}
-                className="text-slate-500 hover:text-slate-800 font-semibold flex items-center gap-1 cursor-pointer"
+                className="text-slate-500 hover:text-slate-800 font-medium cursor-pointer"
               >
-                <i className="ti ti-arrow-left text-sm" /> Change Method
+                &larr; Back
               </button>
 
               <button
                 type="button"
                 onClick={() => handleRequestReset()}
                 disabled={cooldown > 0 || loading}
-                className="text-blue-600 hover:text-blue-700 font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+                className="text-blue-600 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
               >
-                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend Code'}
+                {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
               </button>
             </div>
           </div>
         )}
 
         {/* Footer Back to Login */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+        <div className="mt-5 pt-4 border-t border-slate-100 text-center">
           <Link
             to="/login"
-            className="text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
           >
-            <i className="ti ti-arrow-left text-sm" /> Back to Login
+            Back to Login
           </Link>
-          <span className="text-[10px] text-slate-400 font-mono">Secured by C-Point Guard</span>
         </div>
       </div>
+
+      {/* Bottom spacer */}
+      <div className="pb-2 sm:pb-4" />
     </div>
   );
 }

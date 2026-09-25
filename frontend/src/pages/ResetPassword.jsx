@@ -21,8 +21,7 @@ export default function ResetPassword() {
 
   const navigate = useNavigate();
 
-  // Check whether we have a valid reset context:
-  // Either via single-use reset ticket (SMS OTP flow) OR active Supabase recovery session (Email link flow)
+  // Evaluate validity of context: ticket from SMS/Emergency OR Supabase recovery session
   useEffect(() => {
     let isMounted = true;
 
@@ -32,14 +31,12 @@ export default function ResetPassword() {
         return;
       }
 
-      // Check for Supabase Auth recovery session
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         if (isMounted) setHasValidContext(true);
         return;
       }
 
-      // Also listen to onAuthStateChange for PASSWORD_RECOVERY
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
           if (isMounted) setHasValidContext(true);
@@ -58,46 +55,33 @@ export default function ResetPassword() {
     };
   }, [ticket]);
 
-  // NIST SP 800-63B Password Complexity Criteria
+  // NIST Password Complexity Checkpoints
   const checks = {
     length: password.length >= 10,
-    upper: /[A-Z]/.test(password),
-    lower: /[a-z]/.test(password),
+    case: /[A-Z]/.test(password) && /[a-z]/.test(password),
     number: /[0-9]/.test(password),
     special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
   };
 
-  const passedChecksCount = Object.values(checks).filter(Boolean).length;
-  const isEntropyCompliant = passedChecksCount === 5;
+  const passedCount = Object.values(checks).filter(Boolean).length;
+  const isEntropyCompliant = passedCount === 4;
   const isMatch = password && confirmPassword && password === confirmPassword;
-
-  // Strength Bar Meta
-  const getStrengthMeta = () => {
-    if (!password) return { label: 'Password Strength', color: 'bg-slate-200', text: 'text-slate-400', width: '0%' };
-    if (passedChecksCount <= 2) return { label: 'Weak', color: 'bg-rose-500', text: 'text-rose-600', width: '25%' };
-    if (passedChecksCount === 3) return { label: 'Moderate', color: 'bg-amber-500', text: 'text-amber-600', width: '50%' };
-    if (passedChecksCount === 4) return { label: 'Strong', color: 'bg-blue-600', text: 'text-blue-600', width: '75%' };
-    return { label: 'Enterprise Grade (Compliant)', color: 'bg-emerald-600', text: 'text-emerald-600', width: '100%' };
-  };
-
-  const strengthMeta = getStrengthMeta();
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     setError(null);
 
     if (!isEntropyCompliant) {
-      return setError('Please satisfy all 5 enterprise password security requirements.');
+      return setError('Please satisfy all password complexity requirements.');
     }
 
     if (!isMatch) {
-      return setError('Password and confirmation do not match.');
+      return setError('Passwords do not match.');
     }
 
     setLoading(true);
 
     try {
-      // PATH A: Single-Use Cryptographic Reset Ticket (from 2FA SMS flow)
       if (ticket) {
         const res = await fetch(`${API_BASE_URL}/api/auth/security/reset-password`, {
           method: 'POST',
@@ -107,269 +91,206 @@ export default function ResetPassword() {
 
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'Failed to update credentials. Reset ticket may be expired.');
+          throw new Error(data.error || 'Failed to update password.');
         }
 
-        // Clean out temporary storage
         await supabase.auth.signOut().catch(() => {});
         localStorage.removeItem('user');
 
         setSuccess(true);
-        toast.success('Password updated successfully! All active sessions revoked.');
-        setTimeout(() => navigate('/login', { replace: true }), 2500);
+        toast.success('Password updated successfully!');
+        setTimeout(() => navigate('/login', { replace: true }), 2000);
         return;
       }
 
-      // PATH B: Supabase Auth Recovery Session (from Email recovery link)
       const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        throw new Error(updateError.message);
-      }
+      if (updateError) throw new Error(updateError.message);
 
-      // Terminate any temporary recovery session
       await supabase.auth.signOut().catch(() => {});
       localStorage.removeItem('user');
 
       setSuccess(true);
-      toast.success('Password updated successfully! All active sessions revoked.');
-      setTimeout(() => navigate('/login', { replace: true }), 2500);
+      toast.success('Password updated successfully!');
+      setTimeout(() => navigate('/login', { replace: true }), 2000);
 
     } catch (err) {
       console.error('[RESET_PASSWORD_ERROR]', err);
-      setError(err.message || 'An unexpected security error occurred during password update.');
+      setError(err.message || 'Error updating password.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50/80 relative p-4 font-sans">
-      <div className="absolute inset-0 bg-radial from-blue-50/40 via-transparent to-transparent pointer-events-none" />
+    <div className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 select-none p-4 sm:p-6 overflow-y-auto">
+      <div className="pt-2 sm:pt-4" />
 
-      <div className="relative z-10 w-full max-w-[460px] p-6 sm:p-8 bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/5">
+      {/* Corporate Auth Card (Aligned with Login.jsx) */}
+      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-7">
         
-        {/* Shield Icon Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md shadow-slate-900/10 mb-3.5">
-            <i className="ti ti-lock-check text-2xl" />
+        {/* Header */}
+        <div className="text-center mb-5 sm:mb-6">
+          <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-900 text-white shadow-xs mb-2.5">
+            <i className="ti ti-lock-check text-xl" />
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Establish New Password
-          </h1>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            Enforcing Enterprise Multi-Factor &amp; NIST SP 800-63B Standards
-          </p>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Set New Password</h1>
+          <p className="text-slate-500 text-xs mt-0.5">Create a secure password for your account</p>
         </div>
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200/80 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 animate-in fade-in duration-200">
-            <i className="ti ti-alert-circle text-base shrink-0 mt-0.5" />
-            <div className="flex-1 font-semibold">{error}</div>
+          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600 font-medium leading-relaxed">
+            {error}
           </div>
         )}
 
-        {/* Success Splash Screen */}
+        {/* Success View */}
         {success ? (
-          <div className="text-center py-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-inner">
-              <i className="ti ti-circle-check" />
+          <div className="text-center py-4 space-y-3">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xl mx-auto border border-emerald-200">
+              <i className="ti ti-check" />
             </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">
-                Credentials Successfully Secured
-              </h3>
-              <p className="text-xs text-slate-500 font-medium mt-1 max-w-sm mx-auto leading-relaxed">
-                Your new password has been established and all existing sessions have been terminated.
-                Redirecting you to login...
-              </p>
-            </div>
-            <div className="pt-2">
-              <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            </div>
+            <h2 className="text-base font-bold text-slate-900">Password Updated</h2>
+            <p className="text-xs text-slate-500">Redirecting to login portal...</p>
           </div>
         ) : !hasValidContext && !ticket ? (
           /* Missing Session Guard */
-          <div className="text-center py-4 space-y-4">
-            <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-900 text-left flex items-start gap-2.5">
-              <i className="ti ti-shield-alert text-lg text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">No Verified Recovery Session</p>
-                <p className="mt-0.5 text-amber-800/80 leading-relaxed">
-                  For your security, password changes require a verified recovery ticket or single-use email link.
-                </p>
-              </div>
-            </div>
+          <div className="text-center py-3 space-y-3">
+            <p className="text-xs text-slate-600 leading-relaxed">
+              No active recovery session found. Please request a new password reset link.
+            </p>
             <Link
               to="/forgot-password"
-              className="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+              className="inline-block w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
             >
-              <i className="ti ti-arrow-left" /> Initiate Identity Recovery
+              Back to Recovery
             </Link>
           </div>
         ) : (
-          /* Password Reset Form */
-          <form onSubmit={handleUpdate} className="space-y-4">
-            
+          /* Form */
+          <form onSubmit={handleUpdate} className="space-y-3.5">
             {emailParam && (
-              <div className="text-[11px] font-semibold text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200/60 truncate flex items-center gap-1.5">
-                <i className="ti ti-user-check text-slate-400" />
-                <span>Account: <strong className="text-slate-700">{emailParam}</strong></span>
-              </div>
+              <p className="text-xs text-slate-500 font-medium truncate ml-0.5">
+                Account: <span className="font-semibold text-slate-800">{emailParam}</span>
+              </p>
             )}
 
-            {/* New Password */}
+            {/* New Password Input */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                New Password
-              </label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">New Password</label>
               <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                  <i className="ti ti-lock" />
+                </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
-                  className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50/60 hover:bg-white focus:bg-white border border-slate-200 focus:border-slate-900 rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full pl-9 pr-9 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                   tabIndex={-1}
                 >
-                  <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-base`} />
+                  <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-sm`} />
                 </button>
               </div>
             </div>
 
-            {/* Password Entropy & Strength Meter */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500 font-semibold">Security Level:</span>
-                <span className={`font-bold ${strengthMeta.text}`}>{strengthMeta.label}</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-300 ${strengthMeta.color}`}
-                  style={{ width: strengthMeta.width }}
-                />
-              </div>
-            </div>
-
-            {/* NIST SP 800-63B Requirements Checklist */}
-            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1 text-[11px]">
+            {/* Compact Requirements Checklist */}
+            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80 space-y-1 text-[11px]">
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.length ? 'ti-circle-check text-emerald-600' : 'ti-circle text-slate-300'} text-sm`} />
+                <i className={`ti ${checks.length ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.length ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                  At least 10 characters long
+                  10+ characters
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.upper ? 'ti-circle-check text-emerald-600' : 'ti-circle text-slate-300'} text-sm`} />
-                <span className={checks.upper ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                  One uppercase letter (A&ndash;Z)
+                <i className={`ti ${checks.case ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
+                <span className={checks.case ? 'text-slate-800 font-medium' : 'text-slate-400'}>
+                  Upper &amp; lowercase letters
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.lower ? 'ti-circle-check text-emerald-600' : 'ti-circle text-slate-300'} text-sm`} />
-                <span className={checks.lower ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                  One lowercase letter (a&ndash;z)
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.number ? 'ti-circle-check text-emerald-600' : 'ti-circle text-slate-300'} text-sm`} />
+                <i className={`ti ${checks.number ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.number ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                  One numeric digit (0&ndash;9)
+                  At least one number (0&ndash;9)
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.special ? 'ti-circle-check text-emerald-600' : 'ti-circle text-slate-300'} text-sm`} />
+                <i className={`ti ${checks.special ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.special ? 'text-slate-800 font-medium' : 'text-slate-400'}>
-                  One special character (!@#$%^&amp;*)
+                  At least one special character
                 </span>
               </div>
             </div>
 
             {/* Confirm Password */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Confirm Password
-                </label>
+              <div className="flex items-center justify-between mb-1 ml-0.5">
+                <label className="block text-xs font-semibold text-slate-700">Confirm Password</label>
                 {confirmPassword && (
-                  <span
-                    className={`text-[10px] font-bold ${
-                      isMatch ? 'text-emerald-600' : 'text-rose-600'
-                    }`}
-                  >
-                    {isMatch ? 'Passwords match' : 'Passwords do not match'}
+                  <span className={`text-[10px] font-semibold ${isMatch ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {isMatch ? 'Matches' : 'Does not match'}
                   </span>
                 )}
               </div>
               <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                  <i className="ti ti-lock" />
+                </div>
                 <input
                   type={showConfirm ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
-                  className={`w-full pl-3.5 pr-10 py-2.5 bg-slate-50/60 hover:bg-white focus:bg-white border rounded-xl text-sm font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all ${
-                    confirmPassword
-                      ? isMatch
-                        ? 'border-emerald-500 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/10'
-                        : 'border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/10'
-                      : 'border-slate-200 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10'
-                  }`}
+                  className="w-full pl-9 pr-9 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                   tabIndex={-1}
                 >
-                  <i className={`ti ${showConfirm ? 'ti-eye-off' : 'ti-eye'} text-base`} />
+                  <i className={`ti ${showConfirm ? 'ti-eye-off' : 'ti-eye'} text-sm`} />
                 </button>
               </div>
             </div>
 
-            {/* Global Session Warning */}
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
-              <i className="ti ti-shield-bolt text-sm text-slate-500 shrink-0" />
-              <span>Updating password will automatically terminate active sessions on other devices.</span>
-            </p>
-
             <button
               type="submit"
               disabled={loading || !isEntropyCompliant || !isMatch}
-              className="w-full min-h-[46px] py-3 bg-slate-900 hover:bg-black active:scale-[0.99] text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
-                  <i className="ti ti-loader-2 animate-spin text-lg" />
-                  <span>Securing Credentials &amp; Revoking Sessions...</span>
+                  <i className="ti ti-loader-2 animate-spin text-sm" />
+                  <span>Updating...</span>
                 </>
               ) : (
-                <>
-                  <i className="ti ti-check text-base" />
-                  <span>Update Password &amp; Terminate Sessions</span>
-                </>
+                <span>Update Password</span>
               )}
             </button>
           </form>
         )}
 
-        {/* Footer Back to Login */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+        {/* Footer */}
+        <div className="mt-5 pt-4 border-t border-slate-100 text-center">
           <Link
             to="/login"
-            className="text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
           >
-            <i className="ti ti-arrow-left text-sm" /> Back to Login
+            Back to Login
           </Link>
-          <span className="text-[10px] text-slate-400 font-mono">Zero-Trust Protected</span>
         </div>
       </div>
+
+      <div className="pb-2 sm:pb-4" />
     </div>
   );
 }
