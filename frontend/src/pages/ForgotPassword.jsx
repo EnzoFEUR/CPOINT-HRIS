@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { API_BASE_URL } from '../utils/api';
+import { useOtpCooldown } from '../utils/useOtpCooldown';
 import toast from 'react-hot-toast';
 
 export default function ForgotPassword() {
@@ -18,24 +19,44 @@ export default function ForgotPassword() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [previewCode, setPreviewCode] = useState(null);
   const otpInputsRef = useRef([]);
-
-  // Cooldown countdown timer (in seconds)
-  const [cooldown, setCooldown] = useState(0);
   const navigate = useNavigate();
 
-  // Cooldown ticker
+  // Enterprise persistent OTP cooldown hook (persists across page reloads/navigation)
+  const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
+    'forgot_pwd_' + (email.trim().toLowerCase() || 'global'),
+    60
+  );
+
+  // Restore active recovery step if page is refreshed or navigated back
   useEffect(() => {
-    let timer;
-    if (cooldown > 0) {
-      timer = setInterval(() => setCooldown((prev) => prev - 1), 1000);
-    }
-    return () => clearInterval(timer);
-  }, [cooldown]);
+    try {
+      const saved = sessionStorage.getItem('cpoint_forgot_pwd_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email) setEmail(parsed.email);
+        if (parsed.method) setMethod(parsed.method);
+        if (parsed.maskedPhone) setMaskedPhone(parsed.maskedPhone);
+        if (parsed.previewCode) setPreviewCode(parsed.previewCode);
+        if (parsed.step === 2) setStep(2);
+      }
+    } catch {}
+  }, []);
 
   // Handle Form Submission for Step 1
   const handleRequestReset = async (e) => {
     if (e) e.preventDefault();
-    if (cooldown > 0 && method !== 'key') return;
+    if (cooldown > 0 && method !== 'key') {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+        if (saved.email && saved.email === email.trim().toLowerCase()) {
+          toast.success('Resuming verification with your active code');
+          setStep(2);
+          return;
+        }
+      } catch {}
+      toast.error(`Please wait ${cooldown}s before requesting a new code, or enter your active code.`);
+      return;
+    }
 
     setError(null);
     setSuccessMsg(null);
@@ -81,22 +102,38 @@ export default function ForgotPassword() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.retry_after) {
+          startCooldown(data.retry_after);
+        }
         throw new Error(data.error || 'Failed to dispatch security instructions.');
       }
 
-      setCooldown(60);
+      startCooldown(data.cooldown || 60);
 
-      if (method === 'sms') {
-        setMaskedPhone(data.maskedPhone || 'your registered corporate phone');
-        setPreviewCode(data.previewCode || null);
-        setStep(2);
-        toast.success(`Verification code sent to ${data.maskedPhone || 'your phone'}`);
-      } else if (method === 'email') {
-        setMaskedPhone(email.trim().toLowerCase());
-        setPreviewCode(data.previewCode || null); // null for real email sent via Brevo
-        setStep(2);
-        toast.success(`Verification code dispatched to ${email.trim().toLowerCase()}`);
-      }
+      const resolvedMasked = method === 'sms' 
+        ? (data.maskedPhone || 'your registered corporate phone')
+        : email.trim().toLowerCase();
+      const resolvedPreview = data.previewCode || null;
+
+      setMaskedPhone(resolvedMasked);
+      setPreviewCode(resolvedPreview);
+      setStep(2);
+
+      // Persist step 2 recovery session so reloading or returning doesn't reset it
+      try {
+        sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+          email: email.trim().toLowerCase(),
+          method,
+          maskedPhone: resolvedMasked,
+          previewCode: resolvedPreview,
+          step: 2
+        }));
+      } catch {}
+
+      toast.success(method === 'sms' 
+        ? `Verification code sent to ${resolvedMasked}`
+        : `Verification code dispatched to ${resolvedMasked}`
+      );
     } catch (err) {
       console.error('[FORGOT_PASSWORD_ERROR]', err);
       setError(err.message || 'Unable to connect to security authentication service.');
@@ -169,6 +206,10 @@ export default function ForgotPassword() {
       }
 
       toast.success('Identity verified. Redirecting to password reset...');
+      clearCooldown();
+      try {
+        sessionStorage.removeItem('cpoint_forgot_pwd_session');
+      } catch {}
       navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
         replace: true,
       });
@@ -213,6 +254,33 @@ export default function ForgotPassword() {
         {/* STEP 1: Input and Method Selection */}
         {step === 1 && (
           <form onSubmit={handleRequestReset} className="space-y-3.5">
+            {/* Active Code Resume Card */}
+            {isCooldown && maskedPhone && (
+              <div className="p-3 bg-blue-50/80 border border-blue-200/90 rounded-xl text-left shadow-2xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                    </span>
+                    <span>Code active via {method === 'sms' ? 'SMS' : 'Email'}</span>
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                    {cooldown}s cooldown
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                  Your security code was dispatched to {maskedPhone} and remains valid for 5 minutes.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>Enter Existing Code</span>
+                  <i className="ti ti-arrow-right text-xs" />
+                </button>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email</label>
               <div className="relative">

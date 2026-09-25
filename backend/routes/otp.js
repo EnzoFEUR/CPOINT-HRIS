@@ -1,13 +1,30 @@
 import express from 'express';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp } from '../services/otpService.js';
+import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp } from '../services/otpService.js';
 import { supabase } from '../supabaseClient.js';
 
 const router = express.Router();
 
+// GET /api/auth/otp/status - Check if an active unexpired OTP exists for identifier
+router.get('/status', (req, res) => {
+    const { identifier, email, phone, purpose = 'login_2fa' } = req.query;
+    const rawTarget = identifier || email || phone;
+    const scopedTarget = `${purpose}_${rawTarget}`.toLowerCase().trim();
+    const active = getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
+    const cooldown = checkOtpCooldown(scopedTarget);
+
+    res.json({
+        success: true,
+        hasActiveOtp: Boolean(active),
+        remainingSeconds: active?.remainingSeconds || 0,
+        isCooldown: !cooldown.allowed,
+        cooldownRemaining: cooldown.remainingSeconds
+    });
+});
+
 // POST /api/auth/otp/send - Generate and dispatch 6-digit OTP
 router.post('/send', async (req, res) => {
     try {
-        const { email, phone, user_id, method = 'email' } = req.body;
+        const { email, phone, user_id, method = 'email', purpose = 'login_2fa' } = req.body;
         
         if (!email && !phone && !user_id) {
             return res.status(400).json({ success: false, error: 'Missing user identifier (email, phone, or user_id)' });
@@ -57,21 +74,36 @@ router.post('/send', async (req, res) => {
             }
         }
 
-        const identifier = (method === 'sms' ? targetPhone : targetEmail) || email || user_id;
-        if (!identifier) {
+        const baseIdentifier = (method === 'sms' ? targetPhone : targetEmail) || email || user_id;
+        if (!baseIdentifier) {
             return res.status(400).json({ 
                 success: false, 
                 error: `No registered ${method === 'sms' ? 'phone number' : 'email'} found for this account.` 
             });
         }
 
-        // Generate 6-digit code and store in TTL memory store
-        const code = generateOtpCode();
+        // Cryptographically isolate OTP stores by action scope
+        const identifier = `${purpose}_${baseIdentifier}`.toLowerCase().trim();
+
+        // Enterprise Resend Cooldown Check (scoped by purpose)
+        const cooldownCheck = checkOtpCooldown(identifier);
+        if (!cooldownCheck.allowed) {
+            return res.status(429).json({
+                success: false,
+                error: `Please wait ${cooldownCheck.remainingSeconds}s before requesting a new verification code.`,
+                retry_after: cooldownCheck.remainingSeconds
+            });
+        }
+
+        // Enterprise Standard: Reuse active code if still valid (< 5 mins), otherwise generate fresh code
+        const otpInfo = getOrGenerateOtp(identifier);
+        const code = otpInfo.code;
         storeOtp(identifier, code);
         
-        // Also map to targetEmail so verification succeeds regardless of identifier provided
-        if (targetEmail && identifier !== targetEmail) {
-            storeOtp(targetEmail, code);
+        // Also map to targetEmail under the same purpose scope so verification succeeds regardless of identifier provided
+        if (targetEmail && baseIdentifier !== targetEmail) {
+            const emailScopedId = `${purpose}_${targetEmail}`.toLowerCase().trim();
+            storeOtp(emailScopedId, code);
         }
 
         let dispatchResult;
@@ -81,6 +113,12 @@ router.post('/send', async (req, res) => {
             dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
         }
 
+        // Record cooldown dispatch on both primary identifier and email (scoped by purpose)
+        recordOtpDispatch(identifier);
+        if (targetEmail && baseIdentifier !== targetEmail) {
+            recordOtpDispatch(`${purpose}_${targetEmail}`.toLowerCase().trim());
+        }
+
         const isSimulated = Boolean(dispatchResult?.simulated);
         const previewCode = (isSimulated || method === 'sms' || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
 
@@ -88,8 +126,12 @@ router.post('/send', async (req, res) => {
             success: true,
             message: `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
             method,
+            purpose,
+            cooldown: 60,
             simulated: isSimulated,
-            previewCode
+            previewCode,
+            reusedExisting: otpInfo.isExisting,
+            expiresIn: otpInfo.remainingSeconds
         });
 
     } catch (err) {
@@ -101,20 +143,32 @@ router.post('/send', async (req, res) => {
 // POST /api/auth/otp/verify - Validate 6-digit OTP code
 router.post('/verify', async (req, res) => {
     try {
-        const { identifier, email, phone, otp } = req.body;
-        const targetId = identifier || email || phone;
+        const { identifier, email, phone, otp, purpose = 'login_2fa' } = req.body;
+        const rawTarget = identifier || email || phone;
 
-        if (!targetId || !otp) {
+        if (!rawTarget || !otp) {
             return res.status(400).json({ success: false, error: 'Missing identifier or OTP code' });
         }
 
-        const result = verifyOtpCode(targetId, otp);
+        // Check scoped identifier first (e.g. login_2fa_xxx or modal_stepup_xxx)
+        const scopedTarget = `${purpose}_${rawTarget}`.toLowerCase().trim();
+        let result = verifyOtpCode(scopedTarget, otp);
+
+        // Fallback check against rawTarget for legacy compatibility
+        if (!result.valid && !rawTarget.includes('_')) {
+            const fallbackResult = verifyOtpCode(rawTarget, otp);
+            if (fallbackResult.valid) {
+                result = fallbackResult;
+            }
+        }
+
         if (!result.valid) {
             return res.status(400).json({ success: false, error: result.error });
         }
 
         res.json({
             success: true,
+            purpose,
             message: 'OTP verified successfully'
         });
 

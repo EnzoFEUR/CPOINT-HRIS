@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp } from '../services/otpService.js';
+import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp } from '../services/otpService.js';
 import { createAuditLog } from './auditLogs.js';
 
 const router = express.Router();
@@ -148,6 +148,16 @@ router.post('/forgot-password', async (req, res) => {
             }
         }
 
+        // 4.5. Enterprise Cooldown Check (prevent SMS/Email flood)
+        const cooldownCheck = checkOtpCooldown(normalizedEmail);
+        if (!cooldownCheck.allowed) {
+            return res.status(429).json({
+                success: false,
+                error: `Please wait ${cooldownCheck.remainingSeconds}s before requesting another verification code.`,
+                retry_after: cooldownCheck.remainingSeconds
+            });
+        }
+
         // 5. Method A: SMS OTP Dispatch (Demo Sandbox Code with 1-Click Autofill)
         if (method === 'sms') {
             if (!userPhone) {
@@ -157,8 +167,9 @@ router.post('/forgot-password', async (req, res) => {
                 });
             }
 
-            const code = generateOtpCode();
             const otpStorageKey = `pwd_reset_${normalizedEmail}`;
+            const otpInfo = getOrGenerateOtp(otpStorageKey);
+            const code = otpInfo.code;
             storeOtp(otpStorageKey, code);
 
             // Attempt carrier gateway dispatch; returns simulated if gateway uncredited
@@ -166,6 +177,9 @@ router.post('/forgot-password', async (req, res) => {
             const isSimulated = Boolean(smsResult?.simulated) || !process.env.SEMAPHORE_API_KEY;
             // For SMS, provide demo code so examiners and testers can 1-click autofill in the UI
             const previewCode = code;
+
+            recordOtpDispatch(normalizedEmail);
+            recordOtpDispatch(userPhone);
 
             await createAuditLog({
                 log_name: 'security',
@@ -189,15 +203,21 @@ router.post('/forgot-password', async (req, res) => {
                 method: 'sms',
                 maskedPhone: maskPhone(userPhone),
                 message: `6-digit security code sent to ${maskPhone(userPhone)}`,
+                cooldown: 60,
                 simulated: isSimulated,
-                previewCode
+                previewCode,
+                reusedExisting: otpInfo.isExisting,
+                expiresIn: otpInfo.remainingSeconds
             });
         }
 
         // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
-        const emailCode = generateOtpCode();
+        const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${normalizedEmail}`);
+        const emailCode = emailOtpInfo.code;
         storeOtp(`pwd_reset_${normalizedEmail}`, emailCode);
         const emailResult = await sendEmailOtp(normalizedEmail, emailCode, userName);
+
+        recordOtpDispatch(normalizedEmail);
 
         await createAuditLog({
             log_name: 'security',
@@ -224,6 +244,7 @@ router.post('/forgot-password', async (req, res) => {
             success: true,
             method: 'email',
             message: `6-digit security code dispatched to your email inbox: ${normalizedEmail}`,
+            cooldown: 60,
             simulated: isSimulated,
             previewCode
         });

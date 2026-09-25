@@ -6,7 +6,13 @@ dotenv.config();
 // In-memory OTP storage with 5-minute TTL
 const otpStore = new Map();
 
-// Periodic cleanup of expired OTPs every 5 minutes
+// Cooldown duration between resends (standard enterprise 60 seconds)
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Resend Cooldown Store: identifier -> timestamp of last dispatch
+const cooldownStore = new Map();
+
+// Periodic cleanup of expired OTPs and stale cooldown records every 5 minutes
 setInterval(() => {
     const now = Date.now();
     for (const [key, record] of otpStore.entries()) {
@@ -14,24 +20,119 @@ setInterval(() => {
             otpStore.delete(key);
         }
     }
+    for (const [key, timestamp] of cooldownStore.entries()) {
+        if (now - timestamp > 10 * 60 * 1000) {
+            cooldownStore.delete(key);
+        }
+    }
 }, 5 * 60 * 1000);
+
+// Check if an identifier is currently in active cooldown
+export function checkOtpCooldown(identifier, cooldownMs = OTP_RESEND_COOLDOWN_MS) {
+    if (!identifier) return { allowed: true, remainingSeconds: 0 };
+    const key = identifier.toLowerCase().trim();
+    const lastSent = cooldownStore.get(key);
+    if (!lastSent) return { allowed: true, remainingSeconds: 0 };
+
+    const elapsed = Date.now() - lastSent;
+    if (elapsed < cooldownMs) {
+        const remainingSeconds = Math.ceil((cooldownMs - elapsed) / 1000);
+        return { allowed: false, remainingSeconds };
+    }
+    return { allowed: true, remainingSeconds: 0 };
+}
+
+// Record successful OTP dispatch timestamp to enforce cooldown
+export function recordOtpDispatch(identifier) {
+    if (!identifier) return;
+    const key = identifier.toLowerCase().trim();
+    cooldownStore.set(key, Date.now());
+}
 
 // Generate 6-digit cryptographic OTP code
 export function generateOtpCode() {
     return crypto.randomInt(100000, 999999).toString();
 }
 
-// Store OTP in memory with a 5-minute expiration
+/**
+ * Retrieve active unexpired OTP code or generate a new one.
+ * Enterprise standard: If an unexpired code exists (< 5 minutes) and attempts < 5,
+ * we reuse the active code so that resends and retries deliver the exact same code.
+ */
+export function getOrGenerateOtp(identifier) {
+    if (!identifier) {
+        return { code: generateOtpCode(), isExisting: false, remainingSeconds: 300 };
+    }
+
+    const key = identifier.toLowerCase().trim();
+    const existing = otpStore.get(key);
+    const now = Date.now();
+
+    if (existing && existing.expiresAt > now && existing.attempts < 5 && existing.code) {
+        return {
+            code: existing.code,
+            isExisting: true,
+            expiresAt: existing.expiresAt,
+            remainingSeconds: Math.ceil((existing.expiresAt - now) / 1000)
+        };
+    }
+
+    const newCode = generateOtpCode();
+    return {
+        code: newCode,
+        isExisting: false,
+        expiresAt: now + 5 * 60 * 1000,
+        remainingSeconds: 300
+    };
+}
+
+/**
+ * Store OTP in memory with a 5-minute expiration.
+ * Retains previous valid codes so delayed SMS/emails can still be verified ("use the old one").
+ */
 export function storeOtp(identifier, code) {
     const key = identifier.toLowerCase().trim();
+    const now = Date.now();
+    const existing = otpStore.get(key);
+
+    const previousCodes = [];
+    if (existing && existing.expiresAt > now) {
+        if (existing.code && existing.code !== code) {
+            previousCodes.push(existing.code);
+        }
+        if (Array.isArray(existing.previousCodes)) {
+            for (const prev of existing.previousCodes) {
+                if (prev && prev !== code && !previousCodes.includes(prev)) {
+                    previousCodes.push(prev);
+                }
+            }
+        }
+    }
+
     otpStore.set(key, {
         code,
-        expiresAt: Date.now() + 5 * 60 * 1000,
+        previousCodes: previousCodes.slice(0, 5),
+        expiresAt: (existing && existing.code === code && existing.expiresAt > now)
+            ? existing.expiresAt
+            : now + 5 * 60 * 1000,
         attempts: 0
     });
 }
 
-// Verify OTP against memory store
+// Get active unexpired OTP status without modifying state
+export function getActiveOtp(identifier) {
+    if (!identifier) return null;
+    const key = identifier.toLowerCase().trim();
+    const record = otpStore.get(key);
+    if (!record || Date.now() > record.expiresAt) return null;
+    return {
+        code: record.code,
+        expiresAt: record.expiresAt,
+        remainingSeconds: Math.ceil((record.expiresAt - Date.now()) / 1000)
+    };
+}
+
+// Verify OTP against memory store (accepts current active code or recent unexpired codes)
 export function verifyOtpCode(identifier, code) {
     if (!identifier || !code) return { valid: false, error: 'Missing identifier or code' };
 
@@ -52,7 +153,11 @@ export function verifyOtpCode(identifier, code) {
         return { valid: false, error: 'Too many incorrect attempts. Please request a new code.' };
     }
 
-    if (record.code !== code.trim()) {
+    const enteredCode = String(code).trim();
+    const matchesCurrent = record.code === enteredCode;
+    const matchesPrevious = Array.isArray(record.previousCodes) && record.previousCodes.includes(enteredCode);
+
+    if (!matchesCurrent && !matchesPrevious) {
         record.attempts++;
         return { valid: false, error: `Invalid code. ${5 - record.attempts} attempts remaining.` };
     }

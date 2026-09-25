@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { useOtpCooldown } from '../utils/useOtpCooldown';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
 
@@ -27,44 +28,82 @@ export default function OtpVerificationModal({
     const phone = propPhone || sessionUser?.phone || '09123456789';
     const phoneMask = propPhoneMask || (phone ? `***${phone.slice(-2)}` : '***89');
 
+    // Scoped cooldown key based on identity
+    const cooldownKey = `modal_otp_${(email || phone || 'global').toLowerCase().trim()}`;
+    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(cooldownKey, 60);
+
     const [step, setStep] = useState('select');
     const [method, setMethod] = useState('email');
     const [digits, setDigits] = useState(['', '', '', '', '', '']);
     const [isSending, setIsSending] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
-    const [resendTimer, setResendTimer] = useState(0);
     const [errorMessage, setErrorMessage] = useState('');
     const [demoOtpCode, setDemoOtpCode] = useState(null);
+
+    // Code expiration countdown (5 minutes)
+    const [expiryTimer, setExpiryTimer] = useState(() => {
+        try {
+            const exp = sessionStorage.getItem(`cpoint_modal_exp_${cooldownKey}`);
+            if (!exp) return 0;
+            const diff = Math.ceil((parseInt(exp, 10) - Date.now()) / 1000);
+            return diff > 0 ? diff : 0;
+        } catch {
+            return 0;
+        }
+    });
 
     const inputRefs = useRef([]);
 
     useEffect(() => {
         let timer;
-        if (resendTimer > 0) {
+        if (expiryTimer > 0) {
             timer = setInterval(() => {
-                setResendTimer((prev) => prev - 1);
+                setExpiryTimer((prev) => (prev > 0 ? prev - 1 : 0));
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [resendTimer]);
+    }, [expiryTimer]);
 
     useEffect(() => {
         if (isOpen) {
-            setStep('select');
             setDigits(['', '', '', '', '', '']);
             setErrorMessage('');
-            setResendTimer(0);
-            setDemoOtpCode(null);
+            try {
+                const exp = sessionStorage.getItem(`cpoint_modal_exp_${cooldownKey}`);
+                const diff = exp ? Math.ceil((parseInt(exp, 10) - Date.now()) / 1000) : 0;
+                if (diff > 0) {
+                    setExpiryTimer(diff);
+                    setStep('verify');
+                } else {
+                    setStep('select');
+                    setDemoOtpCode(null);
+                }
+            } catch {
+                setStep('select');
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, cooldownKey]);
 
-    // Handle Method Selection — both methods now go through the real backend.
-    // The previous SMS path generated the code in the browser and verified it
-    // against itself, so anyone opening dev tools (or just reading the on-screen
-    // banner) could unlock document downloads without ever proving they own the
-    // phone or email on file. That's fixed by never trusting client-only state
-    // for the actual gate; SHOW_DEMO_OTP below only controls what's *displayed*.
+    // Handle Method Selection & OTP Dispatch
     const handleSelectMethod = async (selectedMethod) => {
+        // If an active code was already dispatched to this method and has not expired (< 5 mins),
+        // let the user proceed immediately to verify step without triggering a duplicate dispatch or cooldown
+        if (expiryTimer > 0 && selectedMethod === method && step === 'select') {
+            toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
+            setStep('verify');
+            return;
+        }
+
+        if (isCooldown && selectedMethod === method && step === 'verify') {
+            toast.error(`Please wait ${cooldown}s before requesting a new code.`);
+            return;
+        }
+
+        if (isCooldown && selectedMethod !== method) {
+            toast.error(`Please wait ${cooldown}s before switching dispatch channel, or use the code already sent.`);
+            return;
+        }
+
         setMethod(selectedMethod);
         setIsSending(true);
         setErrorMessage('');
@@ -78,7 +117,8 @@ export default function OtpVerificationModal({
                 body: JSON.stringify({
                     method: selectedMethod,
                     email,
-                    phone
+                    phone,
+                    purpose: 'modal_stepup'
                 })
             });
 
@@ -86,9 +126,22 @@ export default function OtpVerificationModal({
             let data = {};
             try { data = text ? JSON.parse(text) : {}; } catch {}
 
-            if (!response.ok || !data.success) {
+            if (response.status === 429 || !response.ok || !data.success) {
+                if (data.retry_after) {
+                    startCooldown(data.retry_after);
+                }
                 throw new Error(data.error || `Failed to dispatch ${selectedMethod === 'sms' ? 'SMS' : 'email'} verification code.`);
             }
+
+            // Start persistent 60s cooldown
+            startCooldown(data.cooldown || 60);
+
+            // Persist 5-minute code expiration timestamp
+            const expTime = Date.now() + 300 * 1000;
+            try {
+                sessionStorage.setItem(`cpoint_modal_exp_${cooldownKey}`, String(expTime));
+            } catch {}
+            setExpiryTimer(300);
 
             // Populate previewCode whenever returned by the backend
             if (data.previewCode) {
@@ -100,7 +153,6 @@ export default function OtpVerificationModal({
                     ? `Verification code sent to ${phoneMask || 'your phone'}`
                     : `Verification code sent to ${email}`
             );
-            setResendTimer(300);
             setStep('verify');
             setTimeout(() => inputRefs.current[0]?.focus(), 150);
         } catch (err) {
@@ -130,7 +182,8 @@ export default function OtpVerificationModal({
                     method,
                     email,
                     identifier: method === 'sms' ? phone : email,
-                    otp: code
+                    otp: code,
+                    purpose: 'modal_stepup'
                 })
             });
 
@@ -142,7 +195,12 @@ export default function OtpVerificationModal({
                 throw new Error(data.error || 'Invalid verification code.');
             }
 
-            toast.success('Signed in successfully');
+            try {
+                sessionStorage.removeItem(`cpoint_modal_exp_${cooldownKey}`);
+                clearCooldown();
+            } catch {}
+
+            toast.success('Identity verified successfully');
             onSuccess?.(data);
             onClose();
         } catch (err) {
@@ -228,7 +286,34 @@ export default function OtpVerificationModal({
                             </p>
                         </div>
 
-                        <div className="space-y-3 pt-2">
+                        {/* Active Code Resume Card if valid (< 5 mins) */}
+                        {expiryTimer > 0 && (
+                            <div className="p-3.5 bg-blue-50/80 border border-blue-200/90 rounded-2xl text-left shadow-2xs">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                        <span className="relative flex h-2 w-2">
+                                        </span>
+                                        <span>Code active via {method === 'sms' ? 'SMS' : 'Email'}</span>
+                                    </span>
+                                    <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                                        {Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
+                                    A verification code is already active and valid for 5 minutes. You can enter the code already sent to your device.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => setStep('verify')}
+                                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                    <span>Enter Existing Code</span>
+                                    <i className="ti ti-arrow-right text-xs" />
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="space-y-3 pt-1">
                             <button
                                 type="button"
                                 onClick={() => handleSelectMethod('sms')}
@@ -365,8 +450,8 @@ export default function OtpVerificationModal({
                             <span>
                                 Code expires in{' '}
                                 <strong className="text-slate-700 font-mono">
-                                    {resendTimer > 0
-                                        ? `${Math.floor(resendTimer / 60)}:${(resendTimer % 60)
+                                    {expiryTimer > 0
+                                        ? `${Math.floor(expiryTimer / 60)}:${(expiryTimer % 60)
                                               .toString()
                                               .padStart(2, '0')}`
                                         : '0:00'}
@@ -376,10 +461,24 @@ export default function OtpVerificationModal({
                             <button
                                 type="button"
                                 onClick={() => handleSelectMethod(method)}
-                                disabled={resendTimer > 0 || isSending || isVerifying}
+                                disabled={isCooldown || isSending || isVerifying}
                                 className="text-blue-600 hover:text-blue-700 font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
                             >
-                                {isSending ? 'Sending...' : 'Resend'}
+                                {isSending ? 'Sending...' : isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
+                            </button>
+                        </div>
+
+                        <div className="text-center pt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setStep('select');
+                                    setDigits(['', '', '', '', '', '']);
+                                    setErrorMessage('');
+                                }}
+                                className="text-xs text-slate-400 hover:text-slate-600 font-semibold transition-colors cursor-pointer"
+                            >
+                                Switch Method
                             </button>
                         </div>
                     </div>

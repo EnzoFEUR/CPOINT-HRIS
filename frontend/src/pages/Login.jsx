@@ -4,20 +4,68 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
+import { useOtpCooldown } from '../utils/useOtpCooldown';
 
 export default function Login() {
-    const [email, setEmail] = useState('');
+    // Restore any active 2FA recovery session from page reload or navigation
+    const savedSession = (() => {
+        try {
+            const raw = sessionStorage.getItem('cpoint_login_2fa_session');
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    })();
+
+    const [email, setEmail] = useState(savedSession?.email || '');
     const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
     // Multi-step authentication: 1 = Credentials, 2 = Choose OTP, 3 = Verify OTP
-    const [step, setStep] = useState(1);
-    const [employeeData, setEmployeeData] = useState(null);
+    const [step, setStep] = useState(savedSession?.step || 1);
+    const [employeeData, setEmployeeData] = useState(savedSession?.employeeData || null);
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
-    const [otpMethod, setOtpMethod] = useState('');
-    const [generatedOtp, setGeneratedOtp] = useState(null);
+    const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
+    const [generatedOtp, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
+
+    // Enterprise persistent OTP cooldown hook (persists across page reloads/navigation/back button)
+    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
+        'login_2fa_' + (email.trim().toLowerCase() || 'global'),
+        60
+    );
+
+    // Dynamic 5-minute code expiration timer that survives refresh
+    const [timer, setTimer] = useState(() => {
+        if (savedSession?.expiresAt) {
+            const diff = Math.ceil((savedSession.expiresAt - Date.now()) / 1000);
+            return diff > 0 ? diff : 0;
+        }
+        return 300;
+    });
+
+    const handleReturnToLogin = () => {
+        try {
+            sessionStorage.removeItem('cpoint_login_2fa_session');
+        } catch {}
+        setStep(1);
+        setOtpCode(['', '', '', '', '', '']);
+        setGeneratedOtp(null);
+        setError(null);
+    };
+
+    const handleSwitchMethod = () => {
+        setStep(2);
+        setError(null);
+        try {
+            const raw = sessionStorage.getItem('cpoint_login_2fa_session');
+            if (raw) {
+                const s = JSON.parse(raw);
+                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 2 }));
+            }
+        } catch {}
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -71,21 +119,30 @@ export default function Login() {
                     }
                 }
 
-                setEmployeeData({ 
+                const empWithMeta = { 
                     ...employee, 
                     _auth_metadata: authData.user.user_metadata 
-                });
+                };
+
+                setEmployeeData(empWithMeta);
                 setLoading(false);
                 setStep(2);
+
+                try {
+                    sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                        email,
+                        employeeData: empWithMeta,
+                        step: 2,
+                        otpMethod: '',
+                        generatedOtp: null
+                    }));
+                } catch {}
             }
         } catch (err) {
             setLoading(false);
             setError("Connection error. Please try again.");
         }
     };
-
-    const [previewOtp, setPreviewOtp] = useState(null);
-    const [timer, setTimer] = useState(300);
 
     // Countdown timer for OTP expiry
     useEffect(() => {
@@ -97,6 +154,20 @@ export default function Login() {
     }, [step, timer]);
 
     const sendOtp = async (method) => {
+        // If an active unexpired code is already dispatched to this method (within 5 mins),
+        // let the user proceed immediately to Step 3 without triggering a duplicate dispatch or cooldown
+        if (timer > 0 && method === otpMethod) {
+            toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
+            setStep(3);
+            return;
+        }
+
+        // If in active 60s cooldown and trying to dispatch via another method
+        if (isCooldown && method !== otpMethod) {
+            toast.error(`Please wait ${cooldown}s before requesting a code via ${method === 'sms' ? 'SMS' : 'Email'}, or use the code already sent.`);
+            return;
+        }
+
         setOtpMethod(method);
         setLoading(true);
         setError(null);
@@ -108,14 +179,21 @@ export default function Login() {
                     email,
                     phone: employeeData?.phone,
                     user_id: employeeData?.id,
-                    method
+                    method,
+                    purpose: 'login_2fa'
                 })
             });
 
             const data = await res.json();
             if (!res.ok || !data.success) {
+                if (data.retry_after) {
+                    startCooldown(data.retry_after);
+                }
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
+
+            // Start enterprise 60s resend cooldown
+            startCooldown(data.cooldown || 60);
 
             // Save and display preview / mock code whenever returned by server (simulation or demo)
             if (data.previewCode) {
@@ -126,8 +204,21 @@ export default function Login() {
                 toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
             }
 
-            setTimer(300);
+            const activeSeconds = data.expiresIn || 300;
+            const codeExpiresAt = Date.now() + activeSeconds * 1000;
+            setTimer(activeSeconds);
             setStep(3);
+
+            try {
+                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                    email,
+                    employeeData,
+                    step: 3,
+                    otpMethod: method,
+                    generatedOtp: data.previewCode || null,
+                    expiresAt: codeExpiresAt
+                }));
+            } catch {}
         } catch (err) {
             setError(err.message || 'Error sending verification code');
             toast.error(err.message || 'Failed to send verification code');
@@ -229,7 +320,8 @@ export default function Login() {
                     email,
                     phone: employeeData?.phone,
                     identifier: otpMethod === 'sms' ? employeeData?.phone : email,
-                    otp: enteredOtp
+                    otp: enteredOtp,
+                    purpose: 'login_2fa'
                 })
             });
 
@@ -259,6 +351,12 @@ export default function Login() {
             
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
+
+            // Clear 2FA temporary session and cooldown upon successful authentication
+            try {
+                sessionStorage.removeItem('cpoint_login_2fa_session');
+                clearCooldown();
+            } catch {}
 
             // Prime disciplinary cache synchronously for instant zero-flash screen loading
             if (userData.status === 'inactive' || userData.is_active === false) {
@@ -385,7 +483,40 @@ export default function Login() {
                             <i className="ti ti-shield-lock text-xl" />
                         </div>
                         <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Two-Factor Authentication</h2>
-                        <p className="text-slate-500 text-xs mt-0.5 mb-4 sm:mb-5">Choose where to receive your security code</p>
+                        <p className="text-slate-500 text-xs mt-0.5 mb-3.5 sm:mb-4">Choose where to receive your security code</p>
+
+                        {/* Direct Jump to Active Verification if code is already in transit / valid (< 5 mins) */}
+                        {timer > 0 && otpMethod && (
+                            <div className="mb-3.5 p-3.5 bg-blue-50/80 border border-blue-200/90 rounded-xl text-left shadow-2xs">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                        <span className="relative flex h-2 w-2">
+                                        </span>
+                                        <span>Code active via {otpMethod === 'sms' ? 'SMS' : 'Email'}</span>
+                                    </span>
+                                    <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                                        {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
+                                    Your 6-digit code was sent and remains valid for 5 minutes. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setStep(3);
+                                        try {
+                                            const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                                            sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
+                                        } catch {}
+                                    }}
+                                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                    <span>Enter Existing Code</span>
+                                    <i className="ti ti-arrow-right text-xs" />
+                                </button>
+                            </div>
+                        )}
 
                         <div className="space-y-2 sm:space-y-2.5">
                             <button 
@@ -418,8 +549,9 @@ export default function Login() {
                         </div>
 
                         <button 
-                            onClick={() => setStep(1)} 
-                            className="mt-4 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors"
+                            type="button"
+                            onClick={handleReturnToLogin} 
+                            className="mt-4 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                         >
                             Return to Login
                         </button>
@@ -467,8 +599,8 @@ export default function Login() {
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-lg border border-amber-300 transition-colors cursor-pointer shadow-2xs w-full justify-between active:scale-[0.99]"
                                     >
                                         <div className="flex items-center gap-2">
-                                            <i className="ti ti-bulb text-amber-600 text-sm" />
-                                            <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
+                                             <i className="ti ti-bulb text-amber-600 text-sm" />
+                                             <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
                                         </div>
                                         <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded text-amber-900">Autofill</span>
                                     </button>
@@ -494,13 +626,31 @@ export default function Login() {
                             <span className="mx-1 text-slate-300">•</span>
                             <button 
                                 type="button"
-                                disabled={loading}
+                                disabled={loading || isCooldown}
                                 onClick={() => sendOtp(otpMethod)} 
-                                className="text-blue-600 hover:underline font-semibold disabled:opacity-40 cursor-pointer"
+                                className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                             >
-                                Resend
+                                {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
                             </button>
                         </p>
+
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
+                            <button 
+                                type="button"
+                                onClick={handleSwitchMethod} 
+                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                            >
+                                Switch Method
+                            </button>
+                            <span className="text-slate-200 text-xs">•</span>
+                            <button 
+                                type="button"
+                                onClick={handleReturnToLogin} 
+                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                            >
+                                Return to Login
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
