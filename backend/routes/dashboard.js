@@ -118,7 +118,7 @@ function computeDepartmentPunctualityFromRecords(records, empMap) {
  * NOTE: the Night Shift Differential check was removed - the company no longer
  * runs night shifts, so this metric is retired.
  */
-function computeDoleComplianceFromRecords(records) {
+function computeDoleComplianceFromRecords(records, empMap = new Map()) {
     const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
     const filteredRecords = (records || []).filter(r => r.date >= thirtyDaysAgo);
 
@@ -136,17 +136,35 @@ function computeDoleComplianceFromRecords(records) {
         const dates = Array.from(datesByEmployee[empId]).sort();
         let streak = 1;
         let maxStreak = 1;
+        let streakEnd = dates[0];
+        let bestStreakEnd = dates[0];
         for (let i = 1; i < dates.length; i++) {
             const diffDays = Math.round(
                 (new Date(dates[i]) - new Date(dates[i - 1])) / DAY_MS
             );
-            streak = diffDays === 1 ? streak + 1 : 1;
-            maxStreak = Math.max(maxStreak, streak);
+            if (diffDays === 1) {
+                streak += 1;
+                streakEnd = dates[i];
+            } else {
+                streak = 1;
+                streakEnd = dates[i];
+            }
+            if (streak > maxStreak) {
+                maxStreak = streak;
+                bestStreakEnd = streakEnd;
+            }
         }
         if (maxStreak <= 6) {
             compliantEmployees += 1;
         } else {
-            restDayViolations.push({ employee_id: empId, consecutive_days: maxStreak });
+            const emp = empMap.get(empId);
+            restDayViolations.push({
+                employee_id: empId,
+                name: emp ? `${emp.first_name} ${emp.last_name}` : 'Staff Member',
+                department: emp?.department || 'Unassigned',
+                consecutive_days: maxStreak,
+                streak_end_date: bestStreakEnd
+            });
         }
     });
 
@@ -385,7 +403,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
-        const doleCompliance = computeDoleComplianceFromRecords(attendances);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances, empMap);
 
         // 3. Anomaly Signals & Health Assessment (Deterministic in-memory with empMap resolution)
         const signals = computeAttendanceSignals(attendances, empMap);
@@ -599,6 +617,88 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
     }
 });
 
+const SHIFT_START_HOUR = 8; // Company-wide shift start: 8:00 AM (Asia/Manila)
+
+/**
+ * Wall-clock minutes-past-shift-start for a given ISO timestamp, in Asia/Manila time.
+ * Returns null if timeInIso is missing.
+ */
+function computeLateMinutes(timeInIso) {
+    if (!timeInIso) return null;
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date(timeInIso));
+    const hour = Number(parts.find(p => p.type === 'hour').value);
+    const minute = Number(parts.find(p => p.type === 'minute').value);
+    const minutesSinceMidnight = hour * 60 + minute;
+    return Math.max(0, minutesSinceMidnight - SHIFT_START_HOUR * 60);
+}
+
+function formatLateLabel(minutes) {
+    if (minutes === null) return 'N/A';
+    if (minutes <= 0) return 'On time';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h > 0 ? `${h}h ${m}m late` : `${m}m late`;
+}
+
+/**
+ * Full detail of today's attendance, split into present / late, for the
+ * Present Rate and Late Arrivals dashboard drill-down modals.
+ */
+router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (req, res) => {
+    try {
+        const todayStr = toDateStr(new Date());
+
+        const [{ data: rawAttendances, error: attErr }, { data: rawEmployees, error: empErr }] = await Promise.all([
+            supabase
+                .from('attendances')
+                .select('id, employee_id, date, status, time_in, time_out')
+                .eq('date', todayStr),
+            supabase
+                .from('employees')
+                .select('id, first_name, last_name, department, shift')
+                .not('company_id', 'is', null)
+        ]);
+
+        if (attErr) throw attErr;
+        if (empErr) throw empErr;
+
+        const empMap = new Map((rawEmployees || []).map(e => [e.id, e]));
+
+        const present = [];
+        const late = [];
+
+        (rawAttendances || []).forEach(att => {
+            const emp = empMap.get(att.employee_id);
+            const lateMinutes = computeLateMinutes(att.time_in);
+            const entry = {
+                id: att.id,
+                employee_id: att.employee_id,
+                name: emp ? `${emp.first_name} ${emp.last_name}` : 'Staff Member',
+                department: emp?.department || 'Unassigned',
+                time_in: att.time_in,
+                time_out: att.time_out,
+                status: att.status,
+                lateMinutes,
+                lateLabel: formatLateLabel(lateMinutes)
+            };
+            present.push(entry);
+            if ((att.status || '').toLowerCase().includes('late')) {
+                late.push(entry);
+            }
+        });
+
+        present.sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
+        late.sort((a, b) => (b.lateMinutes || 0) - (a.lateMinutes || 0));
+
+        res.json({ date: todayStr, shiftStart: '8:00 AM', present, late });
+    } catch (err) {
+        console.error('[DASHBOARD_ROUTE] Attendance-today error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (req, res) => {
     try {
         const forecast = await computePayrollForecast();
@@ -707,7 +807,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         const weeklyTrends = computeWeeklyTrendsFromRecords(attendances, employees.length);
         const monthlyTrends = computeMonthlyTrendsFromRecords(attendances, employees.length);
         const deptPunctuality = computeDepartmentPunctualityFromRecords(attendances, empMap);
-        const doleCompliance = computeDoleComplianceFromRecords(attendances);
+        const doleCompliance = computeDoleComplianceFromRecords(attendances, empMap);
 
         res.json({
             totalStaff: employees.length,

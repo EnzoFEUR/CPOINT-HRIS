@@ -19,6 +19,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [isCustomLine, setIsCustomLine] = useState(false);
     const [phone, setPhone] = useState(defaultValues.phone ? formatPhPhone(defaultValues.phone) : '');
     const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
+    const [firstName, setFirstName] = useState(defaultValues.first_name || '');
+    const [lastName, setLastName] = useState(defaultValues.last_name || '');
 
     // Fetch real production groups from the dedicated database table
     const { data: productionGroupsData } = useQuery({
@@ -67,6 +69,35 @@ export default function Create({ errors = [], defaultValues = {} }) {
         }
         return lines;
     }, [workforceData, selectedGroup, isCustomLine]);
+
+    // Real-time (0ms) duplicate name detection against workforce & archive
+    const matchingArchivedEmployee = useMemo(() => {
+        const fn = firstName.trim().toLowerCase();
+        const ln = lastName.trim().toLowerCase();
+        if (!fn || !ln || fn.length < 2 || ln.length < 2) return null;
+
+        const allEmps = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
+        return allEmps.find(e => {
+            const matchesName = (e.first_name || '').trim().toLowerCase() === fn && 
+                                (e.last_name || '').trim().toLowerCase() === ln;
+            const isSeparated = e.is_terminated || e.status === 'terminated' || e.status === 'inactive' || e.is_active === false;
+            return matchesName && isSeparated;
+        });
+    }, [firstName, lastName, workforceData]);
+
+    const matchingActiveEmployee = useMemo(() => {
+        const fn = firstName.trim().toLowerCase();
+        const ln = lastName.trim().toLowerCase();
+        if (!fn || !ln || fn.length < 2 || ln.length < 2) return null;
+
+        const allEmps = Array.isArray(workforceData) ? workforceData : (workforceData?.data || []);
+        return allEmps.find(e => {
+            const matchesName = (e.first_name || '').trim().toLowerCase() === fn && 
+                                (e.last_name || '').trim().toLowerCase() === ln;
+            const isActive = !e.is_terminated && e.status !== 'terminated' && e.status !== 'inactive' && e.is_active !== false;
+            return matchesName && isActive;
+        });
+    }, [firstName, lastName, workforceData]);
 
     // Regular Pay State (Daily & Hourly)
     const [rawDailyPay, setRawDailyPay] = useState(defaultValues.daily_rate || defaultValues.monthly_salary ? String(defaultValues.daily_rate || '') : '');
@@ -143,6 +174,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const handleCreateAnother = () => {
         setShowSuccessModal(false);
         setCreatedEmployee(null);
+        setFirstName('');
+        setLastName('');
         setDisplayDailyPay('');
         setRawDailyPay('');
         setDisplayHourlyPay('');
@@ -354,16 +387,68 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
-                                <input type="text" name="first_name" required defaultValue={defaultValues.first_name || ''}
+                                <input 
+                                    type="text" 
+                                    name="first_name" 
+                                    required 
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value)}
                                     className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                    placeholder="John" />
+                                    placeholder="John" 
+                                />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
-                                <input type="text" name="last_name" required defaultValue={defaultValues.last_name || ''}
+                                <input 
+                                    type="text" 
+                                    name="last_name" 
+                                    required 
+                                    value={lastName}
+                                    onChange={(e) => setLastName(e.target.value)}
                                     className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
-                                    placeholder="Doe" />
+                                    placeholder="Doe" 
+                                />
                             </div>
+
+                            {/* Real-time Enterprise Collision / Duplicate Advisory */}
+                            {matchingArchivedEmployee && (
+                                <div className="md:col-span-2 p-3.5 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs flex items-start gap-3 text-amber-950 animate-in fade-in duration-150 shadow-xs">
+                                    <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5">
+                                        <i className="ti ti-archive text-lg" />
+                                    </div>
+                                    <div className="space-y-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-bold text-amber-900">Archived Record Found in Vault</span>
+                                            <span className="px-1.5 py-0.5 bg-amber-200/90 text-amber-900 font-mono text-[10px] font-bold rounded">
+                                                {matchingArchivedEmployee.company_id || 'ID N/A'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-amber-800 leading-relaxed font-normal">
+                                            A separated personnel record for <strong>"{matchingArchivedEmployee.first_name} {matchingArchivedEmployee.last_name}"</strong> ({matchingArchivedEmployee.job_title || 'Former Employee'}) exists in the Archive Vault. 
+                                            The system will automatically allocate a <strong>distinct new Company ID</strong> and independent biometric facial baseline. No historical attendance, payroll, or 201 records will collide.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!matchingArchivedEmployee && matchingActiveEmployee && (
+                                <div className="md:col-span-2 p-3.5 bg-blue-50/90 border border-blue-200/90 rounded-2xl text-xs flex items-start gap-3 text-blue-950 animate-in fade-in duration-150 shadow-xs">
+                                    <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 text-blue-700 mt-0.5">
+                                        <i className="ti ti-users text-lg" />
+                                    </div>
+                                    <div className="space-y-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-bold text-blue-900">Active Personnel with Same Name</span>
+                                            <span className="px-1.5 py-0.5 bg-blue-200/90 text-blue-900 font-mono text-[10px] font-bold rounded">
+                                                {matchingActiveEmployee.company_id || 'ID N/A'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
+                                            An active employee named <strong>"{matchingActiveEmployee.first_name} {matchingActiveEmployee.last_name}"</strong> ({matchingActiveEmployee.job_title} · {matchingActiveEmployee.department}) is registered. This new employee will receive a unique Company ID and separate biometric vectors to prevent any collision.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>

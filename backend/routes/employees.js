@@ -663,6 +663,129 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// POST /api/employees/:id/archive - Enterprise DOLE Separation & Cold Storage Archival
+router.post('/:id/archive', async (req, res) => {
+    try {
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        if (!isAdmin) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to separate and archive personnel.' });
+        }
+
+        const targetId = req.params.id;
+        const {
+            separation_type = 'Resignation',
+            separation_reason = 'Voluntary Resignation',
+            separation_date = new Date().toISOString().split('T')[0],
+            separation_notes = '',
+            admin_id = req.user?.id
+        } = req.body;
+
+        const { data: targetEmp, error: fetchErr } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, email, status, role')
+            .eq('id', targetId)
+            .single();
+
+        if (fetchErr || !targetEmp) {
+            return res.status(404).json({ success: false, error: 'Employee record not found.' });
+        }
+
+        const nowIso = new Date().toISOString();
+
+        // 1. Update employee operational status to terminated and seal in archive
+        const { data: archivedEmp, error: updateError } = await supabase
+            .from('employees')
+            .update({
+                status: 'terminated',
+                is_active: false,
+                separation_type,
+                separation_reason,
+                separation_date,
+                archived_at: nowIso,
+                archived_by: admin_id || null,
+                separation_notes,
+                updated_at: nowIso
+            })
+            .eq('id', targetId)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        // 2. Real-time access revocation: invalidate Supabase Auth sessions
+        try {
+            await supabase.auth.admin.signOut(targetId);
+        } catch (authErr) {
+            console.warn('[AUTH_SIGNOUT_NOTICE]', authErr.message);
+        }
+
+        // 3. Low-latency broadcast across gate scanner, archive vault, and directory sync channels
+        try {
+            const broadcastPayload = {
+                employee_id: targetId,
+                company_id: targetEmp.company_id,
+                name: `${targetEmp.first_name} ${targetEmp.last_name}`,
+                separated_at: nowIso,
+                status: 'terminated',
+                is_active: false
+            };
+
+            const targetTopics = [
+                'employee-presence',
+                'employee-archive-sync',
+                'scanner_disciplinary_realtime',
+                'disciplinary_realtime_sync',
+                'disciplinary-updates',
+                `qr-realtime-${targetId}`,
+                `dashboard-disciplinary-sync-${targetId}`
+            ];
+
+            await Promise.allSettled(
+                targetTopics.map(topic => {
+                    const ch = supabase.channel(topic);
+                    return ch.send({
+                        type: 'broadcast',
+                        event: 'EMPLOYEE_TERMINATED',
+                        payload: broadcastPayload
+                    });
+                })
+            );
+        } catch (broadcastErr) {
+            console.warn('[REALTIME_BROADCAST_NOTICE]', broadcastErr.message);
+        }
+
+        // 4. Create immutable audit log
+        if (admin_id) {
+            const { createAuditLog } = await import('./auditLogs.js');
+            await createAuditLog({
+                log_name: 'employees',
+                description: `Separated and archived employee ${targetEmp.first_name} ${targetEmp.last_name} (${separation_type}: ${separation_reason}). Records preserved for DOLE compliance.`,
+                subject_type: 'App\\Models\\Employee',
+                subject_id: targetId,
+                event: 'archived',
+                causer_id: admin_id,
+                properties: {
+                    separation_type,
+                    separation_reason,
+                    separation_date,
+                    archived_at: nowIso
+                }
+            });
+        }
+
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+
+        res.json({
+            success: true,
+            data: archivedEmp,
+            message: `Employee ${targetEmp.first_name} ${targetEmp.last_name} successfully separated and archived. Digital & biometric access revoked.`
+        });
+    } catch (error) {
+        console.error('[EMPLOYEE_ARCHIVE_ERROR]', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // POST /api/employees/:id/restore - Enterprise reinstatement from Pending Termination
 router.post('/:id/restore', async (req, res) => {
     try {
@@ -769,6 +892,8 @@ router.post('/:id/restore', async (req, res) => {
             };
 
             const targetTopics = [
+                'employee-presence',
+                'employee-archive-sync',
                 'disciplinary_realtime_sync',
                 'disciplinary-updates',
                 'scanner_disciplinary_realtime',

@@ -31,6 +31,10 @@ export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
     const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
+    const [activeModal, setActiveModal] = useState(null); // 'present' | 'late' | null
+    const [expandedRiskFlag, setExpandedRiskFlag] = useState(null); // index of expanded burnout row, or null
+    const [expandedDoleCheck, setExpandedDoleCheck] = useState(false); // whether the rest-day violations list is open
+    const [acknowledged, setAcknowledged] = useState({}); // client-only "seen" state, not persisted — key -> true
 
     // Overview data query with Dual-Layer API + Direct Supabase Fallback
     const { data: overviewData, isLoading } = useQuery({
@@ -206,12 +210,34 @@ export default function Dashboard() {
         }
     };
 
+    // Drill-down detail for the Present Rate / Late Arrivals modals — fetched lazily,
+    // only once a modal is actually opened, and kept fresh via the same real-time channel.
+    const { data: attendanceDetail, isLoading: isDetailLoading } = useQuery({
+        queryKey: ['attendanceToday'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/dashboard/attendance-today');
+            if (!res.ok) throw new Error('Failed to load attendance detail');
+            return res.json();
+        },
+        enabled: activeModal !== null,
+        staleTime: 15000,
+    });
+
+    // Close modal on Escape
+    useEffect(() => {
+        if (!activeModal) return;
+        const onKeyDown = (e) => { if (e.key === 'Escape') setActiveModal(null); };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activeModal]);
+
     // Real-time synchronization - ONLY invalidates fast overview telemetry
     useEffect(() => {
         const liveChannel = supabase
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
+                queryClient.invalidateQueries({ queryKey: ['attendanceToday'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
@@ -421,7 +447,11 @@ export default function Dashboard() {
                     </span>
                 </div>
 
-                <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group">
+                <button
+                    type="button"
+                    onClick={() => setActiveModal('present')}
+                    className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group text-left cursor-pointer hover:border-emerald-300 hover:shadow-sm transition-all"
+                >
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-user-check text-5xl text-emerald-600" />
                     </div>
@@ -430,11 +460,15 @@ export default function Dashboard() {
                         {presentPercentage}%
                     </h3>
                     <span className="text-xs font-semibold text-slate-600 mt-2 block">
-                        {presentTodayCount} of {totalStaff} on-site
+                        {presentTodayCount} of {totalStaff} on-site &middot; <span className="text-emerald-700 group-hover:underline">View list &rarr;</span>
                     </span>
-                </div>
+                </button>
 
-                <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group">
+                <button
+                    type="button"
+                    onClick={() => setActiveModal('late')}
+                    className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden group text-left cursor-pointer hover:border-amber-300 hover:shadow-sm transition-all"
+                >
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-clock-exclamation text-5xl text-amber-600" />
                     </div>
@@ -443,9 +477,9 @@ export default function Dashboard() {
                         {lateTodayCount}
                     </h3>
                     <span className="text-xs font-semibold text-amber-700 mt-2 block flex items-center gap-1">
-                        <i className="ti ti-alert-triangle" /> Past grace period
+                        <i className="ti ti-alert-triangle" /> Past grace period &middot; <span className="group-hover:underline">View list &rarr;</span>
                     </span>
-                </div>
+                </button>
 
                 <Link to="/admin/leaves" className="bg-slate-900 hover:bg-slate-800 transition-colors p-5 sm:p-6 rounded-xl border border-slate-800 shadow-xs text-white block cursor-pointer relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
@@ -516,19 +550,65 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-2.5">
-                        {riskFlags.length > 0 ? riskFlags.map((flag, i) => (
-                            <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(flag.employee_name)}</p>
-                                    <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
-                                        {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
-                                    </p>
+                        {riskFlags.length > 0 ? riskFlags.map((flag, i) => {
+                            const key = `${flag.employee_name || i}-${flag.reason || flag.pattern || i}`;
+                            const isOpen = expandedRiskFlag === i;
+                            const isAck = !!acknowledged[key];
+                            return (
+                                <div key={i} className={`rounded-lg border transition-colors ${isOpen ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedRiskFlag(isOpen ? null : i)}
+                                        className="w-full p-3 flex items-center justify-between gap-3 text-left cursor-pointer"
+                                    >
+                                        <div className="min-w-0 flex items-center gap-2">
+                                            <i className={`ti ti-chevron-right text-slate-400 text-sm shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(flag.employee_name)}</p>
+                                                <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
+                                                    {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 ${isAck ? 'bg-slate-100 text-slate-500 border-slate-300' : (RISK_STYLES[flag.severity] || RISK_STYLES.Low)}`}>
+                                            {isAck ? 'Acknowledged' : (flag.severity || 'Flagged')}
+                                        </span>
+                                    </button>
+
+                                    {isOpen && (
+                                        <div className="px-3 pb-3 pt-0.5 space-y-2.5 border-t border-slate-100 mt-1">
+                                            <p className="text-[11px] text-slate-500 font-medium pt-2.5">
+                                                {flag.department ? `${flag.department} · ` : ''}
+                                                {flag.reason || flag.pattern || 'Flagged by the 30-day anomaly scan.'}
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                                                >
+                                                    <i className={`ti ${isAck ? 'ti-circle-check-filled text-emerald-600' : 'ti-circle text-slate-400'}`} />
+                                                    {isAck ? 'Acknowledged' : 'Acknowledge'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                                                >
+                                                    <i className="ti ti-calendar-event text-blue-600" /> Schedule Rest Day
+                                                </button>
+                                                <Link
+                                                    to="/admin/attendance"
+                                                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                                                >
+                                                    <i className="ti ti-history text-slate-500" /> View Attendance History
+                                                </Link>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-medium">Actions here aren't saved yet — this is a preview of the workflow.</p>
+                                        </div>
+                                    )}
                                 </div>
-                                <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 ${RISK_STYLES[flag.severity] || RISK_STYLES.Low}`}>
-                                    {flag.severity || 'Flagged'}
-                                </span>
-                            </div>
-                        )) : (
+                            );
+                        }) : (
                             <p className="text-xs text-slate-400 font-medium py-6 text-center">
                                 {isAnomalyLoading ? 'Scanning 30-day attendance history...' : 'No burnout or turnover risk signals detected.'}
                             </p>
@@ -626,14 +706,59 @@ export default function Dashboard() {
                     <div className="space-y-2.5">
                         {doleCompliance ? (
                             <>
-                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 font-semibold text-slate-700">
-                                        <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-600' : 'ti-alert-circle-filled text-amber-600'} text-base`} />
-                                        <span>{doleCompliance.restDay.label}</span>
-                                    </div>
-                                    <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                        {doleCompliance.restDay.status}
-                                    </span>
+                                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedDoleCheck(prev => !prev)}
+                                        disabled={doleCompliance.restDay.violations.length === 0}
+                                        className={`w-full p-3 bg-slate-50 flex items-center justify-between text-xs text-left ${doleCompliance.restDay.violations.length > 0 ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'} transition-colors`}
+                                    >
+                                        <div className="flex items-center gap-2 font-semibold text-slate-700">
+                                            {doleCompliance.restDay.violations.length > 0 && (
+                                                <i className={`ti ti-chevron-right text-slate-400 text-sm transition-transform ${expandedDoleCheck ? 'rotate-90' : ''}`} />
+                                            )}
+                                            <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-600' : 'ti-alert-circle-filled text-amber-600'} text-base`} />
+                                            <span>{doleCompliance.restDay.label}</span>
+                                        </div>
+                                        <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                            {doleCompliance.restDay.status}
+                                        </span>
+                                    </button>
+
+                                    {expandedDoleCheck && doleCompliance.restDay.violations.length > 0 && (
+                                        <div className="p-3 pt-2.5 space-y-2 border-t border-slate-200 bg-white">
+                                            {doleCompliance.restDay.violations.map((v) => {
+                                                const key = `dole-${v.employee_id}`;
+                                                const isAck = !!acknowledged[key];
+                                                return (
+                                                    <div key={v.employee_id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(v.name)}</p>
+                                                            <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
+                                                                {v.department} · {v.consecutive_days} consecutive days · through {v.streak_end_date}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                                className={`px-2 py-1 rounded-md text-[10px] font-semibold border cursor-pointer transition-colors ${isAck ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'}`}
+                                                            >
+                                                                {isAck ? 'Acknowledged' : 'Acknowledge'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="px-2 py-1 rounded-md text-[10px] font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
+                                                            >
+                                                                Schedule Rest Day
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            <p className="text-[10px] text-slate-400 font-medium pt-0.5">Actions here aren't saved yet — this is a preview of the workflow.</p>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
                                     <div className="flex items-center gap-2 font-semibold text-slate-700">
@@ -744,6 +869,92 @@ export default function Dashboard() {
                 </div>
 
             </div>
+
+            {/* Present Rate / Late Arrivals drill-down modal (in-page, no navigation) */}
+            {activeModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                    onClick={() => setActiveModal(null)}
+                >
+                    <div
+                        className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 shrink-0">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-900">
+                                    {activeModal === 'present' ? 'Present Today' : 'Late Arrivals Today'}
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    {activeModal === 'present'
+                                        ? `${presentTodayCount} of ${totalStaff} on-site · Shift start ${attendanceDetail?.shiftStart || '8:00 AM'}`
+                                        : `${lateTodayCount} clocked in past ${attendanceDetail?.shiftStart || '8:00 AM'}`}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setActiveModal(null)}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+                                aria-label="Close"
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 p-3 space-y-2">
+                            {isDetailLoading ? (
+                                <p className="text-xs text-slate-400 font-semibold py-10 text-center">Loading attendance detail...</p>
+                            ) : (
+                                (() => {
+                                    const list = activeModal === 'present'
+                                        ? (attendanceDetail?.present || [])
+                                        : (attendanceDetail?.late || []);
+
+                                    if (list.length === 0) {
+                                        return (
+                                            <p className="text-xs text-slate-400 font-semibold py-10 text-center">
+                                                {activeModal === 'present' ? 'No one has clocked in yet today.' : 'No late arrivals today.'}
+                                            </p>
+                                        );
+                                    }
+
+                                    return list.map((person) => (
+                                        <div
+                                            key={person.id}
+                                            className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3"
+                                        >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-9 h-9 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                                                    {formatDisplayName(person.name).split(' ').map(p => p[0]).slice(0, 2).join('')}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(person.name)}</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
+                                                        {person.department} · Time in {person.time_in ? new Date(person.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {activeModal === 'late' ? (
+                                                <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 bg-amber-50 text-amber-900 border-amber-300 font-mono">
+                                                    {person.lateLabel}
+                                                </span>
+                                            ) : (
+                                                <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
+                                                    person.status?.toLowerCase().includes('late')
+                                                        ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                                        : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                                }`}>
+                                                    {person.status || 'On time'}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ));
+                                })()
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );

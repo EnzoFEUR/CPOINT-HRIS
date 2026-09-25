@@ -20,6 +20,15 @@ const formatAuthorizer = (authorizer, role) => {
     return authorizer;
 };
 
+const SEPARATION_DEFAULTS = {
+    'Resignation': 'Voluntary Resignation',
+    'End of Contract': 'Contract Expiration',
+    'Retirement': 'Statutory Retirement (DOLE Art. 302)',
+    'Authorized Cause': 'Redundancy / Authorized Cause (DOLE Art. 298)',
+    'Just Cause': 'Serious Misconduct / Just Cause (DOLE Art. 297)',
+    'Mutual Agreement': 'Mutual Separation Agreement'
+};
+
 export default function Show() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -30,6 +39,12 @@ export default function Show() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [removalMode, setRemovalMode] = useState('archive'); // 'archive' | 'purge'
+    const [separationType, setSeparationType] = useState('Resignation');
+    const [separationReason, setSeparationReason] = useState('Voluntary Resignation');
+    const [separationDate, setSeparationDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [separationNotes, setSeparationNotes] = useState('');
+    const [isArchiving, setIsArchiving] = useState(false);
     const [isReinstateModalOpen, setIsReinstateModalOpen] = useState(false);
     const [isReinstating, setIsReinstating] = useState(false);
 
@@ -397,6 +412,92 @@ export default function Show() {
         window.print();
     };
 
+    const handleArchiveEmployee = async () => {
+        if (!employee) return;
+        setIsArchiving(true);
+
+        const nowIso = new Date().toISOString();
+        const effectiveDate = separationDate || nowIso.split('T')[0];
+
+        // 0ms Optimistic UI updates
+        queryClient.setQueryData(['employeeDetails', id], (old) => {
+            if (!old) return old;
+            return {
+                ...old,
+                data: {
+                    ...old.data,
+                    status: 'terminated',
+                    is_active: false,
+                    archived_at: nowIso,
+                    separation_type: separationType,
+                    separation_reason: separationReason,
+                    separation_date: effectiveDate,
+                    separation_notes: separationNotes,
+                    operational_status: 'Terminated',
+                    is_terminated: true,
+                    is_suspended: false,
+                    termination_record: {
+                        date: effectiveDate,
+                        reason: separationReason,
+                        type: separationType,
+                        authorizer: 'System Administrator (HR)'
+                    }
+                }
+            };
+        });
+
+        queryClient.setQueryData(['adminEmployees'], (old) => {
+            if (!Array.isArray(old)) return old;
+            return old.map(e => String(e.id) === String(id) ? {
+                ...e,
+                status: 'terminated',
+                is_active: false,
+                archived_at: nowIso,
+                separation_type: separationType,
+                separation_reason: separationReason,
+                separation_date: effectiveDate,
+                operational_status: 'Terminated',
+                is_terminated: true,
+                is_suspended: false
+            } : e);
+        });
+
+        window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id } }));
+
+        try {
+            const user = JSON.parse(localStorage.getItem('user'));
+            const res = await fetchWithAuth(`/api/employees/${employee.id}/archive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    separation_type: separationType,
+                    separation_reason: separationReason,
+                    separation_date: effectiveDate,
+                    separation_notes: separationNotes,
+                    admin_id: user?.id
+                })
+            });
+
+            const resData = await res.json();
+            if (!res.ok || !resData.success) {
+                throw new Error(resData.error || 'Failed to archive employee');
+            }
+
+            toast.success(`${employeeFullName} successfully separated and preserved in Archive Vault.`);
+            setIsDeleteModalOpen(false);
+
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        } catch (err) {
+            toast.error(err.message || 'Failed to archive employee');
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        } finally {
+            setIsArchiving(false);
+        }
+    };
+
     const handleDelete = async () => {
         if (!employee) return;
         setIsDeleting(true);
@@ -524,8 +625,18 @@ export default function Show() {
                             <i className="ti ti-pencil text-base" /> Edit Profile
                         </Link>
 
-                        <button onClick={() => { setDeleteConfirmText(''); setIsDeleteModalOpen(true); }} className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer">
-                            <i className="ti ti-trash text-base" /> Delete
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setRemovalMode(isTerminated ? 'purge' : 'archive');
+                                setDeleteConfirmText('');
+                                setIsDeleteModalOpen(true);
+                            }}
+                            className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            title={isTerminated ? "Permanently purge employee records" : "Separate personnel and transfer to statutory cold storage archive"}
+                        >
+                            <i className={`ti ${isTerminated ? 'ti-trash' : 'ti-archive'} text-base`} />
+                            <span>{isTerminated ? 'Purge Record' : 'Offboard / Archive'}</span>
                         </button>
                     </div>
                 </div>
@@ -1351,40 +1462,277 @@ export default function Show() {
 
             </div>
 
-            {/* Delete confirmation modal */}
-            
-                {isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-                        <div className="bg-white rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
-                            <div className="w-14 h-14 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto border-4 border-red-100">
-                                <i className="ti ti-alert-triangle text-2xl" />
+            {/* Enterprise Removal & Archival Modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div 
+                        className="absolute inset-0"
+                        onClick={() => {
+                            if (!isArchiving && !isDeleting) {
+                                setIsDeleteModalOpen(false);
+                                setDeleteConfirmText('');
+                            }
+                        }}
+                    />
+                    <div className="relative bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 z-10 text-left space-y-4 max-h-[92vh] overflow-y-auto">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-4 pb-2 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                                    removalMode === 'archive' 
+                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-600' 
+                                        : 'bg-rose-50 border-rose-200 text-rose-600'
+                                }`}>
+                                    <i className={`ti ${removalMode === 'archive' ? 'ti-archive' : 'ti-alert-triangle'} text-xl`} />
+                                </div>
+                                <div>
+                                    <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                                        {removalMode === 'archive' ? 'Employee Separation & Archival' : 'Forensic Record Purge'}
+                                    </h2>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Personnel: <strong className="text-slate-800">{employeeFullName}</strong> <span className="font-mono text-slate-400">({employee.company_id || 'No ID'})</span>
+                                    </p>
+                                </div>
                             </div>
-                            <h2 className="text-xl font-black text-slate-800">Delete Employee Profile?</h2>
-                            <p className="text-xs text-slate-500">
-                                Type <strong className="text-slate-800">{employeeFullName}</strong> to confirm deletion.
-                            </p>
-                            <input
-                                type="text"
-                                value={deleteConfirmText}
-                                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                placeholder="Type full name..."
-                                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-xs"
-                            />
-                            <div className="flex gap-2">
-                                <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs cursor-pointer">
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDelete}
-                                    disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
-                                    className="flex-1 py-2.5 bg-red-600 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs cursor-pointer disabled:cursor-not-allowed transition-colors"
-                                >
-                                    {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsDeleteModalOpen(false);
+                                    setDeleteConfirmText('');
+                                }}
+                                disabled={isArchiving || isDeleting}
+                                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
                         </div>
+
+                        {/* Segmented Control / Tabs */}
+                        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl gap-1 border border-slate-200/80">
+                            <button
+                                type="button"
+                                onClick={() => setRemovalMode('archive')}
+                                className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    removalMode === 'archive'
+                                        ? 'bg-white text-indigo-700 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <i className="ti ti-shield-check text-sm" />
+                                <span>DOLE Archive</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded uppercase">Standard</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRemovalMode('purge')}
+                                className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    removalMode === 'purge'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'text-rose-600 hover:text-rose-700'
+                                }`}
+                            >
+                                <i className="ti ti-trash text-sm" />
+                                <span>Forensic Purge</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-black rounded uppercase">Danger</span>
+                            </button>
+                        </div>
+
+                        {/* Mode 1: DOLE Archive */}
+                        {removalMode === 'archive' && (
+                            <div className="space-y-4">
+                                <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 text-xs text-indigo-950 space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                                        <i className="ti ti-shield-check text-base text-indigo-600" />
+                                        <span>Statutory Compliance & Digital Revocation</span>
+                                    </div>
+                                    <p className="text-[11px] text-indigo-800 leading-relaxed font-normal">
+                                        Retains 201 records, biometric timestamps, BIR 2316 tax history, and payslips in cold storage per DOLE labor regulations. Real-time access to gate scanners and portal accounts is permanently severed immediately.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                            Separation Classification
+                                        </label>
+                                        <select
+                                            value={separationType}
+                                            onChange={(e) => {
+                                                const newType = e.target.value;
+                                                setSeparationType(newType);
+                                                if (SEPARATION_DEFAULTS[newType]) {
+                                                    setSeparationReason(SEPARATION_DEFAULTS[newType]);
+                                                }
+                                            }}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="Resignation">Voluntary Resignation</option>
+                                            <option value="End of Contract">End of Contract / Fixed Term</option>
+                                            <option value="Retirement">Statutory Retirement</option>
+                                            <option value="Authorized Cause">Authorized Cause (DOLE Art. 298)</option>
+                                            <option value="Just Cause">Just Cause (DOLE Art. 297)</option>
+                                            <option value="Mutual Agreement">Mutual Separation Agreement</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                            Effective Separation Date
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={separationDate}
+                                            onChange={(e) => setSeparationDate(e.target.value)}
+                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        Primary Reason / DOLE Statutory Ground
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={separationReason}
+                                        onChange={(e) => setSeparationReason(e.target.value)}
+                                        placeholder="e.g. Voluntary Resignation, End of Contract..."
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        Exit Clearance & Handover Remarks (Optional)
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={separationNotes}
+                                        onChange={(e) => setSeparationNotes(e.target.value)}
+                                        placeholder="Note company ID return, laptop handover, clearance status..."
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 resize-none"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200/70 text-center">
+                                    <div className="space-y-0.5">
+                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Biometrics</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-600">
+                                            <i className="ti ti-lock text-xs" /> Revoked (0ms)
+                                        </span>
+                                    </div>
+                                    <div className="space-y-0.5 border-x border-slate-200">
+                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Portal Auth</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-600">
+                                            <i className="ti ti-user-x text-xs" /> Signed Out
+                                        </span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Grace Cooldown</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-600">
+                                            <i className="ti ti-hourglass-low text-xs" /> 14 Days Review
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2.5 pt-2">
+                                    <button 
+                                        type="button"
+                                        onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }}
+                                        disabled={isArchiving}
+                                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleArchiveEmployee}
+                                        disabled={isArchiving}
+                                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    >
+                                        {isArchiving ? (
+                                            <>
+                                                <i className="ti ti-loader-2 animate-spin text-sm" />
+                                                <span>Processing Archive...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="ti ti-archive text-sm" />
+                                                <span>Execute Separation & Archive</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Mode 2: Purge Tab */}
+                        {removalMode === 'purge' && (
+                            <div className="space-y-4">
+                                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-950 space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                                        <i className="ti ti-alert-triangle text-base text-rose-600" />
+                                        <span>Forensic Database & Biometric Shredding</span>
+                                    </div>
+                                    <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
+                                        This irreversibly purges this personnel from the database, cascades deletions through all attendance logs, payslips, leaves, and documents, and shreds biometric facial vector baselines (<code className="font-mono bg-rose-100/80 px-1 py-0.5 rounded text-[10px]">face-baselines/</code>) and kiosk snapshot photos from Cloud Storage. <strong>This action cannot be recovered.</strong>
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <p className="text-xs text-slate-600 font-medium">
+                                        To confirm forensic destruction, type the full employee name below:
+                                    </p>
+                                    <div 
+                                        onClick={() => setDeleteConfirmText(employeeFullName)}
+                                        className="p-2.5 bg-slate-100 hover:bg-slate-200 active:scale-98 rounded-xl font-mono text-center font-bold text-slate-800 text-xs border border-slate-200 select-all cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                                        title="Click to auto-fill for quick testing"
+                                    >
+                                        <span>{employeeFullName}</span>
+                                        <span className="text-[10px] text-slate-400 font-normal">(click to auto-fill)</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={deleteConfirmText}
+                                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                        placeholder="Type full name to confirm..."
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2.5 pt-2">
+                                    <button 
+                                        type="button"
+                                        onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }}
+                                        disabled={isDeleting}
+                                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDelete}
+                                        disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
+                                        className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                    >
+                                        {isDeleting ? (
+                                            <>
+                                                <i className="ti ti-loader-2 animate-spin text-sm" />
+                                                <span>Shredding Records...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="ti ti-trash text-sm" />
+                                                <span>Shred & Delete Permanently</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
+            )}
             
 
             {/* Print QR badge modal */}

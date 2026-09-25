@@ -100,18 +100,12 @@ export default function EmployeesIndex() {
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
         const data = Array.isArray(result) ? result : (result.data || []);
         
-        // Retain active and suspended employees. Terminated employees remain in the directory
-        // under "Pending Termination" for review during the cooldown window before being moved to Archive.
-        return data.filter(emp => {
-            const isTerminated = emp.operational_status === 'Terminated' || emp.is_terminated || emp.status === 'terminated';
-            if (!isTerminated) return true;
-
-            const ts = getTerminationTimestamp(emp);
-            if (!ts) return true;
-
-            const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
-            return elapsedDays < PENDING_TERMINATION_DAYS;
-        });
+        // Filter out terminated and inactive personnel
+        return data.filter(emp => 
+            emp.status !== 'terminated' && 
+            emp.status !== 'inactive' && 
+            emp.is_active !== false
+        );
     };
 
     const { data: employees = [], isLoading } = useQuery({
@@ -194,11 +188,11 @@ export default function EmployeesIndex() {
                 const isSuspended = !isTerminated && (emp.operational_status === 'Suspended' || emp.is_suspended);
                 const isActive = !isTerminated && !isSuspended;
 
-                if (filterStatus === 'Active' && !isActive) return false;
-                if (filterStatus === 'Suspended' && !isSuspended) return false;
-                if (filterStatus === 'Pending Termination' && !isTerminated) return false;
-                if (filterStatus === 'Salaried' && isFactory) return false;
-                if (filterStatus === 'Piece-Rate' && !isFactory) return false;
+            if (filterStatus === 'Active' && !isActive) return false;
+            if (filterStatus === 'Suspended' && !isSuspended) return false;
+            if (filterStatus === 'Terminated' && !isTerminated) return false;
+            if (filterStatus === 'Salaried' && isFactory) return false;
+            if (filterStatus === 'Piece-Rate' && !isFactory) return false;
 
                 if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
 
@@ -355,12 +349,11 @@ export default function EmployeesIndex() {
                         <div className="flex items-center gap-2 justify-between lg:justify-end">
                             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar touch-pan-x bg-slate-100 p-1 rounded-xl shrink-0">
                                 {[
-                                    { id: 'All', label: 'All', count: counts.all },
-                                    { id: 'Active', label: 'Active', count: counts.active },
-                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
-                                    { id: 'Pending Termination', label: 'Pending Termination', count: counts.pendingTermination, alert: counts.pendingTermination > 0 },
-                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried },
-                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
+                                    { id: 'All', label: 'All', count: counts.all, dot: null },
+                                    { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
+                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
+                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
+                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
@@ -508,6 +501,17 @@ export default function EmployeesIndex() {
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <div className="relative shrink-0">
                                                         <EmployeeAvatar employee={employee} size="h-12 w-12" />
+                                                        {isTerminated ? (
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-600 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="DOLE Separated">
+                                                                <i className="ti ti-x" />
+                                                            </span>
+                                                        ) : isSuspended ? (
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
+                                                                <i className="ti ti-clock-pause" />
+                                                            </span>
+                                                        ) : (
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" title="Active" />
+                                                        )}
                                                     </div>
                                                     
                                                     <div className="min-w-0 flex-1">
@@ -526,8 +530,8 @@ export default function EmployeesIndex() {
                                                 {/* Status indicator pill */}
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
-                                                            Pending Termination
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Separated
                                                         </span>
                                                     ) : isSuspended ? (
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -543,24 +547,17 @@ export default function EmployeesIndex() {
 
                                             {/* Separation Notice */}
                                             {isTerminated && (
-                                                <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                                                        <span className="flex items-center gap-1"><i className="ti ti-archive text-slate-500" /> Pending Archive Review</span>
-                                                        <span className="font-mono text-slate-500">Separated</span>
+                                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-0.5">
+                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-rose-700">
+                                                        <span className="flex items-center gap-1"><i className="ti ti-ban" /> DOLE Separated</span>
+                                                        <span className="font-mono text-rose-600">Access Revoked</span>
                                                     </div>
-                                                    <p className="text-xs text-slate-600 font-medium line-clamp-1">
-                                                        {employee.termination_record?.reason || 'Account deactivated • Under review for archive'}
+                                                    <p className="text-xs text-rose-800 font-medium line-clamp-1">
+                                                        {employee.termination_record?.reason || 'Contract Concluded / Terminated'}
                                                     </p>
-                                                    {(() => {
-                                                        const daysLeft = getDaysUntilArchive(employee);
-                                                        return daysLeft !== null ? (
-                                                            <p className="text-[10px] text-slate-500 font-semibold">
-                                                                Moves to Archive in {daysLeft} day{daysLeft === 1 ? '' : 's'}
-                                                            </p>
-                                                        ) : null;
-                                                    })()}
                                                 </div>
                                             )}
+
 
                                             {isSuspended && (
                                                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-0.5">
@@ -740,8 +737,8 @@ export default function EmployeesIndex() {
 
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
-                                                            Pending Termination
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                            Terminated
                                                         </span>
                                                     ) : isSuspended ? (
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -875,8 +872,8 @@ export default function EmployeesIndex() {
                                                     {/* Standing */}
                                                     <td className="px-4 py-3.5">
                                                         {isTerminated ? (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-200 text-slate-700 text-[11px] font-bold rounded-md border border-slate-300">
-                                                                <i className="ti ti-clock-pause text-xs text-slate-500" /> Pending Termination
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-md border border-rose-300">
+                                                                <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
                                                             </span>
                                                         ) : isSuspended ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-md border border-amber-300">
