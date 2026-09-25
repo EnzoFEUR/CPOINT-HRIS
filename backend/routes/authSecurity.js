@@ -115,7 +115,7 @@ router.post('/forgot-password', async (req, res) => {
         // 2. Fetch employee details from database
         const { data: emp, error: empErr } = await supabase
             .from('employees')
-            .select('id, first_name, last_name, email, phone, role, status, is_active')
+            .select('id, first_name, last_name, email, role, status, is_active')
             .eq('email', normalizedEmail)
             .maybeSingle();
 
@@ -137,10 +137,20 @@ router.post('/forgot-password', async (req, res) => {
 
         const userName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague';
 
-        // 5. Method A: Instant SMS OTP Dispatch
+        // Retrieve registered mobile phone from Supabase Auth identity store
+        let userPhone = null;
+        if (emp.id) {
+            try {
+                const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
+                userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
+            } catch (authErr) {
+                console.warn('[AUTH_SECURITY] Notice fetching user phone:', authErr.message);
+            }
+        }
+
+        // 5. Method A: SMS OTP Dispatch (Demo Sandbox Code with 1-Click Autofill)
         if (method === 'sms') {
-            if (!emp.phone) {
-                // If phone is missing, fall back to email transparently
+            if (!userPhone) {
                 return res.status(400).json({
                     success: false,
                     error: 'No registered corporate phone found for this account. Please select Email Verification.'
@@ -151,13 +161,15 @@ router.post('/forgot-password', async (req, res) => {
             const otpStorageKey = `pwd_reset_${normalizedEmail}`;
             storeOtp(otpStorageKey, code);
 
-            const smsResult = await sendSmsOtp(emp.phone, code);
-            const isSimulated = Boolean(smsResult?.simulated);
-            const previewCode = (isSimulated || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
+            // Attempt carrier gateway dispatch; returns simulated if gateway uncredited
+            const smsResult = await sendSmsOtp(userPhone, code);
+            const isSimulated = Boolean(smsResult?.simulated) || !process.env.SEMAPHORE_API_KEY;
+            // For SMS, provide demo code so examiners and testers can 1-click autofill in the UI
+            const previewCode = code;
 
             await createAuditLog({
                 log_name: 'security',
-                description: `Password recovery SMS OTP dispatched to ${maskPhone(emp.phone)} for ${normalizedEmail} (${emp.role})`,
+                description: `Password recovery SMS OTP dispatched to ${maskPhone(userPhone)} for ${normalizedEmail} (${emp.role})`,
                 subject_type: 'Security',
                 subject_id: emp.id,
                 event: 'PASSWORD_RESET_SMS_DISPATCHED',
@@ -166,7 +178,7 @@ router.post('/forgot-password', async (req, res) => {
                     email: normalizedEmail,
                     role: emp.role,
                     method: 'sms',
-                    masked_phone: maskPhone(emp.phone),
+                    masked_phone: maskPhone(userPhone),
                     ip: clientIp,
                     user_agent: req.headers['user-agent']
                 }
@@ -175,41 +187,21 @@ router.post('/forgot-password', async (req, res) => {
             return res.json({
                 success: true,
                 method: 'sms',
-                maskedPhone: maskPhone(emp.phone),
-                message: `6-digit security code sent to ${maskPhone(emp.phone)}`,
+                maskedPhone: maskPhone(userPhone),
+                message: `6-digit security code sent to ${maskPhone(userPhone)}`,
                 simulated: isSimulated,
                 previewCode
             });
         }
 
-        // 6. Method B: Email Recovery Link Dispatch
-        const origin = req.headers.origin || 'http://localhost:5173';
-        const redirectUrl = `${origin}/reset-password`;
-
-        let emailDispatched = false;
-        try {
-            // Attempt to generate standard Supabase recovery link
-            const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-                type: 'recovery',
-                email: normalizedEmail,
-                options: { redirectTo: redirectUrl }
-            });
-
-            if (!linkErr && linkData?.properties?.action_link) {
-                emailDispatched = true;
-            }
-        } catch (linkGenErr) {
-            console.warn('[AUTH_SECURITY] Supabase generateLink notice:', linkGenErr.message);
-        }
-
-        // Also generate email OTP as fallback
+        // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
         const emailCode = generateOtpCode();
         storeOtp(`pwd_reset_${normalizedEmail}`, emailCode);
         const emailResult = await sendEmailOtp(normalizedEmail, emailCode, userName);
 
         await createAuditLog({
             log_name: 'security',
-            description: `Password reset email instructions dispatched to ${normalizedEmail} (${emp.role})`,
+            description: `Password reset real email OTP dispatched to ${normalizedEmail} (${emp.role})`,
             subject_type: 'Security',
             subject_id: emp.id,
             event: 'PASSWORD_RESET_EMAIL_DISPATCHED',
@@ -223,13 +215,15 @@ router.post('/forgot-password', async (req, res) => {
             }
         });
 
+        // Email OTP is 100% REAL delivered via Brevo.
+        // We only expose previewCode if Brevo failed/fallback simulation is active.
         const isSimulated = Boolean(emailResult?.simulated);
-        const previewCode = (isSimulated || process.env.ALLOW_OTP_PREVIEW !== 'false') ? emailCode : undefined;
+        const previewCode = isSimulated ? emailCode : undefined;
 
         return res.json({
             success: true,
             method: 'email',
-            message: 'If an active workplace account matches that email, verification instructions have been dispatched.',
+            message: `6-digit security code dispatched to your email inbox: ${normalizedEmail}`,
             simulated: isSimulated,
             previewCode
         });

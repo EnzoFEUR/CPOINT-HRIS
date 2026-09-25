@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
+import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
 
 export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
@@ -16,6 +17,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [selectedGroup, setSelectedGroup] = useState('Line A');
     const [selectedGroupId, setSelectedGroupId] = useState('');
     const [isCustomLine, setIsCustomLine] = useState(false);
+    const [phone, setPhone] = useState(defaultValues.phone ? formatPhPhone(defaultValues.phone) : '');
+    const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
 
     // Fetch real production groups from the dedicated database table
     const { data: productionGroupsData } = useQuery({
@@ -145,6 +148,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplayHourlyPay('');
         setRawHourlyPay('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
+        setPhone('');
         const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
         setSelectedGroupId(defaultLine?.id || '');
         setSelectedGroup(defaultLine?.name || 'Line A');
@@ -155,6 +159,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
+
+        const phoneCheck = validatePhPhone(phone);
+        if (!phoneCheck.isValid) {
+            toast.error(phoneCheck.message || 'A valid 11-digit Philippine mobile phone number starting with 09 is required.');
+            return;
+        }
+        data.phone = phoneCheck.cleanPhone;
 
         const isFactory = department === 'Factory';
         data.department = department;
@@ -277,6 +288,45 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             </div>
 
                             <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Mobile Phone <span className="text-rose-500">*</span>
+                                    </label>
+                                    {phone && (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${
+                                            phoneValidation.isValid
+                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                : phoneValidation.status === 'invalid_prefix'
+                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                        }`}>
+                                            {phoneValidation.isValid ? `✓ ${phoneValidation.carrier || 'Valid PH Mobile'}` : phoneValidation.message}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
+                                        🇵🇭 +63
+                                    </div>
+                                    <input
+                                        type="tel"
+                                        name="phone"
+                                        required
+                                        value={phone}
+                                        onChange={(e) => setPhone(formatPhPhone(e.target.value))}
+                                        placeholder="0917 123 4567"
+                                        className={`w-full pl-20 pr-3.5 sm:pr-4 py-2.5 sm:py-3 bg-white border rounded-xl focus:outline-none focus:ring-4 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400 font-mono ${
+                                            phone && phoneValidation.isValid
+                                                ? 'border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/10'
+                                                : phone && !phoneValidation.isValid
+                                                ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10'
+                                                : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500/10'
+                                        }`}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="md:col-span-2">
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={defaultValues.role || 'employee'}
                                     className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">

@@ -88,21 +88,14 @@ export default function ForgotPassword() {
 
       if (method === 'sms') {
         setMaskedPhone(data.maskedPhone || 'your registered corporate phone');
-        if (data.previewCode) setPreviewCode(data.previewCode);
+        setPreviewCode(data.previewCode || null);
         setStep(2);
         toast.success(`Verification code sent to ${data.maskedPhone || 'your phone'}`);
-      } else {
-        try {
-          await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-            redirectTo: `${window.location.origin}/reset-password`,
-          });
-        } catch {}
-
-        setSuccessMsg(
-          data.message ||
-            'If an active workplace account matches that email, security instructions have been dispatched.'
-        );
-        toast.success('Instructions dispatched to your inbox');
+      } else if (method === 'email') {
+        setMaskedPhone(email.trim().toLowerCase());
+        setPreviewCode(data.previewCode || null); // null for real email sent via Brevo
+        setStep(2);
+        toast.success(`Verification code dispatched to ${email.trim().toLowerCase()}`);
       }
     } catch (err) {
       console.error('[FORGOT_PASSWORD_ERROR]', err);
@@ -262,7 +255,7 @@ export default function ForgotPassword() {
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Email Link
+                  Email OTP
                 </button>
                 <button
                   type="button"
@@ -323,29 +316,35 @@ export default function ForgotPassword() {
               ) : method === 'key' ? (
                 <span>Verify Master Key</span>
               ) : method === 'sms' ? (
-                <span>Send SMS Code</span>
+                <span>Dispatch SMS Code</span>
               ) : (
-                <span>Send Email Link</span>
+                <span>Dispatch Email Code</span>
               )}
             </button>
           </form>
         )}
 
-        {/* STEP 2: 6-Digit SMS OTP Verification */}
+        {/* STEP 2: 6-Digit SMS / Email OTP Verification */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="text-center">
               <p className="text-xs text-slate-600">
-                Enter the 6-digit code sent to <span className="font-semibold text-slate-900">{maskedPhone}</span>
+                {method === 'email' ? (
+                  <>Enter the 6-digit code sent to your email <span className="font-semibold text-slate-900">{maskedPhone}</span></>
+                ) : (
+                  <>Enter the 6-digit code sent to <span className="font-semibold text-slate-900">{maskedPhone}</span></>
+                )}
               </p>
             </div>
 
-            {/* Test Sandbox 1-Click Code (if available) */}
+            {/* Test Sandbox 1-Click Code (for SMS or Simulation) */}
             {previewCode && (
-              <div className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900">
-                <span className="text-[11px] truncate">
-                  Code: <strong className="font-mono">{previewCode}</strong>
-                </span>
+              <div className="flex items-center justify-between p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 shadow-2xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                  <span className="text-[11px] font-semibold text-blue-700 shrink-0">Demo Code:</span>
+                  <strong className="font-mono text-sm tracking-wider text-blue-950 font-bold">{previewCode}</strong>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -353,10 +352,20 @@ export default function ForgotPassword() {
                     setOtp(digits);
                     handleVerifyOtp(previewCode);
                   }}
-                  className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded cursor-pointer"
+                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold rounded-md shadow-2xs transition-all cursor-pointer shrink-0"
                 >
-                  Autofill
+                  1-Click Autofill
                 </button>
+              </div>
+            )}
+
+            {/* Real Brevo Email Notice */}
+            {method === 'email' && !previewCode && (
+              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+                <i className="ti ti-mail-check text-base text-slate-800 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  Real-time security code dispatched via Brevo Mail Gateway. Please check your inbox and spam folder.
+                </p>
               </div>
             )}
 

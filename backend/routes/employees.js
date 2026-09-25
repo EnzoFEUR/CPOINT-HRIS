@@ -5,6 +5,18 @@ import { createNotification } from './notifications.js';
 
 const router = express.Router();
 
+export function sanitizePhPhone(phone) {
+    if (!phone) return null;
+    let clean = String(phone).replace(/\D/g, '');
+    if (clean.startsWith('63') && clean.length === 12) {
+        clean = '0' + clean.slice(2);
+    }
+    if (/^09\d{9}$/.test(clean)) {
+        return clean;
+    }
+    return null;
+}
+
 /**
  * Determines employee operational status (Terminated, Suspended, or Active)
  * based on employee account status and disciplinary records.
@@ -85,12 +97,22 @@ router.get('/', cacheResponse(15), async (req, res) => {
         const { data, error } = await query;
         if (error) throw error;
 
+        let userPhoneMap = new Map();
+        try {
+            const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+            for (const u of authUsers?.users || []) {
+                const p = u.user_metadata?.phone || u.phone || null;
+                if (p) userPhoneMap.set(u.id, p);
+            }
+        } catch {}
+
         const now = new Date();
         const enriched = (data || []).map(emp => {
             const logs = emp.disciplinary_logs || [];
             const standing = evaluateOperationalStanding(emp, logs, now);
             return {
                 ...emp,
+                phone: emp.phone || userPhoneMap.get(emp.id) || null,
                 ...standing
             };
         });
@@ -142,17 +164,22 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
         const standing = evaluateOperationalStanding(emp, logs, now);
 
         let tempPassword = null;
-        if (emp.requires_password_change) {
-            try {
-                const { data: authUser } = await supabase.auth.admin.getUserById(id);
+        let phone = emp.phone || null;
+        try {
+            const { data: authUser } = await supabase.auth.admin.getUserById(id);
+            if (emp.requires_password_change) {
                 tempPassword = authUser?.user?.user_metadata?.temp_password || null;
-            } catch {
-                // Ignore auth fetch failure
             }
+            if (!phone) {
+                phone = authUser?.user?.user_metadata?.phone || authUser?.user?.phone || null;
+            }
+        } catch {
+            // Ignore auth fetch failure
         }
 
         const enrichedEmp = {
             ...emp,
+            phone,
             ...standing,
             temp_password: tempPassword,
             is_registered: !emp.requires_password_change,
@@ -171,6 +198,7 @@ router.post('/', async (req, res) => {
             first_name,
             last_name,
             email,
+            phone,
             department,
             job_title,
             shift,
@@ -187,6 +215,16 @@ router.post('/', async (req, res) => {
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
         if (!last_name || typeof last_name !== 'string' || last_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid last name' });
         if (!email || !email.includes('@')) return res.status(400).json({ success: false, error: 'Invalid email' });
+
+        // Enterprise Phone Number Validation (Philippine Standard: 09XXXXXXXXX)
+        const sanitizedPhone = sanitizePhPhone(phone);
+        if (!sanitizedPhone) {
+            return res.status(400).json({
+                success: false,
+                error: 'A valid 11-digit Philippine mobile phone number starting with 09 is required (e.g. 0917 123 4567).'
+            });
+        }
+
         if (!department || typeof department !== 'string') return res.status(400).json({ success: false, error: 'Invalid department' });
         if (!job_title || typeof job_title !== 'string') return res.status(400).json({ success: false, error: 'Invalid job title' });
         if (!['admin', 'employee', 'security'].includes(role)) return res.status(400).json({ success: false, error: 'Invalid role' });
@@ -238,7 +276,7 @@ router.post('/', async (req, res) => {
             email: normalizedEmail,
             password: defaultPassword,
             email_confirm: true,
-            user_metadata: { first_name, last_name, role, temp_password: defaultPassword }
+            user_metadata: { first_name, last_name, role, phone: sanitizedPhone, temp_password: defaultPassword }
         });
 
         if (authError) {
@@ -264,7 +302,7 @@ router.post('/', async (req, res) => {
                             email: normalizedEmail,
                             password: defaultPassword,
                             email_confirm: true,
-                            user_metadata: { first_name, last_name, role, temp_password: defaultPassword }
+                            user_metadata: { first_name, last_name, role, phone: sanitizedPhone, temp_password: defaultPassword }
                         });
 
                         if (retry.error) {
@@ -365,26 +403,29 @@ router.post('/', async (req, res) => {
                     : 'Regular Worker (08:00 AM - 08:00 PM)'
             );
 
-            const { data: empData, error: empError } = await supabase
+            const insertRecord = {
+                id: authData.user.id,
+                auth_user_id: authData.user.id,
+                company_id: company_id,
+                first_name,
+                last_name,
+                email: normalizedEmail,
+                role,
+                department,
+                job_title,
+                shift: resolvedShift,
+                production_group_id: resolvedGroupId,
+                daily_rate: parsedDailyRate,
+                hourly_rate: parsedHourlyRate,
+                email_hash: lookupHash,
+                status: 'active',
+                requires_password_change: true
+            };
+
+            let empData = null;
+            const tryInsert = await supabase
                 .from('employees')
-                .insert({
-                    id: authData.user.id,
-                    auth_user_id: authData.user.id,
-                    company_id: company_id,
-                    first_name,
-                    last_name,
-                    email: normalizedEmail,
-                    role,
-                    department,
-                    job_title,
-                    shift: resolvedShift,
-                    production_group_id: resolvedGroupId,
-                    daily_rate: parsedDailyRate,
-                    hourly_rate: parsedHourlyRate,
-                    email_hash: lookupHash,
-                    status: 'active',
-                    requires_password_change: true
-                })
+                .insert({ ...insertRecord, phone: sanitizedPhone })
                 .select(`
                     *,
                     production_groups (
@@ -393,7 +434,25 @@ router.post('/', async (req, res) => {
                 `)
                 .single();
 
-            if (empError) throw empError;
+            if (tryInsert.error && tryInsert.error.message?.includes('phone')) {
+                // Table doesn't have phone column; fallback to inserting without phone column
+                const retryInsert = await supabase
+                    .from('employees')
+                    .insert(insertRecord)
+                    .select(`
+                        *,
+                        production_groups (
+                            id, code, name, target_output_pairs, is_active
+                        )
+                    `)
+                    .single();
+                if (retryInsert.error) throw retryInsert.error;
+                empData = { ...retryInsert.data, phone: sanitizedPhone };
+            } else if (tryInsert.error) {
+                throw tryInsert.error;
+            } else {
+                empData = tryInsert.data;
+            }
 
             invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
 
@@ -454,6 +513,7 @@ router.put('/:id', async (req, res) => {
             first_name,
             last_name,
             email,
+            phone,
             role,
             department,
             job_title,
@@ -494,16 +554,50 @@ router.put('/:id', async (req, res) => {
         if (parsedHourlyRate !== null) updatePayload.hourly_rate = parsedHourlyRate;
 
         if (email) updatePayload.email = email;
+        if (phone !== undefined && phone !== null && phone !== '') {
+            const sanitizedPhone = sanitizePhPhone(phone);
+            if (!sanitizedPhone) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'A valid 11-digit Philippine mobile phone number starting with 09 is required (e.g. 0917 123 4567).'
+                });
+            }
+            updatePayload.phone = sanitizedPhone;
+
+            // Update user in Supabase Auth
+            try {
+                const { data: currentAuth } = await supabase.auth.admin.getUserById(req.params.id);
+                await supabase.auth.admin.updateUserById(req.params.id, {
+                    phone: `+63${sanitizedPhone.slice(1)}`,
+                    user_metadata: {
+                        ...(currentAuth?.user?.user_metadata || {}),
+                        phone: sanitizedPhone
+                    }
+                });
+            } catch (authErr) {
+                console.warn('[AUTH_SYNC_PHONE_WARN]', authErr.message);
+            }
+        }
         if (role) updatePayload.role = role;
         if (shift) updatePayload.shift = shift;
         if (production_group_id !== undefined) updatePayload.production_group_id = production_group_id;
 
-        const { error } = await supabase
+        let { error } = await supabase
             .from('employees')
             .update(updatePayload)
             .eq('id', req.params.id);
 
-        if (error) throw error;
+        if (error && error.message?.includes('phone')) {
+            const fallbackPayload = { ...updatePayload };
+            delete fallbackPayload.phone;
+            const retryRes = await supabase
+                .from('employees')
+                .update(fallbackPayload)
+                .eq('id', req.params.id);
+            if (retryRes.error) throw retryRes.error;
+        } else if (error) {
+            throw error;
+        }
 
         // Notify employee if compensation or shift was modified
         if (parsedDailyRate !== null || parsedHourlyRate !== null || shift) {
