@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
@@ -334,7 +334,15 @@ export default function Login() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Password</label>
+                                <div className="flex items-center justify-between mb-1 ml-0.5">
+                                    <label className="block text-xs font-semibold text-slate-700">Password</label>
+                                    <Link 
+                                        to="/forgot-password" 
+                                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                                    >
+                                        Forgot Password?
+                                    </Link>
+                                </div>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
                                         <i className="ti ti-lock" />
