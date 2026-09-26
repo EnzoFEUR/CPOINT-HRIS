@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { fetchWithAuth } from '../../../utils/api';

@@ -53,16 +53,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Start background workers
 startCronJobs();
 
-app.use(express.json());
-
-// Routes
-app.use('/api/documents', documentRouter);
-
 // Global Security Middleware
 app.use(securityHeaders);
 app.use(removeExposedHeaders);
 
 // Mount Authenticated Routes
+app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/employees', verifyToken, checkAdminOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
 app.use('/api/payroll', verifyToken, checkAdminOrOwnership, payrollRoutes);

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
+import { playBiometricSound as playSound } from '../utils/audio';
 
 // Primary CDN with high reliability and fallback
 const MODEL_SOURCES = [
@@ -78,44 +79,6 @@ const getEAR = (landmarks) => {
   return (calc(36, 37, 38, 39, 40, 41) + calc(42, 43, 44, 45, 46, 47)) / 2.0;
 };
 
-const playSound = (type) => {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const t = ctx.currentTime;
-
-    if (type === 'phase') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, t);
-      gain.gain.setValueAtTime(0.15, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-      osc.start(t); osc.stop(t + 0.12);
-    } else if (type === 'success') {
-      osc.type = 'triangle';
-      [523, 659, 784, 1047].forEach((f, i) => {
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        o.type = 'triangle'; o.frequency.value = f;
-        g.gain.setValueAtTime(0.2, t + i * 0.08);
-        g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.25);
-        o.start(t + i * 0.08); o.stop(t + i * 0.08 + 0.25);
-      });
-    } else if (type === 'error') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(200, t);
-      osc.frequency.linearRampToValueAtTime(100, t + 0.35);
-      gain.gain.setValueAtTime(0.25, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-      osc.start(t); osc.stop(t + 0.4);
-    }
-  } catch { /* silent */ }
-};
 
 const haptic = (type) => {
   if (!navigator.vibrate) return;
@@ -314,7 +277,7 @@ export default function BiometricSetup() {
     return stream;
   }, [cameraFacing]);
 
-  // Lens Switcher (Front ⟷ Rear)
+  // Lens Switcher (Front Ã¢Å¸Â· Rear)
   const toggleCameraFacing = useCallback(async () => {
     const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
     setCameraFacing(nextFacing);
@@ -786,7 +749,7 @@ export default function BiometricSetup() {
                 }}
               >
                 <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-bold shadow-lg">
-                  {activePhase.id === 0 ? '◉' : activePhase.id === 1 ? '←' : activePhase.id === 2 ? '→' : activePhase.id === 3 ? '↑' : '↓'}
+                  {activePhase.id === 0 ? 'Ã¢â€”â€°' : activePhase.id === 1 ? 'Ã¢â€ Â' : activePhase.id === 2 ? 'Ã¢â€ â€™' : activePhase.id === 3 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
                 </div>
               </div>
             )}

@@ -6,6 +6,7 @@ import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
+import { playScannerSound as playSound } from '../utils/audio';
 
 // Scanner configuration
 const ENV = {
@@ -44,41 +45,7 @@ const getEAR = (landmarks) => {
   return (calcEAR(36, 37, 38, 39, 40, 41) + calcEAR(42, 43, 44, 45, 46, 47)) / 2.0;
 };
 
-// Audio and haptic feedback
-const playSound = (type) => {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const t = ctx.currentTime;
-
-    if (type === 'scan') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(1200, t);
-      gain.gain.setValueAtTime(0.2, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-      osc.start(t); osc.stop(t + 0.12);
-    } else if (type === 'success') {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(520, t);
-      osc.frequency.setValueAtTime(880, t + 0.08);
-      gain.gain.setValueAtTime(0.35, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-      osc.start(t); osc.stop(t + 0.35);
-    } else if (type === 'error') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(180, t);
-      osc.frequency.linearRampToValueAtTime(120, t + 0.35);
-      gain.gain.setValueAtTime(0.35, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-      osc.start(t); osc.stop(t + 0.4);
-    }
-  } catch { /* silent */ }
-};
+// Haptic feedback
 
 const haptic = (type) => {
   if (!navigator.vibrate) return;

@@ -10,29 +10,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fullcalendar/core": "^6.1.21",
-    "@fullcalendar/daygrid": "^6.1.21",
-    "@fullcalendar/google-calendar": "^6.1.21",
-    "@fullcalendar/interaction": "^6.1.21",
-    "@fullcalendar/react": "^6.1.21",
     "@supabase/supabase-js": "^2.106.2",
-    "@tabler/icons-react": "^3.46.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@tanstack/react-query": "^5.101.2",
     "@vercel/speed-insights": "^2.0.0",
     "dayjs": "^1.11.21",
     "face-api.js": "^0.22.2",
-    "flatpickr": "^4.6.13",
+    "file-saver": "^2.0.5",
     "framer-motion": "^12.40.0",
     "html5-qrcode": "^2.3.8",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.17.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-flatpickr": "^4.0.11",
     "react-hot-toast": "^2.6.0",
-    "react-router-dom": "^7.16.0",
-    "sweetalert2": "^11.26.25"
+    "react-router-dom": "^7.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
