@@ -853,7 +853,6 @@ export default function PayrollIndex() {
         queryFn: fetchPayrolls,
         staleTime: 60_000,
         gcTime: 600_000,
-        refetchOnMount: false,
         refetchOnWindowFocus: false,
         placeholderData: (prev) => prev,
     });
