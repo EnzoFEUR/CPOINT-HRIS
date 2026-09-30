@@ -8,7 +8,7 @@ import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
 
 const MyQr = () => {
-  const [user] = useState(() => {
+  const [user, setUser] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('user')) || {};
     } catch {
@@ -78,14 +78,23 @@ const MyQr = () => {
           setDisciplinaryCache(user.id, statusObj);
           setDisciplinaryState(getDisciplinaryCache(user.id));
         } else {
-          clearDisciplinaryCache(user.id);
-          setDisciplinaryState(getDisciplinaryCache(user.id));
+          // If user status itself is terminated or inactive, preserve termination in cache!
+          const userStatus = (user?.status || '').toLowerCase();
+          const userIsTerm = userStatus === 'terminated' || userStatus === 'inactive' || Boolean(user?.is_terminated) || user?.operational_status === 'Terminated' || Boolean(user?.archived_at);
+          if (userIsTerm) {
+            const statusObj = { type: 'Termination', record: { type: 'Termination', reason: user?.separation_reason || 'Account Separated' }, isTerminated: true };
+            setDisciplinaryCache(user.id, statusObj);
+            setDisciplinaryState(statusObj);
+          } else {
+            clearDisciplinaryCache(user.id);
+            setDisciplinaryState(getDisciplinaryCache(user.id));
+          }
         }
       }
     } catch (err) {
       console.warn('Disciplinary sync note:', err.message);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.status, user?.is_terminated, user?.operational_status, user?.archived_at, user?.separation_reason]);
 
   const syncProfile = useCallback(async () => {
     if (!user?.id) return;
@@ -120,6 +129,27 @@ const MyQr = () => {
         checkDisciplinary();
         syncProfile();
       })
+      .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          setUser(prev => ({
+            ...prev,
+            has_registered_biometrics: true,
+            biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
+          }));
+          toast.success('Face Biometrics Enrolled! QR Pass activated.', { id: 'bio-qr-live' });
+          syncProfile();
+        }
+      })
+      .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          setUser(prev => ({
+            ...prev,
+            has_registered_biometrics: false,
+            biometric_baseline_path: null
+          }));
+          syncProfile();
+        }
+      })
       .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
         if (payload?.employee_id === user.id) {
           if (payload.is_exempt && payload.exemption) {
@@ -144,36 +174,158 @@ const MyQr = () => {
       .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
         if (payload?.employee_id === user.id) {
           if (payload.type === 'Suspension') {
-            const statusObj = { type: 'Suspension', record: payload, isSuspended: true };
+            const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
             setDisciplinaryCache(user.id, statusObj);
             setDisciplinaryState(statusObj);
+            setUser(prev => ({
+              ...prev,
+              status: 'suspended',
+              is_active: false,
+              is_suspended: true,
+              is_terminated: false,
+              operational_status: 'Suspended'
+            }));
+            toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
           } else if (payload.type === 'Termination') {
-            const statusObj = { type: 'Termination', record: payload, isTerminated: true };
+            const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
             setDisciplinaryCache(user.id, statusObj);
             setDisciplinaryState(statusObj);
+            setUser(prev => ({
+              ...prev,
+              status: 'inactive',
+              is_active: false,
+              is_suspended: false,
+              is_terminated: true,
+              operational_status: 'Terminated',
+              archived_at: payload.archived_at || new Date().toISOString(),
+              separation_reason: payload.reason
+            }));
+            toast.error('Pass Revoked: Your account has been separated / pending archive.');
           }
           checkDisciplinary();
         }
       })
+      .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
+          setDisciplinaryCache(user.id, statusObj);
+          setDisciplinaryState(statusObj);
+          setUser(prev => ({
+            ...prev,
+            status: 'suspended',
+            is_active: false,
+            is_suspended: true,
+            is_terminated: false,
+            operational_status: 'Suspended'
+          }));
+          toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
+          checkDisciplinary();
+        }
+      })
+      .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
+          setDisciplinaryCache(user.id, statusObj);
+          setDisciplinaryState(statusObj);
+          setUser(prev => ({
+            ...prev,
+            status: 'inactive',
+            is_active: false,
+            is_suspended: false,
+            is_terminated: true,
+            operational_status: 'Terminated',
+            archived_at: payload.archived_at || new Date().toISOString(),
+            separation_reason: payload.reason
+          }));
+          toast.error('Pass Revoked: Your account has been separated / pending archive.');
+          checkDisciplinary();
+        }
+      })
       .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
+        if (!payload || payload.employee_id === user.id) {
           clearDisciplinaryCache(user.id);
           setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          setUser(prev => ({
+            ...prev,
+            status: 'active',
+            is_active: true,
+            is_suspended: false,
+            is_terminated: false,
+            operational_status: 'Active',
+            archived_at: null
+          }));
+          toast.success('Pass Restored: Disciplinary action overturned.', { id: 'qr-rest-alert' });
           checkDisciplinary();
         }
       })
       .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
+        if (!payload || payload.employee_id === user.id) {
           clearDisciplinaryCache(user.id);
           setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          setUser(prev => ({
+            ...prev,
+            status: 'active',
+            is_active: true,
+            is_suspended: false,
+            is_terminated: false,
+            operational_status: 'Active',
+            archived_at: null
+          }));
+          toast.success('Pass Restored: Disciplinary record resolved.', { id: 'qr-rest-alert' });
           checkDisciplinary();
         }
       })
       .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
+        if (!payload || payload.employee_id === user.id) {
           clearDisciplinaryCache(user.id);
           setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+          setUser(prev => ({
+            ...prev,
+            status: 'active',
+            is_active: true,
+            is_suspended: false,
+            is_terminated: false,
+            operational_status: 'Active',
+            archived_at: null
+          }));
+          toast.success('Pass Restored: Operational access active.', { id: 'qr-rest-alert' });
           checkDisciplinary();
+        }
+      })
+      .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          setUser(prev => {
+            const updated = {
+              ...prev,
+              has_registered_biometrics: true,
+              biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
+            };
+            try {
+              const stored = JSON.parse(localStorage.getItem('user') || '{}');
+              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
+            } catch (_) {}
+            return updated;
+          });
+          toast.success('Face Biometrics Enrolled! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
+          syncProfile();
+        }
+      })
+      .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
+        if (!payload || payload.employee_id === user.id) {
+          setUser(prev => {
+            const updated = {
+              ...prev,
+              has_registered_biometrics: false,
+              biometric_baseline_path: null
+            };
+            try {
+              const stored = JSON.parse(localStorage.getItem('user') || '{}');
+              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
+            } catch (_) {}
+            return updated;
+          });
+          toast.error('Face Biometrics Reset: Pass locked until re-registration.', { id: 'bio-reset-toast', duration: 5000 });
+          syncProfile();
         }
       })
       .subscribe();
@@ -199,8 +351,38 @@ const MyQr = () => {
     };
   }, [user?.id, checkDisciplinary, syncProfile]);
 
-  const isSuspended = disciplinaryState.isSuspended || (user?.status === 'inactive' && !disciplinaryState.isTerminated);
-  const isTerminated = disciplinaryState.isTerminated;
+  // Invariant: Suspension and Termination are strictly mutually exclusive
+  const isSuspended = (
+    user?.status === 'suspended' || 
+    user?.operational_status === 'Suspended' ||
+    Boolean(user?.is_suspended) ||
+    disciplinaryState.isSuspended
+  ) && user?.status !== 'terminated' && user?.operational_status !== 'Terminated';
+
+  const isDirectlyTerminated = !isSuspended && (
+    user?.status === 'terminated' || 
+    user?.operational_status === 'Terminated' || 
+    Boolean(user?.is_terminated) || 
+    (Boolean(user?.archived_at) && user?.status !== 'active') ||
+    (user?.status === 'inactive' && Boolean(user?.archived_at || user?.separation_type))
+  );
+
+  const isTerminated = !isSuspended && (disciplinaryState.isTerminated || isDirectlyTerminated);
+
+  // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
+  const hasFaceBiometrics = Boolean(
+    user?.has_registered_biometrics ||
+    user?.biometric_baseline_path ||
+    isMedicalExempt
+  );
+
+  // Pending archive cooldown calculations
+  const PENDING_ARCHIVE_DAYS = 14;
+  const separationDate = user?.separation_date || user?.archived_at || disciplinaryState?.record?.date || disciplinaryState?.record?.created_at;
+  const separationTimestamp = separationDate ? new Date(separationDate).getTime() : Date.now();
+  const daysSinceSeparation = Math.max(0, Math.floor((Date.now() - separationTimestamp) / (1000 * 60 * 60 * 24)));
+  const daysUntilPermanentArchive = Math.max(0, PENDING_ARCHIVE_DAYS - daysSinceSeparation);
+  const isPendingArchive = isTerminated && (daysUntilPermanentArchive > 0 || Boolean(user?.archived_at));
 
   const suspensionEndDate = useMemo(() => {
     if (!isSuspended || !disciplinaryState?.record?.reason) return null;
@@ -260,8 +442,8 @@ const MyQr = () => {
           {/* Status / Company ID badge */}
           <div className="shrink-0 flex items-center gap-1.5">
             {isTerminated ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
-                Separated
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Archived'}
               </span>
             ) : isSuspended ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
@@ -281,16 +463,16 @@ const MyQr = () => {
         </div>
 
         {isTerminated ? (
-          <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-rose-200 shadow-sm text-center">
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mb-4">
-              <i className="ti ti-user-x text-2xl" />
+          <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200 shadow-sm text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 mb-4">
+              <i className="ti ti-archive text-2xl" />
             </div>
-            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold uppercase tracking-wider rounded-full mb-2">
-              Pass Deactivated
+            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider rounded-full mb-2">
+              {isPendingArchive ? `Pending Archive · ${daysUntilPermanentArchive}d Cooldown` : 'Cold Storage Archive'}
             </span>
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Attendance Pass Revoked</h3>
             <p className="text-xs text-slate-500 leading-relaxed max-w-xs mt-1.5 font-medium">
-              This account has been separated. Operational attendance credentials are permanently closed. You can view your archived payslips on the dashboard.
+              This account has been separated. Operational attendance credentials and turnstile face scanning are permanently closed. You can view your archived payslips on the dashboard.
             </p>
             <div className="mt-5 w-full">
               <Link 
@@ -345,6 +527,45 @@ const MyQr = () => {
           <div className="w-full bg-white rounded-3xl p-8 flex flex-col items-center justify-center border border-slate-100 shadow-xs min-h-[290px]">
             <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3" />
             <span className="text-xs text-slate-400 font-medium">Verifying access...</span>
+          </div>
+        ) : !hasFaceBiometrics ? (
+          <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200/90 shadow-xs text-center relative overflow-hidden">
+            <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 mb-4 shadow-inner relative">
+              <i className="ti ti-scan-eye text-4xl animate-pulse" />
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
+                <i className="ti ti-lock" />
+              </div>
+            </div>
+
+            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200 mb-2">
+              Biometrics Incomplete · Pass Locked
+            </span>
+
+            <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+              Facial Biometrics Registration Required
+            </h3>
+
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-sm font-medium">
+              In compliance with DOLE attendance verification standards, your optical QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+            </p>
+
+            <div className="mt-5 w-full max-w-xs space-y-2">
+              <Link
+                to="/biometric-setup"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <i className="ti ti-camera text-base" />
+                <span>Enroll Facial Biometrics Now</span>
+              </Link>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-400 font-medium px-2">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span>Live Socket Sync</span>
+              </span>
+              <span className="font-mono text-slate-500">Unlocks Instantly</span>
+            </div>
           </div>
         ) : (
           <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">

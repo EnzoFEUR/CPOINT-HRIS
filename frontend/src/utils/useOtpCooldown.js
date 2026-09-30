@@ -46,11 +46,11 @@ export function useOtpCooldown(scopeKey, defaultDuration = 60) {
     }, [storageKey]);
 
     useEffect(() => {
-        // Sync state on mount or key change
-        const initialRemaining = getRemaining();
-        setCooldown(initialRemaining);
+        // Sync on mount or when storageKey or cooldown state changes
+        const remaining = getRemaining();
+        setCooldown(remaining);
 
-        if (initialRemaining <= 0) return;
+        if (remaining <= 0) return;
 
         const timer = setInterval(() => {
             const currentRemaining = getRemaining();
@@ -72,7 +72,7 @@ export function useOtpCooldown(scopeKey, defaultDuration = 60) {
             clearInterval(timer);
             window.removeEventListener('storage', handleStorageChange);
         };
-    }, [storageKey, getRemaining]);
+    }, [storageKey, getRemaining, cooldown > 0]);
 
     const formattedTime = `${Math.floor(cooldown / 60)}:${String(cooldown % 60).padStart(2, '0')}`;
 

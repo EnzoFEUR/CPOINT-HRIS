@@ -16,9 +16,35 @@ router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
             supabase.from('disciplinary_logs').select('*').eq('employee_id', userId).order('created_at', { ascending: false })
         ]);
 
-        const employee = empRes.data || req.user;
+        const rawEmployee = empRes.data || req.user;
         const documents = docsRes.data || [];
         const disciplinary_logs = discRes.data || [];
+
+        const termLog = (disciplinary_logs || []).find(d => {
+            const isTermType = d.action_taken === 'Termination' || d.type === 'Termination';
+            const s = (d.status || '').toLowerCase();
+            return isTermType && s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+        });
+
+        const suspLog = (disciplinary_logs || []).find(d => {
+            const isSuspType = d.action_taken === 'Suspension' || d.type === 'Suspension';
+            const s = (d.status || '').toLowerCase();
+            return isSuspType && s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+        });
+
+        const isSuspended = (rawEmployee?.status === 'suspended' || Boolean(suspLog)) && !Boolean(termLog);
+        const isTerminated = !isSuspended && Boolean(
+            rawEmployee?.status === 'terminated' ||
+            Boolean(termLog) ||
+            (rawEmployee?.archived_at && rawEmployee?.status !== 'active')
+        );
+
+        const employee = {
+            ...rawEmployee,
+            is_terminated: isTerminated,
+            is_suspended: isSuspended,
+            operational_status: isSuspended ? 'Suspended' : (isTerminated ? 'Terminated' : 'Active')
+        };
 
         res.json({
             success: true,
@@ -69,14 +95,14 @@ router.post('/avatar', verifyToken, async (req, res) => {
             return res.status(400).json({ error: 'image_base64 is required' });
         }
 
-        // Check if user is terminated
+        // Check if user is terminated or archived
         const { data: empCheck } = await supabase
             .from('employees')
-            .select('id, status, is_active')
+            .select('id, status, is_active, archived_at')
             .eq('id', req.user.id)
             .single();
 
-        if (empCheck && (empCheck.status === 'inactive' || empCheck.status === 'terminated' || empCheck.is_active === false)) {
+        if (empCheck && (empCheck.status === 'inactive' || empCheck.status === 'terminated' || empCheck.is_active === false || empCheck.archived_at)) {
             return res.status(403).json({ error: 'Profile modifications are disabled for separated/terminated accounts.' });
         }
 

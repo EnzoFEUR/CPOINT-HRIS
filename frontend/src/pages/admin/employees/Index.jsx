@@ -100,25 +100,84 @@ export default function EmployeesIndex() {
         if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
         const data = Array.isArray(result) ? result : (result.data || []);
         
-        // Filter out terminated and inactive personnel
-        return data.filter(emp => 
-            emp.status !== 'terminated' && 
-            emp.status !== 'inactive' && 
-            emp.is_active !== false
-        );
+        return data.filter(emp => {
+            const isTerm = emp.operational_status === 'Terminated' || emp.is_terminated || emp.status === 'terminated' || Boolean(emp.archived_at);
+            if (isTerm) {
+                // Keep terminated / separated personnel in directory during the 14-day clearance cooldown window
+                const daysLeft = getDaysUntilArchive(emp);
+                return daysLeft === null || daysLeft > 0;
+            }
+            // Active and suspended personnel are always retained in directory
+            return true;
+        });
     };
 
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ['adminEmployees'],
         queryFn: fetchEmployees,
-        staleTime: 60_000,
+        staleTime: 15_000,
         gcTime: 300_000,
         refetchOnWindowFocus: false,
     });
 
     // Realtime subscriptions for directory updates
     useEffect(() => {
-        const handleSync = () => {
+        const handleSync = (payload) => {
+            // Instant in-memory cache update for sub-millisecond perceived latency
+            if (payload?.payload?.employee_id || payload?.payload?.employeeId) {
+                const targetEmpId = payload.payload.employee_id || payload.payload.employeeId;
+                const evt = payload.event;
+                queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                    if (!Array.isArray(oldData)) return oldData;
+                    return oldData.map(emp => {
+                        if (emp.id !== targetEmpId) return emp;
+                        if (evt === 'EMPLOYEE_TERMINATED') {
+                            return {
+                                ...emp,
+                                is_terminated: true,
+                                is_suspended: false,
+                                operational_status: 'Terminated',
+                                status: 'inactive',
+                                is_active: false,
+                                separation_reason: payload.payload.reason || emp.separation_reason,
+                                termination_record: {
+                                    type: 'Termination',
+                                    reason: payload.payload.reason || 'Contract Concluded / Terminated',
+                                    date: payload.payload.date || new Date().toISOString()
+                                }
+                            };
+                        }
+                        if (evt === 'EMPLOYEE_SUSPENDED') {
+                            return {
+                                ...emp,
+                                is_terminated: false,
+                                is_suspended: true,
+                                operational_status: 'Suspended',
+                                status: 'suspended',
+                                is_active: false,
+                                active_suspension: {
+                                    type: 'Suspension',
+                                    reason: payload.payload.reason || 'Serving disciplinary suspension',
+                                    status: 'Active'
+                                }
+                            };
+                        }
+                        if (evt === 'EMPLOYEE_RESTORED' || evt === 'DISCIPLINARY_RESOLVED' || evt === 'DISCIPLINARY_OVERTURNED') {
+                            return {
+                                ...emp,
+                                is_terminated: false,
+                                is_suspended: false,
+                                operational_status: 'Active',
+                                status: 'active',
+                                is_active: true,
+                                active_suspension: null,
+                                termination_record: null
+                            };
+                        }
+                        return emp;
+                    });
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
         };
 
@@ -129,26 +188,45 @@ export default function EmployeesIndex() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'production_groups' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
-            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleSync)
             .subscribe();
 
         const syncChannel = supabase
-            .channel('disciplinary_realtime_sync_dir')
+            .channel('disciplinary_realtime_sync')
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleSync)
+            .subscribe();
+
+        const updatesChannel = supabase
+            .channel('disciplinary-updates')
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleSync)
+            .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleSync)
             .subscribe();
 
         return () => {
             window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
             supabase.removeChannel(syncChannel);
+            supabase.removeChannel(updatesChannel);
         };
     }, [queryClient]);
 
@@ -184,15 +262,24 @@ export default function EmployeesIndex() {
                 }
 
                 const isFactory = (emp.department || '').toLowerCase().includes('factory');
-                const isTerminated = emp.operational_status === 'Terminated' || emp.is_terminated;
-                const isSuspended = !isTerminated && (emp.operational_status === 'Suspended' || emp.is_suspended);
+                const isSuspended = Boolean(
+                    emp.operational_status === 'Suspended' || 
+                    emp.is_suspended ||
+                    emp.status === 'suspended'
+                );
+                const isTerminated = !isSuspended && Boolean(
+                    emp.operational_status === 'Terminated' || 
+                    emp.is_terminated ||
+                    emp.status === 'terminated' ||
+                    (Boolean(emp.archived_at) && emp.status !== 'active')
+                );
                 const isActive = !isTerminated && !isSuspended;
 
-            if (filterStatus === 'Active' && !isActive) return false;
-            if (filterStatus === 'Suspended' && !isSuspended) return false;
-            if (filterStatus === 'Terminated' && !isTerminated) return false;
-            if (filterStatus === 'Salaried' && isFactory) return false;
-            if (filterStatus === 'Piece-Rate' && !isFactory) return false;
+                if (filterStatus === 'Active' && !isActive) return false;
+                if (filterStatus === 'Suspended' && !isSuspended) return false;
+                if ((filterStatus === 'Terminated' || filterStatus === 'Pending Termination' || filterStatus === 'Separated') && !isTerminated) return false;
+                if (filterStatus === 'Salaried' && isFactory) return false;
+                if (filterStatus === 'Piece-Rate' && !isFactory) return false;
 
                 if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
 
@@ -210,8 +297,8 @@ export default function EmployeesIndex() {
             .sort((a, b) => {
                 // Tiered hierarchy: Active and suspended personnel (operational workforce) first,
                 // followed by separated personnel pending final archive review.
-                const aTerm = (a.operational_status === 'Terminated' || a.is_terminated) ? 1 : 0;
-                const bTerm = (b.operational_status === 'Terminated' || b.is_terminated) ? 1 : 0;
+                const aTerm = (a.operational_status === 'Terminated' || a.is_terminated || a.status === 'terminated' || Boolean(a.archived_at)) ? 1 : 0;
+                const bTerm = (b.operational_status === 'Terminated' || b.is_terminated || b.status === 'terminated' || Boolean(b.archived_at)) ? 1 : 0;
                 if (aTerm !== bTerm) return aTerm - bTerm;
 
                 // Alphabetical sort within tier: Last Name ascending, then First Name ascending
@@ -245,8 +332,17 @@ export default function EmployeesIndex() {
             }
 
             all++;
-            const isTerminated = e.operational_status === 'Terminated' || e.is_terminated;
-            const isSusp = !isTerminated && (e.operational_status === 'Suspended' || e.is_suspended);
+            const isSusp = Boolean(
+                e.operational_status === 'Suspended' || 
+                e.is_suspended ||
+                e.status === 'suspended'
+            );
+            const isTerminated = !isSusp && Boolean(
+                e.operational_status === 'Terminated' || 
+                e.is_terminated ||
+                e.status === 'terminated' ||
+                (Boolean(e.archived_at) && e.status !== 'active')
+            );
 
             if (isTerminated) {
                 pendingTermination++;
@@ -352,6 +448,9 @@ export default function EmployeesIndex() {
                                     { id: 'All', label: 'All', count: counts.all, dot: null },
                                     { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
                                     { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
+                                    ...(counts.pendingTermination > 0 ? [
+                                        { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, dot: 'bg-rose-500', alert: true }
+                                    ] : []),
                                     { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
                                     { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
                                 ].map(tab => (
@@ -479,8 +578,17 @@ export default function EmployeesIndex() {
                                 const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
                                 const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                 const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
-                                const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
-                                const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+                                const isSuspended = Boolean(
+                                    employee.operational_status === 'Suspended' || 
+                                    employee.is_suspended ||
+                                    employee.status === 'suspended'
+                                );
+                                const isTerminated = !isSuspended && Boolean(
+                                    employee.operational_status === 'Terminated' || 
+                                    employee.is_terminated ||
+                                    employee.status === 'terminated' ||
+                                    (Boolean(employee.archived_at) && employee.status !== 'active')
+                                );
                                 const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
 
                                 return (
@@ -531,7 +639,8 @@ export default function EmployeesIndex() {
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
                                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Separated
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                            {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
                                                         </span>
                                                     ) : isSuspended ? (
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -553,11 +662,10 @@ export default function EmployeesIndex() {
                                                         <span className="font-mono text-rose-600">Access Revoked</span>
                                                     </div>
                                                     <p className="text-xs text-rose-800 font-medium line-clamp-1">
-                                                        {employee.termination_record?.reason || 'Contract Concluded / Terminated'}
+                                                        {employee.termination_record?.reason || employee.separation_reason || 'Contract Concluded / Terminated'}
                                                     </p>
                                                 </div>
                                             )}
-
 
                                             {isSuspended && (
                                                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-0.5">
@@ -566,7 +674,7 @@ export default function EmployeesIndex() {
                                                         <span className="font-mono text-amber-700">QR Suspended</span>
                                                     </div>
                                                     <p className="text-xs text-amber-800 font-medium line-clamp-1">
-                                                        {employee.active_suspension?.reason || 'Serving operational suspension'}
+                                                        {employee.active_suspension?.reason || employee.suspension_reason || 'Serving operational suspension'}
                                                     </p>
                                                 </div>
                                             )}
@@ -712,8 +820,17 @@ export default function EmployeesIndex() {
                                     const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
                                     const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                     const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
-                                    const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
-                                    const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+                                    const isSuspended = Boolean(
+                                        employee.operational_status === 'Suspended' || 
+                                        employee.is_suspended ||
+                                        employee.status === 'suspended'
+                                    );
+                                    const isTerminated = !isSuspended && Boolean(
+                                        employee.operational_status === 'Terminated' || 
+                                        employee.is_terminated ||
+                                        employee.status === 'terminated' ||
+                                        (Boolean(employee.archived_at) && employee.status !== 'active')
+                                    );
                                     const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
 
                                     return (
@@ -738,7 +855,7 @@ export default function EmployeesIndex() {
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
                                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                                                            Terminated
+                                                            {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
                                                         </span>
                                                     ) : isSuspended ? (
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -837,8 +954,17 @@ export default function EmployeesIndex() {
                                             const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
                                             const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
                                             const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
-                                            const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
-                                            const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+                                            const isSuspended = Boolean(
+                                                employee.operational_status === 'Suspended' || 
+                                                employee.is_suspended ||
+                                                employee.status === 'suspended'
+                                            );
+                                            const isTerminated = !isSuspended && Boolean(
+                                                employee.operational_status === 'Terminated' || 
+                                                employee.is_terminated ||
+                                                employee.status === 'terminated' ||
+                                                (Boolean(employee.archived_at) && employee.status !== 'active')
+                                            );
                                             const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
 
                                             return (
@@ -873,7 +999,7 @@ export default function EmployeesIndex() {
                                                     <td className="px-4 py-3.5">
                                                         {isTerminated ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-md border border-rose-300">
-                                                                <i className="ti ti-circle-x text-xs text-rose-600" /> Terminated
+                                                                <i className="ti ti-circle-x text-xs text-rose-600" /> {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Terminated'}
                                                             </span>
                                                         ) : isSuspended ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-md border border-amber-300">

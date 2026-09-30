@@ -723,14 +723,18 @@ export default function PayrollIndex() {
         const channel = supabase
             .channel('admin-live-payroll-ledger')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'production_groups' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
+            })
+            .on('broadcast', { event: '*' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
             })
             .subscribe();
 
@@ -851,10 +855,10 @@ export default function PayrollIndex() {
     const { data: payrolls = [], isLoading: isLoadingPayrolls } = useQuery({
         queryKey: ['adminPayrolls', currentMonth, currentYear],
         queryFn: fetchPayrolls,
-        staleTime: 60_000,
+        staleTime: 10_000,
         gcTime: 600_000,
-        refetchOnMount: false,
-        refetchOnWindowFocus: false,
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: true,
         placeholderData: (prev) => prev,
     });
 
@@ -872,10 +876,10 @@ export default function PayrollIndex() {
     const { data: employees = [], isLoading: isLoadingEmployees } = useQuery({
         queryKey: ['adminPayrollEligibleEmployees'],
         queryFn: fetchEmployees,
-        staleTime: 120_000,
+        staleTime: 30_000,
         gcTime: 600_000,
-        refetchOnMount: false,
-        refetchOnWindowFocus: false,
+        refetchOnMount: true,
+        refetchOnWindowFocus: true,
     });
 
     const isLoading = isLoadingPayrolls || isLoadingEmployees;

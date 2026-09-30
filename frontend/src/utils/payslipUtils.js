@@ -142,6 +142,10 @@ export const parsePayrollFinancials = (payroll) => {
 
     const totalDeductions = deductionsList.reduce((sum, item) => sum + item.amount, 0);
     
+    // Extract withholding tax from parsed deductions for compliance checks
+    const taxItem = deductionsList.find(d => (d.name || '').toLowerCase().includes('tax'));
+    const withholdingTax = taxItem ? taxItem.amount : 0;
+
     // Calculate net pay with fallback to payroll.net_pay
     const calculatedNet = grossEarnings - totalDeductions;
     const netPay = payroll.net_pay !== undefined && payroll.net_pay !== null && !isNaN(Number(payroll.net_pay))
@@ -157,6 +161,7 @@ export const parsePayrollFinancials = (payroll) => {
         grossEarnings,
         deductionsList,
         totalDeductions,
+        withholdingTax,
         netPay,
     };
 };

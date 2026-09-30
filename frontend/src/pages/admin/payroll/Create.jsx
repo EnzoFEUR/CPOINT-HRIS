@@ -1077,7 +1077,8 @@ const PayrollCreate = () => {
     }, [activeGroupEmployees]);
 
     // How many days a worker was expected to show up for this cutoff.
-    // Honours the weekend toggle so a Mon-Fri group is not flagged for Sat/Sun.
+    // Honours statutory rest days (DOLE Art. 91: Sundays are rest days for 6-day factory work weeks,
+    // and Sat/Sun are rest days for 5-day office work weeks).
     const expectedWorkingDays = useMemo(() => {
         if (!periodStart || !periodEnd || isInvalidDateRange) return 0;
         const cur = new Date(periodStart + 'T00:00:00');
@@ -1085,12 +1086,17 @@ const PayrollCreate = () => {
         if (isNaN(cur.getTime()) || isNaN(end.getTime())) return 0;
         let count = 0;
         while (cur <= end) {
-            const dow = cur.getDay();
-            if (includeWeekends || (dow !== 0 && dow !== 6)) count++;
+            const dow = cur.getDay(); // 0 = Sunday, 6 = Saturday
+            if (cutoffMode === '5day') {
+                if (dow !== 0 && dow !== 6) count++;
+            } else {
+                // 6-day factory operations (Mon-Sat); Sunday is the statutory weekly rest day
+                if (dow !== 0) count++;
+            }
             cur.setDate(cur.getDate() + 1);
         }
         return count;
-    }, [periodStart, periodEnd, includeWeekends, isInvalidDateRange]);
+    }, [periodStart, periodEnd, cutoffMode, isInvalidDateRange]);
 
     // Anyone short of even one expected day. Held back until attendance has actually
     // loaded so the whole roster isn't flagged mid-fetch.
@@ -1326,7 +1332,7 @@ const PayrollCreate = () => {
                 const monthlyPhilHealth = (phBase * 0.05) / 2;
                 philHealth = parseFloat((monthlyPhilHealth / 4).toFixed(2));
 
-                const monthlyPagIbig = Math.min(monthlyEquiv * 0.02, 100);
+                const monthlyPagIbig = Math.min(monthlyEquiv * 0.02, 200);
                 pagIbig = parseFloat((monthlyPagIbig / 4).toFixed(2));
 
                 const totalStatutory = parseFloat((sss + philHealth + pagIbig).toFixed(2));
@@ -1719,9 +1725,9 @@ const PayrollCreate = () => {
                 setIsSubmitting(false);
             } else {
                 setSuccess(`${selectedGroup} Payroll Distributed! Distributed ₱${grandTotalFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })} across ${batchEntries.length} assigned workers in ${selectedGroup}.`);
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'all' });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'all' });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'], refetchType: 'all' });
                 setTimeout(() => navigate('/admin/payroll'), 900);
             }
         } catch (err) {
@@ -1762,6 +1768,7 @@ const PayrollCreate = () => {
                 overtime_pay: parseFloat(otPay.toFixed(2)),
                 period_start: periodStart,
                 period_end: periodEnd,
+                pay_frequency: 'weekly',
                 apply_deductions: true,
                 admin_id: user?.id
             };
@@ -1777,9 +1784,9 @@ const PayrollCreate = () => {
                 setIsSubmitting(false);
             } else {
                 setSuccess('Payroll Computed & Saved to Ledger!');
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'] });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'] });
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'all' });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'all' });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'], refetchType: 'all' });
                 setTimeout(() => navigate('/admin/payroll'), 900);
             }
         } catch (err) {

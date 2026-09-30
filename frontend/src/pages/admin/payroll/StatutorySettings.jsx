@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient'; // Adjust path if needed
+import { fetchWithAuth } from '../../../utils/api';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -10,7 +11,7 @@ const DEFAULT_SETTINGS = {
     philhealth_max_salary: 100000,
     pagibig_employee_rate: 2,     // 2%
     pagibig_employer_rate: 2,     // 2%
-    pagibig_max_contribution: 100 // P100 Max EE share (P200 total EE+ER)
+    pagibig_max_contribution: 200 // P200 Max EE share (P400 total EE+ER under Circular 460)
 };
 
 // Static class lookup map to fix Tailwind CSS JIT compilation issue with dynamic string interpolation
@@ -125,31 +126,40 @@ export default function StatutorySettings({ onBack }) {
         setLoading(true);
 
         try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
             const payload = {
                 ...settings,
+                admin_id: user?.id,
                 updated_at: new Date().toISOString()
             };
 
-            let error;
-            if (settings.id) {
-                ({ error } = await supabase
-                    .from('statutory_settings')
-                    .update(payload)
-                    .eq('id', settings.id));
-            } else {
-                const { data: inserted, error: insErr } = await supabase
-                    .from('statutory_settings')
-                    .insert([payload])
-                    .select()
-                    .single();
+            const response = await fetchWithAuth('/api/payroll/statutory-settings', {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
 
-                error = insErr;
-                if (inserted) setSettings(inserted);
+            const data = await response.json();
+            if (!response.ok || data.error) {
+                // Graceful fallback to direct Supabase update if backend route is unavailable
+                let error;
+                if (settings.id) {
+                    ({ error } = await supabase
+                        .from('statutory_settings')
+                        .update(payload)
+                        .eq('id', settings.id));
+                } else {
+                    const { data: inserted, error: insErr } = await supabase
+                        .from('statutory_settings')
+                        .insert([payload])
+                        .select()
+                        .single();
+                    error = insErr;
+                    if (inserted) setSettings(inserted);
+                }
+                if (error) throw error;
             }
 
-            if (error) throw error;
-
-            setSuccessMessage("Statutory settings updated successfully.");
+            setSuccessMessage("Statutory settings updated & broadcasted successfully.");
             setTimeout(() => setSuccessMessage(''), 4000);
         } catch (err) {
             console.error("Database update error:", err);

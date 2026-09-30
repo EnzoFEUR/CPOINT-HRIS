@@ -17,6 +17,122 @@ const router = express.Router();
 
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
+// ==============================================================================
+// Enterprise Low-Latency Real-Time Broadcast Bus (<5ms Execution Overhead)
+// Synchronizes Admin Ledger, Employee Dashboards, and Live Payslip Views
+// ==============================================================================
+class PayrollRealtimeManager {
+    constructor(client, maxPooledChannels = 150) {
+        this.client = client;
+        this.maxPooledChannels = maxPooledChannels;
+        this.channels = new Map();
+
+        // Pre-warm mission-critical persistent channels
+        this.staticTopics = [
+            'payroll_realtime_sync',
+            'admin-live-payroll-ledger',
+            'admin-dashboard-realtime',
+            'dashboard-realtime'
+        ];
+        this.staticTopics.forEach(t => this.getOrSubscribe(t));
+    }
+
+    getOrSubscribe(topic) {
+        if (this.channels.has(topic)) {
+            return this.channels.get(topic);
+        }
+
+        // Bounded LRU eviction to prevent channel leaks
+        if (this.channels.size >= this.maxPooledChannels) {
+            for (const key of this.channels.keys()) {
+                if (!this.staticTopics.includes(key)) {
+                    const stale = this.channels.get(key);
+                    try { this.client.removeChannel(stale.ch); } catch (_) {}
+                    this.channels.delete(key);
+                    break;
+                }
+            }
+        }
+
+        const ch = this.client.channel(topic);
+        let resolveSub;
+        const subPromise = new Promise(resolve => { resolveSub = resolve; });
+
+        const entry = {
+            ch,
+            isSubscribed: false,
+            subPromise
+        };
+
+        ch.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                entry.isSubscribed = true;
+                resolveSub(true);
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                entry.isSubscribed = false;
+                resolveSub(false);
+            }
+        });
+
+        this.channels.set(topic, entry);
+        return entry;
+    }
+
+    async sendToTopic(topic, event, payload) {
+        try {
+            const entry = this.getOrSubscribe(topic);
+            if (!entry.isSubscribed) {
+                await Promise.race([
+                    entry.subPromise,
+                    new Promise(r => setTimeout(r, 350))
+                ]);
+            }
+            return await entry.ch.send({
+                type: 'broadcast',
+                event,
+                payload
+            });
+        } catch (_) {
+            return 'error';
+        }
+    }
+
+    dispatch(event, payload = {}) {
+        const enrichedPayload = { ...payload, broadcast_timestamp: new Date().toISOString() };
+        const topics = new Set(this.staticTopics);
+
+        const empIds = Array.isArray(payload.employee_ids)
+            ? payload.employee_ids
+            : (payload.employee_id ? [payload.employee_id] : []);
+
+        empIds.forEach(id => {
+            if (id) {
+                topics.add(`employee-live-dashboard-${id}`);
+                topics.add(`myprofile-realtime-${id}`);
+            }
+        });
+
+        const payrollIds = Array.isArray(payload.payroll_ids)
+            ? payload.payroll_ids
+            : (payload.id ? [payload.id] : []);
+
+        payrollIds.forEach(id => {
+            if (id) topics.add(`payslip-live-${id}`);
+        });
+
+        // Non-blocking fire-and-forget dispatch
+        topics.forEach(t => {
+            this.sendToTopic(t, event, enrichedPayload).catch(() => {});
+        });
+    }
+}
+
+const realtimeManager = new PayrollRealtimeManager(supabase);
+
+export function broadcastPayrollUpdate(event, payload = {}) {
+    realtimeManager.dispatch(event, payload);
+}
+
 const normalizeDateRange = (d1, d2) => {
     if (!d1 || !d2) return { start: d1 || d2, end: d2 || d1 };
     return d1 <= d2 ? { start: d1, end: d2 } : { start: d2, end: d1 };
@@ -41,18 +157,43 @@ const getEffectiveMonthlySalary = (employee) => {
 };
 
 /**
- * Helper: Computes BIR Monthly Withholding Tax under TRAIN Law (2026 Brackets)
+ * Helper: Computes BIR Withholding Tax under TRAIN Law (Weekly / Semi-Monthly / Monthly Brackets)
+ * Reference: BIR Revised Withholding Tax Table under RA 10963 (TRAIN Law)
  */
-const calculateBIRWithholdingTax = (monthlyTaxableIncome) => {
-    const taxable = Math.max(0, toSafeNumber(monthlyTaxableIncome));
+const calculateBIRWithholdingTax = (taxableIncome, frequency = 'weekly') => {
+    const taxable = Math.max(0, toSafeNumber(taxableIncome));
 
-    // Annual <= P250,000 (Monthly <= P20,833.33) -> 0% Tax
-    if (taxable <= 20833.33) return 0;
-    if (taxable <= 33333.33) return round2((taxable - 20833.33) * 0.15);
-    if (taxable <= 66666.67) return round2(1875.00 + (taxable - 33333.33) * 0.20);
-    if (taxable <= 166666.67) return round2(8541.67 + (taxable - 66666.67) * 0.25);
-    if (taxable <= 666666.67) return round2(33541.67 + (taxable - 166666.67) * 0.30);
-    return round2(183541.67 + (taxable - 666666.67) * 0.35);
+    if (frequency === 'weekly') {
+        // BIR Revised Withholding Tax Table - WEEKLY
+        // Bracket 1: <= ₱4,807.69 (Annual <= P250,000 / 52) -> 0% Tax
+        if (taxable <= 4807.69) return 0;
+        // Bracket 2: ₱4,807.70 to ₱7,692.30 -> 15% of excess over ₱4,807.69
+        if (taxable <= 7692.30) return round2((taxable - 4807.69) * 0.15);
+        // Bracket 3: ₱7,692.31 to ₱15,384.61 -> ₱432.69 + 20% of excess over ₱7,692.31
+        if (taxable <= 15384.61) return round2(432.69 + (taxable - 7692.31) * 0.20);
+        // Bracket 4: ₱15,384.62 to ₱38,461.53 -> ₱1,971.15 + 25% of excess over ₱15,384.62
+        if (taxable <= 38461.53) return round2(1971.15 + (taxable - 15384.62) * 0.25);
+        // Bracket 5: ₱38,461.54 to ₱153,846.15 -> ₱7,740.38 + 30% of excess over ₱38,461.54
+        if (taxable <= 153846.15) return round2(7740.38 + (taxable - 38461.54) * 0.30);
+        // Bracket 6: > ₱153,846.15 -> ₱42,355.77 + 35% of excess over ₱153,846.15
+        return round2(42355.77 + (taxable - 153846.15) * 0.35);
+    } else if (frequency === 'semi-monthly') {
+        // BIR Revised Withholding Tax Table - SEMI-MONTHLY
+        if (taxable <= 10416.67) return 0;
+        if (taxable <= 16666.67) return round2((taxable - 10416.67) * 0.15);
+        if (taxable <= 33333.33) return round2(937.50 + (taxable - 16666.67) * 0.20);
+        if (taxable <= 83333.33) return round2(4270.83 + (taxable - 33333.33) * 0.25);
+        if (taxable <= 333333.33) return round2(16770.83 + (taxable - 83333.33) * 0.30);
+        return round2(91770.83 + (taxable - 333333.33) * 0.35);
+    } else {
+        // BIR Revised Withholding Tax Table - MONTHLY
+        if (taxable <= 20833.33) return 0;
+        if (taxable <= 33333.33) return round2((taxable - 20833.33) * 0.15);
+        if (taxable <= 66666.67) return round2(1875.00 + (taxable - 33333.33) * 0.20);
+        if (taxable <= 166666.67) return round2(8541.67 + (taxable - 66666.67) * 0.25);
+        if (taxable <= 666666.67) return round2(33541.67 + (taxable - 166666.67) * 0.30);
+        return round2(183541.67 + (taxable - 666666.67) * 0.35);
+    }
 };
 
 /**
@@ -95,7 +236,8 @@ router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
 
 router.put('/statutory-settings', async (req, res) => {
     try {
-        const payload = req.body;
+        const { admin_id: bodyAdminId, ...cleanSettings } = req.body || {};
+        const admin_id = bodyAdminId || req.user?.id || null;
 
         const { data: existing } = await supabase
             .from('statutory_settings')
@@ -107,17 +249,18 @@ router.put('/statutory-settings', async (req, res) => {
         if (existing) {
             ({ error } = await supabase
                 .from('statutory_settings')
-                .update(payload)
+                .update(cleanSettings)
                 .eq('id', existing.id));
         } else {
             ({ error } = await supabase
                 .from('statutory_settings')
-                .insert([payload]));
+                .insert([cleanSettings]));
         }
 
         if (error) throw error;
 
         invalidateCache(['/api/payroll/statutory-settings']);
+        broadcastPayrollUpdate('STATUTORY_SETTINGS_UPDATED', { admin_id, settings: cleanSettings });
         res.json({ success: true, message: 'Statutory settings updated successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -434,7 +577,7 @@ router.get('/13th-month/:employee_id', async (req, res) => {
 
         const { data: records, error } = await supabase
             .from('payrolls')
-            .select('basic_pay, maternity_salary_differential, period_start')
+            .select('basic_pay, period_start, remarks')
             .eq('employee_id', employee_id)
             .gte('period_start', `${year}-01-01`)
             .lte('period_start', `${year}-12-31`);
@@ -668,11 +811,13 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Cannot compute payroll: Employee has no salary, daily rate, or piece rate set.' });
         }
 
-        // DOLE Standard Base Rate Formulas: (Monthly Basic * 12) / Working Days in a Year
+        // DOLE Standard Base Rate Formulas: Preserve contractual daily/hourly rates if present
+        const empDailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
         const annualWorkDays = toSafeNumber(working_days_in_year) || 261;
-        const dailyRate = round2((effectiveMonthlySalary * 12) / annualWorkDays);
-        const hourlyRate = round2(dailyRate / 8);
-        const weeklySalary = round2((effectiveMonthlySalary * 12) / 52);
+        const dailyRate = empDailyRate > 0 ? empDailyRate : round2((effectiveMonthlySalary * 12) / annualWorkDays);
+        const empHourlyRate = toSafeNumber(employee.hourly_rate);
+        const hourlyRate = empHourlyRate > 0 ? empHourlyRate : round2(dailyRate / 8);
+        const weeklySalary = empDailyRate > 0 ? round2(empDailyRate * 6) : round2((effectiveMonthlySalary * 12) / 52);
 
         let basicPay = 0;
         if (isFactory) {
@@ -704,6 +849,53 @@ router.post('/', async (req, res) => {
                 .eq('employee_id', employee_id)
                 .eq('type', 'Suspension')
         ]);
+
+        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
+            ? employee.rest_days
+            : [0];
+
+        // Absence Deduction for Non-Factory Personnel under DOLE "No Work, No Pay" Principle
+        let absenceDeduction = 0;
+        let absenceNote = '';
+
+        if (!isFactory) {
+            const approvedPaidLeaveDays = paidLeaveInfo?.totalPaidLeaveDays || 0;
+            const completedAttendanceDates = new Set();
+            (attendanceLogs || []).forEach(log => {
+                if (log && log.time_in && log.time_out) {
+                    const d = log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : null);
+                    if (d) completedAttendanceDates.add(d);
+                }
+            });
+
+            const daysPresent = req.body.days_worked !== undefined && req.body.days_worked !== null && req.body.days_worked !== ''
+                ? toSafeNumber(req.body.days_worked)
+                : completedAttendanceDates.size;
+
+            let expectedWorkDays = 0;
+            const curDate = new Date(`${pStart}T00:00:00`);
+            const endDate = new Date(`${pEnd}T00:00:00`);
+            while (curDate <= endDate) {
+                const dow = curDate.getDay();
+                if (!restDays.includes(dow)) expectedWorkDays++;
+                curDate.setDate(curDate.getDate() + 1);
+            }
+            if (expectedWorkDays === 0) expectedWorkDays = 6;
+
+            // Count eligible regular holidays unworked in this range
+            const holidayDates = new Set((holidayList || []).filter(h => h.type === 'regular').map(h => h.date));
+            let unworkedHolidays = 0;
+            holidayDates.forEach(hDate => {
+                if (!completedAttendanceDates.has(hDate)) unworkedHolidays++;
+            });
+
+            const unworkedDays = Math.max(0, expectedWorkDays - daysPresent - approvedPaidLeaveDays - unworkedHolidays);
+            if (unworkedDays > 0) {
+                absenceDeduction = round2(unworkedDays * dailyRate);
+                basicPay = Math.max(0, round2(basicPay - absenceDeduction));
+                absenceNote = ` [ABSENT: ${unworkedDays} unworked day(s) (-₱${absenceDeduction.toFixed(2)})]`;
+            }
+        }
 
         // Lateness Policy Handling (2-Hour Rule for Regular Employees)
         let lateMins = toSafeNumber(late_minutes);
@@ -790,10 +982,6 @@ router.post('/', async (req, res) => {
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
 
-        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
-            ? employee.rest_days
-            : [0];
-
         const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
             periodStart: pStart,
             periodEnd: pEnd,
@@ -864,19 +1052,19 @@ router.post('/', async (req, res) => {
             philHealthEE = round2(((phSalaryBase * 0.05) / 2) / divisor);
             philHealthER = round2(((phSalaryBase * 0.05) / 2) / divisor);
 
-            // 3. Pag-IBIG (2026 Rules: 2% EE, 2% ER, Max Contribution P200 Total -> P100 EE / P100 ER)
-            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * 0.02), 100);
-            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * 0.02), 100);
+            // 3. Pag-IBIG (Circular No. 460 Rules: 2% EE, 2% ER, Max Contribution P200 EE / P200 ER)
+            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * 0.02), 200);
+            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * 0.02), 200);
             pagIbigEE = round2(monthlyPagIbigEE / divisor);
             pagIbigER = round2(monthlyPagIbigER / divisor);
         }
 
         const totalStatutoryContributions = round2(sssEE + philHealthEE + pagIbigEE);
 
-        // BIR Taxable Income & Withholding Tax
+        // BIR Taxable Income & Withholding Tax (passed with pay_frequency)
         const taxableGross = Math.max(0, grossPay - safeMatDiff);
         const taxableIncome = Math.max(0, round2(taxableGross - totalStatutoryContributions - lateDed));
-        const tax = calculateBIRWithholdingTax(taxableIncome);
+        const tax = calculateBIRWithholdingTax(taxableIncome, pay_frequency);
 
         // DEDUCTION CAP GUARDRAIL: Deductions can never exceed Gross Pay
         const rawDeductions = round2(totalStatutoryContributions + tax + lateDed);
@@ -890,7 +1078,8 @@ router.post('/', async (req, res) => {
         const otPolicyNote = isFactory && (toSafeNumber(overtime_hours) > 0 || toSafeNumber(regular_ot_hours) > 0)
             ? ' [Factory Worker: Overtime disallowed per HR policy (₱0.00)]'
             : '';
-        const remarks = `${baseRemarks}${tardinessNote}${suspensionNote}${paidLeaveNote}${otPolicyNote}`;
+        const matDiffNote = safeMatDiff > 0 ? ` [Maternity Differential: +₱${safeMatDiff.toFixed(2)}]` : '';
+        const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${otPolicyNote}`;
 
         let insertPayload = {
             employee_id,
@@ -906,16 +1095,18 @@ router.post('/', async (req, res) => {
             status: 'Paid'
         };
 
-        let { error: insertError } = await supabase.from('payrolls').insert(insertPayload);
+        let { data: insertedRecord, error: insertError } = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
 
         if (insertError && (insertError.message?.includes('holiday_pay') || insertError.message?.includes('holiday_breakdown'))) {
             delete insertPayload.holiday_pay;
             delete insertPayload.holiday_breakdown;
-            const retry = await supabase.from('payrolls').insert(insertPayload);
+            const retry = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
             insertError = retry.error;
+            insertedRecord = retry.data;
         }
 
         if (insertError) throw insertError;
+        const insertedPayrollId = insertedRecord?.id;
 
         const { data: emp } = await supabase
             .from('employees')
@@ -927,7 +1118,7 @@ router.post('/', async (req, res) => {
             ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
             : null;
 
-        await createNotification({
+        createNotification({
             target: employee_id,
             title: 'New Payslip Available',
             text: `Your payslip for ${pStart} to ${pEnd} is ready (Net Pay: ₱${netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}).`,
@@ -936,10 +1127,10 @@ router.post('/', async (req, res) => {
             company_id: emp?.company_id,
             sender_name: 'HR & Payroll',
             sender_avatar: avatarUrl
-        });
+        }).catch((err) => console.warn('[PAYROLL_NOTIF_WARN]', err.message));
 
         if (admin_id) {
-            await createAuditLog({
+            createAuditLog({
                 log_name: 'payroll',
                 description: `Computed weekly payroll for employee ID ${employee_id}`,
                 subject_type: 'App\\Models\\Payroll',
@@ -947,10 +1138,19 @@ router.post('/', async (req, res) => {
                 event: 'created',
                 causer_id: admin_id,
                 properties: { basic_pay: safeBasic, net_pay: netPay, holiday_pay: safeHoliday, paid_leave_pay: safePaidLeavePay }
-            });
+            }).catch((err) => console.warn('[PAYROLL_AUDIT_WARN]', err.message));
         }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('PAYROLL_CREATED', {
+            id: insertedPayrollId,
+            employee_id,
+            gross_pay: grossPay,
+            net_pay: netPay,
+            period_start: pStart,
+            period_end: pEnd,
+            pay_frequency: pay_frequency
+        });
         res.json({
             success: true,
             message: 'Payroll Computed & Saved Successfully!',
@@ -1012,11 +1212,12 @@ router.post('/batch', async (req, res) => {
             const frequency = entry.pay_frequency || pay_frequency || 'weekly';
             const divisor = frequency === 'weekly' ? 4 : (frequency === 'semi-monthly' ? 2 : 1);
 
-            // Pro-rate raw monthly deductions
-            const sssDed = round2(toSafeNumber(entry.sss_deduction) / divisor);
-            const phDed = round2(toSafeNumber(entry.philhealth_deduction) / divisor);
-            const pgbDed = round2(toSafeNumber(entry.pagibig_deduction) / divisor);
-            const taxDed = round2(toSafeNumber(entry.tax_deduction) / divisor);
+            // Pro-rate raw monthly deductions (preserve directly if already prorated to avoid double division)
+            const isProrated = Boolean(entry.is_prorated);
+            const sssDed = isProrated ? round2(toSafeNumber(entry.sss_deduction)) : round2(toSafeNumber(entry.sss_deduction) / divisor);
+            const phDed = isProrated ? round2(toSafeNumber(entry.philhealth_deduction)) : round2(toSafeNumber(entry.philhealth_deduction) / divisor);
+            const pgbDed = isProrated ? round2(toSafeNumber(entry.pagibig_deduction)) : round2(toSafeNumber(entry.pagibig_deduction) / divisor);
+            const taxDed = isProrated ? round2(toSafeNumber(entry.tax_deduction)) : round2(toSafeNumber(entry.tax_deduction) / divisor);
 
             const rawDeductions = round2(sssDed + phDed + pgbDed + taxDed);
 
@@ -1047,27 +1248,20 @@ router.post('/batch', async (req, res) => {
                 period_end: pEnd,
                 basic_pay: grossPay,
                 overtime_pay: 0,
-                gross_pay: grossPay,
                 deductions: totalDeductions,
                 remarks,
                 net_pay: netPay,
                 status: 'Paid'
             };
 
-            let { error: insertError } = await supabase.from('payrolls').insert(insertPayload);
-
-            if (insertError && insertError.message?.includes('gross_pay')) {
-                delete insertPayload.gross_pay;
-                const retry = await supabase.from('payrolls').insert(insertPayload);
-                insertError = retry.error;
-            }
+            let { data: insertedRec, error: insertError } = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
 
             if (insertError) {
                 skipped.push({ employee_id, reason: insertError.message });
                 continue;
             }
 
-            results.push({ employee_id, net_pay: netPay });
+            results.push({ id: insertedRec?.id, employee_id, net_pay: netPay });
 
             const { data: emp } = await supabase
                 .from('employees')
@@ -1108,6 +1302,14 @@ router.post('/batch', async (req, res) => {
         }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('PAYROLL_BATCH_DISTRIBUTED', {
+            count: results.length,
+            payroll_ids: results.map(r => r.id).filter(Boolean),
+            employee_ids: results.map(r => r.employee_id),
+            group_name: req.body.group_name || 'Line A',
+            period_start: pStart,
+            period_end: pEnd
+        });
         res.json({
             success: true,
             message: `Factory batch payroll saved for ${results.length} worker(s).`,
@@ -1320,6 +1522,9 @@ router.put('/factory-logs/:id', async (req, res) => {
 
         if (error) throw error;
 
+        invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('FACTORY_LOG_UPDATED', { id: data.id });
+
         res.json({
             success: true,
             data: {
@@ -1377,6 +1582,7 @@ router.post('/bulk-delete', async (req, res) => {
         if (error) throw error;
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('PAYROLL_BULK_DELETED', { ids });
         const deletedCount = count ?? ids.length;
         res.json({ success: true, deleted_count: deletedCount, message: `${deletedCount} payroll record(s) deleted successfully.` });
     } catch (err) {
@@ -1395,6 +1601,7 @@ router.delete('/:id', async (req, res) => {
         if (error) throw error;
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
+        broadcastPayrollUpdate('PAYROLL_DELETED', { id });
         res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });

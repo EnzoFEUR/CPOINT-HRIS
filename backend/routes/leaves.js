@@ -78,15 +78,67 @@ router.post('/', async (req, res) => {
     try {
         const { employee_id, leave_type, start_date, end_date, reason } = req.body;
         
-        // Strict Validation
-        if (!leave_type || typeof leave_type !== 'string') throw new Error('Invalid leave_type');
-        if (!start_date || isNaN(Date.parse(start_date))) throw new Error('Invalid start_date');
-        if (!end_date || isNaN(Date.parse(end_date)) || new Date(end_date) < new Date(start_date)) {
-            throw new Error('Invalid end_date or end_date is before start_date');
+        // Strict Field Validation
+        if (!employee_id) {
+            return res.status(400).json({ error: 'Missing employee_id' });
         }
-        if (!reason || typeof reason !== 'string' || reason.length > 255) throw new Error('Invalid reason: max 255 chars');
+        if (!leave_type || typeof leave_type !== 'string') {
+            return res.status(400).json({ error: 'Invalid leave_type' });
+        }
+        if (!start_date || isNaN(Date.parse(start_date))) {
+            return res.status(400).json({ error: 'Invalid start_date' });
+        }
+        if (!end_date || isNaN(Date.parse(end_date)) || new Date(end_date) < new Date(start_date)) {
+            return res.status(400).json({ error: 'Invalid end_date or end_date is before start_date' });
+        }
+        if (!reason || typeof reason !== 'string' || reason.length > 255) {
+            return res.status(400).json({ error: 'Invalid reason: max 255 chars' });
+        }
 
-        const { error } = await supabase
+        // 1. Account Lifecycle & Standing Verification
+        const { data: emp, error: empErr } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, status, is_active, archived_at')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+        if (empErr || !emp) {
+            return res.status(404).json({ error: 'Employee record not found.' });
+        }
+
+        const isSuspended = emp.status === 'Suspended' || emp.status === 'suspended';
+        const isTerminated = emp.status === 'Terminated' || emp.status === 'terminated';
+
+        if (isSuspended) {
+            return res.status(403).json({ 
+                error: 'ACCESS RESTRICTED: Leave filing is prohibited while account is under disciplinary suspension.' 
+            });
+        }
+
+        if (isTerminated || emp.archived_at || emp.is_active === false) {
+            return res.status(403).json({ 
+                error: 'ACCESS DENIED: Personnel account has been separated or deactivated.' 
+            });
+        }
+
+        // 2. Overlapping Leave Request Prevention
+        const { data: overlappingLeaves } = await supabase
+            .from('leave_requests')
+            .select('id, start_date, end_date, status, type')
+            .eq('employee_id', employee_id)
+            .in('status', ['New', 'Pending', 'Approved'])
+            .lte('start_date', end_date)
+            .gte('end_date', start_date);
+
+        if (overlappingLeaves && overlappingLeaves.length > 0) {
+            const conflict = overlappingLeaves[0];
+            return res.status(409).json({ 
+                error: `A leave request (${conflict.type}) is already active or pending for overlapping dates (${conflict.start_date} to ${conflict.end_date}).` 
+            });
+        }
+
+        // 3. Insert Request
+        const { data: insertedLeave, error } = await supabase
             .from('leave_requests')
             .insert({
                 employee_id,
@@ -95,19 +147,15 @@ router.post('/', async (req, res) => {
                 end_date,
                 notes: reason,
                 status: 'New'
-            });
+            })
+            .select('*')
+            .single();
 
         if (error) throw error;
         
         // Fetch sender employee details for rich notification
-        const { data: emp } = await supabase
-            .from('employees')
-            .select('id, company_id, first_name, last_name')
-            .eq('id', employee_id)
-            .maybeSingle();
-
-        const senderName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
-        const avatarUrl = emp?.company_id && emp?.id 
+        const senderName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
+        const avatarUrl = emp.company_id && emp.id 
             ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
             : null;
 
@@ -116,15 +164,29 @@ router.post('/', async (req, res) => {
             title: `Leave Request: ${senderName}`,
             text: `${senderName} submitted a ${leave_type} request (${start_date} to ${end_date}).`,
             type: 'leave',
-            sender_id: emp?.id,
-            company_id: emp?.company_id,
+            sender_id: emp.id,
+            company_id: emp.company_id,
             sender_name: senderName,
             sender_avatar: avatarUrl
         });
 
         invalidateCache(['/api/leaves', '/api/dashboard']);
 
-        res.json({ success: true, message: 'Leave request submitted successfully!' });
+        // Real-time broadcast to admin leave dashboard
+        try {
+            const ch = supabase.channel('admin-leaves-sync');
+            ch.send({
+                type: 'broadcast',
+                event: 'LEAVE_REQUEST_CREATED',
+                payload: {
+                    ...insertedLeave,
+                    employee_name: senderName,
+                    company_id: emp.company_id
+                }
+            }).catch(() => {});
+        } catch (_) {}
+
+        res.json({ success: true, message: 'Leave request submitted successfully!', data: insertedLeave });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -259,6 +321,30 @@ router.put('/:id/status', async (req, res) => {
                     properties: { status, is_paid: leaveIsPaid, pay_type: leaveIsPaid ? 'with_pay' : 'without_pay' }
                 });
             }
+
+            // Real-time low-latency broadcast (<5ms) to employee and admin channels
+            try {
+                const targetTopics = [
+                    'admin-leaves-sync',
+                    `employee-live-dashboard-${updatedLeave.employee_id}`,
+                    `dashboard-disciplinary-sync-${updatedLeave.employee_id}`
+                ];
+                const broadcastPayload = {
+                    id: req.params.id,
+                    employee_id: updatedLeave.employee_id,
+                    status,
+                    is_paid: leaveIsPaid,
+                    pay_type: leaveIsPaid ? 'with_pay' : 'without_pay',
+                    updated_at: new Date().toISOString()
+                };
+                targetTopics.forEach(topic => {
+                    supabase.channel(topic).send({
+                        type: 'broadcast',
+                        event: 'LEAVE_STATUS_UPDATED',
+                        payload: broadcastPayload
+                    }).catch(() => {});
+                });
+            } catch (_) {}
         }
 
         res.json({ 

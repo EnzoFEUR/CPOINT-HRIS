@@ -16,8 +16,8 @@ export function getDisciplinaryCache(userId) {
 
     if (raw) {
       const parsed = JSON.parse(raw);
-      const isTerminated = parsed.type === 'Termination' || parsed.status === 'Terminated';
-      const isSuspended = parsed.type === 'Suspension' || parsed.status === 'Suspended';
+      const isTerminated = parsed.type === 'Termination' || parsed.status === 'Terminated' || Boolean(parsed.isTerminated);
+      const isSuspended = !isTerminated && (parsed.type === 'Suspension' || parsed.status === 'Suspended' || Boolean(parsed.isSuspended));
       return {
         type: isTerminated ? 'Termination' : isSuspended ? 'Suspension' : 'Clean',
         record: parsed.record || null,
@@ -35,15 +35,29 @@ export function getDisciplinaryCache(userId) {
     const rawUser = localStorage.getItem('user');
     if (rawUser) {
       const u = JSON.parse(rawUser);
-      if (u && (u.status === 'inactive' || u.is_active === false || u.status === 'terminated')) {
-        const isTerm = Boolean(u.is_terminated || u.status === 'terminated' || u.status === 'inactive');
-        return {
-          type: isTerm ? 'Termination' : 'Suspension',
-          record: null,
-          isSuspended: !isTerm,
-          isTerminated: isTerm,
-          checked: true
-        };
+      if (u) {
+        const isSusp = Boolean(
+          u.status === 'suspended' ||
+          u.is_suspended ||
+          u.operational_status === 'Suspended'
+        );
+        const isTerm = !isSusp && Boolean(
+          (u.archived_at && u.status !== 'active') ||
+          u.status === 'terminated' ||
+          u.is_terminated ||
+          u.operational_status === 'Terminated' ||
+          (u.status === 'inactive' && Boolean(u.separation_type))
+        );
+
+        if (isTerm || isSusp) {
+          return {
+            type: isTerm ? 'Termination' : 'Suspension',
+            record: null,
+            isSuspended: isSusp,
+            isTerminated: isTerm,
+            checked: true
+          };
+        }
       }
     }
   } catch (e) {}

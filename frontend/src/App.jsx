@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
@@ -140,6 +140,7 @@ function App() {
           <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
           <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
           <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
+          <Route path="/admin/payroll/create" element={<Navigate to="/admin/payroll/process" replace />} />
           <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
 
           {/* Admin - Operations & Governance */}
@@ -155,7 +156,7 @@ function App() {
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
           <Route path="/employee/qr" element={<MyQr />} />
-          <Route path="/employee/scanner" element={<EmployeeScanner />} />
+          <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
           <Route path="/employee/profile" element={<MyProfile />} />
           <Route path="/profile" element={<MyProfile />} />
         </Route>

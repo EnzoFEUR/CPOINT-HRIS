@@ -245,6 +245,12 @@ export default function Dashboard() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'], refetchType: 'active' });
+            })
+            .on('broadcast', { event: '*' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'], refetchType: 'active' });
+            })
             .subscribe();
 
         return () => {

@@ -78,6 +78,13 @@ export default function MyProfile() {
             photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
             has_registered_biometrics: raw.has_registered_biometrics ?? true,
             medical_record_url: raw.medical_record_url || initialUser?.medical_record_url || null,
+            archived_at: raw.archived_at || initialUser?.archived_at || null,
+            separation_date: raw.separation_date || initialUser?.separation_date || null,
+            separation_type: raw.separation_type || initialUser?.separation_type || null,
+            separation_reason: raw.separation_reason || initialUser?.separation_reason || null,
+            separation_notes: raw.separation_notes || initialUser?.separation_notes || null,
+            operational_status: raw.operational_status || initialUser?.operational_status || null,
+            is_terminated: raw.is_terminated ?? initialUser?.is_terminated ?? false,
         };
     }, [raw, initialUser]);
 
@@ -137,6 +144,46 @@ export default function MyProfile() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${profile.id}` }, () => {
                 queryClient.invalidateQueries({ queryKey: ['myProfile'] });
             })
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
+                if (!targetId || targetId === profile.id) {
+                    setDisciplinaryCache(profile.id, { type: 'Suspension', record: payload?.payload, isSuspended: true, isTerminated: false });
+                    setDisciplinaryState(getDisciplinaryCache(profile.id));
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
+                if (!targetId || targetId === profile.id) {
+                    setDisciplinaryCache(profile.id, { type: 'Termination', record: payload?.payload, isSuspended: false, isTerminated: true });
+                    setDisciplinaryState(getDisciplinaryCache(profile.id));
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
+                if (!targetId || targetId === profile.id) {
+                    clearDisciplinaryCache(profile.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
+                if (!targetId || targetId === profile.id) {
+                    clearDisciplinaryCache(profile.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
+                if (!targetId || targetId === profile.id) {
+                    clearDisciplinaryCache(profile.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
             .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['myProfile'] });
                 toast.success('Biometric protocol updated');
@@ -152,11 +199,34 @@ export default function MyProfile() {
         };
     }, [profile?.id, queryClient]);
 
-    const isTerminated = 
-        profile?.status === 'inactive' || 
+    const activeSuspensionLog = disciplinaryLogs.find(l => (l.type === 'Suspension' || l.action_taken === 'Suspension') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
+    const activeTerminationLog = disciplinaryLogs.find(l => (l.type === 'Termination' || l.action_taken === 'Termination') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
+
+    const isSuspended = !Boolean(activeTerminationLog) && Boolean(
+        activeSuspensionLog ||
+        disciplinaryState?.isSuspended ||
+        profile?.status === 'suspended' ||
+        profile?.operational_status === 'Suspended' ||
+        profile?.is_suspended
+    );
+
+    const isTerminated = !isSuspended && Boolean(
+        activeTerminationLog ||
+        Boolean(profile?.archived_at) ||
+        Boolean(profile?.is_terminated) ||
+        profile?.operational_status === 'Terminated' ||
         profile?.status === 'terminated' || 
-        profile?.is_active === false || 
-        Boolean(disciplinaryState?.isTerminated);
+        (profile?.status === 'inactive' && Boolean(profile?.archived_at || profile?.separation_type)) ||
+        Boolean(disciplinaryState?.isTerminated)
+    );
+
+    const isPendingArchive = Boolean(isTerminated && (profile?.archived_at || profile?.separation_date));
+    const daysUntilPermanentArchive = useMemo(() => {
+        if (!isPendingArchive) return 0;
+        const refDate = new Date(profile?.archived_at || profile?.separation_date || Date.now());
+        const targetDate = new Date(refDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+        return Math.max(0, Math.ceil((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    }, [isPendingArchive, profile?.archived_at, profile?.separation_date]);
 
     // Modal & Upload States
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -386,8 +456,13 @@ export default function MyProfile() {
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
                             {isTerminated && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-semibold rounded border border-rose-500/30">
-                                    <i className="ti ti-circle-x" /> Separated
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded border ${
+                                    isPendingArchive 
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                                        : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                }`}>
+                                    <i className={`ti ${isPendingArchive ? 'ti-clock-pause' : 'ti-circle-x'}`} />
+                                    {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
                                 </span>
                             )}
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
@@ -457,6 +532,57 @@ export default function MyProfile() {
                     </div>
                 </div>
             </div>
+
+            {/* Disciplinary Suspension Notification */}
+            {isSuspended && !isPendingArchive && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-lg shrink-0 mt-0.5">
+                            <i className="ti ti-lock-exclamation text-xl" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-amber-950 text-sm">Disciplinary Suspension Active</h4>
+                                <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                    Operational Hold
+                                </span>
+                            </div>
+                            <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                Under DOLE policy ("No Work, No Pay"), gate access and attendance logging are temporarily on hold. You retain access to review your documents and official records.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Pending Archive Clearance Notification */}
+            {isPendingArchive && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-lg shrink-0 mt-0.5">
+                            <i className="ti ti-hourglass-empty text-xl animate-pulse" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-amber-950 text-sm">Account in Clearance Cooldown</h4>
+                                <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                    {daysUntilPermanentArchive} Days Left
+                                </span>
+                            </div>
+                            <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                Your employment profile has been queued for archival ({profile?.separation_type || 'Separated'}). 
+                                {profile?.separation_reason ? ` Reason: "${profile.separation_reason}".` : ''} 
+                                Access to biometrics and turnstiles is restricted during clearance. Historical documents remain accessible.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-medium text-amber-700 bg-amber-100/60 px-2.5 py-1 rounded border border-amber-200">
+                            Clearance Cooldown: 14 Days
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* Personal and employment details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
@@ -702,18 +828,18 @@ export default function MyProfile() {
                     <div className="flex items-center gap-2">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
                             isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                            disciplinaryState?.isSuspended ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                            isSuspended ? 'bg-amber-50 text-amber-800 border-amber-200' :
                             disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-50 text-rose-700 border-rose-200' :
                             'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}>
                             <i className={`ti ${
                                 isTerminated ? 'ti-circle-x' :
-                                disciplinaryState?.isSuspended ? 'ti-clock-pause' :
+                                isSuspended ? 'ti-clock-pause' :
                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'ti-alert-triangle' :
                                 'ti-circle-check'
                             }`} />
                             {isTerminated ? 'Separated' :
-                             disciplinaryState?.isSuspended ? 'Suspension Active' :
+                             isSuspended ? 'Suspension Active' :
                              disciplinaryLogs.some(l => l.status === 'Active') ? 'Action Required' :
                              'Good Standing'}
                         </span>

@@ -698,14 +698,20 @@ const Scanner = () => {
         throw new Error('EMPLOYEE_INACTIVE');
       }
 
+      // Check biometrics registration: Person not registered in biometrics CANNOT be scanned
+      const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
+      if (!hasBiometrics && !emp.is_medical_exempt) {
+        throw new Error('BIOMETRICS_NOT_REGISTERED');
+      }
+
       vault.employeeId = emp.id;
       vault.isMedicalExempt = Boolean(emp.is_medical_exempt);
       vault.medicalExemption = emp.medical_exemption || null;
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // Proceed if employee is under Medical Grace OR has no biometrics registered
-      if (emp.is_medical_exempt || !emp.has_registered_biometrics || !emp.biometric_baseline_path) {
+      // Proceed if employee is under verified Medical Grace Protocol
+      if (emp.is_medical_exempt) {
         vault.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
         dispatch({ type: 'SET_PHOTO', payload: emp.avatar_url || null });
@@ -777,11 +783,16 @@ const Scanner = () => {
         err.message === 'EMPLOYEE_SUSPENDED' ? 'ACCESS DENIED: Account under active disciplinary suspension.' :
         err.message === 'EMPLOYEE_TERMINATED' ? 'ACCESS DENIED: Employment terminated. Pass revoked.' :
         err.message === 'EMPLOYEE_INACTIVE' ? 'ACCESS DENIED: Account deactivated.' :
-        'Identification error.';
+        err.message === 'BIOMETRICS_NOT_REGISTERED' ? 'ACCESS DENIED: Facial biometrics not registered. Complete enrollment at HR / Security.' :
+        (err.message?.includes('BIOMETRICS REQUIRED') ? 'ACCESS DENIED: Facial biometrics not registered. Complete enrollment at HR / Security.' : 'Identification error.');
       toast.error(errFriendly, { id: 'qr-scan-error', duration: 4500 });
       playSound('error');
       haptic('error');
       updateStatus(errFriendly);
+      setTimeout(() => {
+        vault.processing = false;
+        dispatch({ type: 'SET_MODE', payload: MODES.QR });
+      }, 2500);
     }
   }, [vault, dispatch]);
 

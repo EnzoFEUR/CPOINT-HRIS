@@ -65,7 +65,19 @@ export default function DisciplinaryIndex() {
             if (recRes.ok) {
                 const data = await recRes.json();
                 const fetchedRecords = Array.isArray(data) ? data : (data?.data || []);
-                setRecords(fetchedRecords);
+                setRecords(prev => {
+                    if (!prev || prev.length === 0) return fetchedRecords;
+                    const prevMap = new Map(prev.map(r => [r.id, r]));
+                    return fetchedRecords.map(fetched => {
+                        const existing = prevMap.get(fetched.id);
+                        // Prevent race-condition rollbacks: if local state has already resolved or overturned
+                        // this record, do not allow a stale server read to revert it back to 'Active'!
+                        if (existing && (existing.status === 'Overturned' || existing.status === 'Resolved') && fetched.status === 'Active') {
+                            return { ...fetched, status: existing.status, reason: existing.reason, employee_status: 'active', employee_is_active: true };
+                        }
+                        return fetched;
+                    });
+                });
             }
             if (empRes.ok) {
                 const data = await empRes.json();
@@ -198,7 +210,6 @@ export default function DisciplinaryIndex() {
                     queryClient.invalidateQueries({ queryKey: ['employeeDetails', payload.employee_id] });
                 }
             }
-            debouncedRefresh();
         };
 
         const handleBroadcastRestored = ({ payload }) => {
@@ -220,7 +231,6 @@ export default function DisciplinaryIndex() {
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                 queryClient.invalidateQueries({ queryKey: ['employeeDetails', payload.employee_id] });
             }
-            debouncedRefresh();
         };
 
         const handleBroadcastStatusUpdated = ({ payload }) => {
@@ -257,7 +267,6 @@ export default function DisciplinaryIndex() {
                     }));
                 }
             }
-            debouncedRefresh();
         };
 
         const handleBroadcastDeleted = ({ payload }) => {
@@ -267,10 +276,10 @@ export default function DisciplinaryIndex() {
                     queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                 }
             }
-            debouncedRefresh();
         };
 
         const handleWindowSync = (e) => {
+            if (e.detail?.source === 'local') return;
             const syncEmpId = e.detail?.userId;
             if (syncEmpId) {
                 setEmployees(prev => prev.map(emp => {
@@ -280,7 +289,6 @@ export default function DisciplinaryIndex() {
                     return emp;
                 }));
             }
-            debouncedRefresh();
         };
 
         window.addEventListener('hris_disciplinary_sync', handleWindowSync);
@@ -293,6 +301,19 @@ export default function DisciplinaryIndex() {
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastOverturned)
             .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastOverturned)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, debouncedRefresh)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastRestored)
+            .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleBroadcastDeleted)
+            .subscribe();
+
+        const updatesChannel = supabase
+            .channel('disciplinary-updates')
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleBroadcastStatusUpdated)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastOverturned)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastOverturned)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastCreated)
             .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, debouncedRefresh)
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastRestored)
             .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleBroadcastDeleted)
@@ -302,6 +323,7 @@ export default function DisciplinaryIndex() {
             if (debounceTimer) clearTimeout(debounceTimer);
             window.removeEventListener('hris_disciplinary_sync', handleWindowSync);
             supabase.removeChannel(channel);
+            supabase.removeChannel(updatesChannel);
         };
     }, [queryClient]);
 
@@ -469,6 +491,10 @@ export default function DisciplinaryIndex() {
         const targetEmpId = selectedRecordForClear.employee_id || selectedRecordForClear.employee?.id;
         const previousRecords = [...records];
         const previousEmployees = [...employees];
+        const todayDate = new Date().toISOString().split('T')[0];
+        const updatedReason = `[CLEARED | ${todayDate}] Reason: ${clearReason.trim()}\n---\n${selectedRecordForClear.reason || ''}`;
+
+        setIsClearing(true);
 
         // 0ms Optimistic UI update on records
         setRecords(prev => prev.map(rec => {
@@ -478,7 +504,7 @@ export default function DisciplinaryIndex() {
                     status: 'Overturned',
                     employee_status: 'active',
                     employee_is_active: true,
-                    reason: `[CLEARED | ${new Date().toISOString().split('T')[0]}] Reason: ${clearReason.trim()}\n---\n${rec.reason}`
+                    reason: updatedReason
                 };
             }
             return rec;
@@ -498,16 +524,9 @@ export default function DisciplinaryIndex() {
                 }
                 return emp;
             }));
-
-            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            queryClient.invalidateQueries({ queryKey: ['employeeDetails', targetEmpId] });
-            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: targetEmpId } }));
         }
 
-        setShowClearModal(false);
-
         try {
-            setIsClearing(true);
             const res = await fetchWithAuth(`/api/disciplinary/${targetRecordId}/overturn`, {
                 method: 'PUT',
                 body: JSON.stringify({
@@ -518,14 +537,31 @@ export default function DisciplinaryIndex() {
 
             const data = await res.json();
             if (res.ok && data.success) {
+                // Ensure local state holds the authoritative server data
+                setRecords(prev => prev.map(rec => {
+                    if (rec.id === targetRecordId) {
+                        return {
+                            ...rec,
+                            ...(data.data || {}),
+                            status: 'Overturned',
+                            employee_status: 'active',
+                            employee_is_active: true
+                        };
+                    }
+                    return rec;
+                }));
+
                 toast.success(data.message || 'Record cleared and employee reinstated.');
+                setShowClearModal(false);
                 setSelectedRecordForClear(null);
                 setClearReason('');
                 setInvestigationNotes('');
                 setIsConfirmed(false);
+
                 if (targetEmpId) {
                     queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                     queryClient.invalidateQueries({ queryKey: ['employeeDetails', targetEmpId] });
+                    window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: targetEmpId, source: 'local' } }));
                 }
             } else {
                 setRecords(previousRecords);
@@ -623,7 +659,6 @@ export default function DisciplinaryIndex() {
 
             queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
             queryClient.invalidateQueries({ queryKey: ['employeeDetails', resolvedEmpId] });
-            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: resolvedEmpId } }));
         }
 
         try {
@@ -651,6 +686,7 @@ export default function DisciplinaryIndex() {
                 if (resolvedEmpId) {
                     queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                     queryClient.invalidateQueries({ queryKey: ['employeeDetails', resolvedEmpId] });
+                    window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: resolvedEmpId, source: 'local' } }));
                 }
                 toast.success(isSuspension ? 'Suspension lifted and account reinstated.' : 'Record marked as resolved.');
             } else {
@@ -1196,7 +1232,10 @@ export default function DisciplinaryIndex() {
                                                 {/* Review & Clear Button (Available unless already cleared) */}
                                                 {record.status !== 'Overturned' && (
                                                     <button 
-                                                        onClick={() => {
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
                                                             setSelectedRecordForClear(record);
                                                             setClearReason('');
                                                             setInvestigationNotes('');
@@ -1238,24 +1277,6 @@ export default function DisciplinaryIndex() {
                                                         <i className="ti ti-circle-check text-slate-400" /> Closed
                                                     </span>
                                                 )}
-
-                                                {/* View employee profile */}
-                                                <button
-                                                    onClick={() => handleOpenProfile(record)}
-                                                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                                                    title="View Employee Profile & History"
-                                                >
-                                                    <i className="ti ti-user-search text-base" />
-                                                </button>
-
-                                                {/* Permanently Delete Record */}
-                                                <button
-                                                    onClick={() => handleDeleteRecord(record.id)}
-                                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                                    title="Permanently Delete Disciplinary Record"
-                                                >
-                                                    <i className="ti ti-trash text-base" />
-                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1384,7 +1405,10 @@ export default function DisciplinaryIndex() {
                                     <div className="flex items-center gap-1.5">
                                         {record.status !== 'Overturned' && (
                                             <button 
-                                                onClick={() => {
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
                                                     setSelectedRecordForClear(record);
                                                     setClearReason('');
                                                     setInvestigationNotes('');
@@ -1414,15 +1438,7 @@ export default function DisciplinaryIndex() {
                                             </button>
                                         ) : null}
 
-                                        {/* Permanently Delete Record */}
-                                        <button
-                                            onClick={() => handleDeleteRecord(record.id)}
-                                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                            title="Permanently Delete Disciplinary Record"
-                                        >
-                                            <i className="ti ti-trash text-sm" />
-                                        </button>
-                                    </div>
+                                        </div>
                                 </div>
                             </div>
                         );
