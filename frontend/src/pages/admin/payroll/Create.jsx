@@ -28,6 +28,10 @@ import EmployeeSelectionModal from './components/EmployeeSelectionModal';
 // Re-export matchJobTitle for backwards-compatibility (e.g. FactoryPiece.jsx)
 export { matchJobTitle };
 
+// BUG #9 FIX: payroll is weekly, so no cutoff may span more than 7 days. Free Mode was removed;
+// this limit still protects against an over-long period arriving through a prefilled link.
+const MAX_CUTOFF_DAYS = 7;
+
 const PayrollCreate = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -56,6 +60,8 @@ const PayrollCreate = () => {
     // Used so a worker's piece-rate share reflects days actually present, not a flat
     // equal split across everyone assigned to an operation.
     const [groupAttendanceMap, setGroupAttendanceMap] = useState({});
+    // employee_id -> list of dates (YYYY-MM-DD) the worker actually clocked in and out on
+    const [groupWorkedDatesMap, setGroupWorkedDatesMap] = useState({});
     const [isLoadingGroupAttendance, setIsLoadingGroupAttendance] = useState(false);
 
     // Absentee output declaration.
@@ -128,8 +134,7 @@ const PayrollCreate = () => {
     const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
     const [activePreset, setActivePreset] = useState('current_week');
 
-    // Cutoff length: '7day' (Mon-Sun), '5day' (Mon-Fri, weekends excluded from the
-    // count), or 'free' (HR picks both ends, every calendar day in the range counts).
+    // Cutoff length: '7day' (Mon-Sun) or '5day' (Mon-Fri, weekends excluded from the count).
     const [cutoffMode, setCutoffMode] = useState('7day');
     // Kept as a derived flag rather than its own state so every existing computation
     // that already reads includeWeekends (expected days, attendance, etc.) keeps working.
@@ -141,6 +146,41 @@ const PayrollCreate = () => {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
+
+    // BUG #6 FIX: statutory rates/caps come from the Statutory Settings screen (DB), not hardcoded.
+    const [statutoryRates, setStatutoryRates] = useState({
+        sss_employee_rate: 5,
+        sss_max_msc: 35000,
+        philhealth_rate: 5,
+        philhealth_min_salary: 10000,
+        philhealth_max_salary: 100000,
+        pagibig_employee_rate: 2,
+        pagibig_max_contribution: 200
+    });
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            try {
+                const res = await fetchWithAuth('/api/payroll/statutory-settings');
+                if (!res.ok) return;
+                const data = await res.json().catch(() => null);
+                if (!data || !isMounted) return;
+                setStatutoryRates(prev => {
+                    const next = { ...prev };
+                    Object.keys(prev).forEach(key => {
+                        const raw = data[key];
+                        if (raw !== null && raw !== undefined && raw !== '' && Number.isFinite(Number(raw))) {
+                            next[key] = Number(raw);
+                        }
+                    });
+                    return next;
+                });
+            } catch (err) {
+                console.error('Failed to load statutory settings, using defaults:', err);
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
     const [prefillEmployeeMissing, setPrefillEmployeeMissing] = useState(false);
     // Explicit, HR-visible "Generate Holidays" gate — separate from the backend's
     // own silent auto-generation safety net. This lets HR see and confirm the
@@ -254,7 +294,8 @@ const PayrollCreate = () => {
             if (!periodStart || !periodEnd) return { isInvalidDateRange: false };
             const s = new Date(periodStart + 'T00:00:00');
             const e = new Date(periodEnd + 'T00:00:00');
-            return { isInvalidDateRange: e < s };
+            const spanDays = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+            return { isInvalidDateRange: e < s || spanDays > MAX_CUTOFF_DAYS };
         })();
 
         // FIX: targetEmpId now computed before the guard, and checked
@@ -908,8 +949,7 @@ const PayrollCreate = () => {
         setSelectedGroupMemberIds([]);
     };
 
-    // Span (in extra calendar days added to the start) for each fixed mode.
-    // Free mode has no fixed span, so it's absent here on purpose.
+    // Span (in extra calendar days added to the start) for each cutoff mode.
     const CUTOFF_MODE_SPAN_DAYS = { '7day': 6, '5day': 4 };
 
     const applyCutoffPreset = useCallback((presetKey = 'current_week', mode = cutoffMode) => {
@@ -940,14 +980,12 @@ const PayrollCreate = () => {
     }, [hasPrefilledPeriod]);
 
     // Switching modes re-derives the cutoff from whatever start date is already set
-    // (or from this week, if it's still on the initial preset). Free mode makes no
-    // change on its own - the existing start/end simply stop auto-syncing from here.
+    // (or from this week, if it's still on the initial preset).
     const handleCutoffModeChange = (nextMode) => {
         if (nextMode === cutoffMode) return;
-        setCutoffMode(nextMode);
-
         const span = CUTOFF_MODE_SPAN_DAYS[nextMode];
         if (span === undefined) return;
+        setCutoffMode(nextMode);
 
         if (activePreset === 'current_week') {
             applyCutoffPreset('current_week', nextMode);
@@ -961,6 +999,8 @@ const PayrollCreate = () => {
         }
     };
 
+    // The end date is always derived from the start date (start + mode span), so it is
+    // never edited directly and a cutoff can't drift away from the weekly length.
     const handleStartDateChange = (val) => {
         let dateStr = '';
         if (typeof val === 'string') {
@@ -974,48 +1014,27 @@ const PayrollCreate = () => {
         setActivePreset('custom');
         setPeriodStart(dateStr);
 
-        // Fixed-length modes keep the end date locked to (start + span); free mode
-        // leaves whatever end date is already set untouched.
-        const span = CUTOFF_MODE_SPAN_DAYS[cutoffMode];
-        if (span !== undefined) {
-            const date = new Date(dateStr + 'T00:00:00');
-            if (!isNaN(date.getTime())) {
-                const end = new Date(date);
-                end.setDate(date.getDate() + span);
-                setPeriodEnd(formatLocalDate(end));
-            }
+        const span = CUTOFF_MODE_SPAN_DAYS[cutoffMode] ?? CUTOFF_MODE_SPAN_DAYS['7day'];
+        const date = new Date(dateStr + 'T00:00:00');
+        if (!isNaN(date.getTime())) {
+            const end = new Date(date);
+            end.setDate(date.getDate() + span);
+            setPeriodEnd(formatLocalDate(end));
         }
     };
 
-    const handleEndDateChange = (val) => {
-        let dateStr = '';
-        if (typeof val === 'string') {
-            dateStr = val;
-        } else if (Array.isArray(val) && val[0]) {
-            dateStr = formatLocalDate(val[0]);
-        } else if (val instanceof Date) {
-            dateStr = formatLocalDate(val);
-        }
-        if (!dateStr) return;
-        setActivePreset('custom');
-
-        // Fixed-length modes: the end date is derived from the start, so a direct
-        // edit here is ignored rather than allowed to desync the cutoff length.
-        const span = CUTOFF_MODE_SPAN_DAYS[cutoffMode];
-        if (span !== undefined) return;
-
-        setPeriodEnd(dateStr);
-    };
-
-    const { periodDaysCount, isInvalidDateRange } = useMemo(() => {
-        if (!periodStart || !periodEnd) return { periodDaysCount: 0, isInvalidDateRange: false };
+    const { periodDaysCount, isInvalidDateRange, isRangeTooLong } = useMemo(() => {
+        const none = { periodDaysCount: 0, isInvalidDateRange: false, isRangeTooLong: false };
+        if (!periodStart || !periodEnd) return none;
         const s = new Date(periodStart + 'T00:00:00');
         const e = new Date(periodEnd + 'T00:00:00');
-        if (isNaN(s.getTime()) || isNaN(e.getTime())) return { periodDaysCount: 0, isInvalidDateRange: false };
-        if (e < s) return { periodDaysCount: 0, isInvalidDateRange: true };
-        const diffTime = Math.abs(e - s);
-        const count = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        return { periodDaysCount: count, isInvalidDateRange: false };
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return none;
+        if (e < s) return { periodDaysCount: 0, isInvalidDateRange: true, isRangeTooLong: false };
+        const count = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+        // A cutoff longer than MAX_CUTOFF_DAYS is treated as invalid so every existing
+        // guard (previews, batch math, submit buttons) blocks it automatically.
+        const tooLong = count > MAX_CUTOFF_DAYS;
+        return { periodDaysCount: count, isInvalidDateRange: tooLong, isRangeTooLong: tooLong };
     }, [periodStart, periodEnd]);
 
     // Factory Batch: fetch each active worker's attendance for the cutoff period
@@ -1047,18 +1066,23 @@ const PayrollCreate = () => {
                                 if (dateStr) workedDatesSet.add(dateStr);
                             });
 
-                            return { empId, daysPresent: workedDatesSet.size };
+                            return { empId, daysPresent: workedDatesSet.size, workedDates: Array.from(workedDatesSet) };
                         } catch (err) {
                             console.error(`Attendance fetch failed for worker ${empId}:`, err);
-                            return { empId, daysPresent: 0 };
+                            return { empId, daysPresent: 0, workedDates: [] };
                         }
                     })
                 );
 
                 if (isMounted) {
                     const map = {};
-                    results.forEach(r => { map[r.empId] = r.daysPresent; });
+                    const datesMap = {};
+                    results.forEach(r => {
+                        map[r.empId] = r.daysPresent;
+                        datesMap[r.empId] = r.workedDates || [];
+                    });
                     setGroupAttendanceMap(map);
+                    setGroupWorkedDatesMap(datesMap);
                 }
             } catch (err) {
                 console.error('Group attendance load error:', err);
@@ -1106,16 +1130,33 @@ const PayrollCreate = () => {
         if (isLoadingGroupAttendance || expectedWorkingDays <= 0) return map;
         if (Object.keys(groupAttendanceMap).length === 0) return map;
 
+        // BUG #4 FIX: a Special Non-Working Day is not a scheduled workday, so a worker who
+        // didn't clock in that day is not absent. Only days that fall inside the expected
+        // working days for this cutoff mode are considered (Sunday / weekends never count).
+        const specialNonWorkingDates = Array.from(new Set(
+            (holidayPreview?.items || [])
+                .filter(item => item && item.holidayType === 'special_non_working' && item.date)
+                .map(item => extractDateStr(item.date))
+                .filter(dateStr => {
+                    const dow = new Date(`${dateStr}T00:00:00`).getDay();
+                    if (Number.isNaN(dow)) return false;
+                    return cutoffMode === '5day' ? (dow !== 0 && dow !== 6) : dow !== 0;
+                })
+        ));
+
         activeGroupEmployees.forEach(emp => {
             const idStr = String(emp.id);
             const daysPresent = groupAttendanceMap[idStr] || 0;
-            const daysAbsent = Math.max(0, expectedWorkingDays - daysPresent);
+            const workedDates = new Set(groupWorkedDatesMap[idStr] || []);
+            const unworkedSpecialDays = specialNonWorkingDates.filter(d => !workedDates.has(d)).length;
+            const expectedForWorker = Math.max(0, expectedWorkingDays - unworkedSpecialDays);
+            const daysAbsent = Math.max(0, expectedForWorker - daysPresent);
             if (daysAbsent > 0) {
-                map[idStr] = { employee: emp, daysPresent, daysAbsent, expectedWorkingDays };
+                map[idStr] = { employee: emp, daysPresent, daysAbsent, expectedWorkingDays: expectedForWorker };
             }
         });
         return map;
-    }, [entryMode, activeGroupEmployees, groupAttendanceMap, expectedWorkingDays, isLoadingGroupAttendance]);
+    }, [entryMode, activeGroupEmployees, groupAttendanceMap, groupWorkedDatesMap, expectedWorkingDays, isLoadingGroupAttendance, holidayPreview, cutoffMode]);
 
     // Computed Factory Operation Rows
     const computedFactoryRows = useMemo(() => {
@@ -1324,15 +1365,21 @@ const PayrollCreate = () => {
             if (gross > 0) {
                 const monthlyEquiv = gross * 4;
 
-                const sssBase = Math.min(monthlyEquiv, 35000);
-                const monthlySss = sssBase * 0.05;
+                const sssBase = Math.min(monthlyEquiv, statutoryRates.sss_max_msc);
+                const monthlySss = sssBase * (statutoryRates.sss_employee_rate / 100);
                 sss = parseFloat((monthlySss / 4).toFixed(2));
 
-                const phBase = Math.min(Math.max(monthlyEquiv, 10000), 100000);
-                const monthlyPhilHealth = (phBase * 0.05) / 2;
+                const phBase = Math.min(
+                    Math.max(monthlyEquiv, statutoryRates.philhealth_min_salary),
+                    statutoryRates.philhealth_max_salary
+                );
+                const monthlyPhilHealth = (phBase * (statutoryRates.philhealth_rate / 100)) / 2;
                 philHealth = parseFloat((monthlyPhilHealth / 4).toFixed(2));
 
-                const monthlyPagIbig = Math.min(monthlyEquiv * 0.02, 200);
+                const monthlyPagIbig = Math.min(
+                    monthlyEquiv * (statutoryRates.pagibig_employee_rate / 100),
+                    statutoryRates.pagibig_max_contribution
+                );
                 pagIbig = parseFloat((monthlyPagIbig / 4).toFixed(2));
 
                 const totalStatutory = parseFloat((sss + philHealth + pagIbig).toFixed(2));
@@ -1374,7 +1421,7 @@ const PayrollCreate = () => {
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, absenteeInfo, expectedWorkingDays]);
+    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, absenteeInfo, expectedWorkingDays, statutoryRates]);
 
     // Gate for saving: every absent worker needs a quantity on every paid operation
     // they are assigned to, and no operation may be over-declared.
@@ -1607,7 +1654,9 @@ const PayrollCreate = () => {
     const handleSubmitBatch = async (e) => {
         e.preventDefault();
         if (isInvalidDateRange) {
-            setError('End date cannot be earlier than start date.');
+            setError(isRangeTooLong
+                ? `Payroll cutoff cannot be longer than ${MAX_CUTOFF_DAYS} days (${periodDaysCount} selected).`
+                : 'End date cannot be earlier than start date.');
             return;
         }
 
@@ -1739,7 +1788,9 @@ const PayrollCreate = () => {
     const handleSubmitSingle = async (e) => {
         e.preventDefault();
         if (isInvalidDateRange) {
-            setError('End date cannot be earlier than start date.');
+            setError(isRangeTooLong
+                ? `Payroll cutoff cannot be longer than ${MAX_CUTOFF_DAYS} days (${periodDaysCount} selected).`
+                : 'End date cannot be earlier than start date.');
             return;
         }
 
@@ -1996,12 +2047,13 @@ const PayrollCreate = () => {
                     periodStart={periodStart}
                     periodEnd={periodEnd}
                     handleStartDateChange={handleStartDateChange}
-                    handleEndDateChange={handleEndDateChange}
                     activePreset={activePreset}
                     cutoffMode={cutoffMode}
                     handleCutoffModeChange={handleCutoffModeChange}
                     periodDaysCount={periodDaysCount}
                     isInvalidDateRange={isInvalidDateRange}
+                    isRangeTooLong={isRangeTooLong}
+                    maxCutoffDays={MAX_CUTOFF_DAYS}
                 />
 
                 {/* Modal containing factory piece operations log */}

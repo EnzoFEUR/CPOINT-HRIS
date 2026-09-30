@@ -109,8 +109,11 @@ export function calculateMaternityDifferential({ monthlySalary, sssCashBenefit =
 /**
  * Computes additional Philippine Statutory Paid Leaves.
  */
-export function calculateStatutoryLeavePay({ monthlySalary, leaveType, daysTaken = 0 }) {
-    const { dailyRate } = deriveRates(monthlySalary);
+export function calculateStatutoryLeavePay({ monthlySalary, leaveType, daysTaken = 0, dailyRate: dailyRateOverride }) {
+    // A contractual daily rate (e.g. P610/day) must be used as-is. Re-deriving it from a
+    // synthetic monthly salary (daily x 26 / 21.75) inflates it by 19.5% (P610 -> P729.20).
+    const override = toSafeNumber(dailyRateOverride);
+    const dailyRate = override > 0 ? round2(override) : deriveRates(monthlySalary).dailyRate;
     const safeDays = toSafeNumber(daysTaken);
     const leavePay = round2(dailyRate * safeDays);
 
@@ -187,6 +190,7 @@ export function computeDayPay({
     attendanceByDate,
     restDays = [0],
     canOvertime = true,
+    salaryIncludesHolidayPay = false,
 }) {
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
@@ -224,7 +228,10 @@ export function computeDayPay({
         }
 
         const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays);
-        const pay = eligible ? round2(dailyRate) : 0;
+        // Fixed-salary employees (weekly/monthly) already receive an unworked regular
+        // holiday INSIDE their salary. Adding another daily rate pays the day twice (200%).
+        const alreadyInSalary = salaryIncludesHolidayPay && eligible;
+        const pay = eligible && !alreadyInSalary ? round2(dailyRate) : 0;
         return {
             date: dateStr,
             holidayType: holiday.type,
@@ -234,20 +241,27 @@ export function computeDayPay({
             eligible,
             regularHours: 0,
             overtimeHours: 0,
-            multiplier: eligible ? table.unworked : 0,
+            multiplier: eligible && !alreadyInSalary ? table.unworked : 0,
             pay,
             breakdown: {
                 basicHolidayPay: pay,
                 overtimePay: 0,
-                note: eligible
-                    ? 'Full holiday pay — present/on paid leave the workday before.'
-                    : 'Forfeited — absent without pay the workday before the holiday.',
+                note: alreadyInSalary
+                    ? 'Already included in the fixed salary — no additional holiday pay (prevents paying the day twice).'
+                    : eligible
+                        ? 'Full holiday pay — present/on paid leave the workday before.'
+                        : 'Forfeited — absent without pay the workday before the holiday.',
             },
         };
     }
 
     const multiplier = restDayToday ? table.workedRestDay : table.worked;
-    const basicHolidayPay = toSafeNumber(hourlyRate) * multiplier * regularHours;
+    // Art. 94: a worked regular holiday pays 200% in TOTAL. Fixed-salary employees already
+    // have 100% of that day inside their salary, so only the premium above it is added here;
+    // otherwise the day is paid 100% (salary) + 200% (this) = 300%.
+    // Overtime hours are not covered by the salary, so they keep the full multiplier below.
+    const salaryCredit = salaryIncludesHolidayPay && holiday.type === HOLIDAY_TYPES.REGULAR ? 1 : 0;
+    const basicHolidayPay = toSafeNumber(hourlyRate) * (multiplier - salaryCredit) * regularHours;
     const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
     const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
     const overtimePay = otHourlyRate * overtimeHours;
@@ -266,6 +280,9 @@ export function computeDayPay({
         breakdown: {
             basicHolidayPay: round2(basicHolidayPay),
             overtimePay: round2(overtimePay),
+            ...(salaryCredit > 0 && {
+                note: 'Premium only — the first 100% of the day is already included in the fixed salary.',
+            }),
         },
     };
 }
@@ -282,8 +299,18 @@ export function computeHolidayPayForPeriod({
     attendanceLogs = [],
     restDays = [0],
     canOvertime = true,
+    salaryIncludesHolidayPay = false,
+    dailyRate: dailyRateOverride,
+    hourlyRate: hourlyRateOverride,
 }) {
-    const { dailyRate, hourlyRate } = deriveRates(monthlySalary);
+    // Contractual rates win over the DOLE-derived ones (see calculateStatutoryLeavePay).
+    const derived = deriveRates(monthlySalary);
+    const overrideDaily = toSafeNumber(dailyRateOverride);
+    const overrideHourly = toSafeNumber(hourlyRateOverride);
+    const dailyRate = overrideDaily > 0 ? round2(overrideDaily) : derived.dailyRate;
+    const hourlyRate = overrideHourly > 0
+        ? round2(overrideHourly)
+        : (overrideDaily > 0 ? round2(dailyRate / STANDARD_SHIFT_HOURS) : derived.hourlyRate);
     const holidaysByDate = indexHolidays(holidayList);
     const attendanceByDate = indexAttendanceByDate(attendanceLogs);
 
@@ -301,6 +328,7 @@ export function computeHolidayPayForPeriod({
             attendanceByDate,
             restDays,
             canOvertime,
+            salaryIncludesHolidayPay,
         });
         if (result) items.push(result);
     }
