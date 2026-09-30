@@ -90,7 +90,7 @@ export function getOrGenerateOtp(identifier) {
  * Store OTP in memory with a 5-minute expiration.
  * Retains previous valid codes so delayed SMS/emails can still be verified ("use the old one").
  */
-export function storeOtp(identifier, code) {
+export function storeOtp(identifier, code, method = 'email') {
     const key = identifier.toLowerCase().trim();
     const now = Date.now();
     const existing = otpStore.get(key);
@@ -111,6 +111,7 @@ export function storeOtp(identifier, code) {
 
     otpStore.set(key, {
         code,
+        method: method || existing?.method || 'email',
         previousCodes: previousCodes.slice(0, 5),
         expiresAt: (existing && existing.code === code && existing.expiresAt > now)
             ? existing.expiresAt
@@ -127,6 +128,7 @@ export function getActiveOtp(identifier) {
     if (!record || Date.now() > record.expiresAt) return null;
     return {
         code: record.code,
+        method: record.method || 'email',
         expiresAt: record.expiresAt,
         remainingSeconds: Math.ceil((record.expiresAt - Date.now()) / 1000)
     };

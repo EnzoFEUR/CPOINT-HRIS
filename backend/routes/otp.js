@@ -15,6 +15,7 @@ router.get('/status', (req, res) => {
     res.json({
         success: true,
         hasActiveOtp: Boolean(active),
+        method: active?.method || null,
         remainingSeconds: active?.remainingSeconds || 0,
         isCooldown: !cooldown.allowed,
         cooldownRemaining: cooldown.remainingSeconds
@@ -98,12 +99,12 @@ router.post('/send', async (req, res) => {
         // Enterprise Standard: Reuse active code if still valid (< 5 mins), otherwise generate fresh code
         const otpInfo = getOrGenerateOtp(identifier);
         const code = otpInfo.code;
-        storeOtp(identifier, code);
+        storeOtp(identifier, code, method);
         
         // Also map to targetEmail under the same purpose scope so verification succeeds regardless of identifier provided
         if (targetEmail && baseIdentifier !== targetEmail) {
             const emailScopedId = `${purpose}_${targetEmail}`.toLowerCase().trim();
-            storeOtp(emailScopedId, code);
+            storeOtp(emailScopedId, code, method);
         }
 
         let dispatchResult;

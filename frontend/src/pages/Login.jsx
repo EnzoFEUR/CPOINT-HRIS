@@ -40,21 +40,95 @@ export default function Login() {
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
     const [generatedOtp, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
+    const [expiresAt, setExpiresAt] = useState(() => savedSession?.expiresAt || null);
 
-    // Enterprise persistent OTP cooldown hook (persists across page reloads/navigation/back button)
+    // Persistent 60s cooldown hook across page reloads and tab navigations
     const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
         'login_2fa_' + (email.trim().toLowerCase() || 'global'),
         60
     );
 
-    // Dynamic 5-minute code expiration timer that survives refresh
-    const [timer, setTimer] = useState(() => {
-        if (savedSession?.expiresAt) {
-            const diff = Math.ceil((savedSession.expiresAt - Date.now()) / 1000);
-            return diff > 0 ? diff : 0;
-        }
-        return 300;
-    });
+    // Calculate remaining seconds from target epoch timestamp
+    const getSecondsRemaining = (targetEpoch) => {
+        if (!targetEpoch) return 0;
+        const diff = Math.ceil((targetEpoch - Date.now()) / 1000);
+        return diff > 0 ? diff : 0;
+    };
+
+    const [timer, setTimer] = useState(() => getSecondsRemaining(savedSession?.expiresAt));
+    const formattedTimer = `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}`;
+
+    // Real-time drift-free countdown across all steps and tab focus shifts
+    useEffect(() => {
+        const syncTimer = () => {
+            if (expiresAt) {
+                const rem = getSecondsRemaining(expiresAt);
+                setTimer(rem);
+            } else {
+                setTimer(0);
+            }
+        };
+
+        syncTimer();
+        if (!expiresAt) return;
+
+        const interval = setInterval(syncTimer, 1000);
+        const handleVisibilityChange = () => {
+            if (!document.hidden) syncTimer();
+        };
+
+        window.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', syncTimer);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', syncTimer);
+        };
+    }, [expiresAt]);
+
+    // Synchronize active OTP status from server when on method selection
+    useEffect(() => {
+        if (step !== 2 || !email) return;
+
+        let isMounted = true;
+        const syncStatus = async () => {
+            try {
+                const res = await fetchWithAuth(`/api/auth/otp/status?identifier=${encodeURIComponent(email)}`);
+                const data = await res.json();
+                if (!isMounted || !res.ok || !data.success) return;
+
+                if (data.hasActiveOtp && data.remainingSeconds > 0) {
+                    const newExpiresAt = Date.now() + (data.remainingSeconds * 1000);
+                    setExpiresAt(newExpiresAt);
+                    setTimer(data.remainingSeconds);
+                    if (data.method) {
+                        setOtpMethod(data.method);
+                    }
+                    try {
+                        const raw = sessionStorage.getItem('cpoint_login_2fa_session');
+                        const s = raw ? JSON.parse(raw) : {};
+                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                            ...s,
+                            expiresAt: newExpiresAt,
+                            otpMethod: data.method || s.otpMethod || 'email'
+                        }));
+                    } catch {}
+                }
+
+                if (data.isCooldown && data.cooldownRemaining > 0) {
+                    startCooldown(data.cooldownRemaining);
+                }
+            } catch (err) {
+                // Silently fallback to client state
+            }
+        };
+
+        syncStatus();
+        return () => {
+            isMounted = false;
+        };
+    }, [step, email, startCooldown]);
 
     const handleReturnToLogin = () => {
         try {
@@ -63,6 +137,8 @@ export default function Login() {
         setStep(1);
         setOtpCode(['', '', '', '', '', '']);
         setGeneratedOtp(null);
+        setExpiresAt(null);
+        setTimer(0);
         setError(null);
     };
 
@@ -130,6 +206,9 @@ export default function Login() {
                     }
                 }
 
+                const existingExpiresAt = savedSession?.expiresAt;
+                const hasExistingValidOtp = existingExpiresAt && (existingExpiresAt > Date.now());
+
                 const empWithMeta = { 
                     ...employee, 
                     _auth_metadata: authData.user.user_metadata 
@@ -144,8 +223,9 @@ export default function Login() {
                         email,
                         employeeData: empWithMeta,
                         step: 2,
-                        otpMethod: '',
-                        generatedOtp: null
+                        otpMethod: hasExistingValidOtp ? (savedSession.otpMethod || '') : '',
+                        generatedOtp: hasExistingValidOtp ? (savedSession.generatedOtp || null) : null,
+                        expiresAt: hasExistingValidOtp ? existingExpiresAt : null
                     }));
                 } catch {}
             }
@@ -155,33 +235,30 @@ export default function Login() {
         }
     };
 
-    // Countdown timer for OTP expiry
-    useEffect(() => {
-        if (step !== 3 || timer <= 0) return;
-        const interval = setInterval(() => {
-            setTimer(prev => (prev > 0 ? prev - 1 : 0));
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [step, timer]);
-
     const sendOtp = async (method, isResend = false) => {
         // If an active unexpired code is already dispatched to this method (within 5 mins),
-        // let the user proceed immediately to Step 3 without triggering a duplicate dispatch or cooldown
-        // ONLY if not explicitly resending and currently on the method selection step (step 2)
+        // let the user proceed immediately to Step 3 without triggering duplicate dispatch or errors
         if (!isResend && step === 2 && timer > 0 && method === otpMethod) {
             toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
             setStep(3);
+            try {
+                const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
+            } catch {}
             return;
         }
 
-        // If in active 60s cooldown and trying to resend
-        if (isCooldown && isResend) {
-            toast.error(`Please wait ${cooldown}s before requesting a new code.`);
-            return;
-        }
-
-        // If in active 60s cooldown and trying to dispatch via another method
-        if (isCooldown && method !== otpMethod) {
+        // Anti-spam 60s cooldown check
+        if (isCooldown) {
+            if (timer > 0 && method === otpMethod) {
+                toast.success(`Enter the code already sent to your ${method === 'sms' ? 'phone' : 'email'}`);
+                setStep(3);
+                return;
+            }
+            if (isResend) {
+                toast.error(`Please wait ${cooldown}s before requesting a new code.`);
+                return;
+            }
             toast.error(`Please wait ${cooldown}s before requesting a code via ${method === 'sms' ? 'SMS' : 'Email'}, or use the code already sent.`);
             return;
         }
@@ -210,10 +287,10 @@ export default function Login() {
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
-            // Start enterprise 60s resend cooldown
+            // Start 60s resend cooldown
             startCooldown(data.cooldown || 60);
 
-            // Save and display preview / mock code whenever returned by server (simulation or demo)
+            // Display preview code if in simulation or demo mode
             if (data.previewCode) {
                 setGeneratedOtp(data.previewCode);
                 toast.success(
@@ -233,6 +310,7 @@ export default function Login() {
 
             const activeSeconds = data.expiresIn || 300;
             const codeExpiresAt = Date.now() + activeSeconds * 1000;
+            setExpiresAt(codeExpiresAt);
             setTimer(activeSeconds);
             setStep(3);
 
@@ -516,17 +594,19 @@ export default function Login() {
                         {timer > 0 && otpMethod && (
                             <div className="mb-3.5 p-3.5 bg-blue-50/80 border border-blue-200/90 rounded-xl text-left shadow-2xs">
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
                                         <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
                                         </span>
                                         <span>Code active via {otpMethod === 'sms' ? 'SMS' : 'Email'}</span>
                                     </span>
                                     <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
-                                        {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
+                                        {formattedTimer}
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
-                                    Your 6-digit code was sent and remains valid for 5 minutes. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
+                                    Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
                                 </p>
                                 <button
                                     type="button"
@@ -548,30 +628,52 @@ export default function Login() {
                         <div className="space-y-2 sm:space-y-2.5">
                             <button 
                                 onClick={() => sendOtp('sms')} 
-                                className="w-full p-3 bg-white border border-slate-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer"
+                                className={`w-full p-3 bg-white border rounded-lg transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer ${
+                                    otpMethod === 'sms' && timer > 0 
+                                        ? 'border-blue-400 bg-blue-50/20 ring-1 ring-blue-400/30' 
+                                        : 'border-slate-200 hover:border-slate-400 hover:bg-slate-50/50'
+                                }`}
                             >
                                 <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
                                     <MessageSquare className="w-4 h-4 text-blue-700" />
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between">
+                                        <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
+                                        {otpMethod === 'sms' && timer > 0 && (
+                                            <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                                                Active ({formattedTimer})
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-[11px] text-slate-500 truncate">Mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
                                 </div>
-                                <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
+                                <ChevronRight className="w-4 h-4 ml-1 text-slate-400 shrink-0" />
                             </button>
 
                             <button 
                                 onClick={() => sendOtp('email')} 
-                                className="w-full p-3 bg-white border border-slate-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer"
+                                className={`w-full p-3 bg-white border rounded-lg transition-colors flex items-center text-left gap-3 active:scale-[0.98] cursor-pointer ${
+                                    otpMethod === 'email' && timer > 0 
+                                        ? 'border-blue-400 bg-blue-50/20 ring-1 ring-blue-400/30' 
+                                        : 'border-slate-200 hover:border-slate-400 hover:bg-slate-50/50'
+                                }`}
                             >
                                 <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
                                     <Mail className="w-4 h-4 text-slate-700" />
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="font-semibold text-xs text-slate-900">Send via Email</p>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between">
+                                        <p className="font-semibold text-xs text-slate-900">Send via Email</p>
+                                        {otpMethod === 'email' && timer > 0 && (
+                                            <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                                                Active ({formattedTimer})
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-[11px] text-slate-500 truncate">{email}</p>
                                 </div>
-                                <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
+                                <ChevronRight className="w-4 h-4 ml-1 text-slate-400 shrink-0" />
                             </button>
                         </div>
 
@@ -646,9 +748,9 @@ export default function Login() {
                         
                         <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
                             {timer > 0 ? (
-                                <span>Code expires in <strong className="font-mono text-slate-700">{Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</strong></span>
+                                <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
                             ) : (
-                                <span className="text-red-500 font-semibold">Code expired.</span>
+                                <span className="text-rose-600 font-semibold">Code expired.</span>
                             )}
                             <span className="mx-1 text-slate-300">•</span>
                             <button 
