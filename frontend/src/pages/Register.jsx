@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../utils/phoneUtils';
 import toast from 'react-hot-toast';
+import { UserPlus, Check, User, Mail, Lock, Loader2 } from 'lucide-react';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -83,7 +84,7 @@ export default function Register() {
         {/* Header */}
         <div className="text-center mb-5 sm:mb-6">
           <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-900 text-white shadow-xs mb-2.5">
-            <i className="ti ti-user-plus text-xl" />
+            <UserPlus className="w-5 h-5 text-white" />
           </div>
           <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Create Account</h1>
           <p className="text-slate-500 text-xs mt-0.5">Register your workplace profile with 2FA protection</p>
@@ -100,7 +101,7 @@ export default function Register() {
         {msg ? (
           <div className="text-center py-4 space-y-3">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xl mx-auto border border-emerald-200">
-              <i className="ti ti-check" />
+              <Check className="w-6 h-6 text-emerald-600" />
             </div>
             <h2 className="text-sm font-bold text-slate-900">Registration Complete</h2>
             <p className="text-xs text-slate-600 leading-relaxed px-2">{msg}</p>
@@ -119,8 +120,8 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Full Name</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
-                  <i className="ti ti-user" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <User className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="text"
@@ -137,8 +138,8 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
-                  <i className="ti ti-mail" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Mail className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="email"
@@ -165,13 +166,13 @@ export default function Register() {
                       ? 'bg-rose-50 text-rose-700 border border-rose-200'
                       : 'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
-                    {phoneValidation.isValid ? `✓ ${phoneValidation.carrier || 'Valid PH Mobile'}` : phoneValidation.message}
+                    {phoneValidation.isValid ? (phoneValidation.carrier || 'Valid PH Mobile') : phoneValidation.message}
                   </span>
                 )}
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
-                  🇵🇭 +63
+                  +63
                 </div>
                 <input
                   type="tel"
@@ -194,8 +195,8 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Password</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
-                  <i className="ti ti-lock" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="password"
@@ -210,17 +211,21 @@ export default function Register() {
               {/* Password Requirements Check */}
               {password && (
                 <div className="grid grid-cols-2 gap-1.5 pt-2 text-[10px]">
-                  <span className={checks.length ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                    ✓ 10+ characters
+                  <span className={`flex items-center gap-1 ${checks.length ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                    {checks.length && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                    10+ characters
                   </span>
-                  <span className={checks.case ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                    ✓ Upper &amp; lower
+                  <span className={`flex items-center gap-1 ${checks.case ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                    {checks.case && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                    Upper &amp; lower
                   </span>
-                  <span className={checks.number ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                    ✓ Numeric digit
+                  <span className={`flex items-center gap-1 ${checks.number ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                    {checks.number && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                    Numeric digit
                   </span>
-                  <span className={checks.special ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                    ✓ Special character
+                  <span className={`flex items-center gap-1 ${checks.special ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                    {checks.special && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                    Special character
                   </span>
                 </div>
               )}
@@ -233,7 +238,7 @@ export default function Register() {
             >
               {loading ? (
                 <>
-                  <i className="ti ti-loader-2 animate-spin text-sm" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Creating Account...</span>
                 </>
               ) : (

@@ -1,16 +1,21 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import NodeCache from 'node-cache';
 
-// In-memory cache with 15-minute TTL
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Cache responses for 15 minutes
 const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
-// Model hierarchy with automatic fallback to high-capacity production models
+// Model configuration with fallback
 const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 const getFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite';
 
-/**
- * Initialize GoogleGenerativeAI client safely
- */
+// Initialize GenAI client
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -19,9 +24,7 @@ const getGenAI = () => {
   return new GoogleGenerativeAI(apiKey);
 };
 
-/**
- * Execute Gemini prompt with timeout guard, fallback model, and JSON formatting
- */
+// Execute prompt with timeout and fallback
 const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
   const genAI = getGenAI();
   const timeoutMs = options.timeoutMs || parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 12000;
@@ -66,9 +69,7 @@ const executeGemini = async (prompt, systemInstruction = '', options = {}) => {
   }
 };
 
-/**
- * Safely parse JSON from LLM output
- */
+// Parse JSON from model output
 const safeParseJson = (rawText, fallback = {}) => {
   if (!rawText) return fallback;
   try {
@@ -83,12 +84,9 @@ const safeParseJson = (rawText, fallback = {}) => {
   }
 };
 
-// Core AI service interface
 export const Brain = {
   Biometrics: {
-    /**
-     * Perform 7-point forensic liveness verification on a single camera frame
-     */
+    // Single-frame liveness verification
     async checkLiveness(imageBuffer, isEnrollment = false) {
       const genAI = getGenAI();
       const primaryModel = getPrimaryModel();
@@ -96,15 +94,18 @@ export const Brain = {
       const base64Data = imageBuffer.toString('base64');
 
       const prompt = `You are an enterprise-grade biometric anti-spoofing forensic AI for a factory gate attendance system.
-Perform a strict 7-point liveness and anti-spoof analysis on this camera frame:
+Perform a strict 7-point presentation attack detection (PAD) analysis on this camera frame:
 
-1. DEPTH ANALYSIS: Natural 3D facial curvature and light falloff vs. a flat 2D photograph or digital screen.
-2. SCREEN DETECTION: LCD/OLED pixel grids, scanlines, moiré interference, bezel edges, and glass glare.
-3. PRINT DETECTION: Paper grain, matte surface reflections, color bleed, cut photo boundaries, or creases.
-4. SKIN TEXTURE: Natural dermal pores, micro-wrinkles, and biological subsurface scattering.
-5. EYE ANALYSIS: Natural corneal moisture, specular light reflections, and authentic gaze depth.
-6. ENVIRONMENTAL CONSISTENCY: Face shadows and highlights match the ambient surrounding room lighting.
-7. MASK DETECTION: Rigid contours, unnatural skin-to-hairline seams, or latex/silicone boundaries.
+1. SCREEN DETECTION: High-frequency LCD/OLED pixel grids, scanlines, moiré interference, bezel edges, bezel logos, device frame, reflections of the room on phone glass.
+2. PRINT DETECTION: Paper grain, matte surface reflections, flat paper boundaries, cut photo edges, creases, or poster curl.
+3. DEPTH & LIGHT FALLOFF: Natural 3D facial curvature and light falloff vs. a flat 2D photograph or digital screen.
+4. CARRIER DETECTION: Hands, fingers, or holders grasping a smartphone, tablet, or photograph in the frame.
+5. SKIN TEXTURE: Natural dermal pores, micro-wrinkles, and biological subsurface light scattering vs smooth digital pixels.
+6. EYE ANALYSIS: Natural corneal moisture, specular light reflections, and authentic gaze depth vs dead screen glare.
+7. ENVIRONMENTAL ILLUMINATION: Face shadows, color temperature, and highlights match the ambient surrounding room lighting.
+
+STRICT ZERO-TOLERANCE POLICY:
+If you see ANY indication of a phone screen, tablet, photo print, hands holding an object, or 2D display, YOU MUST REJECT with is_real_person = false.
 
 ${isEnrollment ? 'STRICT MODE: Enrollment baseline registration. Reject any ambiguous, low-quality, or suspicious image.' : ''}
 
@@ -141,36 +142,37 @@ Respond with strictly valid JSON:
           rawText = await runLiveness(fallbackModel);
         }
 
-        const parsed = safeParseJson(rawText, {
-          is_real_person: true,
-          confidence: 0.85,
-          reason: 'Liveness verified via heuristic fallback'
-        });
+        const parsed = safeParseJson(rawText, null);
+        if (!parsed) {
+          return {
+            passed: false,
+            confidence: 0,
+            reason: 'Forensic biometric AI output unparseable (fail-closed security enforced)',
+            error: true
+          };
+        }
 
-        const minConfidence = isEnrollment ? 0.65 : 0.55;
+        const minConfidence = isEnrollment ? 0.70 : 0.60;
         const passed = parsed.is_real_person === true && (parsed.confidence || 0) >= minConfidence;
 
         return {
           passed,
           confidence: parsed.confidence || 0,
-          reason: parsed.reason || 'Verification completed',
+          reason: parsed.reason || (passed ? 'Biometric liveness confirmed' : 'Spoofing indicators detected'),
           details: parsed
         };
       } catch (err) {
-        console.warn('[BRAIN_BIOMETRICS] Liveness fallback active:', err.message);
+        console.error('[BRAIN_BIOMETRICS] Liveness verification error:', err.message);
         return {
-          passed: true,
-          confidence: 0.70,
-          reason: 'Edge algorithmic verification approved (circuit-breaker active)',
-          fallback: true
+          passed: false,
+          confidence: 0,
+          reason: `Liveness verification unavailable: ${err.message}`,
+          error: true
         };
       }
     },
 
-    /**
-     * Dual-Image Biometric Identity Match
-     * Compares live camera snapshot against stored baseline photo while verifying liveness
-     */
+    // Compare live capture against baseline photo
     async verifyIdentityMatch(liveCameraBuffer, baselineBuffer, options = {}) {
       const genAI = getGenAI();
       const primaryModel = getPrimaryModel();
@@ -181,15 +183,20 @@ Respond with strictly valid JSON:
 
       const prompt = `You are an enterprise biometric forensic AI performing dual-image facial verification for an industrial workforce attendance terminal.
 
+CRITICAL ZERO-TRUST ANTI-SPOOFING DIRECTIVE:
 Analyze two images:
 - IMAGE 1: Live camera capture from the attendance gate terminal.
 - IMAGE 2: Registered baseline identity profile of the employee.
 
-Perform a strict comparative identity and liveness evaluation:
-1. FACIAL SKELETAL GEOMETRY: Inter-pupillary distance, cheekbone width, nasal bridge slope, and jawline structure.
-2. PERMANENT BIOMETRIC LANDMARKS: Eye shape, philtrum length, ear attachment, and facial proportions.
-3. ADAPTIVE VARIATION TOLERANCE: Account for natural changes (glasses, facial hair, hairstyle, lighting, subtle expression).
-4. LIVE ATTACK RESISTANCE: Ensure Image 1 is a live human and not a photo/screen presented to the camera.
+Perform a strict comparative identity and presentation attack evaluation:
+1. PRESENTATION ATTACK DETECTION (IMAGE 1):
+   - SCREEN REPLAY: Detect smartphones, tablets, laptop displays, LCD pixel grids, moiré interference, bezel edges, room reflections on device glass.
+   - PRINTED PHOTO: Paper grain, cut photo margins, matte/glossy paper reflections, flat 2D perspective, creases.
+   - CARRIER: Hands or stands holding a phone or picture in front of the lens.
+   - If IMAGE 1 displays a screen, photo, or device replay, IMMEDIATELY set "is_live_person": false and "verdict": "SUSPECTED_SPOOF".
+2. FACIAL SKELETAL GEOMETRY: Inter-pupillary distance, cheekbone width, nasal bridge slope, and jawline structure between Image 1 and Image 2.
+3. PERMANENT BIOMETRIC LANDMARKS: Eye shape, philtrum length, ear attachment, and facial proportions.
+4. ADAPTIVE VARIATION TOLERANCE: Account for natural changes (glasses, subtle expression, haircut, ambient room lighting).
 
 Respond with strictly valid JSON:
 {
@@ -230,49 +237,53 @@ Respond with strictly valid JSON:
           rawText = await runMatch(fallbackModel);
         }
 
-        const parsed = safeParseJson(rawText, {
-          is_same_person: true,
-          match_confidence: 0.85,
-          is_live_person: true,
-          liveness_confidence: 0.85,
-          similarity_score_percent: 88,
-          matching_facial_features: ['Eye contour and inter-pupillary distance', 'Nasal bridge and jaw structure'],
-          detected_variations: [],
-          verdict: 'VERIFIED_MATCH',
-          reason: 'Facial landmarks match baseline profile within acceptable thresholds.'
-        });
+        const parsed = safeParseJson(rawText, null);
+        if (!parsed) {
+          return {
+            passed: false,
+            is_same_person: false,
+            match_confidence: 0,
+            is_live_person: false,
+            liveness_confidence: 0,
+            similarity_score_percent: 0,
+            verdict: 'FORENSIC_PARSE_ERROR',
+            reason: 'Biometric AI returned unparseable output (fail-closed security enforced)',
+            error: true
+          };
+        }
 
         const minMatch = options.minMatchConfidence || 0.60;
-        const minLive = options.minLivenessConfidence || 0.55;
+        const minLive = options.minLivenessConfidence || 0.60;
 
         const passed = parsed.is_same_person === true &&
                        parsed.is_live_person === true &&
                        (parsed.match_confidence || 0) >= minMatch &&
-                       (parsed.liveness_confidence || 0) >= minLive;
+                       (parsed.liveness_confidence || 0) >= minLive &&
+                       parsed.verdict === 'VERIFIED_MATCH';
 
         return {
           passed,
-          is_same_person: parsed.is_same_person,
+          is_same_person: Boolean(parsed.is_same_person),
           match_confidence: parsed.match_confidence || 0,
-          is_live_person: parsed.is_live_person,
+          is_live_person: Boolean(parsed.is_live_person),
           liveness_confidence: parsed.liveness_confidence || 0,
-          similarity_score_percent: parsed.similarity_score_percent || 85,
+          similarity_score_percent: parsed.similarity_score_percent || 0,
           verdict: parsed.verdict || (passed ? 'VERIFIED_MATCH' : 'IDENTITY_MISMATCH'),
-          reason: parsed.reason || 'Verification completed',
+          reason: parsed.reason || (passed ? 'Biometric identity and liveness confirmed' : 'Biometric mismatch or spoofing detected'),
           details: parsed
         };
       } catch (err) {
-        console.warn('[BRAIN_BIOMETRICS] Dual-match fallback active:', err.message);
+        console.error(`[BRAIN_BIOMETRICS] Dual-match error: ${err.message}`);
         return {
-          passed: true,
-          is_same_person: true,
-          match_confidence: 0.75,
-          is_live_person: true,
-          liveness_confidence: 0.75,
-          similarity_score_percent: 80,
-          verdict: 'VERIFIED_MATCH',
-          reason: 'Edge biometric verification approved (circuit-breaker active)',
-          fallback: true
+          passed: false,
+          is_same_person: false,
+          match_confidence: 0,
+          is_live_person: false,
+          liveness_confidence: 0,
+          similarity_score_percent: 0,
+          verdict: 'AI_SERVICE_UNAVAILABLE',
+          reason: `Dual biometric service error: ${err.message}`,
+          error: true
         };
       }
     }

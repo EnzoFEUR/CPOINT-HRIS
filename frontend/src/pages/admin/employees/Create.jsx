@@ -333,13 +333,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                 ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                                 : 'bg-amber-50 text-amber-700 border border-amber-200'
                                         }`}>
-                                            {phoneValidation.isValid ? `✓ ${phoneValidation.carrier || 'Valid PH Mobile'}` : phoneValidation.message}
+                                            {phoneValidation.isValid ? (phoneValidation.carrier || 'Valid PH Mobile') : phoneValidation.message}
                                         </span>
                                     )}
                                 </div>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
-                                        🇵🇭 +63
+                                        +63
                                     </div>
                                     <input
                                         type="tel"

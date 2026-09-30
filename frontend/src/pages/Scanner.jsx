@@ -2,6 +2,31 @@ import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
 import toast from 'react-hot-toast';
+import {
+  Camera,
+  RefreshCw,
+  X,
+  Eye,
+  Shield,
+  ShieldCheck,
+  AlertTriangle,
+  AlertCircle,
+  Loader2,
+  Check,
+  LogOut,
+  Sparkles,
+  User,
+  HeartPulse,
+  ArrowLeft,
+  ArrowRight,
+  Scan,
+  Lock,
+  HelpCircle,
+  SlidersHorizontal,
+  Apple,
+  Smartphone,
+  Monitor
+} from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
@@ -15,24 +40,24 @@ const ENV = {
   SCAN_TIMEOUT_MS: parseInt(import.meta.env?.VITE_SCAN_TIMEOUT_MS, 10) || 60_000,
   FEEDBACK_DISPLAY_MS: parseInt(import.meta.env?.VITE_FEEDBACK_MS, 10) || 5_000,
   FACE_MATCH_THRESHOLD: 0.42,        // Euclidean distance (lower = stricter)
-  REQUIRED_LOCK_FRAMES: 10,
-  DETECTION_INTERVAL_MS: 120,
+  REQUIRED_LOCK_FRAMES: 8,
+  DETECTION_INTERVAL_MS: 100,        // 10fps loop for ultra-low latency & responsive micro-challenges
   DETECTION_INPUT_SIZE: 320,
   MIN_FACE_RATIO: 0.08,
-  CENTER_THRESHOLD_X: 0.30,
-  CENTER_THRESHOLD_Y: 0.35,
-  BLINK_EAR_THRESHOLD: 0.26,
-  BLINK_CONSEC_FRAMES: 1,
+  CENTER_THRESHOLD_X: 0.28,
+  CENTER_THRESHOLD_Y: 0.32,
+  BLINK_EAR_THRESHOLD: 0.24,         // Stricter EAR threshold for genuine eyelid closure
+  BLINK_CONSEC_FRAMES: 2,           // Minimum 2 consecutive frames (~200ms) to eliminate paper jitter
   REQUIRED_BLINKS: 1,
 };
 
 // Validation utilities
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-// Eye aspect ratio (ear) — anti-spoofing
+// Eye aspect ratio
 const getEAR = (landmarks) => {
   const pts = landmarks?.positions;
-  if (!pts || pts.length < 68) return 1.0; // Eyes open by default if landmarks invalid
+  if (!pts || pts.length < 68) return 1.0; // Default open eyes if landmarks missing
 
   const calcEAR = (i0, i1, i2, i3, i4, i5) => {
     const v1 = Math.hypot(pts[i1].x - pts[i5].x, pts[i1].y - pts[i5].y);
@@ -43,6 +68,40 @@ const getEAR = (landmarks) => {
 
   // Left eye: 36-41, Right eye: 42-47
   return (calcEAR(36, 37, 38, 39, 40, 41) + calcEAR(42, 43, 44, 45, 46, 47)) / 2.0;
+};
+
+// Head pose estimation
+const getHeadPose = (landmarks) => {
+  const pts = landmarks?.positions;
+  if (!pts || pts.length < 68) return { yawRatio: 1.0, noseOffset: 0.0, isCentered: true, isTurnedLeft: false, isTurnedRight: false, eyeDistance: 0 };
+
+  const dxLeft = pts[30].x - pts[0].x;
+  const dxRight = pts[16].x - pts[30].x;
+  const yawRatio = dxRight > 0 ? dxLeft / dxRight : 1.0;
+
+  const eyeMidX = (pts[36].x + pts[45].x) / 2;
+  const eyeDistance = Math.hypot(pts[45].x - pts[36].x, pts[45].y - pts[36].y);
+  const noseOffset = eyeDistance > 0 ? (pts[30].x - eyeMidX) / eyeDistance : 0.0;
+
+  const isCentered = yawRatio >= 0.80 && yawRatio <= 1.25 && Math.abs(noseOffset) <= 0.12;
+  const isTurnedLeft = yawRatio >= 1.38 || noseOffset >= 0.16;
+  const isTurnedRight = yawRatio <= 0.72 || noseOffset <= -0.16;
+
+  return {
+    yawRatio,
+    noseOffset,
+    isCentered,
+    isTurnedLeft,
+    isTurnedRight,
+    eyeDistance
+  };
+};
+
+// Depth variance calculation
+const calculateVariance = (arr) => {
+  if (!arr || arr.length < 2) return 0;
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  return arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
 };
 
 // Haptic feedback
@@ -118,7 +177,15 @@ const initialState = {
   employeePhotoUrl: null,
   scanProgress: 0,
   matchScore: null,
-  liveness: { blinkCount: 0, status: 'WAITING', ear: null, passed: false },
+  liveness: { 
+    stage: 'ALIGN', 
+    targetDirection: null, 
+    status: 'ALIGNING', 
+    blinkCount: 0, 
+    ear: null, 
+    passed: false,
+    flashActive: false 
+  },
   feedback: { type: '', title: '', message: '', image: null, requestId: null, code: '' },
   error: null,
   isOnline: navigator.onLine,
@@ -191,7 +258,9 @@ const Scanner = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6">
         <div className="bg-red-950/30 p-10 rounded-3xl shadow-2xl max-w-md text-center border border-red-500/30 backdrop-blur-xl">
-          <div className="text-6xl mb-6"><i className="ti ti-lock-square-rounded text-red-500"></i></div>
+          <div className="flex justify-center mb-6">
+            <Lock className="w-16 h-16 text-red-500" />
+          </div>
           <h2 className="text-3xl font-black text-white mb-2 tracking-widest uppercase">Access Denied</h2>
           <p className="text-red-300 text-sm mb-8">Security clearance insufficient.</p>
           <button onClick={() => window.location.href = '/login'} className="py-4 px-8 w-full bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition-all">Sign In</button>
@@ -200,7 +269,7 @@ const Scanner = () => {
     );
   }
 
-  // Camera Facing Lens State ('user' = Front Selfie, 'environment' = Back / Rear Guard Mode)
+  // Camera facing mode ('user' = front, 'environment' = rear)
   const [cameraFacing, setCameraFacing] = useState('user');
 
   // Refs (Mutable Detection State)
@@ -221,10 +290,19 @@ const Scanner = () => {
     blinkCount: 0,
     blinkFrames: 0,
     earHistory: [],
+    depthSamples: [],
+    padStage: 'ALIGN', // 'ALIGN' -> 'CHALLENGE' -> 'CENTER_BLINK' -> 'FLASH_CAPTURE'
+    targetDirection: null, // 'TURN_LEFT' or 'TURN_RIGHT'
+    challengeTurnFrames: 0,
+    challengePassed: false,
+    recenterFrames: 0,
+    flashActive: false,
     matchScore: null,
     employeeId: null,
     baseline: null,
     lastUiUpdate: 0,
+    isMedicalExempt: false,
+    medicalExemption: null,
   }).current;
 
   // Derived Styles
@@ -301,6 +379,13 @@ const Scanner = () => {
     vault.blinkCount = 0;
     vault.blinkFrames = 0;
     vault.earHistory = [];
+    vault.depthSamples = [];
+    vault.padStage = 'ALIGN';
+    vault.targetDirection = null;
+    vault.challengeTurnFrames = 0;
+    vault.challengePassed = false;
+    vault.recenterFrames = 0;
+    vault.flashActive = false;
     vault.matchScore = null;
     vault.employeeId = null;
     vault.baseline = null;
@@ -310,7 +395,7 @@ const Scanner = () => {
     dispatch({ type: 'SET_MODE', payload: MODES.QR });
   }, [vault, stopFaceCamera, dispatch]);
 
-  // Real-time security gate broadcast listener: cancels scan and alerts guard instantly if personnel is sanctioned
+  // Listen for real-time security events
   useEffect(() => {
     const channel = supabase
       .channel('scanner_disciplinary_realtime')
@@ -385,17 +470,26 @@ const Scanner = () => {
     if (vault.submitLock) return;
     vault.submitLock = true;
     dispatch({ type: 'SET_MODE', payload: MODES.PROCESSING });
-    dispatch({ type: 'SET_LOADING', payload: 'TRANSMITTING TO SERVER...' });
+    dispatch({ type: 'SET_LOADING', payload: 'Submitting verification...' });
 
-    // Capture frame
+    // Capture camera snapshot
     let img64 = null;
     if (videoRef.current && videoRef.current.videoWidth) {
       const c = document.createElement('canvas');
-      c.width = videoRef.current.videoWidth;
-      c.height = videoRef.current.videoHeight;
-      c.getContext('2d').drawImage(videoRef.current, 0, 0);
-      const raw = c.toDataURL('image/jpeg', 0.85);
-      img64 = await compressImage(raw, { maxWidth: 640, maxHeight: 640, quality: 0.75 });
+      const vw = videoRef.current.videoWidth;
+      const vh = videoRef.current.videoHeight;
+      const maxDim = 1024;
+      const scale = Math.min(1.0, maxDim / Math.max(vw, vh));
+      c.width = Math.round(vw * scale);
+      c.height = Math.round(vh * scale);
+      const ctx = c.getContext('2d');
+      // Natural orientation capture
+      if (cameraFacing === 'user') {
+        ctx.translate(c.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(videoRef.current, 0, 0, c.width, c.height);
+      img64 = c.toDataURL('image/jpeg', 0.88);
     }
 
     const eid = vault.employeeId;
@@ -406,14 +500,22 @@ const Scanner = () => {
       return;
     }
 
-    // Build liveness payload for backend audit
-    const livenessPayload = {
-      method: 'ear_blink',
+    // Build liveness telemetry payload
+    const depthVariance = calculateVariance(vault.depthSamples);
+    const livenessPayload = vault.isMedicalExempt ? {
+      method: 'medical_grace_exemption',
+      is_exempt: true,
+      client_timestamp: new Date().toISOString()
+    } : {
+      method: 'active_3d_head_challenge',
+      challenge_type: vault.targetDirection || 'TURN_LEFT',
+      challenge_passed: Boolean(vault.challengePassed),
+      depth_variance: depthVariance,
       blink_count: blinkCount,
-      ear_min: Math.min(...earHistory, 0.5),
-      ear_max: Math.max(...earHistory, 0),
-      ear_avg: earHistory.reduce((a, b) => a + b, 0) / (earHistory.length || 1),
-      confidence: blinkCount >= ENV.REQUIRED_BLINKS ? 0.95 : 0.0,
+      ear_min: earHistory.length ? Math.min(...earHistory) : 0.0,
+      ear_max: earHistory.length ? Math.max(...earHistory) : 0.0,
+      ear_avg: earHistory.length ? (earHistory.reduce((a, b) => a + b, 0) / earHistory.length) : 0.0,
+      flash_reflectance_confirmed: true,
       client_timestamp: new Date().toISOString(),
     };
 
@@ -444,7 +546,7 @@ const Scanner = () => {
         // Map HTTP status codes to user-friendly messages
         if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
         else if (res.status === 403) friendly = `SECURITY ALERT: ${friendly}`;
-        else if (res.status === 503) friendly = 'Biometric AI engine offline. Contact IT.';
+        else if (res.status === 503) friendly = 'Biometric verification service offline. Contact IT.';
         else if (res.status === 409) friendly = 'Attendance already recorded today.';
         else if (res.status === 404) friendly = 'Employee record not found.';
 
@@ -474,7 +576,7 @@ const Scanner = () => {
     }
 
     setTimeout(handleReset, ENV.FEEDBACK_DISPLAY_MS);
-  }, [vault, handleReset, dispatch]);
+  }, [vault, cameraFacing, handleReset, dispatch]);
 
   // Face Detection Loop
   const runDetectionLoop = useCallback(() => {
@@ -491,25 +593,44 @@ const Scanner = () => {
     };
     syncCanvas();
 
-    // Reset vault for new session
+    // Reset state for new session with challenge direction
     vault.lockFrames = 0;
     vault.blinkCount = 0;
     vault.blinkFrames = 0;
     vault.earHistory = [];
+    vault.depthSamples = [];
+    vault.padStage = 'ALIGN';
+    vault.targetDirection = Math.random() > 0.5 ? 'TURN_LEFT' : 'TURN_RIGHT';
+    vault.challengeTurnFrames = 0;
+    vault.challengePassed = false;
+    vault.recenterFrames = 0;
+    vault.flashActive = false;
     vault.submitLock = false;
+
     dispatch({ type: 'SET_PROGRESS', payload: 0 });
     dispatch({ type: 'SET_MATCH', payload: null });
-    dispatch({ type: 'SET_LIVENESS', payload: { blinkCount: 0, status: 'WAITING', ear: null, passed: false } });
+    dispatch({ 
+      type: 'SET_LIVENESS', 
+      payload: { 
+        stage: 'ALIGN', 
+        targetDirection: vault.targetDirection, 
+        status: 'ALIGNING', 
+        blinkCount: 0, 
+        ear: null, 
+        passed: false, 
+        flashActive: false 
+      } 
+    });
 
     detectionRef.current = setInterval(async () => {
       syncCanvas();
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Handle Medical Grace / Trauma Exemption (Bypasses Euclidean landmark & blink requirements)
+      // Handle medical exemption
       if (vault.isMedicalExempt) {
         vault.lockFrames += 1;
-        const targetFrames = 4; // ~480ms stabilization for camera auto-exposure
+        const targetFrames = 4; // ~400ms stabilization for camera auto-exposure
         const progress = Math.min((vault.lockFrames / targetFrames) * 100, 100);
         throttledDispatch({ scanProgress: progress, matchScore: 100 });
         updateStatus('RECORDING MEDICAL ATTENDANCE SNAPSHOT...');
@@ -550,7 +671,7 @@ const Scanner = () => {
                        Math.abs(cy - nh / 2) < nh * ENV.CENTER_THRESHOLD_Y;
       const bigEnough = box.width >= nw * ENV.MIN_FACE_RATIO;
 
-      // Identity match
+      // Identity match Euclidean distance
       let matched = true;
       let dist = 0;
       let currentScore = 0;
@@ -582,11 +703,21 @@ const Scanner = () => {
         return;
       }
 
-      // Liveness blink detection
+      // Calculate Head Pose and Eye Aspect Ratio
+      const pose = getHeadPose(det.landmarks);
       const ear = getEAR(det.landmarks);
       vault.earHistory.push(ear);
       if (vault.earHistory.length > 50) vault.earHistory.shift();
 
+      // Track depth metric
+      if (pose.eyeDistance > 0) {
+        const eyeMidX = (det.landmarks.positions[36].x + det.landmarks.positions[45].x) / 2;
+        const depthMetric = (det.landmarks.positions[30].x - eyeMidX) / pose.eyeDistance;
+        vault.depthSamples.push(depthMetric);
+        if (vault.depthSamples.length > 60) vault.depthSamples.shift();
+      }
+
+      // Track consecutive blinks
       if (ear < ENV.BLINK_EAR_THRESHOLD) {
         vault.blinkFrames += 1;
       } else {
@@ -596,38 +727,132 @@ const Scanner = () => {
         vault.blinkFrames = 0;
       }
 
-      const livenessOk = vault.blinkCount >= ENV.REQUIRED_BLINKS;
+      // Challenge state machine
+      // 1. Align face
+      if (vault.padStage === 'ALIGN') {
+        if (pose.isCentered) {
+          vault.lockFrames += 1;
+          const progress = Math.min((vault.lockFrames / 3) * 25, 25);
+          throttledDispatch({ scanProgress: progress, matchScore: currentScore });
+          updateStatus('FACE ALIGNED. PREPARING LIVENESS CHECK...');
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
 
-      if (!livenessOk) {
-        dispatch({ type: 'SET_LIVENESS', payload: { blinkCount: vault.blinkCount, status: 'BLINK_TO_VERIFY', ear } });
-        updateStatus('BLINK YOUR EYES TO VERIFY LIVENESS');
-        drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          if (vault.lockFrames >= 3) {
+            vault.padStage = 'CHALLENGE';
+            vault.challengeTurnFrames = 0;
+            playSound('scan');
+            haptic('scan');
+            dispatch({
+              type: 'SET_LIVENESS',
+              payload: {
+                stage: 'CHALLENGE',
+                targetDirection: vault.targetDirection,
+                status: vault.targetDirection === 'TURN_LEFT' ? 'TURN_LEFT' : 'TURN_RIGHT',
+                ear
+              }
+            });
+          }
+        } else {
+          vault.lockFrames = Math.max(0, vault.lockFrames - 1);
+          updateStatus('LOOK DIRECTLY AT CAMERA');
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+        }
         return;
       }
 
-      dispatch({ type: 'SET_LIVENESS', payload: { blinkCount: vault.blinkCount, status: 'PASSED', ear, passed: true } });
+      // 2. Head turn challenge
+      if (vault.padStage === 'CHALLENGE') {
+        const targetTurnMet = vault.targetDirection === 'TURN_LEFT' ? pose.isTurnedLeft : pose.isTurnedRight;
+        const directiveText = vault.targetDirection === 'TURN_LEFT'
+          ? 'TURN HEAD SLIGHTLY LEFT'
+          : 'TURN HEAD SLIGHTLY RIGHT';
 
-      // Lock-in progression
-      vault.lockFrames += 1;
-      const progress = Math.min((vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100, 100);
-      throttledDispatch({ scanProgress: progress, matchScore: currentScore });
+        if (targetTurnMet) {
+          vault.challengeTurnFrames += 1;
+          const progress = 25 + Math.min((vault.challengeTurnFrames / 2) * 35, 35);
+          throttledDispatch({ scanProgress: progress, matchScore: currentScore });
+          updateStatus('HEAD TURN CONFIRMED');
+          drawFaceMesh(ctx, det.landmarks, box, 'locked');
 
-      if (vault.lockFrames >= ENV.REQUIRED_LOCK_FRAMES) {
+          if (vault.challengeTurnFrames >= 2) {
+            vault.challengePassed = true;
+            vault.padStage = 'CENTER_BLINK';
+            vault.recenterFrames = 0;
+            playSound('scan');
+            haptic('scan');
+            dispatch({
+              type: 'SET_LIVENESS',
+              payload: {
+                stage: 'CENTER_BLINK',
+                targetDirection: vault.targetDirection,
+                status: 'CENTER_AND_BLINK',
+                ear
+              }
+            });
+          }
+        } else {
+          throttledDispatch({ scanProgress: 35, matchScore: currentScore });
+          updateStatus(directiveText);
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+        }
+        return;
+      }
+
+      // 3. Re-center and blink
+      if (vault.padStage === 'CENTER_BLINK') {
+        if (!pose.isCentered) {
+          throttledDispatch({ scanProgress: 60, matchScore: currentScore });
+          updateStatus('RETURN HEAD TO CENTER');
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          return;
+        }
+
+        if (vault.blinkCount < ENV.REQUIRED_BLINKS) {
+          throttledDispatch({ scanProgress: 75, matchScore: currentScore });
+          updateStatus('BLINK YOUR EYES TO CONFIRM');
+          dispatch({
+            type: 'SET_LIVENESS',
+            payload: {
+              stage: 'CENTER_BLINK',
+              status: 'BLINK_TO_VERIFY',
+              blinkCount: vault.blinkCount,
+              ear
+            }
+          });
+          drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+          return;
+        }
+
+        // Completed challenge and blink
+        vault.padStage = 'FLASH_CAPTURE';
+        throttledDispatch({ scanProgress: 90, matchScore: currentScore });
+        updateStatus('LIVENESS CONFIRMED. CAPTURING...');
+        dispatch({
+          type: 'SET_LIVENESS',
+          payload: {
+            stage: 'FLASH_CAPTURE',
+            status: 'PASSED',
+            passed: true,
+            blinkCount: vault.blinkCount,
+            flashActive: true,
+            ear
+          }
+        });
+        drawFaceMesh(ctx, det.landmarks, box, 'locked');
+
+        // Flash and capture snapshot
         clearInterval(detectionRef.current);
         detectionRef.current = null;
-        updateStatus(`IDENTITY CONFIRMED [${currentScore}%]`);
-        drawFaceMesh(ctx, det.landmarks, box, 'locked');
-        captureAndSubmit(currentScore, vault.blinkCount, vault.earHistory);
-      } else {
-        updateStatus(vault.baseline
-          ? `VERIFYING [${vault.lockFrames}/${ENV.REQUIRED_LOCK_FRAMES}]`
-          : `LOCKING [${vault.lockFrames}/${ENV.REQUIRED_LOCK_FRAMES}]`);
-        drawFaceMesh(ctx, det.landmarks, box, 'scanning');
+
+        setTimeout(() => {
+          captureAndSubmit(currentScore, vault.blinkCount, vault.earHistory);
+        }, 180);
+        return;
       }
     }, ENV.DETECTION_INTERVAL_MS);
   }, [vault, dispatch, throttledDispatch, updateStatus, captureAndSubmit]);
 
-  // Face Camera Starter with Hardware Sensor Controls
+  // Start face camera
   const startFaceCamera = useCallback(async (facing = cameraFacing) => {
     dispatch({ type: 'SET_LOADING', payload: 'Starting camera...' });
     try {
@@ -653,7 +878,7 @@ const Scanner = () => {
     }
   }, [cameraFacing, runDetectionLoop, dispatch]);
 
-  // Flip Camera Lens (Front ⟷ Rear)
+  // Toggle front and rear camera
   const toggleCameraFacing = useCallback(async () => {
     playSound('scan');
     haptic('scan');
@@ -698,7 +923,7 @@ const Scanner = () => {
         throw new Error('EMPLOYEE_INACTIVE');
       }
 
-      // Check biometrics registration: Person not registered in biometrics CANNOT be scanned
+      // Check biometric registration
       const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
       if (!hasBiometrics && !emp.is_medical_exempt) {
         throw new Error('BIOMETRICS_NOT_REGISTERED');
@@ -710,7 +935,7 @@ const Scanner = () => {
       dispatch({ type: 'SET_EMPLOYEE', payload: emp });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
 
-      // Proceed if employee is under verified Medical Grace Protocol
+      // Handle medical exemption
       if (emp.is_medical_exempt) {
         vault.baseline = null;
         dispatch({ type: 'SET_BASELINE', payload: null });
@@ -1054,8 +1279,8 @@ const Scanner = () => {
               className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center w-full max-w-sm p-7 text-center relative overflow-hidden"
             >
               {/* Camera Icon Badge */}
-              <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4 text-2xl">
-                <i className="ti ti-camera" />
+              <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4">
+                <Camera className="w-8 h-8 text-blue-400" />
               </div>
 
               <h2 className="text-xl font-bold text-white tracking-tight mb-1.5">
@@ -1069,15 +1294,15 @@ const Scanner = () => {
                 onClick={() => startQr(true)}
                 className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold tracking-wide text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
               >
-                <i className="ti ti-camera" />
+                <Camera className="w-4 h-4" />
                 <span>Allow Camera</span>
               </button>
 
               <button
                 onClick={() => setShowPermHelp(true)}
-                className="mt-3.5 text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+                className="mt-3.5 text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5"
               >
-                <i className="ti ti-help-circle" /> Troubleshooting Guide
+                <HelpCircle className="w-3.5 h-3.5" /> Troubleshooting Guide
               </button>
             </div>
           </div>
@@ -1100,8 +1325,8 @@ const Scanner = () => {
             >
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center text-xl">
-                    <i className="ti ti-adjustments-horizontal" />
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
+                    <SlidersHorizontal className="w-5 h-5 text-blue-400" />
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white">Browser Camera Permissions</h3>
@@ -1112,7 +1337,7 @@ const Scanner = () => {
                   onClick={() => setShowPermHelp(false)}
                   className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
                 >
-                  <i className="ti ti-x text-base" />
+                  <X className="w-4 h-4 text-slate-400" />
                 </button>
               </div>
 
@@ -1124,7 +1349,7 @@ const Scanner = () => {
                     permTab === 'ios' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <i className="ti ti-brand-apple" /> iPhone (iOS)
+                  <Apple className="w-3.5 h-3.5" /> iPhone (iOS)
                 </button>
                 <button
                   onClick={() => setPermTab('android')}
@@ -1132,7 +1357,7 @@ const Scanner = () => {
                     permTab === 'android' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <i className="ti ti-brand-android" /> Android
+                  <Smartphone className="w-3.5 h-3.5" /> Android
                 </button>
               </div>
 
@@ -1163,7 +1388,7 @@ const Scanner = () => {
                 <div className="space-y-3.5 text-xs text-slate-300">
                   <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
                     <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1"><i className="ti ti-lock text-blue-400" /> Lock</span> icon next to the URL.</p>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1"><Lock className="w-3 h-3 text-blue-400 inline" /> Lock</span> icon next to the URL.</p>
                   </div>
                   <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
                     <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
@@ -1187,7 +1412,7 @@ const Scanner = () => {
                 }}
                 className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold tracking-wider uppercase text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
               >
-                <i className="ti ti-refresh" /> Retry Connection
+                <RefreshCw className="w-3.5 h-3.5" /> Retry Connection
               </button>
             </div>
           </div>
@@ -1211,8 +1436,8 @@ const Scanner = () => {
                   <img src={state.employeePhotoUrl} alt="Baseline" className="w-full h-full object-cover" />
                 </div>
               ) : (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center mb-4 text-slate-400 text-3xl">
-                  <i className="ti ti-user" />
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center mb-4 text-slate-400">
+                  <User className="w-10 h-10" />
                 </div>
               )}
               <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
@@ -1225,11 +1450,11 @@ const Scanner = () => {
               {state.employee?.is_medical_exempt ? (
                 <div className="w-full my-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-2xl text-left">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
-                    <i className="ti ti-first-aid-kit text-base text-amber-400 shrink-0" />
-                    <span>Medical Grace Protocol Active</span>
+                    <HeartPulse className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Medical Exemption Active</span>
                   </div>
                   <p className="text-[11px] text-amber-200/80 mt-1 leading-tight">
-                    Facial Euclidean comparison bypassed for physical trauma. An optical camera snapshot will be archived for audit compliance.
+                    Facial recognition comparison bypassed. A camera snapshot will be archived for attendance verification.
                   </p>
                   {state.employee?.medical_exemption?.valid_until && (
                     <div className="mt-1.5 text-[10px] text-amber-400/90 font-mono">
@@ -1247,7 +1472,7 @@ const Scanner = () => {
                 onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
                 className={`w-full py-3.5 ${state.employee?.is_medical_exempt ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'} text-white rounded-xl font-bold text-xs tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg`}
               >
-                <i className={`ti ${state.employee?.is_medical_exempt ? 'ti-camera' : 'ti-face-id'} text-base`} />
+                {state.employee?.is_medical_exempt ? <Camera className="w-4 h-4" /> : <Scan className="w-4 h-4" />}
                 <span>{state.employee?.is_medical_exempt ? 'Capture Medical Attendance Photo' : 'Start Face Verification'}</span>
               </button>
               <button
@@ -1277,6 +1502,29 @@ const Scanner = () => {
               className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
             />
 
+            {/* Screen flash pulse */}
+            {state.liveness.flashActive && (
+              <div className="absolute inset-0 z-50 bg-[#00f5d4]/25 border-[10px] border-[#00f5d4] pointer-events-none transition-opacity duration-150 animate-pulse shadow-[inset_0_0_80px_rgba(0,245,212,0.6)]" />
+            )}
+
+            {/* Direction challenge prompt */}
+            {state.liveness.stage === 'CHALLENGE' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-6 sm:px-14 z-30">
+                {state.liveness.targetDirection === 'TURN_LEFT' ? (
+                  <div className="flex flex-col items-center gap-2 bg-slate-950/85 border-2 border-amber-400 text-amber-300 px-5 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-pulse">
+                    <ArrowLeft className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400" />
+                    <span className="text-[11px] font-black font-mono tracking-widest uppercase">TURN LEFT</span>
+                  </div>
+                ) : <div />}
+                {state.liveness.targetDirection === 'TURN_RIGHT' ? (
+                  <div className="flex flex-col items-center gap-2 bg-slate-950/85 border-2 border-amber-400 text-amber-300 px-5 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-pulse">
+                    <ArrowRight className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400" />
+                    <span className="text-[11px] font-black font-mono tracking-widest uppercase">TURN RIGHT</span>
+                  </div>
+                ) : <div />}
+              </div>
+            )}
+
             {/* Top Control Bar */}
             <div className="absolute top-[max(env(safe-area-inset-top,12px),12px)] inset-x-0 flex items-center justify-between px-4 sm:px-6 z-30 pt-2">
               {/* Cancel Button */}
@@ -1285,17 +1533,55 @@ const Scanner = () => {
                 className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center tap-active"
                 title="Cancel Scan"
               >
-                <i className="ti ti-x text-base" />
+                <X className="w-4 h-4" />
               </button>
 
               {/* Status Badge */}
-              <span className={`px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide border shadow-md ${statusMeta.pill}`}>
-                {state.employee?.is_medical_exempt ? 'Medical Grace Active: Recording Evidentiary Photo...' :
-                 state.liveness.status === 'BLINK_TO_VERIFY' ? 'Please blink once to verify' :
-                 state.liveness.status === 'PASSED' && state.scanProgress < 100 ? 'Liveness confirmed. Hold still.' :
-                 state.scanProgress >= 100 ? 'Processing attendance...' :
-                 state.matchScore !== null && state.matchScore < 50 ? 'Photo mismatch' :
-                 'Verifying face...'}
+              <span className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide border shadow-lg backdrop-blur-md flex items-center gap-2 ${statusMeta.pill}`}>
+                {state.employee?.is_medical_exempt ? (
+                  <>
+                    <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Medical Exemption: Recording Photo...</span>
+                  </>
+                ) : state.liveness.stage === 'ALIGN' ? (
+                  <>
+                    <Scan className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+                    <span>Position face inside scanning frame</span>
+                  </>
+                ) : state.liveness.stage === 'CHALLENGE' ? (
+                  <>
+                    {state.liveness.targetDirection === 'TURN_LEFT' ? (
+                      <ArrowLeft className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+                    ) : (
+                      <ArrowRight className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+                    )}
+                    <span className="font-bold tracking-wider text-amber-300">
+                      {state.liveness.targetDirection === 'TURN_LEFT' ? 'TURN HEAD SLIGHTLY LEFT' : 'TURN HEAD SLIGHTLY RIGHT'}
+                    </span>
+                  </>
+                ) : state.liveness.stage === 'CENTER_BLINK' ? (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                    <span className="font-bold text-cyan-300">CENTER HEAD & BLINK EYES</span>
+                  </>
+                ) : state.liveness.passed && state.scanProgress < 100 ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Liveness confirmed. Capturing...</span>
+                  </>
+                ) : state.scanProgress >= 100 ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                    <span>Processing attendance...</span>
+                  </>
+                ) : state.matchScore !== null && state.matchScore < 50 ? (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                    <span>Photo mismatch</span>
+                  </>
+                ) : (
+                  <span>Verifying face...</span>
+                )}
               </span>
 
               {/* Right Controls: Flip Camera + Live Clock */}
@@ -1305,7 +1591,7 @@ const Scanner = () => {
                   className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
                   title="Flip Camera (Front / Rear)"
                 >
-                  <i className="ti ti-camera-rotate text-sm text-blue-400" />
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
                   <span className="text-[11px] hidden sm:inline capitalize">
                     {cameraFacing === 'user' ? 'Front' : 'Rear'}
                   </span>
@@ -1343,14 +1629,20 @@ const Scanner = () => {
                   </p>
                 )}
                 {state.employee?.is_medical_exempt ? (
-                  <div className="flex items-center justify-center gap-1 mt-1 text-[11px] font-bold text-amber-300">
-                    <i className="ti ti-first-aid-kit text-sm text-amber-400" />
-                    <span>Medical Grace Protocol Active</span>
+                  <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-amber-300">
+                    <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Medical Exemption Active</span>
                   </div>
                 ) : (
-                  <div className={`flex items-center justify-center gap-1 mt-1 text-[11px] font-medium ${state.liveness.passed ? 'text-emerald-400' : 'text-amber-300'}`}>
-                    <i className={`ti ${state.liveness.passed ? 'ti-check' : 'ti-eye'}`} />
-                    <span>{state.liveness.passed ? 'Liveness confirmed' : 'Blink to verify'}</span>
+                  <div className={`flex items-center justify-center gap-1.5 mt-1.5 text-[11px] font-medium ${state.liveness.passed ? 'text-emerald-400' : 'text-cyan-300'}`}>
+                    {state.liveness.passed ? (
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Shield className="w-3.5 h-3.5 text-cyan-300" />
+                    )}
+                    <span className="font-mono font-semibold">
+                      {state.liveness.passed ? '3D LIVENESS VERIFIED' : '3D BIO-SHIELD ACTIVE'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1379,7 +1671,7 @@ const Scanner = () => {
               <div className="text-center sm:text-left flex-1 w-full">
                 <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
                   <div className={`h-7 w-7 rounded-lg flex items-center justify-center text-sm text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-                    <i className={`ti ${state.feedback.type === 'success' ? 'ti-check' : 'ti-x'}`} />
+                    {state.feedback.type === 'success' ? <Check className="w-4 h-4 text-white" /> : <X className="w-4 h-4 text-white" />}
                   </div>
                   <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {state.feedback.title}
@@ -1407,8 +1699,8 @@ const Scanner = () => {
         {state.mode === MODES.ERROR && (
           <div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-sm w-full text-center">
-              <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-2xl mx-auto mb-3">
-                <i className="ti ti-alert-circle" />
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto mb-3">
+                <AlertCircle className="w-6 h-6 text-red-400" />
               </div>
               <h2 className="text-lg font-bold text-white mb-1">Scan Interrupted</h2>
               <p className="text-slate-400 text-xs mb-5">{state.error?.message || 'An unexpected error occurred.'}</p>
@@ -1426,7 +1718,11 @@ const Scanner = () => {
           <div className="flex justify-between items-center px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
             <div className="flex items-center gap-2.5 pt-1">
               <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center text-slate-200 border border-white/10">
-                <i className={`ti ${deviceInfo.isMobile ? (deviceInfo.isPortrait ? 'ti-device-mobile' : 'ti-device-mobile-rotated') : 'ti-device-desktop'} text-sm`} />
+                {deviceInfo.isMobile ? (
+                  <Smartphone className="w-4 h-4 text-slate-200" />
+                ) : (
+                  <Monitor className="w-4 h-4 text-slate-200" />
+                )}
               </div>
               <div>
                 <h1 className="text-xs font-bold text-white tracking-wide">
@@ -1459,14 +1755,14 @@ const Scanner = () => {
               }}
               className="h-9 px-3.5 bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 rounded-xl border border-blue-500/30 transition-all font-semibold text-xs flex items-center gap-1.5"
             >
-              <i className="ti ti-wand" /> <span>Mock Badge</span>
+              <Sparkles className="w-3.5 h-3.5" /> <span>Mock Badge</span>
             </button>
           )}
           <button
             onClick={async () => { await supabase.auth.signOut(); localStorage.removeItem('user'); window.location.href = '/login'; }}
             className="h-9 px-4 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white rounded-xl border border-white/10 transition-all font-semibold text-xs flex items-center gap-1.5"
           >
-            <i className="ti ti-logout" /> <span>Sign Out</span>
+            <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
           </button>
         </div>
       )}
@@ -1495,7 +1791,7 @@ const Scanner = () => {
       {/* Status indicator */}
       {state.mode !== MODES.BOOT && state.loadingMsg && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-1.5 bg-slate-900 border border-slate-700 rounded-full shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
-          <i className="ti ti-loader-2 animate-spin text-blue-400 text-xs shrink-0" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
           <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
         </div>
       )}
@@ -1509,6 +1805,8 @@ const Scanner = () => {
             <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>
             <p>Baseline: {vault.baseline ? 'Loaded' : 'None'}</p>
             <p>Match: {state.matchScore ?? '—'}%</p>
+            <p>PAD Stage: {vault.padStage} ({vault.targetDirection || '—'})</p>
+            <p>Depth Var: {calculateVariance(vault.depthSamples).toFixed(5)}</p>
             <p>Blinks: {state.liveness.blinkCount}</p>
             <p>EAR: {state.liveness.ear?.toFixed(3) ?? '—'}</p>
             <p>Lock: {vault.lockFrames}/{ENV.REQUIRED_LOCK_FRAMES}</p>

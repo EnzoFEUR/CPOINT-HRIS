@@ -37,7 +37,7 @@ const CONFIG = Object.freeze({
   },
 });
 
-// STRUCTURED LOGGER & AUDIT TRAIL
+// Audit logger
 const generateRequestId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
 const logger = {
@@ -139,12 +139,63 @@ const getGracePeriodDeadline = () => {
   return new Date(callTimeUtc.getTime() + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES * 60_000);
 };
 
-// Biometric verification service using Universal Gemini Brain
-const performBiometricVerification = async (reqId, base64Data, employee = null, isEnrollment = false) => {
+// Verify face match and liveness
+const performBiometricVerification = async (reqId, base64Data, employee = null, isEnrollment = false, livenessData = null) => {
+  // Validate client liveness challenge
+  if (!isEnrollment && livenessData) {
+    const { challenge_passed, challenge_type, client_timestamp, depth_variance, blink_count } = livenessData;
+
+    // Head turn challenge
+    if (!challenge_passed) {
+      logger.security(reqId, 'Biometric spoofing rejected: Active challenge failed', { livenessData });
+      return {
+        passed: false,
+        confidence: 0,
+        reason: 'Active 3D head-pose challenge incomplete or failed. Re-alignment required.',
+        spoof_type: 'FAILED_HEAD_CHALLENGE'
+      };
+    }
+
+    // Payload freshness check (within 60s)
+    const clientTime = new Date(client_timestamp).getTime();
+    const now = Date.now();
+    if (isNaN(clientTime) || Math.abs(now - clientTime) > 60000) {
+      logger.security(reqId, 'Biometric replay attack: Stale timestamp', { client_timestamp });
+      return {
+        passed: false,
+        confidence: 0,
+        reason: 'Expired or replayed biometric telemetry timestamp.',
+        spoof_type: 'REPLAY_ATTACK'
+      };
+    }
+
+    // Depth variance check for 2D screen or print detection
+    if (typeof depth_variance === 'number' && depth_variance < 0.0005) {
+      logger.security(reqId, 'Biometric spoofing rejected: Planar 2D surface detected', { depth_variance });
+      return {
+        passed: false,
+        confidence: 0.05,
+        reason: 'Planar 2D presentation attack detected (insufficient depth parallax).',
+        spoof_type: 'PLANAR_2D_SPOOF'
+      };
+    }
+
+    // Eye blink check
+    if (typeof blink_count === 'number' && blink_count < 1) {
+      logger.security(reqId, 'Biometric spoofing rejected: Biological blink unverified', { blink_count });
+      return {
+        passed: false,
+        confidence: 0.1,
+        reason: 'Biological eye blink verification incomplete.',
+        spoof_type: 'NO_BLINK'
+      };
+    }
+  }
+
   try {
     const cameraBuffer = Buffer.from(base64Data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
-    // Dual-image verification when an enrolled baseline photo exists
+    // Dual-image verification against baseline photo
     if (!isEnrollment && employee?.biometric_baseline_path) {
       try {
         const { data: baselineBlob, error: dlErr } = await supabase.storage
@@ -159,7 +210,8 @@ const performBiometricVerification = async (reqId, base64Data, employee = null, 
             is_same_person: dualResult.is_same_person,
             match_confidence: dualResult.match_confidence,
             liveness: dualResult.is_live_person,
-            similarity: dualResult.similarity_score_percent
+            similarity: dualResult.similarity_score_percent,
+            verdict: dualResult.verdict
           });
           return dualResult;
         }
@@ -168,25 +220,26 @@ const performBiometricVerification = async (reqId, base64Data, employee = null, 
       }
     }
 
-    // Single-image 7-point forensic liveness verification
+    // Single-image liveness verification
     const result = await Brain.Biometrics.checkLiveness(cameraBuffer, isEnrollment);
     logger.info(reqId, 'Biometrics liveness evaluated via GeminiBrain', { passed: result.passed, confidence: result.confidence });
     return result;
   } catch (err) {
-    logger.warn(reqId, 'Biometric verification fallback active', { error: err.message });
+    logger.error(reqId, 'Biometric verification service error', { error: err.message });
     return {
-      passed: true,
-      is_same_person: true,
-      confidence: 0.75,
-      match_confidence: 0.75,
-      similarity_score_percent: 80,
-      reason: 'Edge algorithmic verification approved (circuit-breaker active)',
-      fallback: true
+      passed: false,
+      is_same_person: false,
+      confidence: 0,
+      match_confidence: 0,
+      similarity_score_percent: 0,
+      reason: `Biometric verification unavailable: ${err.message}`,
+      fallback: false,
+      error: true
     };
   }
 };
 
-// SERVICE: IMAGE STORAGE
+// Image storage service
 const uploadImage = async (reqId, base64Str, type, identifier) => {
   if (!base64Str) return null;
   if (!isValidBase64Image(base64Str)) {
@@ -213,7 +266,7 @@ const uploadImage = async (reqId, base64Str, type, identifier) => {
   }
 };
 
-// SERVICE: DISCIPLINARY & SECURITY ALERTS
+// Security alerts service
 const logSecurityViolation = async (reqId, employee_id, type, description, ip_address) => {
   const payload = {
     employee_id,
@@ -407,7 +460,7 @@ router.get(
       } catch (_) {}
     }
 
-    // Strict Biometric Enrollment Check: Unregistered biometrics cannot scan at turnstiles
+    // Require biometric registration
     const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
     if (!hasBiometrics && !isMedicalGrace) {
       logger.warn(reqId, 'QR scan rejected: Unregistered face biometrics', { employee_id: employee.id, company_id: employee.company_id });
@@ -436,7 +489,7 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const { reqId } = req;
-    const { employee_id, image_data, face_match_score } = req.body;
+    const { employee_id, image_data, face_match_score, liveness_data } = req.body;
 
     // Validation
     if (!employee_id || !isValidUUID(employee_id)) {
@@ -488,7 +541,7 @@ router.post(
       throw new AuthorizationError(errorMessage);
     }
 
-    // Check if Employee has active Medical Grace Exemption
+    // Check for active medical exemption
     let isMedicalGrace = false;
     let medicalExemption = null;
     if (employee.medical_record_url) {
@@ -504,14 +557,14 @@ router.post(
       } catch (_) {}
     }
 
-    // Strict Biometric Enrollment Enforcement: Unregistered personnel cannot scan
+    // Require biometric registration
     const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
     if (!hasBiometrics && !isMedicalGrace) {
       await logSecurityViolation(reqId, employee_id, 'Unregistered Biometrics', 'Turnstile clock-in rejected: Facial biometrics not registered.', req.ip);
       throw new AuthorizationError('ACCESS DENIED: Facial biometric registration required before turnstile scanning.');
     }
 
-    // Biometric Enforcement (Skipped ONLY if employee is on verified Medical Grace Mode)
+    // Verify biometrics (skipped for medical exemption)
     if (hasBiometrics && !isMedicalGrace) {
       if (face_match_score === undefined || face_match_score === null) {
         await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing face match score.', req.ip);
@@ -520,6 +573,10 @@ router.post(
       if (!image_data) {
         await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing camera frame.', req.ip);
         throw new AuthorizationError('BIOMETRIC BYPASS DETECTED: Missing camera frame.');
+      }
+      if (!liveness_data) {
+        await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing active 3D liveness telemetry.', req.ip);
+        throw new AuthorizationError('BIOMETRIC BYPASS DETECTED: Missing active liveness verification telemetry.');
       }
 
       const score = parseFloat(face_match_score);
@@ -549,7 +606,7 @@ router.post(
       throw new ConflictError('You have already completed your attendance for today.');
     }
 
-    // AI Liveness Verification (Skipped if Medical Grace is active)
+    // Liveness verification
     let livenessPassed = isMedicalGrace ? true : false;
     let livenessConfidence = isMedicalGrace ? 1.0 : null;
     let livenessReason = isMedicalGrace ? 'Exempted: Medical Grace Protocol Active' : 'Not performed';
@@ -557,25 +614,23 @@ router.post(
     if (image_data && !isMedicalGrace) {
       const base64Data = image_data.replace(/^data:image\/\w+;base64,/, '');
       try {
-        const result = await performBiometricVerification(reqId, base64Data, employee, false);
+        const result = await performBiometricVerification(reqId, base64Data, employee, false, liveness_data);
         livenessPassed = result.passed;
-        livenessConfidence = result.confidence || result.match_confidence;
+        livenessConfidence = result.confidence || result.match_confidence || 0;
         livenessReason = result.reason;
 
         if (!result.passed) {
-          const desc = `Biometric spoofing attempt. AI Confidence: ${Math.round(result.confidence * 100)}%. ${result.reason}`;
+          const desc = `Biometric spoofing attempt. AI Confidence: ${Math.round((livenessConfidence || 0) * 100)}%. ${result.reason}`;
           await logSecurityViolation(reqId, employee_id, 'Spoofing Attempt', desc, req.ip);
-          throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${result.reason} [Confidence: ${Math.round(result.confidence * 100)}%]`);
+          throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${result.reason} [Confidence: ${Math.round((livenessConfidence || 0) * 100)}%]`);
         }
-        logger.info(reqId, 'Liveness check passed', { employee_id, confidence: result.confidence });
+        logger.info(reqId, 'Liveness check passed', { employee_id, confidence: livenessConfidence });
       } catch (err) {
         if (err.code === 'AI_SERVICE_UNAVAILABLE' || err.code === 'AI_CIRCUIT_OPEN') {
-          // Fail-safe: deny if biometrics are required but AI is down
           if (employee.has_registered_biometrics) {
             logger.security(reqId, 'Clock-in denied due to AI outage', { employee_id });
-            throw new AuthorizationError('Biometric verification service unavailable. Please contact administrator.');
+            throw new AuthorizationError('Biometric verification service unavailable. Access denied for security.');
           }
-          // If no biometrics registered, log warning but allow (legacy mode)
           logger.warn(reqId, 'Liveness check skipped due to AI outage', { employee_id });
           livenessReason = 'Skipped: AI outage';
         } else {
@@ -584,12 +639,12 @@ router.post(
       }
     }
 
-    // Execute Clock-In or Clock-Out
+    // Execute clock-in or clock-out
     const now = new Date();
     const photoPath = await uploadImage(reqId, image_data, existing ? 'out' : 'in', employee.company_id || employee_id);
 
     if (!existing) {
-      // TIME IN: Timezone-resilient calculation using absolute epoch milliseconds (+08:00 Manila PST)
+      // Calculate time-in status (+08:00 Manila PST)
       const callHour = String(CONFIG.ATTENDANCE.CALL_TIME_HOUR).padStart(2, '0');
       const callMin = String(CONFIG.ATTENDANCE.CALL_TIME_MINUTE).padStart(2, '0');
       const callTime = new Date(`${todayStr}T${callHour}:${callMin}:00+08:00`);
@@ -840,7 +895,7 @@ router.post(
       ip_address: req.ip,
     });
 
-    // Multi-channel real-time broadcast: Immediately unlock employee QR badge & notify kiosks (<5ms)
+    // Broadcast biometric registration event
     const broadcastPayload = {
       employee_id,
       company_id,

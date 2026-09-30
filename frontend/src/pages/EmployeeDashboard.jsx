@@ -102,11 +102,11 @@ const EmployeeDashboard = () => {
             })
             .on('broadcast', { event: 'PAYROLL_CREATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                toast.success('Your latest payslip has been distributed!', { icon: '💵' });
+                toast.success('Your latest payslip has been distributed!');
             })
             .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                toast.success('Your latest payslip has been distributed!', { icon: '💵' });
+                toast.success('Your latest payslip has been distributed!');
             })
             .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
@@ -854,7 +854,7 @@ const EmployeeDashboard = () => {
                             if (latestPayroll) {
                                 setShowPayslipModal(true); 
                             } else if (isFactoryWorker) {
-                                toast('Factory piece-rate pool payouts are distributed per completed production batch.', { icon: 'ℹ️' });
+                                toast('Factory piece-rate pool payouts are distributed per completed production batch.');
                             } else {
                                 toast.error('No payslips on record.'); 
                             }
