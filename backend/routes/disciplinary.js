@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -31,14 +32,19 @@ function broadcastDisciplinaryUpdate(event, payload = {}) {
     const targetTopics = [
         'disciplinary_realtime_sync',
         'disciplinary-updates',
+        'admin-live-employees-directory',
         'scanner_disciplinary_realtime'
     ];
 
-    if (payload.employee_id) {
+    const empId = payload.employee_id || payload.employeeId;
+    if (empId) {
+        invalidateAuthUser(empId);
         targetTopics.push(
-            `dashboard-disciplinary-sync-${payload.employee_id}`,
-            `qr-disciplinary-sync-${payload.employee_id}`,
-            `qr-realtime-${payload.employee_id}`
+            `dashboard-disciplinary-sync-${empId}`,
+            `employee-live-dashboard-${empId}`,
+            `myprofile-realtime-${empId}`,
+            `qr-disciplinary-sync-${empId}`,
+            `qr-realtime-${empId}`
         );
     }
 
@@ -436,7 +442,16 @@ router.post('/', async (req, res) => {
 
             const { error: suspendError } = await supabase
                 .from('employees')
-                .update({ status: 'suspended', is_active: false })
+                .update({ 
+                    status: 'suspended', 
+                    is_active: false,
+                    archived_at: null,
+                    archived_by: null,
+                    separation_type: null,
+                    separation_reason: null,
+                    separation_date: null,
+                    separation_notes: null
+                })
                 .eq('id', employee_id);
 
             if (suspendError) {
@@ -562,7 +577,22 @@ router.post('/', async (req, res) => {
                 employee_id,
                 company_id: emp?.company_id,
                 date: todayStr,
-                employee_name: empName
+                employee_name: empName,
+                reason: formattedReason,
+                separation_reason: reason.trim(),
+                separation_type: 'Disciplinary Termination',
+                separation_date: todayStr,
+                archived_at: new Date().toISOString()
+            });
+        } else if (resolvedType === 'Suspension') {
+            broadcastDisciplinaryUpdate('EMPLOYEE_SUSPENDED', {
+                employee_id,
+                company_id: emp?.company_id,
+                date: todayStr,
+                employee_name: empName,
+                duration_days: durationDays,
+                end_date: endDateStr,
+                reason: formattedReason
             });
         }
 
@@ -704,6 +734,14 @@ router.put('/:id/status', async (req, res) => {
             sender_name: 'HR & Compliance Management'
         });
 
+        invalidateCache([
+            '/api/disciplinary',
+            '/api/dashboard',
+            '/api/employees',
+            `/api/employees/${record.employee_id}`,
+            '/api/profile'
+        ]);
+
         broadcastDisciplinaryUpdate('DISCIPLINARY_STATUS_UPDATED', {
             id: record.id,
             employee_id: record.employee_id,
@@ -727,14 +765,6 @@ router.put('/:id/status', async (req, res) => {
                 employees: updatedEmployee
             });
         }
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${record.employee_id}`,
-            '/api/profile'
-        ]);
 
         const enrichedRecord = {
             ...record,
@@ -992,6 +1022,15 @@ router.put('/:id/overturn', async (req, res) => {
             }).catch(() => {});
         }).catch(() => {});
 
+        invalidateCache([
+            '/api/disciplinary',
+            '/api/dashboard',
+            '/api/employees',
+            `/api/employees/${employeeId}`,
+            '/api/attendance',
+            '/api/profile'
+        ]);
+
         // 6. Broadcast Realtime event
         broadcastDisciplinaryUpdate('DISCIPLINARY_OVERTURNED', {
             record_id: req.params.id,
@@ -1019,15 +1058,6 @@ router.put('/:id/overturn', async (req, res) => {
             status: 'active',
             is_active: true
         });
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${employeeId}`,
-            '/api/attendance',
-            '/api/profile'
-        ]);
 
         res.json({
             success: true,

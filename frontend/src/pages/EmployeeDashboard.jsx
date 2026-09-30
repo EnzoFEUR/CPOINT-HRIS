@@ -98,7 +98,21 @@ const EmployeeDashboard = () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+            })
+            .on('broadcast', { event: 'PAYROLL_CREATED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                toast.success('Your latest payslip has been distributed!', { icon: '💵' });
+            })
+            .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                toast.success('Your latest payslip has been distributed!', { icon: '💵' });
+            })
+            .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+            })
+            .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
@@ -112,25 +126,131 @@ const EmployeeDashboard = () => {
             .channel(`dashboard-disciplinary-sync-${user.id}`)
             .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
                 if (!payload || payload.employee_id === user.id) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    if (payload?.type === 'Warning' || payload?.type === 'Suspension') {
+                    if (payload?.type === 'Suspension') {
+                        const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
+                        setDisciplinaryCache(user.id, statusObj);
+                        setDisciplinaryState(statusObj);
+                        setUser(prev => ({
+                            ...prev,
+                            status: 'suspended',
+                            is_active: false,
+                            is_suspended: true,
+                            is_terminated: false,
+                            operational_status: 'Suspended'
+                        }));
+                        setShowInfractionsModal(true);
+                    } else if (payload?.type === 'Termination') {
+                        const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
+                        setDisciplinaryCache(user.id, statusObj);
+                        setDisciplinaryState(statusObj);
+                        setUser(prev => ({
+                            ...prev,
+                            status: 'inactive',
+                            is_active: false,
+                            is_suspended: false,
+                            is_terminated: true,
+                            operational_status: 'Terminated',
+                            archived_at: payload.archived_at || new Date().toISOString(),
+                            separation_reason: payload.reason
+                        }));
+                    } else if (payload?.type === 'Warning') {
                         setShowInfractionsModal(true);
                     }
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
+                    setDisciplinaryCache(user.id, statusObj);
+                    setDisciplinaryState(statusObj);
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'suspended',
+                        is_active: false,
+                        is_suspended: true,
+                        is_terminated: false,
+                        operational_status: 'Suspended'
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.error('Operational Hold: Your account has been placed on temporary disciplinary suspension.', {
+                        id: 'susp-live-alert',
+                        duration: 8000
+                    });
+                    setShowInfractionsModal(true);
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
+                    setDisciplinaryCache(user.id, statusObj);
+                    setDisciplinaryState(statusObj);
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'inactive',
+                        is_active: false,
+                        is_suspended: false,
+                        is_terminated: true,
+                        operational_status: 'Terminated',
+                        archived_at: payload.archived_at || new Date().toISOString(),
+                        separation_reason: payload.reason
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.error('Account Separated: Your status has been updated to Separated / Pending Archive.', {
+                        id: 'term-live-alert',
+                        duration: 8000
+                    });
                 }
             })
             .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
                 if (!payload || payload.employee_id === user.id) {
+                    clearDisciplinaryCache(user.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'active',
+                        is_active: true,
+                        is_suspended: false,
+                        is_terminated: false,
+                        operational_status: 'Active',
+                        archived_at: null
+                    }));
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Disciplinary decision overturned. Good standing restored.', { id: 'disc-ot-alert' });
                 }
             })
             .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
                 if (!payload || payload.employee_id === user.id) {
+                    clearDisciplinaryCache(user.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'active',
+                        is_active: true,
+                        is_suspended: false,
+                        is_terminated: false,
+                        operational_status: 'Active',
+                        archived_at: null
+                    }));
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Disciplinary action resolved. Access restored.', { id: 'disc-res-alert' });
                 }
             })
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
                 if (!payload || payload.employee_id === user.id) {
+                    clearDisciplinaryCache(user.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'active',
+                        is_active: true,
+                        is_suspended: false,
+                        is_terminated: false,
+                        operational_status: 'Active',
+                        archived_at: null
+                    }));
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Account fully restored to active status.', { id: 'emp-rest-alert' });
                 }
             })
             .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
@@ -139,20 +259,101 @@ const EmployeeDashboard = () => {
                     toast.success('Medical Grace protocol status updated');
                 }
             })
+            .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    setUser(prev => ({
+                        ...prev,
+                        has_registered_biometrics: true,
+                        biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                    toast.success('Face Biometrics Enrolled! Turnstile QR pass activated.', { id: 'bio-dash-toast' });
+                }
+            })
             .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
                 if (!payload || String(payload.employee_id) === String(user.id)) {
+                    setUser(prev => ({
+                        ...prev,
+                        has_registered_biometrics: false,
+                        biometric_baseline_path: null
+                    }));
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Biometrics baseline reset by HR');
+                    toast.error('Face Biometrics Reset: Please re-enroll in Biometric Setup.', { id: 'bio-dash-toast' });
                 }
             })
             .subscribe();
 
         const employeeLiveBus = supabase
             .channel(`employee-live-dashboard-${user.id}`)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
+                    setDisciplinaryCache(user.id, statusObj);
+                    setDisciplinaryState(statusObj);
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'suspended',
+                        is_active: false,
+                        is_suspended: true,
+                        is_terminated: false,
+                        operational_status: 'Suspended'
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
+                    setDisciplinaryCache(user.id, statusObj);
+                    setDisciplinaryState(statusObj);
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'inactive',
+                        is_active: false,
+                        is_suspended: false,
+                        is_terminated: true,
+                        operational_status: 'Terminated',
+                        archived_at: payload.archived_at || new Date().toISOString(),
+                        separation_reason: payload.reason
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
+                if (!payload || payload.employee_id === user.id) {
+                    clearDisciplinaryCache(user.id);
+                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+                    setUser(prev => ({
+                        ...prev,
+                        status: 'active',
+                        is_active: true,
+                        is_suspended: false,
+                        is_terminated: false,
+                        operational_status: 'Active',
+                        archived_at: null
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
             .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
             })
+            .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
+                if (!payload || String(payload.employee_id) === String(user.id)) {
+                    setUser(prev => ({
+                        ...prev,
+                        has_registered_biometrics: true,
+                        biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
+                }
+            })
             .on('broadcast', { event: 'BIOMETRICS_RESET' }, () => {
+                setUser(prev => ({
+                    ...prev,
+                    has_registered_biometrics: false,
+                    biometric_baseline_path: null
+                }));
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
             })
             .subscribe();
@@ -212,20 +413,33 @@ const EmployeeDashboard = () => {
     const currentStatus = (liveEmployee?.status || user?.status || 'active').toLowerCase();
     const currentIsActive = liveEmployee?.is_active !== undefined ? liveEmployee.is_active : (user?.is_active !== undefined ? user.is_active : true);
 
-    // Sync live employee status, biometrics, and medical exemption to user state and localStorage
+    // Sync live employee status, biometrics, separation details, and medical exemption to user state and localStorage
     useEffect(() => {
         if (liveEmployee && (
             (liveEmployee.status && liveEmployee.status !== user?.status) || 
             liveEmployee.is_active !== user?.is_active ||
             liveEmployee.medical_record_url !== user?.medical_record_url ||
-            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics
+            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics ||
+            liveEmployee.archived_at !== user?.archived_at ||
+            liveEmployee.separation_date !== user?.separation_date ||
+            liveEmployee.operational_status !== user?.operational_status ||
+            liveEmployee.is_suspended !== user?.is_suspended ||
+            liveEmployee.is_terminated !== user?.is_terminated
         )) {
             setUser(prev => ({ 
                 ...prev, 
                 status: liveEmployee.status || prev?.status, 
                 is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
                 medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
-                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics
+                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics,
+                archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : prev?.archived_at,
+                separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : prev?.separation_date,
+                separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : prev?.separation_type,
+                separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : prev?.separation_reason,
+                separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : prev?.separation_notes,
+                operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : prev?.operational_status,
+                is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : prev?.is_suspended,
+                is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : prev?.is_terminated
             }));
             try {
                 const stored = JSON.parse(localStorage.getItem('user') || '{}');
@@ -234,7 +448,15 @@ const EmployeeDashboard = () => {
                     status: liveEmployee.status || stored?.status, 
                     is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
                     medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
-                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics
+                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics,
+                    archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : stored?.archived_at,
+                    separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : stored?.separation_date,
+                    separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : stored?.separation_type,
+                    separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : stored?.separation_reason,
+                    separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : stored?.separation_notes,
+                    operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : stored?.operational_status,
+                    is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : stored?.is_suspended,
+                    is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : stored?.is_terminated
                 }));
             } catch (e) {}
         }
@@ -282,8 +504,39 @@ const EmployeeDashboard = () => {
         ? employeeDisciplinary.find(log => log.type === 'Suspension' && log.status !== 'Resolved' && log.status !== 'Overturned')
         : (disciplinaryState.isSuspended ? (disciplinaryState.record || { type: 'Suspension', reason: 'Operational access temporarily suspended' }) : null);
 
-    const isTerminated = Boolean(activeTermination) || currentStatus === 'inactive' || currentStatus === 'terminated' || Boolean(disciplinaryState.isTerminated);
-    const isSuspended = !isTerminated && (Boolean(activeSuspension) || currentStatus === 'suspended' || Boolean(disciplinaryState.isSuspended));
+    // Invariant: Suspension and Termination are strictly mutually exclusive.
+    const isSuspended = !Boolean(activeTermination) && Boolean(
+        activeSuspension ||
+        disciplinaryState.isSuspended ||
+        currentStatus === 'suspended' ||
+        liveEmployee?.status === 'suspended' ||
+        user?.status === 'suspended' ||
+        liveEmployee?.is_suspended ||
+        user?.is_suspended ||
+        liveEmployee?.operational_status === 'Suspended' ||
+        user?.operational_status === 'Suspended'
+    );
+
+    const isTerminated = !isSuspended && Boolean(
+        Boolean(activeTermination) || 
+        currentStatus === 'terminated' || 
+        Boolean(disciplinaryState.isTerminated) ||
+        Boolean(liveEmployee?.is_terminated) ||
+        liveEmployee?.operational_status === 'Terminated' ||
+        Boolean(liveEmployee?.archived_at) ||
+        Boolean(user?.archived_at) ||
+        user?.operational_status === 'Terminated' ||
+        (currentStatus === 'inactive' && Boolean(liveEmployee?.archived_at || user?.archived_at || liveEmployee?.separation_type || user?.separation_type))
+    );
+
+    // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
+    const hasFaceBiometrics = Boolean(
+        liveEmployee?.has_registered_biometrics ||
+        user?.has_registered_biometrics ||
+        liveEmployee?.biometric_baseline_path ||
+        user?.biometric_baseline_path ||
+        isMedicalExempt
+    );
 
     const suspensionRecords = employeeDisciplinary.filter(log => log.type === 'Suspension');
     const pastSuspensionsCount = suspensionRecords.length;
@@ -304,14 +557,16 @@ const EmployeeDashboard = () => {
     }, [user?.id, queryHasLoaded, isTerminated, isSuspended, activeTermination, activeSuspension]);
 
     const suspensionEndDate = (() => {
+        if (activeSuspension?.end_date) return activeSuspension.end_date;
         if (!activeSuspension?.reason) return null;
         const match = activeSuspension.reason.match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
         return match ? match[1] : null;
     })();
 
     const suspensionDays = (() => {
+        if (activeSuspension?.duration_days) return activeSuspension.duration_days;
         if (!activeSuspension?.reason) return null;
-        const match = activeSuspension.reason.match(/SUSPENDED:\s*([0-9]+)\s*DAYS/i);
+        const match = activeSuspension.reason.match(/SUSPENDED:?\s*([0-9]+)\s*DAYS/i);
         return match ? match[1] : null;
     })();
 
@@ -500,6 +755,33 @@ const EmployeeDashboard = () => {
                     </button>
                 </div>
             ) : null}
+
+            {/* Biometrics Incomplete Callout Banner */}
+            {!hasFaceBiometrics && !isTerminated && !isSuspended && (
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-600">
+                            <i className="ti ti-scan-eye text-2xl animate-pulse" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950">Action Required</span>
+                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-slate-900">Face Biometrics Not Enrolled</h3>
+                            </div>
+                            <p className="text-slate-600 text-xs mt-0.5 leading-relaxed font-medium">
+                                Your digital turnstile QR pass is currently locked. Register your facial biometrics to activate clock-in credentials.
+                            </p>
+                        </div>
+                    </div>
+                    <Link 
+                        to="/biometric-setup" 
+                        className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold rounded-xl shadow-xs transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                    >
+                        <i className="ti ti-camera text-sm" />
+                        <span>Enroll Face Biometrics</span>
+                    </Link>
+                </div>
+            )}
 
             <div className="space-y-5 sm:space-y-8">
                 
@@ -1361,6 +1643,34 @@ const EmployeeDashboard = () => {
                                         Clock-in access is prohibited during your suspension {suspensionEndDate ? `until ${suspensionEndDate}` : ''}. Please acknowledge your notice.
                                     </div>
                                 </div>
+                            ) : !hasFaceBiometrics ? (
+                                <div className="py-2 text-center">
+                                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 mb-3 sm:mb-4 shadow-inner relative">
+                                        <i className="ti ti-scan-eye text-3xl sm:text-4xl animate-pulse" />
+                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
+                                            <i className="ti ti-lock" />
+                                        </div>
+                                    </div>
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200">
+                                        Biometrics Required
+                                    </span>
+                                    <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">Turnstile Pass Locked</h2>
+                                    <p className="text-slate-500 font-medium mt-1 text-xs max-w-sm mx-auto leading-relaxed">
+                                        Your dynamic QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+                                    </p>
+
+                                    <div className="my-5 p-3.5 bg-amber-50 rounded-2xl border border-amber-200/80 text-xs text-amber-900 leading-relaxed font-medium">
+                                        Under DOLE compliance and company attendance standards, turnstile QR codes are linked directly to registered facial biometrics.
+                                    </div>
+
+                                    <Link
+                                        to="/biometric-setup"
+                                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 mb-3 shadow-md shadow-blue-600/20"
+                                    >
+                                        <i className="ti ti-camera text-base" />
+                                        <span>Enroll Facial Biometrics Now</span>
+                                    </Link>
+                                </div>
                             ) : (
                                 <div>
                                     <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
@@ -1561,7 +1871,7 @@ const EmployeeDashboard = () => {
                                         <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                                             <div>
                                                 <span className="text-slate-400 text-[10px]">TIN:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.tin || 'TRAIN Exempt'}</span>
+                                                <span className="font-mono font-semibold text-slate-700 text-[11px]">{emp?.tin || 'Not Provided'}</span>
                                             </div>
                                             <div>
                                                 <span className="text-slate-400 text-[10px]">SSS No:</span>{' '}

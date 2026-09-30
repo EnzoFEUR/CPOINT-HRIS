@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
+import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 
@@ -28,10 +29,49 @@ export default function PayrollShow() {
             return result.data || result;
         },
         enabled: isIdValid,
-        staleTime: 60_000,
+        staleTime: 10_000,
         gcTime: 300_000,
-        refetchOnWindowFocus: false,
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: true,
     });
+
+    // Real-time synchronization: live updates if payslip is modified or deleted
+    useEffect(() => {
+        if (!isIdValid || !id) return;
+
+        const channel = supabase
+            .channel(`payslip-live-${id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls', filter: `id=eq.${id}` }, (payload) => {
+                if (payload.eventType === 'DELETE') {
+                    toast.error('This payslip was deleted by an administrator.');
+                    navigate('/admin/payroll');
+                } else {
+                    queryClient.invalidateQueries({ queryKey: ['payroll', id], refetchType: 'active' });
+                }
+            })
+            .on('broadcast', { event: 'PAYROLL_DELETED' }, (msg) => {
+                if (msg.payload?.id === id) {
+                    toast.error('This payslip was deleted by an administrator.');
+                    navigate('/admin/payroll');
+                }
+            })
+            .on('broadcast', { event: 'PAYROLL_BULK_DELETED' }, (msg) => {
+                if (Array.isArray(msg.payload?.ids) && msg.payload.ids.includes(id)) {
+                    toast.error('This payslip was deleted by an administrator.');
+                    navigate('/admin/payroll');
+                }
+            })
+            .on('broadcast', { event: 'PAYROLL_UPDATED' }, (msg) => {
+                if (msg.payload?.id === id) {
+                    queryClient.invalidateQueries({ queryKey: ['payroll', id], refetchType: 'active' });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [id, isIdValid, queryClient, navigate]);
 
     const errorMessage = !isIdValid ? 'Invalid or missing Payroll record ID.' : (queryError?.message || null);
 
@@ -101,6 +141,7 @@ export default function PayrollShow() {
         hasHolidayPay,
         deductionsList,
         totalDeductions,
+        withholdingTax,
         netPay,
     } = parsePayrollFinancials(payroll);
 
@@ -221,7 +262,7 @@ export default function PayrollShow() {
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                                 <div>
                                     <span className="text-slate-400 text-[11px]">TIN:</span>{' '}
-                                    <span className="font-mono font-semibold text-slate-700">{payroll.employees?.tin || 'TRAIN Exempt'}</span>
+                                    <span className="font-mono font-semibold text-slate-700">{payroll.employees?.tin || (withholdingTax > 0 ? 'Not Provided' : 'TRAIN Exempt')}</span>
                                 </div>
                                 <div>
                                     <span className="text-slate-400 text-[11px]">SSS No:</span>{' '}

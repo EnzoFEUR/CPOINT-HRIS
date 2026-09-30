@@ -13,7 +13,8 @@ export default function OtpVerificationModal({
     onSuccess,
     email: propEmail,
     phone: propPhone,
-    phoneMask: propPhoneMask
+    phoneMask: propPhoneMask,
+    initialMethod = 'email'
 }) {
     // Resolve logged-in user details from local session storage if not explicitly passed via props
     const sessionUser = useMemo(() => {
@@ -33,7 +34,7 @@ export default function OtpVerificationModal({
     const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(cooldownKey, 60);
 
     const [step, setStep] = useState('select');
-    const [method, setMethod] = useState('email');
+    const [method, setMethod] = useState(initialMethod || 'email');
     const [digits, setDigits] = useState(['', '', '', '', '', '']);
     const [isSending, setIsSending] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
@@ -85,12 +86,17 @@ export default function OtpVerificationModal({
     }, [isOpen, cooldownKey]);
 
     // Handle Method Selection & OTP Dispatch
-    const handleSelectMethod = async (selectedMethod) => {
+    const handleSelectMethod = async (selectedMethod, isResend = false) => {
         // If an active code was already dispatched to this method and has not expired (< 5 mins),
         // let the user proceed immediately to verify step without triggering a duplicate dispatch or cooldown
-        if (expiryTimer > 0 && selectedMethod === method && step === 'select') {
+        if (!isResend && expiryTimer > 0 && selectedMethod === method && step === 'select') {
             toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
             setStep('verify');
+            return;
+        }
+
+        if (isCooldown && isResend) {
+            toast.error(`Please wait ${cooldown}s before requesting a new code.`);
             return;
         }
 
@@ -136,12 +142,13 @@ export default function OtpVerificationModal({
             // Start persistent 60s cooldown
             startCooldown(data.cooldown || 60);
 
-            // Persist 5-minute code expiration timestamp
-            const expTime = Date.now() + 300 * 1000;
+            // Persist code expiration timestamp
+            const activeSeconds = data.expiresIn || 300;
+            const expTime = Date.now() + activeSeconds * 1000;
             try {
                 sessionStorage.setItem(`cpoint_modal_exp_${cooldownKey}`, String(expTime));
             } catch {}
-            setExpiryTimer(300);
+            setExpiryTimer(activeSeconds);
 
             // Populate previewCode whenever returned by the backend
             if (data.previewCode) {
@@ -149,9 +156,11 @@ export default function OtpVerificationModal({
             }
 
             toast.success(
-                selectedMethod === 'sms'
-                    ? `Verification code sent to ${phoneMask || 'your phone'}`
-                    : `Verification code sent to ${email}`
+                isResend
+                    ? `Verification code resent to your ${selectedMethod === 'sms' ? 'phone' : 'email'}`
+                    : (selectedMethod === 'sms'
+                        ? `Verification code sent to ${phoneMask || 'your phone'}`
+                        : `Verification code sent to ${email}`)
             );
             setStep('verify');
             setTimeout(() => inputRefs.current[0]?.focus(), 150);
@@ -460,7 +469,7 @@ export default function OtpVerificationModal({
                             <span>•</span>
                             <button
                                 type="button"
-                                onClick={() => handleSelectMethod(method)}
+                                onClick={() => handleSelectMethod(method, true)}
                                 disabled={isCooldown || isSending || isVerifying}
                                 className="text-blue-600 hover:text-blue-700 font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
                             >

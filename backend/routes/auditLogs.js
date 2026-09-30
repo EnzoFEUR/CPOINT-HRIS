@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ export const createAuditLog = async ({ log_name, description, subject_type, subj
     }
 };
 
-router.get('/', async (req, res) => {
+router.get('/', cacheResponse(10), async (req, res) => {
     try {
         const { date, user_id, limit = 250 } = req.query;
 

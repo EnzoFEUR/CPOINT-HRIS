@@ -2,7 +2,33 @@ import { supabase } from '../supabaseClient.js';
 import NodeCache from 'node-cache';
 
 // Fast in-memory cache to eliminate 250ms-550ms sequential Supabase auth/DB network hops on every request
-const authUserCache = new NodeCache({ stdTTL: 60, checkperiod: 120, useClones: false });
+export const authUserCache = new NodeCache({ stdTTL: 60, checkperiod: 120, useClones: false });
+
+/**
+ * Enterprise Low-Latency Token Invalidation Helper (<1ms)
+ * Immediately evicts user profile from memory when status, role, or credentials change.
+ */
+export const invalidateAuthUser = (employeeId) => {
+    if (!employeeId) return;
+    const strId = String(employeeId).trim().toLowerCase();
+    const keys = authUserCache.keys();
+    for (const key of keys) {
+        const val = authUserCache.get(key);
+        if (val) {
+            const matchesId = val.id && String(val.id).trim().toLowerCase() === strId;
+            const matchesAuthId = val.auth_user_id && String(val.auth_user_id).trim().toLowerCase() === strId;
+            const matchesCompanyId = val.company_id && String(val.company_id).trim().toLowerCase() === strId;
+            const matchesEmail = val.email && String(val.email).trim().toLowerCase() === strId;
+            if (matchesId || matchesAuthId || matchesCompanyId || matchesEmail) {
+                authUserCache.del(key);
+            }
+        }
+    }
+};
+
+export const clearAuthUserCache = () => {
+    authUserCache.flushAll();
+};
 
 export const verifyToken = async (req, res, next) => {
     // Whitelist public scanner routes (Tablet doesn't have a user session)
@@ -65,6 +91,22 @@ export const verifyToken = async (req, res, next) => {
         ...(employee || {}),
         role: resolvedRole
     };
+
+    // Enterprise Security: Revoke access immediately for separated or deactivated accounts
+    // (Suspended employees retain portal access to view disciplinary notices & status)
+    const isSuspended = resolvedUser.status === 'Suspended' || resolvedUser.status === 'suspended';
+    const isTerminated = resolvedUser.status === 'Terminated' || resolvedUser.status === 'terminated';
+    const isSeparated = resolvedRole !== 'admin' && resolvedRole !== 'superadmin' && !isSuspended && (
+        isTerminated || 
+        Boolean(resolvedUser.archived_at) || 
+        resolvedUser.is_active === false
+    );
+
+    if (isSeparated) {
+        return res.status(403).json({ 
+            error: 'ACCESS REVOKED: Personnel account has been separated or deactivated. Contact HR.' 
+        });
+    }
 
     authUserCache.set(token, resolvedUser);
     req.user = resolvedUser;

@@ -557,8 +557,8 @@ export default function Show() {
         employee.hourly_rate ?? 
         (dailyRate ? dailyRate / 8 : 0)
     );
-    const isTerminated = employee.operational_status === 'Terminated' || employee.is_terminated;
-    const isSuspended = !isTerminated && (employee.operational_status === 'Suspended' || employee.is_suspended);
+    const isSuspended = employee.operational_status === 'Suspended' || employee.is_suspended || employee.status === 'suspended';
+    const isTerminated = !isSuspended && (employee.operational_status === 'Terminated' || employee.is_terminated || employee.status === 'terminated' || (Boolean(employee.archived_at) && employee.status !== 'active'));
 
     // Termination cooldown: a separated employee stays visually flagged (grayed
     // out) but not yet finalized for this many days after their effective

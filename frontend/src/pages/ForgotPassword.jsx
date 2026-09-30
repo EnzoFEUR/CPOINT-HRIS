@@ -27,13 +27,95 @@ export default function ForgotPassword() {
     60
   );
 
+  // Real-time workplace account verification
+  const [accountStatus, setAccountStatus] = useState(null); // null | 'checking' | 'verified' | 'not_found' | 'no_email' | 'inactive'
+  const [accountInfo, setAccountInfo] = useState(null);
+
+  // Real-time low-latency workplace account existence check (<15ms)
+  useEffect(() => {
+    const query = email.trim();
+    if (!query || query.length < 3) {
+      setAccountStatus(null);
+      setAccountInfo(null);
+      return;
+    }
+
+    setAccountStatus('checking');
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-workplace-account`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: query }),
+          signal: controller.signal
+        });
+        const data = await res.json();
+
+        if (!data.exists) {
+          setAccountStatus('not_found');
+          setAccountInfo({ error: data.error || 'No registered workplace account found.' });
+        } else if (!data.eligible) {
+          if (data.hasEmail === false) {
+            setAccountStatus('no_email');
+          } else {
+            setAccountStatus('inactive');
+          }
+          setAccountInfo(data);
+        } else {
+          setAccountStatus('verified');
+          setAccountInfo(data);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setAccountStatus(null);
+        }
+      }
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [email]);
+
+  // 5-minute code expiration timer
+  const [expiryTimer, setExpiryTimer] = useState(() => {
+    try {
+      const exp = sessionStorage.getItem(`cpoint_forgot_exp_${email.trim().toLowerCase() || 'global'}`);
+      if (!exp) return 0;
+      const diff = Math.ceil((parseInt(exp, 10) - Date.now()) / 1000);
+      return diff > 0 ? diff : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    let timer;
+    if (expiryTimer > 0) {
+      timer = setInterval(() => {
+        setExpiryTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [expiryTimer]);
+
   // Restore active recovery step if page is refreshed or navigated back
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem('cpoint_forgot_pwd_session');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.email) setEmail(parsed.email);
+        if (parsed.email) {
+          setEmail(parsed.email);
+          const exp = sessionStorage.getItem(`cpoint_forgot_exp_${parsed.email}`);
+          if (exp) {
+            const diff = Math.ceil((parseInt(exp, 10) - Date.now()) / 1000);
+            if (diff > 0) setExpiryTimer(diff);
+          }
+        }
         if (parsed.method) setMethod(parsed.method);
         if (parsed.maskedPhone) setMaskedPhone(parsed.maskedPhone);
         if (parsed.previewCode) setPreviewCode(parsed.previewCode);
@@ -43,9 +125,9 @@ export default function ForgotPassword() {
   }, []);
 
   // Handle Form Submission for Step 1
-  const handleRequestReset = async (e) => {
+  const handleRequestReset = async (e, isResend = false) => {
     if (e) e.preventDefault();
-    if (cooldown > 0 && method !== 'key') {
+    if (!isResend && cooldown > 0 && method !== 'key') {
       try {
         const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
         if (saved.email && saved.email === email.trim().toLowerCase()) {
@@ -55,6 +137,11 @@ export default function ForgotPassword() {
         }
       } catch {}
       toast.error(`Please wait ${cooldown}s before requesting a new code, or enter your active code.`);
+      return;
+    }
+
+    if (isResend && cooldown > 0) {
+      toast.error(`Please wait ${cooldown}s before requesting a new code.`);
       return;
     }
 
@@ -94,10 +181,35 @@ export default function ForgotPassword() {
 
     // PATH 2: Standard Dispatch (SMS OTP or Email Link)
     try {
+      if (!isResend) {
+        if (accountStatus === 'not_found') {
+          const msg = 'No registered workplace account matches this email or Employee ID. You can only reset password if you have a registered account.';
+          setError(msg);
+          toast.error(msg);
+          setLoading(false);
+          return;
+        }
+        if (accountStatus === 'no_email') {
+          const msg = 'This account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.';
+          setError(msg);
+          toast.error(msg);
+          setLoading(false);
+          return;
+        }
+        if (accountStatus === 'inactive') {
+          const msg = `This workplace account is currently ${accountInfo?.status || 'inactive'}. Password recovery is unavailable. Please contact HR.`;
+          setError(msg);
+          toast.error(msg);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const targetIdentifier = accountInfo?.email || email.trim().toLowerCase();
       const res = await fetch(`${API_BASE_URL}/api/auth/security/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), method }),
+        body: JSON.stringify({ email: targetIdentifier, method }),
       });
 
       const data = await res.json();
@@ -109,6 +221,13 @@ export default function ForgotPassword() {
       }
 
       startCooldown(data.cooldown || 60);
+
+      const activeSeconds = data.expiresIn || 300;
+      const expTime = Date.now() + activeSeconds * 1000;
+      try {
+        sessionStorage.setItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`, String(expTime));
+      } catch {}
+      setExpiryTimer(activeSeconds);
 
       const resolvedMasked = method === 'sms' 
         ? (data.maskedPhone || 'your registered corporate phone')
@@ -130,9 +249,12 @@ export default function ForgotPassword() {
         }));
       } catch {}
 
-      toast.success(method === 'sms' 
-        ? `Verification code sent to ${resolvedMasked}`
-        : `Verification code dispatched to ${resolvedMasked}`
+      toast.success(
+        isResend
+          ? `Verification code resent to ${resolvedMasked}`
+          : (method === 'sms' 
+              ? `Verification code sent to ${resolvedMasked}`
+              : `Verification code dispatched to ${resolvedMasked}`)
       );
     } catch (err) {
       console.error('[FORGOT_PASSWORD_ERROR]', err);
@@ -209,6 +331,7 @@ export default function ForgotPassword() {
       clearCooldown();
       try {
         sessionStorage.removeItem('cpoint_forgot_pwd_session');
+        sessionStorage.removeItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`);
       } catch {}
       navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
         replace: true,
@@ -282,21 +405,101 @@ export default function ForgotPassword() {
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email</label>
+              <div className="flex items-center justify-between mb-1 ml-0.5">
+                <label className="block text-xs font-semibold text-slate-700">Workplace Email or Employee ID</label>
+                {accountStatus === 'checking' && (
+                  <span className="text-[10px] text-blue-600 font-medium flex items-center gap-1">
+                    <i className="ti ti-loader-2 animate-spin text-[11px]" />
+                    <span>Verifying...</span>
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
                   <i className="ti ti-mail" />
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError(null);
+                  }}
                   required
                   autoFocus
-                  placeholder="name@company.com"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
+                  placeholder="name@company.com or CP-2026-..."
+                  className={`w-full pl-9 pr-3.5 py-2.5 bg-white border rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none transition-colors shadow-2xs ${
+                    accountStatus === 'verified'
+                      ? 'border-emerald-500 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
+                      : accountStatus === 'not_found'
+                      ? 'border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-rose-50/20'
+                      : accountStatus === 'no_email'
+                      ? 'border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 bg-amber-50/20'
+                      : 'border-slate-300 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15'
+                  }`}
                 />
               </div>
+
+              {/* Real-Time Workplace Account Verification Feedback */}
+              {accountStatus === 'verified' && accountInfo && (
+                <div className="mt-2 p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <i className="ti ti-circle-check text-emerald-600 text-base shrink-0" />
+                      <div>
+                        <span className="font-bold text-slate-900">{accountInfo.name}</span>
+                        <span className="text-[11px] text-emerald-700 block">
+                          {accountInfo.company_id ? `${accountInfo.company_id} • ` : ''}{accountInfo.role?.toUpperCase()} • Active Account
+                        </span>
+                        {accountInfo.email && accountInfo.email !== email.trim().toLowerCase() && (
+                          <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                            Work Email: {accountInfo.email}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
+                      Verified
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {accountStatus === 'not_found' && (
+                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2">
+                  <i className="ti ti-alert-circle text-rose-500 text-base shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-rose-800 block">No Registered Account Found</span>
+                    <span className="text-[11px] text-rose-600 leading-relaxed block mt-0.5">
+                      You can only reset your password if you have a registered workplace account. Please check your spelling or contact HR.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {accountStatus === 'no_email' && accountInfo && (
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                  <i className="ti ti-alert-triangle text-amber-600 text-base shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-amber-900 block">{accountInfo.name} ({accountInfo.company_id})</span>
+                    <span className="text-[11px] text-amber-700 leading-relaxed block mt-0.5">
+                      This employee account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {accountStatus === 'inactive' && accountInfo && (
+                <div className="mt-2 p-2.5 bg-slate-100 border border-slate-300 rounded-lg text-xs text-slate-700 flex items-start gap-2">
+                  <i className="ti ti-ban text-slate-500 text-base shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-slate-900 block">{accountInfo.name} ({accountInfo.company_id})</span>
+                    <span className="text-[11px] text-slate-600 leading-relaxed block mt-0.5">
+                      This account is currently {accountInfo.status || 'inactive'}. Password recovery is disabled. Please contact System Administration.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Segmented Control for Recovery Method */}
@@ -371,13 +574,48 @@ export default function ForgotPassword() {
 
             <button
               type="submit"
-              disabled={loading || (cooldown > 0 && method !== 'key')}
-              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+              disabled={
+                loading ||
+                (cooldown > 0 && method !== 'key') ||
+                accountStatus === 'checking' ||
+                accountStatus === 'not_found' ||
+                accountStatus === 'no_email' ||
+                accountStatus === 'inactive'
+              }
+              className={`w-full mt-2 text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-all duration-150 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer ${
+                accountStatus === 'not_found'
+                  ? 'bg-rose-600 hover:bg-rose-700'
+                  : accountStatus === 'no_email'
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : accountStatus === 'inactive'
+                  ? 'bg-slate-500 hover:bg-slate-600'
+                  : 'bg-slate-900 hover:bg-slate-800 active:scale-[0.98]'
+              }`}
             >
               {loading ? (
                 <>
                   <i className="ti ti-loader-2 animate-spin text-sm" />
                   <span>Processing...</span>
+                </>
+              ) : accountStatus === 'checking' ? (
+                <>
+                  <i className="ti ti-loader-2 animate-spin text-sm" />
+                  <span>Checking Directory...</span>
+                </>
+              ) : accountStatus === 'not_found' ? (
+                <>
+                  <i className="ti ti-ban text-sm" />
+                  <span>No Registered Account</span>
+                </>
+              ) : accountStatus === 'no_email' ? (
+                <>
+                  <i className="ti ti-alert-triangle text-sm" />
+                  <span>No Workplace Email on File</span>
+                </>
+              ) : accountStatus === 'inactive' ? (
+                <>
+                  <i className="ti ti-lock text-sm" />
+                  <span>Account Inactive</span>
                 </>
               ) : cooldown > 0 && method !== 'key' ? (
                 <span>Resend in {cooldown}s</span>
@@ -483,14 +721,25 @@ export default function ForgotPassword() {
                 &larr; Back
               </button>
 
-              <button
-                type="button"
-                onClick={() => handleRequestReset()}
-                disabled={cooldown > 0 || loading}
-                className="text-blue-600 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
-              >
-                {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
-              </button>
+              <div className="flex items-center gap-1.5 text-slate-400 font-medium text-xs">
+                <span>
+                  Expires in{' '}
+                  <strong className="text-slate-700 font-mono">
+                    {expiryTimer > 0
+                      ? `${Math.floor(expiryTimer / 60)}:${String(expiryTimer % 60).padStart(2, '0')}`
+                      : '0:00'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => handleRequestReset(null, true)}
+                  disabled={cooldown > 0 || loading}
+                  className="text-blue-600 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
+                >
+                  {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -153,12 +153,19 @@ export default function Login() {
         return () => clearInterval(interval);
     }, [step, timer]);
 
-    const sendOtp = async (method) => {
+    const sendOtp = async (method, isResend = false) => {
         // If an active unexpired code is already dispatched to this method (within 5 mins),
         // let the user proceed immediately to Step 3 without triggering a duplicate dispatch or cooldown
-        if (timer > 0 && method === otpMethod) {
+        // ONLY if not explicitly resending and currently on the method selection step (step 2)
+        if (!isResend && step === 2 && timer > 0 && method === otpMethod) {
             toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
             setStep(3);
+            return;
+        }
+
+        // If in active 60s cooldown and trying to resend
+        if (isCooldown && isResend) {
+            toast.error(`Please wait ${cooldown}s before requesting a new code.`);
             return;
         }
 
@@ -198,10 +205,19 @@ export default function Login() {
             // Save and display preview / mock code whenever returned by server (simulation or demo)
             if (data.previewCode) {
                 setGeneratedOtp(data.previewCode);
-                toast.success(`Verification code: ${data.previewCode}`, { duration: 6000 });
+                toast.success(
+                    isResend 
+                        ? `Verification code resent: ${data.previewCode}` 
+                        : `Verification code: ${data.previewCode}`,
+                    { duration: 6000 }
+                );
             } else {
                 setGeneratedOtp(null);
-                toast.success(`Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
+                toast.success(
+                    isResend
+                        ? `Verification code resent via ${method === 'sms' ? 'SMS' : 'Email'}`
+                        : `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`
+                );
             }
 
             const activeSeconds = data.expiresIn || 300;
@@ -345,7 +361,7 @@ export default function Login() {
             const userData = { 
                 ...employeeData, 
                 ...dbData,
-                has_registered_biometrics: employeeData._auth_metadata?.has_registered_biometrics || false,
+                has_registered_biometrics: Boolean(dbData?.has_registered_biometrics || dbData?.biometric_baseline_path || employeeData._auth_metadata?.has_registered_biometrics),
                 name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
             };
             
@@ -627,7 +643,7 @@ export default function Login() {
                             <button 
                                 type="button"
                                 disabled={loading || isCooldown}
-                                onClick={() => sendOtp(otpMethod)} 
+                                onClick={() => sendOtp(otpMethod, true)} 
                                 className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                             >
                                 {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}

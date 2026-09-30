@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 
 const router = express.Router();
@@ -27,15 +28,8 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
         const s = (l.status || '').toLowerCase();
         return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
     });
-    const isDeactivated = emp.status === 'inactive' || emp.status === 'terminated' || emp.is_active === false;
 
-    // 1. Termination Evaluation
-    const isTerminated = Boolean(
-        (termLog && isDeactivated) || 
-        emp.status === 'terminated'
-    );
-
-    // 2. Suspension Evaluation
+    // 1. Suspension Evaluation (Suspended personnel remain in workforce directory with paused attendance/QR)
     const activeSuspension = logs.find(l => {
         if (l.type !== 'Suspension') return false;
 
@@ -55,21 +49,34 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
         return l.status === 'Active' || l.status === 'Under Review';
     });
 
-    const isSuspended = !isTerminated && Boolean(
-        (activeSuspension && isDeactivated) ||
-        emp.status === 'suspended'
+    const isSuspended = (emp.status === 'suspended' || Boolean(activeSuspension)) && !Boolean(termLog);
+
+    // 2. Termination Evaluation (Strictly excluded if employee is suspended)
+    const isTerminated = !isSuspended && Boolean(
+        emp.status === 'terminated' ||
+        Boolean(termLog) || 
+        (Boolean(emp.archived_at) && emp.status !== 'active')
     );
 
     let operational_status = 'Active';
-    if (isTerminated) operational_status = 'Terminated';
-    else if (isSuspended) operational_status = 'Suspended';
+    if (isSuspended) operational_status = 'Suspended';
+    else if (isTerminated) operational_status = 'Terminated';
 
     return {
         is_terminated: isTerminated,
         is_suspended: isSuspended,
         operational_status,
-        active_suspension: activeSuspension || null,
-        termination_record: termLog || null,
+        active_suspension: activeSuspension || (isSuspended ? {
+            type: 'Suspension',
+            reason: 'Operational Disciplinary Suspension',
+            status: 'Active'
+        } : null),
+        termination_record: !isSuspended && (termLog || (isTerminated ? {
+            type: 'Termination',
+            reason: emp.separation_reason || 'Contract Concluded / Terminated',
+            status: 'Active',
+            date: emp.separation_date || emp.archived_at || new Date().toISOString()
+        } : null)),
         past_suspensions_count: logs.filter(l => l.type === 'Suspension').length,
         disciplinary_count: logs.length
     };
@@ -85,7 +92,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
                     id, code, name, target_output_pairs, is_active
                 ),
                 disciplinary_logs (
-                    id, type, reason, status, date, created_at
+                    id, type, reason, severity, status, date, created_at
                 )
             `)
             .order('last_name', { ascending: true })
@@ -643,6 +650,40 @@ router.put('/:id', async (req, res) => {
         }
 
         invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+        invalidateAuthUser(req.params.id);
+
+        // Real-time low-latency broadcast (<5ms) to synchronize employee profile across all dashboards
+        try {
+            const broadcastPayload = {
+                employee_id: req.params.id,
+                company_id: updatePayload.company_id || emp?.company_id,
+                first_name: updatePayload.first_name || emp?.first_name,
+                last_name: updatePayload.last_name || emp?.last_name,
+                department: updatePayload.department || emp?.department,
+                job_title: updatePayload.job_title || emp?.job_title,
+                shift: updatePayload.shift || emp?.shift,
+                status: updatePayload.status !== undefined ? updatePayload.status : emp?.status,
+                is_active: updatePayload.is_active !== undefined ? updatePayload.is_active : emp?.is_active,
+                updated_at: new Date().toISOString()
+            };
+
+            const targetTopics = [
+                'admin-live-employees-directory',
+                'disciplinary_realtime_sync',
+                'disciplinary-updates',
+                `employee-live-dashboard-${req.params.id}`,
+                `myprofile-realtime-${req.params.id}`,
+                `qr-realtime-${req.params.id}`
+            ];
+
+            targetTopics.forEach(topic => {
+                supabase.channel(topic).send({
+                    type: 'broadcast',
+                    event: 'EMPLOYEE_UPDATED',
+                    payload: broadcastPayload
+                }).catch(() => {});
+            });
+        } catch (_) {}
 
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
@@ -712,7 +753,25 @@ router.post('/:id/archive', async (req, res) => {
 
         if (updateError) throw updateError;
 
-        // 2. Real-time access revocation: invalidate Supabase Auth sessions
+        // 1.5. Record official separation entry in disciplinary_logs for statutory DOLE tracking
+        try {
+            await supabase
+                .from('disciplinary_logs')
+                .insert({
+                    employee_id: targetId,
+                    type: 'Termination',
+                    status: 'Active',
+                    severity: 'Critical',
+                    reason: `${separation_type}: ${separation_reason}${separation_notes ? ` - ${separation_notes}` : ''}`,
+                    date: separation_date || nowIso.split('T')[0],
+                    created_at: nowIso
+                });
+        } catch (discErr) {
+            console.warn('[ARCHIVE_DISCIPLINARY_LOG_NOTICE]', discErr.message);
+        }
+
+        // 2. Real-time access revocation: invalidate Supabase Auth sessions & memory cache
+        invalidateAuthUser(targetId);
         try {
             await supabase.auth.admin.signOut(targetId);
         } catch (authErr) {
@@ -727,10 +786,13 @@ router.post('/:id/archive', async (req, res) => {
                 name: `${targetEmp.first_name} ${targetEmp.last_name}`,
                 separated_at: nowIso,
                 status: 'terminated',
-                is_active: false
+                is_active: false,
+                separation_type,
+                separation_reason
             };
 
             const targetTopics = [
+                'admin-live-employees-directory',
                 'employee-presence',
                 'employee-archive-sync',
                 'scanner_disciplinary_realtime',
@@ -741,13 +803,24 @@ router.post('/:id/archive', async (req, res) => {
             ];
 
             await Promise.allSettled(
-                targetTopics.map(topic => {
+                targetTopics.flatMap(topic => {
                     const ch = supabase.channel(topic);
-                    return ch.send({
-                        type: 'broadcast',
-                        event: 'EMPLOYEE_TERMINATED',
-                        payload: broadcastPayload
-                    });
+                    return [
+                        ch.send({
+                            type: 'broadcast',
+                            event: 'EMPLOYEE_TERMINATED',
+                            payload: broadcastPayload
+                        }),
+                        ch.send({
+                            type: 'broadcast',
+                            event: 'DISCIPLINARY_CREATED',
+                            payload: {
+                                ...broadcastPayload,
+                                type: 'Termination',
+                                status: 'Active'
+                            }
+                        })
+                    ];
                 })
             );
         } catch (broadcastErr) {
@@ -834,6 +907,7 @@ router.post('/:id/restore', async (req, res) => {
                 status: 'active',
                 is_active: true,
                 archived_at: null,
+                archived_by: null,
                 separation_reason: null,
                 separation_type: null,
                 separation_date: null,
@@ -881,6 +955,8 @@ router.post('/:id/restore', async (req, res) => {
             }).catch(() => {});
         }
 
+        invalidateAuthUser(targetId);
+
         // 4. Send Realtime broadcast to unblock Gate Scanner & update directory across all channels
         try {
             const broadcastPayload = {
@@ -892,6 +968,7 @@ router.post('/:id/restore', async (req, res) => {
             };
 
             const targetTopics = [
+                'admin-live-employees-directory',
                 'employee-presence',
                 'employee-archive-sync',
                 'disciplinary_realtime_sync',

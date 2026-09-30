@@ -582,7 +582,7 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
                 .maybeSingle(),
             supabase
                 .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics')
+                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics, archived_at, separation_date, separation_type, separation_reason, separation_notes, created_at, updated_at')
                 .eq('id', id)
                 .single(),
             supabase
@@ -603,11 +603,37 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
         if (payErr) throw payErr;
         if (empErr) throw empErr;
 
+        let employeeObj = employee ? { ...employee } : null;
+        if (employeeObj) {
+            const termLog = (discData || []).find(l => {
+                if (l.type !== 'Termination') return false;
+                const s = (l.status || '').toLowerCase();
+                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+            });
+            const suspLog = (discData || []).find(l => {
+                if (l.type !== 'Suspension') return false;
+                const s = (l.status || '').toLowerCase();
+                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+            });
+
+            // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
+            const isSusp = (employeeObj.status === 'suspended' || Boolean(suspLog)) && !Boolean(termLog);
+            const isTerm = !isSusp && Boolean(
+                employeeObj.status === 'terminated' ||
+                Boolean(termLog) ||
+                (employeeObj.archived_at !== null && employeeObj.status !== 'active')
+            );
+
+            employeeObj.is_suspended = isSusp;
+            employeeObj.is_terminated = isTerm;
+            employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
+        }
+
         res.json({
             attendanceData: attendanceData || [],
             payrollData: payrollData || null,
-            shiftData: employee ? [{ ...employee }] : [],
-            employee: employee || null,
+            shiftData: employeeObj ? [{ ...employeeObj }] : [],
+            employee: employeeObj,
             discData: discData || [],
             leaveData: leaveData || []
         });

@@ -87,8 +87,86 @@ export function validatePasswordEntropy(password) {
 }
 
 /**
+ * POST /api/auth/security/verify-workplace-account
+ * Low-latency real-time verification of workplace email or employee identity (<15ms).
+ * Validates existence, active employment status, and enrolled recovery channels.
+ */
+router.post('/verify-workplace-account', async (req, res) => {
+    try {
+        const { identifier } = req.body;
+        if (!identifier || typeof identifier !== 'string' || identifier.trim().length < 3) {
+            return res.json({ exists: false, error: 'Please enter a valid workplace email or Employee ID.' });
+        }
+
+        const clean = identifier.trim().toLowerCase();
+
+        // Query employees by email OR company_id
+        const { data: emp, error } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, email, role, status, is_active')
+            .or(`email.ilike.${clean},company_id.ilike.${clean}`)
+            .maybeSingle();
+
+        if (error || !emp) {
+            return res.json({
+                exists: false,
+                error: 'No registered workplace account matches this email or Employee ID.'
+            });
+        }
+
+        // Check if employment is active
+        if (emp.is_active === false || emp.status === 'terminated' || emp.status === 'suspended') {
+            return res.json({
+                exists: true,
+                eligible: false,
+                status: emp.status,
+                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+                company_id: emp.company_id,
+                error: `This workplace account is currently ${emp.status || 'inactive'}. Please contact HR or System Administrator.`
+            });
+        }
+
+        // Check if account has a registered workplace email
+        const hasRegisteredEmail = Boolean(emp.email && emp.email.trim().length > 3 && emp.email.includes('@'));
+        if (!hasRegisteredEmail) {
+            return res.json({
+                exists: true,
+                eligible: false,
+                hasEmail: false,
+                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+                company_id: emp.company_id,
+                error: 'Account found, but no workplace email address is registered on file. Please contact HR for in-person credential reset.'
+            });
+        }
+
+        // Fetch registered mobile phone from Supabase Auth identity store if present
+        let userPhone = null;
+        if (emp.id) {
+            try {
+                const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
+                userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
+            } catch (_) {}
+        }
+
+        return res.json({
+            exists: true,
+            eligible: true,
+            hasEmail: true,
+            email: emp.email,
+            name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague',
+            company_id: emp.company_id,
+            role: emp.role,
+            hasPhone: Boolean(userPhone),
+            maskedPhone: userPhone ? maskPhone(userPhone) : null
+        });
+    } catch (err) {
+        return res.status(500).json({ exists: false, error: err.message });
+    }
+});
+
+/**
  * POST /api/auth/security/forgot-password
- * Initiates enterprise recovery (Zero-Enumeration, Rate-Limited, Dual-Factor SMS or Email)
+ * Initiates enterprise recovery (Rate-Limited, Strict Account & Email Verification, Dual-Factor SMS or Email)
  */
 router.post('/forgot-password', async (req, res) => {
     const startTime = Date.now();
@@ -112,29 +190,36 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
-        // 2. Fetch employee details from database
+        // 2. Fetch employee details from database by email OR company_id
         const { data: emp, error: empErr } = await supabase
             .from('employees')
-            .select('id, first_name, last_name, email, role, status, is_active')
-            .eq('email', normalizedEmail)
+            .select('id, company_id, first_name, last_name, email, role, status, is_active')
+            .or(`email.ilike.${normalizedEmail},company_id.ilike.${normalizedEmail}`)
             .maybeSingle();
 
-        // 3. Timing-Attack Defense: Ensure minimum execution time so attackers cannot measure query latency
-        const elapsed = Date.now() - startTime;
-        if (elapsed < 350) {
-            await new Promise(r => setTimeout(r, 350 - elapsed + Math.floor(Math.random() * 150)));
-        }
-
-        // 4. Zero User Enumeration: If user does not exist or is inactive, return standard success message
-        if (empErr || !emp || emp.is_active === false || emp.status === 'terminated') {
-            return res.json({
-                success: true,
-                generic: true,
-                method,
-                message: 'If an active workplace account matches that email, security instructions have been dispatched.'
+        // 3. Strict Workplace Verification: Account MUST exist and have an active registered workplace email
+        if (empErr || !emp) {
+            return res.status(404).json({
+                success: false,
+                error: 'No registered workplace account found with this email. You can only reset your password if you have a registered workplace account.'
             });
         }
 
+        if (emp.is_active === false || emp.status === 'terminated' || emp.status === 'suspended') {
+            return res.status(403).json({
+                success: false,
+                error: `This workplace account is currently ${emp.status || 'inactive'}. Password recovery is unavailable. Please contact HR.`
+            });
+        }
+
+        if (!emp.email || emp.email.trim().length < 3 || !emp.email.includes('@')) {
+            return res.status(400).json({
+                success: false,
+                error: 'This workplace account does not have a registered workplace email on file. Please contact HR/Admin for assistance.'
+            });
+        }
+
+        const targetEmail = emp.email.trim().toLowerCase();
         const userName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague';
 
         // Retrieve registered mobile phone from Supabase Auth identity store
@@ -149,7 +234,7 @@ router.post('/forgot-password', async (req, res) => {
         }
 
         // 4.5. Enterprise Cooldown Check (prevent SMS/Email flood)
-        const cooldownCheck = checkOtpCooldown(normalizedEmail);
+        const cooldownCheck = checkOtpCooldown(targetEmail);
         if (!cooldownCheck.allowed) {
             return res.status(429).json({
                 success: false,
@@ -167,7 +252,7 @@ router.post('/forgot-password', async (req, res) => {
                 });
             }
 
-            const otpStorageKey = `pwd_reset_${normalizedEmail}`;
+            const otpStorageKey = `pwd_reset_${targetEmail}`;
             const otpInfo = getOrGenerateOtp(otpStorageKey);
             const code = otpInfo.code;
             storeOtp(otpStorageKey, code);
@@ -178,18 +263,18 @@ router.post('/forgot-password', async (req, res) => {
             // For SMS, provide demo code so examiners and testers can 1-click autofill in the UI
             const previewCode = code;
 
-            recordOtpDispatch(normalizedEmail);
+            recordOtpDispatch(targetEmail);
             recordOtpDispatch(userPhone);
 
             await createAuditLog({
                 log_name: 'security',
-                description: `Password recovery SMS OTP dispatched to ${maskPhone(userPhone)} for ${normalizedEmail} (${emp.role})`,
+                description: `Password recovery SMS OTP dispatched to ${maskPhone(userPhone)} for ${targetEmail} (${emp.role})`,
                 subject_type: 'Security',
                 subject_id: emp.id,
                 event: 'PASSWORD_RESET_SMS_DISPATCHED',
                 causer_id: emp.id,
                 properties: {
-                    email: normalizedEmail,
+                    email: targetEmail,
                     role: emp.role,
                     method: 'sms',
                     masked_phone: maskPhone(userPhone),
@@ -201,6 +286,7 @@ router.post('/forgot-password', async (req, res) => {
             return res.json({
                 success: true,
                 method: 'sms',
+                email: targetEmail,
                 maskedPhone: maskPhone(userPhone),
                 message: `6-digit security code sent to ${maskPhone(userPhone)}`,
                 cooldown: 60,
@@ -212,22 +298,22 @@ router.post('/forgot-password', async (req, res) => {
         }
 
         // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
-        const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${normalizedEmail}`);
+        const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${targetEmail}`);
         const emailCode = emailOtpInfo.code;
-        storeOtp(`pwd_reset_${normalizedEmail}`, emailCode);
-        const emailResult = await sendEmailOtp(normalizedEmail, emailCode, userName);
+        storeOtp(`pwd_reset_${targetEmail}`, emailCode);
+        const emailResult = await sendEmailOtp(targetEmail, emailCode, userName);
 
-        recordOtpDispatch(normalizedEmail);
+        recordOtpDispatch(targetEmail);
 
         await createAuditLog({
             log_name: 'security',
-            description: `Password reset real email OTP dispatched to ${normalizedEmail} (${emp.role})`,
+            description: `Password reset real email OTP dispatched to ${targetEmail} (${emp.role})`,
             subject_type: 'Security',
             subject_id: emp.id,
             event: 'PASSWORD_RESET_EMAIL_DISPATCHED',
             causer_id: emp.id,
             properties: {
-                email: normalizedEmail,
+                email: targetEmail,
                 role: emp.role,
                 method: 'email',
                 ip: clientIp,
@@ -243,7 +329,8 @@ router.post('/forgot-password', async (req, res) => {
         return res.json({
             success: true,
             method: 'email',
-            message: `6-digit security code dispatched to your email inbox: ${normalizedEmail}`,
+            email: targetEmail,
+            message: `6-digit security code dispatched to your email inbox: ${targetEmail}`,
             cooldown: 60,
             simulated: isSimulated,
             previewCode

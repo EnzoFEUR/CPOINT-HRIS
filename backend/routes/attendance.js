@@ -132,10 +132,11 @@ const getTodayString = () => {
 };
 
 const getGracePeriodDeadline = () => {
-  const now = new Date();
-  const deadline = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.ATTENDANCE.TIMEZONE }));
-  deadline.setHours(CONFIG.ATTENDANCE.CALL_TIME_HOUR, CONFIG.ATTENDANCE.CALL_TIME_MINUTE + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES, 0, 0);
-  return deadline;
+  const todayStr = getTodayString();
+  const callHour = String(CONFIG.ATTENDANCE.CALL_TIME_HOUR).padStart(2, '0');
+  const callMin = String(CONFIG.ATTENDANCE.CALL_TIME_MINUTE).padStart(2, '0');
+  const callTimeUtc = new Date(`${todayStr}T${callHour}:${callMin}:00+08:00`);
+  return new Date(callTimeUtc.getTime() + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES * 60_000);
 };
 
 // Biometric verification service using Universal Gemini Brain
@@ -406,6 +407,13 @@ router.get(
       } catch (_) {}
     }
 
+    // Strict Biometric Enrollment Check: Unregistered biometrics cannot scan at turnstiles
+    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
+    if (!hasBiometrics && !isMedicalGrace) {
+      logger.warn(reqId, 'QR scan rejected: Unregistered face biometrics', { employee_id: employee.id, company_id: employee.company_id });
+      throw new AuthorizationError('BIOMETRICS REQUIRED: Personnel has not completed face biometric registration. Access denied until facial profile is enrolled.');
+    }
+
     res.json({
       status: 'success',
       data: {
@@ -447,7 +455,7 @@ router.post(
     // Fetch Employee (with row-level locking intent via single())
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change, medical_record_url')
+      .select('id, first_name, last_name, company_id, status, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change, medical_record_url')
       .eq('id', employee_id)
       .single();
 
@@ -456,7 +464,10 @@ router.post(
       throw new NotFoundError('Invalid credentials. Employee not found.');
     }
 
-    if (!employee.is_active) {
+    const isSuspended = employee.status === 'Suspended' || employee.status === 'suspended';
+    const isTerminated = employee.status === 'Terminated' || employee.status === 'terminated';
+
+    if (!employee.is_active || isSuspended || isTerminated) {
       const { data: discLog } = await supabase
         .from('disciplinary_logs')
         .select('type, reason, date')
@@ -466,7 +477,7 @@ router.post(
         .limit(1)
         .maybeSingle();
 
-      const discType = discLog?.type || 'Deactivated';
+      const discType = isSuspended ? 'Suspension' : (isTerminated ? 'Termination' : (discLog?.type || 'Deactivated'));
       const errorMessage = discType === 'Suspension'
         ? 'ACCESS DENIED: Attendance prohibited. Personnel account is currently under disciplinary suspension.'
         : discType === 'Termination'
@@ -493,8 +504,15 @@ router.post(
       } catch (_) {}
     }
 
-    // Biometric Enforcement (Skipped if employee has no biometrics OR is on verified Medical Grace Mode)
-    if (employee.has_registered_biometrics && !isMedicalGrace) {
+    // Strict Biometric Enrollment Enforcement: Unregistered personnel cannot scan
+    const hasBiometrics = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
+    if (!hasBiometrics && !isMedicalGrace) {
+      await logSecurityViolation(reqId, employee_id, 'Unregistered Biometrics', 'Turnstile clock-in rejected: Facial biometrics not registered.', req.ip);
+      throw new AuthorizationError('ACCESS DENIED: Facial biometric registration required before turnstile scanning.');
+    }
+
+    // Biometric Enforcement (Skipped ONLY if employee is on verified Medical Grace Mode)
+    if (hasBiometrics && !isMedicalGrace) {
       if (face_match_score === undefined || face_match_score === null) {
         await logSecurityViolation(reqId, employee_id, 'Biometric Bypass', 'Missing face match score.', req.ip);
         throw new AuthorizationError('BIOMETRIC BYPASS DETECTED: Missing face match score.');
@@ -571,9 +589,10 @@ router.post(
     const photoPath = await uploadImage(reqId, image_data, existing ? 'out' : 'in', employee.company_id || employee_id);
 
     if (!existing) {
-      // TIME IN
-      const callTime = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.ATTENDANCE.TIMEZONE }));
-      callTime.setHours(CONFIG.ATTENDANCE.CALL_TIME_HOUR, CONFIG.ATTENDANCE.CALL_TIME_MINUTE, 0, 0);
+      // TIME IN: Timezone-resilient calculation using absolute epoch milliseconds (+08:00 Manila PST)
+      const callHour = String(CONFIG.ATTENDANCE.CALL_TIME_HOUR).padStart(2, '0');
+      const callMin = String(CONFIG.ATTENDANCE.CALL_TIME_MINUTE).padStart(2, '0');
+      const callTime = new Date(`${todayStr}T${callHour}:${callMin}:00+08:00`);
       const graceDeadline = new Date(callTime.getTime() + CONFIG.ATTENDANCE.GRACE_PERIOD_MINUTES * 60_000);
 
       let status = 'Present';
@@ -581,9 +600,9 @@ router.post(
         ? `TIME IN SUCCESS: Welcome, ${employee.first_name}! (Medical Grace Protocol Active)`
         : `TIME IN SUCCESS: Welcome, ${employee.first_name} ${employee.last_name}!`;
 
-      if (now > graceDeadline) {
+      if (now.getTime() > graceDeadline.getTime()) {
         status = 'Late';
-        const minutesLate = Math.floor((now - callTime) / 60_000);
+        const minutesLate = Math.floor((now.getTime() - callTime.getTime()) / 60_000);
         message = isMedicalGrace
           ? `TIME IN SUCCESS: Welcome, ${employee.first_name}! (${minutesLate}m late • Medical Grace Mode)`
           : `TIME IN SUCCESS: Welcome, ${employee.first_name}! (You are ${minutesLate} minutes late).`;
@@ -819,6 +838,31 @@ router.post(
       action: 'BIOMETRIC_ENROLLMENT',
       details: { fileName, confidence: livenessResult.confidence },
       ip_address: req.ip,
+    });
+
+    // Multi-channel real-time broadcast: Immediately unlock employee QR badge & notify kiosks (<5ms)
+    const broadcastPayload = {
+      employee_id,
+      company_id,
+      has_registered_biometrics: true,
+      biometric_baseline_path: fileName,
+      timestamp: new Date().toISOString()
+    };
+    [
+      'scanner_disciplinary_realtime',
+      `employee-live-dashboard-${employee_id}`,
+      `dashboard-disciplinary-sync-${employee_id}`,
+      `myprofile-realtime-${employee_id}`,
+      `qr-realtime-${employee_id}`,
+      `qr-disciplinary-sync-${employee_id}`
+    ].forEach(chName => {
+      try {
+        supabase.channel(chName).send({
+          type: 'broadcast',
+          event: 'BIOMETRICS_REGISTERED',
+          payload: broadcastPayload
+        }).catch(() => {});
+      } catch (_) {}
     });
 
     res.status(201).json({
