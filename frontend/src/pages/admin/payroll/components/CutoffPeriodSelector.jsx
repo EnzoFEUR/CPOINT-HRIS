@@ -3,22 +3,21 @@ import { formatReadableDate } from '../utils/payrollHelpers';
 
 const CUTOFF_MODE_META = {
     '7day': { label: '7 Days', hint: 'Mon\u2013Sun', badge: '7-Day Lock' },
-    '5day': { label: '5 Days', hint: 'Mon\u2013Fri', badge: '5-Day Lock' },
-    'free': { label: 'Free Mode', hint: 'Custom range', badge: 'Free Choice Mode' }
+    '5day': { label: '5 Days', hint: 'Mon\u2013Fri', badge: '5-Day Lock' }
 };
 
 const CutoffPeriodSelector = ({
     periodStart,
     periodEnd,
     handleStartDateChange,
-    handleEndDateChange,
     activePreset,
     cutoffMode,
     handleCutoffModeChange,
     periodDaysCount,
-    isInvalidDateRange
+    isInvalidDateRange,
+    isRangeTooLong = false,
+    maxCutoffDays = 7
 }) => {
-    const isEndDateLocked = cutoffMode !== 'free';
     return (
         <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-100 space-y-4 mb-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -50,8 +49,8 @@ const CutoffPeriodSelector = ({
                             onClick={() => handleCutoffModeChange(key)}
                             title={meta.hint}
                             className={`flex-1 sm:flex-none px-3.5 py-2 min-h-[38px] sm:min-h-[42px] rounded-lg text-xs font-bold transition-all cursor-pointer ${cutoffMode === key
-                                    ? 'bg-white text-blue-700 shadow-xs'
-                                    : 'text-slate-500 hover:text-slate-700'
+                                ? 'bg-white text-blue-700 shadow-xs'
+                                : 'text-slate-500 hover:text-slate-700'
                                 }`}
                         >
                             {meta.label}
@@ -59,9 +58,7 @@ const CutoffPeriodSelector = ({
                     ))}
                 </div>
                 <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
-                    {isEndDateLocked
-                        ? `End date follows the start date automatically (${CUTOFF_MODE_META[cutoffMode]?.hint}).`
-                        : 'Pick any start and end date.'}
+                    {`End date follows the start date automatically (${CUTOFF_MODE_META[cutoffMode]?.hint}).`}
                 </span>
             </div>
 
@@ -84,16 +81,11 @@ const CutoffPeriodSelector = ({
                     />
                 </div>
 
-                <div className={`bg-white p-3.5 sm:p-4 rounded-xl border transition-all ${isEndDateLocked
-                        ? 'border-slate-200'
-                        : 'border-slate-200 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100'
-                    }`}>
+                <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 transition-all">
                     <div className="flex items-center justify-between mb-2 gap-1">
                         <label htmlFor="cutoff-end-date" className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 truncate cursor-pointer">
-                            <i className={`ti ${isEndDateLocked ? 'ti-lock text-slate-400' : 'ti-flag text-emerald-600'} text-sm shrink-0`}></i> End Date
-                            {isEndDateLocked && (
-                                <span className="text-[9px] font-bold text-slate-400 normal-case tracking-normal">(auto)</span>
-                            )}
+                            <i className="ti ti-lock text-slate-400 text-sm shrink-0"></i> End Date
+                            <span className="text-[9px] font-bold text-slate-400 normal-case tracking-normal">(auto)</span>
                         </label>
                         <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
                             {formatReadableDate(periodEnd)}
@@ -103,20 +95,20 @@ const CutoffPeriodSelector = ({
                         id="cutoff-end-date"
                         type="date"
                         value={periodEnd}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        disabled={isEndDateLocked}
-                        title={isEndDateLocked ? `Locked to start date + ${CUTOFF_MODE_META[cutoffMode]?.hint}. Switch to Free Mode to edit directly.` : undefined}
-                        className={`w-full p-2.5 min-h-[44px] font-bold rounded-lg border outline-none transition-all text-sm sm:text-base ${isEndDateLocked
-                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                                : 'bg-slate-50 hover:bg-white focus:bg-white text-slate-800 border-slate-200 focus:border-emerald-500 cursor-pointer'
-                            }`}
+                        readOnly
+                        disabled
+                        title={`Locked to start date + ${CUTOFF_MODE_META[cutoffMode]?.hint}.`}
+                        className="w-full p-2.5 min-h-[44px] font-bold rounded-lg border outline-none transition-all text-sm sm:text-base bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                     />
                 </div>
             </div>
 
             {isInvalidDateRange && (
                 <p className="text-xs text-red-600 font-bold flex items-center gap-1 pt-1">
-                    <i className="ti ti-alert-circle text-base"></i> End date cannot be earlier than start date.
+                    <i className="ti ti-alert-circle text-base"></i>{' '}
+                    {isRangeTooLong
+                        ? `Cutoff cannot be longer than ${maxCutoffDays} days (${periodDaysCount} selected). Payroll is weekly.`
+                        : 'End date cannot be earlier than start date.'}
                 </p>
             )}
 

@@ -15,6 +15,109 @@ import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
 const router = express.Router();
 
+// BUG #6 FIX: statutory rates/caps come from the `statutory_settings` table (edited in the
+// Statutory Settings UI). These defaults are only a fallback when the table is empty/unreachable.
+const DEFAULT_STATUTORY_SETTINGS = Object.freeze({
+    sss_employee_rate: 5,
+    sss_employer_rate: 10,
+    sss_max_msc: 35000,
+    philhealth_rate: 5,
+    philhealth_min_salary: 10000,
+    philhealth_max_salary: 100000,
+    pagibig_employee_rate: 2,
+    pagibig_employer_rate: 2,
+    pagibig_max_contribution: 200,
+});
+
+const getStatutorySettings = async () => {
+    const merged = { ...DEFAULT_STATUTORY_SETTINGS };
+    try {
+        const { data, error } = await supabase
+            .from('statutory_settings')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+        if (error || !data) return merged;
+
+        for (const key of Object.keys(DEFAULT_STATUTORY_SETTINGS)) {
+            const raw = data[key];
+            if (raw !== null && raw !== undefined && raw !== '' && Number.isFinite(Number(raw))) {
+                merged[key] = Number(raw);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load statutory settings, using defaults:', err.message);
+    }
+    return merged;
+};
+
+// BUG #8 FIX: the ledger/CSV/summary cards read the per-item statutory columns, but inserts only
+// saved the total. Save the breakdown too; if the table doesn't have a column yet, drop just that
+// column and retry so payroll saving never fails because of it.
+const OPTIONAL_PAYROLL_COLUMNS = [
+    'holiday_pay',
+    'holiday_breakdown',
+    'sss_deduction',
+    'philhealth_deduction',
+    'pagibig_deduction',
+    'tax_deduction',
+];
+
+const insertPayrollRow = async (payload) => {
+    const row = { ...payload };
+    for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
+        const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
+        if (!error) return { data, error: null };
+        const missing = OPTIONAL_PAYROLL_COLUMNS.find((col) => col in row && error.message?.includes(col));
+        if (!missing) return { data: null, error };
+        delete row[missing];
+    }
+    return { data: null, error: new Error('Payroll insert failed after removing optional columns.') };
+};
+
+// BUG #9 FIX (server side): weekly payroll can never cover more than 7 calendar days, even if a
+// client tries to send a longer range.
+const MAX_WEEKLY_CUTOFF_DAYS = 7;
+const getCutoffSpanDays = (start, end) => {
+    const s = new Date(`${String(start).substring(0, 10)}T00:00:00`);
+    const e = new Date(`${String(end).substring(0, 10)}T00:00:00`);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+    return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+};
+
+// DOLE Art. 94 holiday-pay eligibility looks at the workday BEFORE a regular holiday, which can fall
+// before the pay period starts (e.g. a Monday holiday -> last Saturday). Look back this many days.
+const HOLIDAY_LOOKBACK_DAYS = 7;
+
+const shiftDateStr = (dateStr, days) => {
+    const d = new Date(`${String(dateStr).substring(0, 10)}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+const getRecordDateKey = (log) => {
+    const raw = log?.date || (typeof log?.time_in === 'string' ? log.time_in.split('T')[0] : '');
+    return String(raw || '').substring(0, 10);
+};
+
+// Expands approved PAID leave records (start_date..end_date) into individual YYYY-MM-DD dates.
+const getPaidLeaveDates = (leaveRecords = []) => {
+    const dates = new Set();
+    for (const leave of leaveRecords || []) {
+        if (!leave || !leave.is_paid || !leave.start_date || !leave.end_date) continue;
+        let cursor = String(leave.start_date).substring(0, 10);
+        const end = String(leave.end_date).substring(0, 10);
+        for (let i = 0; i < 62 && cursor <= end; i++) {
+            dates.add(cursor);
+            cursor = shiftDateStr(cursor, 1);
+        }
+    }
+    return Array.from(dates);
+};
+
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
 // ==============================================================================
@@ -47,7 +150,7 @@ class PayrollRealtimeManager {
             for (const key of this.channels.keys()) {
                 if (!this.staticTopics.includes(key)) {
                     const stale = this.channels.get(key);
-                    try { this.client.removeChannel(stale.ch); } catch (_) {}
+                    try { this.client.removeChannel(stale.ch); } catch (_) { }
                     this.channels.delete(key);
                     break;
                 }
@@ -122,7 +225,7 @@ class PayrollRealtimeManager {
 
         // Non-blocking fire-and-forget dispatch
         topics.forEach(t => {
-            this.sendToTopic(t, event, enrichedPayload).catch(() => {});
+            this.sendToTopic(t, event, enrichedPayload).catch(() => { });
         });
     }
 }
@@ -668,15 +771,26 @@ router.post('/preview', async (req, res) => {
             });
         }
 
-        const [{ data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
+        const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
+        const [
+            { data: allAttendanceLogs },
+            paidLeaveInfo,
+            lookbackLeaveInfo,
+            { data: lookbackHolidays }
+        ] = await Promise.all([
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', pStart)
+                .gte('date', lookbackStart)
                 .lte('date', pEnd),
-            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
+            fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
+            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd)
         ]);
+        // Period-only view for display; the wider lookback set is used for holiday eligibility only.
+        const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
         const restDays = Array.isArray(employee?.rest_days) && employee.rest_days.length
             ? employee.rest_days
@@ -690,10 +804,17 @@ router.post('/preview', async (req, res) => {
             periodStart: pStart,
             periodEnd: pEnd,
             monthlySalary: effectiveMonthlySalary,
-            holidayList: holidayList || [],
-            attendanceLogs: attendanceLogs || [],
+            holidayList: lookbackHolidays || holidayList || [],
+            attendanceLogs: allAttendanceLogs || [],
+            paidLeaveDates,
             restDays,
             canOvertime: !isFactoryWorker,
+            // Keep the preview identical to what the saved payroll will pay.
+            salaryIncludesHolidayPay: !isFactoryWorker,
+            // BUG #3 FIX: use the contractual rates as-is (see main route). Re-deriving them from the
+            // synthetic monthly salary (daily x 26 / 21.75) inflates the daily rate by 19.5%.
+            dailyRate: toSafeNumber(employee.daily_rate || employee.daily_pay),
+            hourlyRate: toSafeNumber(employee.hourly_rate),
         });
 
         res.json({
@@ -767,6 +888,12 @@ router.post('/', async (req, res) => {
 
         const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
 
+        if (pay_frequency === 'weekly' && getCutoffSpanDays(pStart, pEnd) > MAX_WEEKLY_CUTOFF_DAYS) {
+            return res.status(400).json({
+                error: `Weekly payroll cutoff cannot exceed ${MAX_WEEKLY_CUTOFF_DAYS} days (received ${getCutoffSpanDays(pStart, pEnd)}).`
+            });
+        }
+
         const { data: existing } = await supabase
             .from('payrolls')
             .select('id')
@@ -828,21 +955,24 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch Holidays, Attendances, HR-Approved Paid Leaves, and Suspensions in parallel
-        await ensureHolidaysGeneratedForRange(pStart, pEnd);
+        const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
+        await ensureHolidaysGeneratedForRange(lookbackStart, pEnd);
         const [
-            { data: holidayList },
-            { data: attendanceLogs },
+            { data: allHolidays },
+            { data: allAttendanceLogs },
             paidLeaveInfo,
+            lookbackLeaveInfo,
             { data: suspensionLogs }
         ] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
+            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', pStart)
+                .gte('date', lookbackStart)
                 .lte('date', pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
+            fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
             supabase
                 .from('disciplinary_logs')
                 .select('id, date, reason, status')
@@ -850,9 +980,34 @@ router.post('/', async (req, res) => {
                 .eq('type', 'Suspension')
         ]);
 
+        // Period-only views drive absences, lateness and the holiday list; the wider lookback set
+        // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
+        const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart);
+        const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
+
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
             : [0];
+
+        // Holiday pay is computed BEFORE the absence step so the absence step can see which
+        // Regular Holidays were forfeited under DOLE Art. 94 (see forfeitedHolidayDates below).
+        const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
+            periodStart: pStart,
+            periodEnd: pEnd,
+            monthlySalary: effectiveMonthlySalary,
+            holidayList: allHolidays || [],
+            attendanceLogs: allAttendanceLogs || [],
+            paidLeaveDates,
+            restDays,
+            canOvertime: !isFactory,
+            // Non-factory staff are paid a fixed weekly salary that already covers a normal workday.
+            salaryIncludesHolidayPay: !isFactory,
+            // BUG #3 FIX: pass the resolved contractual rates so holiday pay is not re-derived
+            // from monthlySalary (which inflated a P610 daily rate to P729.20).
+            dailyRate,
+            hourlyRate,
+        });
 
         // Absence Deduction for Non-Factory Personnel under DOLE "No Work, No Pay" Principle
         let absenceDeduction = 0;
@@ -882,11 +1037,38 @@ router.post('/', async (req, res) => {
             }
             if (expectedWorkDays === 0) expectedWorkDays = 6;
 
-            // Count eligible regular holidays unworked in this range
-            const holidayDates = new Set((holidayList || []).filter(h => h.type === 'regular').map(h => h.date));
+            // BUG #4 FIX: a Special Non-Working Day is a declared non-working day, not a scheduled
+            // workday, so skipping it is NOT an absence (previously only Regular Holidays were
+            // excluded, so an unworked Special Non-Working Day was deducted as an unexcused absence).
+            // Holidays that fall on the employee's rest day are already outside expectedWorkDays,
+            // so they are ignored here to avoid cancelling out a real absence.
+            //
+            // DOLE Art. 94: a Regular Holiday the employee FORFEITED (absent without pay the workday
+            // before it) is not a paid day, so it must NOT offset an absence. It stays counted as an
+            // unworked day and is deducted from the fixed salary like any other absence.
+            const forfeitedHolidayDates = new Set(
+                (holidayBreakdown || [])
+                    .filter(i => i.holidayType === 'regular' && !i.worked && !i.eligible && !i.isRestDay)
+                    .map(i => i.date)
+            );
+            const isNonWorkingHolidayType = (t) => t === 'regular' || t === 'special_non_working';
+            const nonWorkingHolidayDates = new Set(
+                (holidayList || [])
+                    .filter(h => h && h.date && isNonWorkingHolidayType(h.type))
+                    .map(h => String(h.date).substring(0, 10))
+                    .filter(hDate => !restDays.includes(new Date(`${hDate}T00:00:00`).getDay()))
+                    .filter(hDate => !forfeitedHolidayDates.has(hDate))
+            );
             let unworkedHolidays = 0;
-            holidayDates.forEach(hDate => {
-                if (!completedAttendanceDates.has(hDate)) unworkedHolidays++;
+            let unworkedSpecialNonWorking = 0;
+            nonWorkingHolidayDates.forEach(hDate => {
+                if (!completedAttendanceDates.has(hDate)) {
+                    unworkedHolidays++;
+                    const isSpecial = (holidayList || []).some(
+                        h => h && String(h.date).substring(0, 10) === hDate && h.type === 'special_non_working'
+                    );
+                    if (isSpecial) unworkedSpecialNonWorking++;
+                }
             });
 
             const unworkedDays = Math.max(0, expectedWorkDays - daysPresent - approvedPaidLeaveDays - unworkedHolidays);
@@ -895,48 +1077,80 @@ router.post('/', async (req, res) => {
                 basicPay = Math.max(0, round2(basicPay - absenceDeduction));
                 absenceNote = ` [ABSENT: ${unworkedDays} unworked day(s) (-₱${absenceDeduction.toFixed(2)})]`;
             }
+            if (unworkedSpecialNonWorking > 0) {
+                absenceNote += ` [${unworkedSpecialNonWorking} Special Non-Working Day(s) not counted as absence]`;
+            }
+            if (forfeitedHolidayDates.size > 0) {
+                absenceNote += ` [${forfeitedHolidayDates.size} Regular Holiday(s) forfeited - absent without pay the workday before]`;
+            }
         }
 
         // Lateness Policy Handling (2-Hour Rule for Regular Employees)
-        let lateMins = toSafeNumber(late_minutes);
+        // BUG #10 FIX: the 2-hour rule applies to a SINGLE shift. It used to be tested against the
+        // whole period's cumulative lateness, so 5 days x 30 min (150 min) was treated as one
+        // 2.5-hour-late shift. Now every shift is judged on its own:
+        //   - a shift 2+ hours late is converted to hourly pay for the hours actually worked
+        //   - a shift under 2 hours late gets the normal per-minute deduction
+        const LATE_HOURLY_CONVERSION_MINS = 120;
+        let lateMins = 0;
+        let perMinuteLateMins = 0;
+        let hourlyConvertedLoss = 0;
+        let hourlyConvertedShifts = 0;
+        let lateDed = 0;
+        let tardinessNote = '';
 
-        // Fallback: If late_minutes was not explicitly provided or 0, compute from attendance logs
-        if (lateMins === 0 && !isFactory && attendanceLogs && attendanceLogs.length > 0) {
-            for (const log of attendanceLogs) {
-                if (!log.time_in) continue;
+        if (!isFactory) {
+            const shiftLateMins = [];
+            for (const log of attendanceLogs || []) {
+                if (!log || !log.time_in) continue;
                 const dateStr = log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : null);
                 if (!dateStr) continue;
                 const timeIn = new Date(log.time_in);
                 const scheduleStart = new Date(`${dateStr}T08:00:00`);
                 if (!isNaN(timeIn.getTime()) && !isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
                     const mins = Math.floor((timeIn - scheduleStart) / 60000);
-                    if (mins > 0) {
-                        lateMins += mins;
+                    if (mins > 0) shiftLateMins.push(mins);
+                }
+            }
+
+            if (shiftLateMins.length > 0) {
+                for (const mins of shiftLateMins) {
+                    lateMins += mins;
+                    if (mins >= LATE_HOURLY_CONVERSION_MINS) {
+                        const workedHours = Math.max(0, 8 - mins / 60);
+                        hourlyConvertedLoss += Math.max(0, dailyRate - workedHours * hourlyRate);
+                        hourlyConvertedShifts++;
+                    } else {
+                        perMinuteLateMins += mins;
                     }
+                }
+            } else {
+                // No attendance logs, so only a period total is available and single shifts can't be
+                // identified. Never apply the 2-hour rule to a total: deduct per minute instead.
+                const providedMins = toSafeNumber(late_minutes);
+                if (providedMins > 0) {
+                    lateMins = providedMins;
+                    perMinuteLateMins = providedMins;
                 }
             }
         }
 
-        let lateDed = 0;
-        let tardinessNote = '';
-
         if (!isFactory && lateMins > 0) {
-            if (lateMins >= 120) {
-                // >= 2 Hours Late (120+ mins): Payment scheme converts to HOURLY rate for actual hours worked
-                const lateHours = lateMins / 60;
-                const workedHours = Math.max(0, 8 - lateHours);
-                const earnedHourlyPay = round2(workedHours * hourlyRate);
+            hourlyConvertedLoss = round2(hourlyConvertedLoss);
+            const perMinuteDed = round2((hourlyRate / 60) * perMinuteLateMins);
 
-                // Convert daily component to actual hourly earnings
-                basicPay = Math.max(0, round2(basicPay - dailyRate + earnedHourlyPay));
-                lateDed = 0; // Set to 0 to avoid double-deducting since basicPay was directly adjusted
+            // Hourly-converted shifts reduce basic pay directly; per-minute lateness is a deduction.
+            basicPay = Math.max(0, round2(basicPay - hourlyConvertedLoss));
+            lateDed = perMinuteDed;
 
-                tardinessNote = ` [Lateness >= 2 hrs (${lateMins} mins): Converted to HOURLY rate (${workedHours.toFixed(2)} hrs worked @ ₱${hourlyRate.toFixed(2)}/hr = ₱${earnedHourlyPay.toFixed(2)})]`;
-            } else {
-                // < 2 Hours Late (< 120 mins): Standard per-minute deduction against standard basic pay
-                lateDed = round2((hourlyRate / 60) * lateMins);
-                tardinessNote = ` [Lateness < 2 hrs (${lateMins} mins): Deduction -₱${lateDed.toFixed(2)}]`;
+            const parts = [];
+            if (perMinuteLateMins > 0) {
+                parts.push(`${perMinuteLateMins} min under 2 hrs per shift: per-minute deduction -₱${perMinuteDed.toFixed(2)}`);
             }
+            if (hourlyConvertedShifts > 0) {
+                parts.push(`${hourlyConvertedShifts} shift(s) 2+ hrs late: converted to hourly rate -₱${hourlyConvertedLoss.toFixed(2)}`);
+            }
+            tardinessNote = ` [Lateness ${lateMins} mins total - ${parts.join('; ')}]`;
         } else {
             lateDed = round2(toSafeNumber(late_deductions));
         }
@@ -982,23 +1196,14 @@ router.post('/', async (req, res) => {
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
 
-        const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
-            periodStart: pStart,
-            periodEnd: pEnd,
-            monthlySalary: effectiveMonthlySalary,
-            holidayList: holidayList || [],
-            attendanceLogs: attendanceLogs || [],
-            restDays,
-            canOvertime: !isFactory,
-        });
 
         // Compute HR Approved Paid Leave Pay (Bypasses absence / missing timecard punches)
         const approvedPaidLeaveDays = paidLeaveInfo.totalPaidLeaveDays;
         const paidLeavePay = round2(approvedPaidLeaveDays * dailyRate);
 
-        const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days }).leavePay;
-        const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days }).leavePay;
-        const silPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'SIL', daysTaken: sil_days }).leavePay;
+        const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days, dailyRate }).leavePay;
+        const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days, dailyRate }).leavePay;
+        const silPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'SIL', daysTaken: sil_days, dailyRate }).leavePay;
         const totalOtherLeavePay = round2(toSafeNumber(paternityPay) + toSafeNumber(soloParentPay) + toSafeNumber(silPay));
 
         let matDiffPay = 0;
@@ -1022,10 +1227,17 @@ router.post('/', async (req, res) => {
         const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + safePaidLeavePay);
 
         // Deductions schedule evaluation
-        const periodEndDay = new Date(pEnd).getDate();
+        // BUG #5 FIX: contributions are already divided by the pay-frequency divisor
+        // (weekly = 4, semi-monthly = 2), so weekly/semi-monthly payrolls must deduct EVERY
+        // period. Only monthly payroll waits for the month-end cutoff (day >= 22).
+        const periodEndDay = new Date(`${pEnd}T00:00:00`).getDate();
         const shouldDeductStatutory = apply_deductions !== undefined
             ? Boolean(apply_deductions)
-            : (deduction_timing === 'none' ? false : (deduction_timing ? true : periodEndDay >= 22));
+            : deduction_timing === 'none'
+                ? false
+                : deduction_timing
+                    ? true
+                    : (pay_frequency === 'monthly' ? periodEndDay >= 22 : true);
 
         let sssEE = 0;
         let sssER = 0;
@@ -1041,20 +1253,26 @@ router.post('/', async (req, res) => {
             // Frequency Divisor (Weekly = 4, Semi-Monthly = 2, Monthly = 1)
             const divisor = pay_frequency === 'weekly' ? 4 : (pay_frequency === 'semi-monthly' ? 2 : 1);
 
-            // 1. SSS (2026 Rules: 5% EE, 10% ER, Max MSC P35,000, EC fee P30/P10)
-            const sssMsc = Math.min(contributionSalaryBase, 35000);
-            sssEE = round2((sssMsc * 0.05) / divisor);
-            sssER = round2((sssMsc * 0.10) / divisor);
+            // Live rates & caps from the Statutory Settings screen (falls back to defaults)
+            const statRates = await getStatutorySettings();
+
+            // 1. SSS (EE/ER rates and max MSC from settings; EC fee P30/P10)
+            const sssMsc = Math.min(contributionSalaryBase, statRates.sss_max_msc);
+            sssEE = round2((sssMsc * (statRates.sss_employee_rate / 100)) / divisor);
+            sssER = round2((sssMsc * (statRates.sss_employer_rate / 100)) / divisor);
             sssEC = sssMsc >= 15000 ? 30 : 10;
 
-            // 2. PhilHealth (2026 Rules: 5% Total split 50/50, Min P10k, Max P100k)
-            const phSalaryBase = Math.min(Math.max(contributionSalaryBase, 10000), 100000);
-            philHealthEE = round2(((phSalaryBase * 0.05) / 2) / divisor);
-            philHealthER = round2(((phSalaryBase * 0.05) / 2) / divisor);
+            // 2. PhilHealth (total premium rate split 50/50, salary floor & ceiling from settings)
+            const phSalaryBase = Math.min(
+                Math.max(contributionSalaryBase, statRates.philhealth_min_salary),
+                statRates.philhealth_max_salary
+            );
+            philHealthEE = round2(((phSalaryBase * (statRates.philhealth_rate / 100)) / 2) / divisor);
+            philHealthER = round2(((phSalaryBase * (statRates.philhealth_rate / 100)) / 2) / divisor);
 
-            // 3. Pag-IBIG (Circular No. 460 Rules: 2% EE, 2% ER, Max Contribution P200 EE / P200 ER)
-            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * 0.02), 200);
-            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * 0.02), 200);
+            // 3. Pag-IBIG (EE/ER rates and monthly cap from settings)
+            const monthlyPagIbigEE = Math.min(round2(contributionSalaryBase * (statRates.pagibig_employee_rate / 100)), statRates.pagibig_max_contribution);
+            const monthlyPagIbigER = Math.min(round2(contributionSalaryBase * (statRates.pagibig_employer_rate / 100)), statRates.pagibig_max_contribution);
             pagIbigEE = round2(monthlyPagIbigEE / divisor);
             pagIbigER = round2(monthlyPagIbigER / divisor);
         }
@@ -1090,20 +1308,16 @@ router.post('/', async (req, res) => {
             holiday_pay: safeHoliday,
             holiday_breakdown: holidayBreakdown,
             deductions: totalDeductions,
+            sss_deduction: sssEE,
+            philhealth_deduction: philHealthEE,
+            pagibig_deduction: pagIbigEE,
+            tax_deduction: tax,
             remarks,
             net_pay: netPay,
             status: 'Paid'
         };
 
-        let { data: insertedRecord, error: insertError } = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
-
-        if (insertError && (insertError.message?.includes('holiday_pay') || insertError.message?.includes('holiday_breakdown'))) {
-            delete insertPayload.holiday_pay;
-            delete insertPayload.holiday_breakdown;
-            const retry = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
-            insertError = retry.error;
-            insertedRecord = retry.data;
-        }
+        const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload);
 
         if (insertError) throw insertError;
         const insertedPayrollId = insertedRecord?.id;
@@ -1186,6 +1400,12 @@ router.post('/batch', async (req, res) => {
 
         const { start: pStart, end: pEnd } = normalizeDateRange(period_start, period_end);
 
+        if (pay_frequency === 'weekly' && getCutoffSpanDays(pStart, pEnd) > MAX_WEEKLY_CUTOFF_DAYS) {
+            return res.status(400).json({
+                error: `Weekly payroll cutoff cannot exceed ${MAX_WEEKLY_CUTOFF_DAYS} days (received ${getCutoffSpanDays(pStart, pEnd)}).`
+            });
+        }
+
         const results = [];
         const skipped = [];
 
@@ -1249,12 +1469,16 @@ router.post('/batch', async (req, res) => {
                 basic_pay: grossPay,
                 overtime_pay: 0,
                 deductions: totalDeductions,
+                sss_deduction: sssDed,
+                philhealth_deduction: phDed,
+                pagibig_deduction: pgbDed,
+                tax_deduction: taxDed,
                 remarks,
                 net_pay: netPay,
                 status: 'Paid'
             };
 
-            let { data: insertedRec, error: insertError } = await supabase.from('payrolls').insert(insertPayload).select('id').maybeSingle();
+            const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload);
 
             if (insertError) {
                 skipped.push({ employee_id, reason: insertError.message });

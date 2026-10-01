@@ -113,6 +113,53 @@ const getStatusVisuals = (status) => {
     };
 };
 
+// BUG #7 FIX: the ledger used to fall back to "Semi-Monthly" whenever a record had no
+// pay_frequency saved, which mislabelled every weekly payslip (company policy is 1-week payroll).
+// Use the saved frequency when present; otherwise derive it from the pay period length.
+const FREQUENCY_LABELS = {
+    weekly: 'Weekly',
+    'semi-monthly': 'Semi-Monthly',
+    semimonthly: 'Semi-Monthly',
+    monthly: 'Monthly',
+};
+
+const getPayFrequencyLabel = (payroll) => {
+    const saved = String(payroll?.pay_frequency || '').toLowerCase().replace(/[\s_]+/g, '-');
+    if (FREQUENCY_LABELS[saved]) return FREQUENCY_LABELS[saved];
+
+    const start = payroll?.period_start ? dayjs(payroll.period_start) : null;
+    const end = payroll?.period_end ? dayjs(payroll.period_end) : null;
+    if (start?.isValid() && end?.isValid()) {
+        const days = end.diff(start, 'day') + 1;
+        if (days <= 7) return 'Weekly';
+        if (days <= 16) return 'Semi-Monthly';
+        return 'Monthly';
+    }
+    return 'Weekly';
+};
+
+// BUG #8 FIX: older payslips were saved without per-item statutory columns, so the ledger,
+// summary cards and CSV showed P0.00. Use the saved column when it has a value; otherwise read the
+// amount from the payslip remarks text ("SSS: 123.45 ... PhilHealth: ... Pag-IBIG: ... Tax: ...").
+const readRemarkAmount = (remarks, label) => {
+    if (!remarks) return 0;
+    const match = String(remarks).match(new RegExp(`${label}:\\s*₱?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)`, 'i'));
+    return match ? toSafeNumber(match[1]) : 0;
+};
+
+const getStatutoryBreakdown = (p) => {
+    const pick = (column, label) => {
+        const saved = toSafeNumber(p[column]);
+        return saved > 0 ? saved : readRemarkAmount(p.remarks, label);
+    };
+    return {
+        sss: pick('sss_deduction', 'SSS'),
+        philHealth: pick('philhealth_deduction', 'PhilHealth'),
+        pagIbig: pick('pagibig_deduction', 'Pag-IBIG'),
+        tax: pick('tax_deduction', 'Tax'),
+    };
+};
+
 // ── Memoized Table Row Component (Zero-lag rendering, Perfect Alignment, Fully Clickable) ──
 const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 'grouped', rosterCategory = 'all', isSelected = false, onToggleSelect }) => {
     const navigate = useNavigate();
@@ -222,7 +269,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <span>{payroll._endFormatted}</span>
                     </span>
                     <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-semibold uppercase tracking-wider w-max border border-slate-200/60">
-                        {payroll.isPending ? 'Current Cycle' : (payroll.pay_frequency ? `${payroll.pay_frequency}` : 'Semi-Monthly')}
+                        {payroll.isPending ? 'Current Cycle' : getPayFrequencyLabel(payroll)}
                     </span>
                 </div>
             </td>
@@ -917,10 +964,7 @@ export default function PayrollIndex() {
             const gross = calculateGrossPay(p);
             const deductions = toSafeNumber(p.deductions || p.total_deductions);
             const net = toSafeNumber(p.net_pay);
-            const sss = toSafeNumber(p.sss_deduction);
-            const philHealth = toSafeNumber(p.philhealth_deduction);
-            const pagIbig = toSafeNumber(p.pagibig_deduction);
-            const tax = toSafeNumber(p.tax_deduction);
+            const { sss, philHealth, pagIbig, tax } = getStatutoryBreakdown(p);
 
             const emp = p.employees || {};
             const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
@@ -1221,6 +1265,8 @@ export default function PayrollIndex() {
             }
         }
 
+        const totalStatutory = totalSSS + totalPhilHealth + totalPagIbig + totalTax;
+
         const totalCount = completedCount + pendingCount;
         const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
 
@@ -1228,6 +1274,7 @@ export default function PayrollIndex() {
             totalNet,
             totalGross,
             totalDeductions,
+            totalStatutory,
             totalSSS,
             totalPhilHealth,
             totalPagIbig,
@@ -1517,7 +1564,7 @@ export default function PayrollIndex() {
                     </div>
                     <div className="mt-2.5">
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-rose-500 tracking-tight">
-                            ₱{metrics.totalDeductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₱{metrics.totalStatutory.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <p
                             className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate"
