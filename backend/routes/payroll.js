@@ -85,6 +85,39 @@ const getCutoffSpanDays = (start, end) => {
     return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
 };
 
+// DOLE Art. 94 holiday-pay eligibility looks at the workday BEFORE a regular holiday, which can fall
+// before the pay period starts (e.g. a Monday holiday -> last Saturday). Look back this many days.
+const HOLIDAY_LOOKBACK_DAYS = 7;
+
+const shiftDateStr = (dateStr, days) => {
+    const d = new Date(`${String(dateStr).substring(0, 10)}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+const getRecordDateKey = (log) => {
+    const raw = log?.date || (typeof log?.time_in === 'string' ? log.time_in.split('T')[0] : '');
+    return String(raw || '').substring(0, 10);
+};
+
+// Expands approved PAID leave records (start_date..end_date) into individual YYYY-MM-DD dates.
+const getPaidLeaveDates = (leaveRecords = []) => {
+    const dates = new Set();
+    for (const leave of leaveRecords || []) {
+        if (!leave || !leave.is_paid || !leave.start_date || !leave.end_date) continue;
+        let cursor = String(leave.start_date).substring(0, 10);
+        const end = String(leave.end_date).substring(0, 10);
+        for (let i = 0; i < 62 && cursor <= end; i++) {
+            dates.add(cursor);
+            cursor = shiftDateStr(cursor, 1);
+        }
+    }
+    return Array.from(dates);
+};
+
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
 // ==============================================================================
@@ -738,15 +771,26 @@ router.post('/preview', async (req, res) => {
             });
         }
 
-        const [{ data: attendanceLogs }, paidLeaveInfo] = await Promise.all([
+        const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
+        const [
+            { data: allAttendanceLogs },
+            paidLeaveInfo,
+            lookbackLeaveInfo,
+            { data: lookbackHolidays }
+        ] = await Promise.all([
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', pStart)
+                .gte('date', lookbackStart)
                 .lte('date', pEnd),
-            fetchApprovedPaidLeaves(employee_id, pStart, pEnd)
+            fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
+            fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
+            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd)
         ]);
+        // Period-only view for display; the wider lookback set is used for holiday eligibility only.
+        const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
         const restDays = Array.isArray(employee?.rest_days) && employee.rest_days.length
             ? employee.rest_days
@@ -760,8 +804,9 @@ router.post('/preview', async (req, res) => {
             periodStart: pStart,
             periodEnd: pEnd,
             monthlySalary: effectiveMonthlySalary,
-            holidayList: holidayList || [],
-            attendanceLogs: attendanceLogs || [],
+            holidayList: lookbackHolidays || holidayList || [],
+            attendanceLogs: allAttendanceLogs || [],
+            paidLeaveDates,
             restDays,
             canOvertime: !isFactoryWorker,
             // Keep the preview identical to what the saved payroll will pay.
@@ -910,21 +955,24 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch Holidays, Attendances, HR-Approved Paid Leaves, and Suspensions in parallel
-        await ensureHolidaysGeneratedForRange(pStart, pEnd);
+        const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
+        await ensureHolidaysGeneratedForRange(lookbackStart, pEnd);
         const [
-            { data: holidayList },
-            { data: attendanceLogs },
+            { data: allHolidays },
+            { data: allAttendanceLogs },
             paidLeaveInfo,
+            lookbackLeaveInfo,
             { data: suspensionLogs }
         ] = await Promise.all([
-            supabase.from('holidays').select('*').gte('date', pStart).lte('date', pEnd),
+            supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
             supabase
                 .from('attendances')
                 .select('*')
                 .eq('employee_id', employee_id)
-                .gte('date', pStart)
+                .gte('date', lookbackStart)
                 .lte('date', pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
+            fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
             supabase
                 .from('disciplinary_logs')
                 .select('id, date, reason, status')
@@ -932,9 +980,34 @@ router.post('/', async (req, res) => {
                 .eq('type', 'Suspension')
         ]);
 
+        // Period-only views drive absences, lateness and the holiday list; the wider lookback set
+        // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
+        const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart);
+        const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
+
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
             : [0];
+
+        // Holiday pay is computed BEFORE the absence step so the absence step can see which
+        // Regular Holidays were forfeited under DOLE Art. 94 (see forfeitedHolidayDates below).
+        const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
+            periodStart: pStart,
+            periodEnd: pEnd,
+            monthlySalary: effectiveMonthlySalary,
+            holidayList: allHolidays || [],
+            attendanceLogs: allAttendanceLogs || [],
+            paidLeaveDates,
+            restDays,
+            canOvertime: !isFactory,
+            // Non-factory staff are paid a fixed weekly salary that already covers a normal workday.
+            salaryIncludesHolidayPay: !isFactory,
+            // BUG #3 FIX: pass the resolved contractual rates so holiday pay is not re-derived
+            // from monthlySalary (which inflated a P610 daily rate to P729.20).
+            dailyRate,
+            hourlyRate,
+        });
 
         // Absence Deduction for Non-Factory Personnel under DOLE "No Work, No Pay" Principle
         let absenceDeduction = 0;
@@ -969,12 +1042,22 @@ router.post('/', async (req, res) => {
             // excluded, so an unworked Special Non-Working Day was deducted as an unexcused absence).
             // Holidays that fall on the employee's rest day are already outside expectedWorkDays,
             // so they are ignored here to avoid cancelling out a real absence.
+            //
+            // DOLE Art. 94: a Regular Holiday the employee FORFEITED (absent without pay the workday
+            // before it) is not a paid day, so it must NOT offset an absence. It stays counted as an
+            // unworked day and is deducted from the fixed salary like any other absence.
+            const forfeitedHolidayDates = new Set(
+                (holidayBreakdown || [])
+                    .filter(i => i.holidayType === 'regular' && !i.worked && !i.eligible && !i.isRestDay)
+                    .map(i => i.date)
+            );
             const isNonWorkingHolidayType = (t) => t === 'regular' || t === 'special_non_working';
             const nonWorkingHolidayDates = new Set(
                 (holidayList || [])
                     .filter(h => h && h.date && isNonWorkingHolidayType(h.type))
                     .map(h => String(h.date).substring(0, 10))
                     .filter(hDate => !restDays.includes(new Date(`${hDate}T00:00:00`).getDay()))
+                    .filter(hDate => !forfeitedHolidayDates.has(hDate))
             );
             let unworkedHolidays = 0;
             let unworkedSpecialNonWorking = 0;
@@ -996,6 +1079,9 @@ router.post('/', async (req, res) => {
             }
             if (unworkedSpecialNonWorking > 0) {
                 absenceNote += ` [${unworkedSpecialNonWorking} Special Non-Working Day(s) not counted as absence]`;
+            }
+            if (forfeitedHolidayDates.size > 0) {
+                absenceNote += ` [${forfeitedHolidayDates.size} Regular Holiday(s) forfeited - absent without pay the workday before]`;
             }
         }
 
@@ -1110,21 +1196,6 @@ router.post('/', async (req, res) => {
             overtimePay = round2(regOtPay + regHolOtPay + specHolOtPay);
         }
 
-        const { items: holidayBreakdown, totalHolidayPay } = computeHolidayPayForPeriod({
-            periodStart: pStart,
-            periodEnd: pEnd,
-            monthlySalary: effectiveMonthlySalary,
-            holidayList: holidayList || [],
-            attendanceLogs: attendanceLogs || [],
-            restDays,
-            canOvertime: !isFactory,
-            // Non-factory staff are paid a fixed weekly salary that already covers regular holidays.
-            salaryIncludesHolidayPay: !isFactory,
-            // BUG #3 FIX: pass the resolved contractual rates so holiday pay is not re-derived
-            // from monthlySalary (which inflated a P610 daily rate to P729.20).
-            dailyRate,
-            hourlyRate,
-        });
 
         // Compute HR Approved Paid Leave Pay (Bypasses absence / missing timecard punches)
         const approvedPaidLeaveDays = paidLeaveInfo.totalPaidLeaveDays;

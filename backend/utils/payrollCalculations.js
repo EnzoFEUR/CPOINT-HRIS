@@ -1,19 +1,5 @@
-/**
- * payrollCalculations.js
- * ------------------------------------------------------------------
- * Pure, side-effect-free DOLE (Philippines) payroll math:
- *   - String-to-number sanitization helpers (toSafeNumber, round2)
- *   - Regular & Special Holiday pay multipliers
- *   - RA 11210 Expanded Maternity Leave & Salary Differential Engine
- *   - Philippine Statutory Paid Leaves (Paternity, Solo Parent, SIL, VAWC, Magna Carta)
- *   - 13th Month Pay aggregation (basic salary + non-taxable maternity differential)
- */
 
-// ---------------------------------------------------------------
 // Data Sanitization & Math Helpers
-// ---------------------------------------------------------------
-
-/** Safely parses any input into a guaranteed finite Number to prevent string concatenation bugs. */
 export function toSafeNumber(val, fallback = 0) {
     if (val === null || val === undefined || val === '') return fallback;
     const parsed = Number(val);
@@ -25,17 +11,15 @@ export function round2(n) {
     return Math.round((toSafeNumber(n) + Number.EPSILON) * 100) / 100;
 }
 
-// ---------------------------------------------------------------
+
 // Constants & Multipliers
-// ---------------------------------------------------------------
+
 
 export const HOLIDAY_TYPES = Object.freeze({
     REGULAR: 'regular',
     SPECIAL_NON_WORKING: 'special_non_working',
     SPECIAL_WORKING: 'special_working',
 });
-
-/** Display labels for each DOLE holiday classification, kept next to the multiplier table so they can't drift apart. */
 export const HOLIDAY_TYPE_LABELS = Object.freeze({
     [HOLIDAY_TYPES.REGULAR]: 'Regular Holiday',
     [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: 'Special Non-Working Day',
@@ -46,10 +30,6 @@ export const DOLE_DIVISOR = 21.75; // Standard PH monthly-to-daily factor
 export const STANDARD_SHIFT_HOURS = 8;
 export const HOLIDAY_OT_PREMIUM = 0.30;
 export const THIRTEENTH_MONTH_TAX_EXEMPT_CEILING = 90000;
-
-// Exported (not just internal) so any UI that needs to display "what does this
-// classification actually pay" — e.g. the holiday calendar legend — reads the
-// real numbers instead of hardcoding a second copy that can drift out of sync.
 export const MULTIPLIERS = Object.freeze({
     [HOLIDAY_TYPES.REGULAR]: {
         worked: 2.0,
@@ -62,20 +42,16 @@ export const MULTIPLIERS = Object.freeze({
         unworked: 0,
     },
     [HOLIDAY_TYPES.SPECIAL_WORKING]: {
-        // A "special working day" is legally an ordinary working day — DOLE grants
-        // it no holiday premium at all. Rest-day-worked premium (130%) still applies
-        // independently if it happens to also fall on the employee's rest day.
-        worked: 1.0,
+
         workedRestDay: 1.3,
         unworked: 0,
     },
 });
 
-// ---------------------------------------------------------------
-// Rate Helpers
-// ---------------------------------------------------------------
 
-/** Monthly salary -> { dailyRate, hourlyRate } using the DOLE 21.75 factor. */
+// Rate Helpers
+
+
 export function deriveRates(monthlySalary) {
     const salary = toSafeNumber(monthlySalary);
     const dailyRate = round2(salary / DOLE_DIVISOR);
@@ -83,14 +59,9 @@ export function deriveRates(monthlySalary) {
     return { dailyRate, hourlyRate };
 }
 
-// ---------------------------------------------------------------
-// Statutory Leaves & Maternity Differential Engine
-// ---------------------------------------------------------------
 
-/**
- * Computes RA 11210 Expanded Maternity Leave Salary Differential.
- * Differential = Full Monthly Basic Salary - SSS Approved Cash Benefit.
- */
+// Statutory Leaves & Maternity Differential Engine
+
 export function calculateMaternityDifferential({ monthlySalary, sssCashBenefit = 0, leaveDays = 105 }) {
     const safeSalary = toSafeNumber(monthlySalary);
     const safeSssBenefit = toSafeNumber(sssCashBenefit);
@@ -110,8 +81,6 @@ export function calculateMaternityDifferential({ monthlySalary, sssCashBenefit =
  * Computes additional Philippine Statutory Paid Leaves.
  */
 export function calculateStatutoryLeavePay({ monthlySalary, leaveType, daysTaken = 0, dailyRate: dailyRateOverride }) {
-    // A contractual daily rate (e.g. P610/day) must be used as-is. Re-deriving it from a
-    // synthetic monthly salary (daily x 26 / 21.75) inflates it by 19.5% (P610 -> P729.20).
     const override = toSafeNumber(dailyRateOverride);
     const dailyRate = override > 0 ? round2(override) : deriveRates(monthlySalary).dailyRate;
     const safeDays = toSafeNumber(daysTaken);
@@ -163,16 +132,25 @@ export function isRestDay(dateStr, restDays = [0]) {
     return restDays.includes(d.getDay());
 }
 
-export function wasPresentDayBefore(dateStr, attendanceByDate, restDays = [0]) {
+
+export function wasPresentDayBefore(
+    dateStr,
+    attendanceByDate,
+    restDays = [0],
+    { nonWorkingDates = new Set(), paidLeaveDates = new Set() } = {}
+) {
     const d = new Date(`${dateStr}T00:00:00`);
     if (isNaN(d.getTime())) return true;
 
     const prev = new Date(d);
+    let guard = 0;
     do {
         prev.setDate(prev.getDate() - 1);
-    } while (restDays.includes(prev.getDay()));
+        guard++;
+    } while (guard < 14 && (restDays.includes(prev.getDay()) || nonWorkingDates.has(formatDate(prev))));
 
     const prevKey = formatDate(prev);
+    if (paidLeaveDates.has(prevKey)) return true;
     const logs = attendanceByDate.get(prevKey) || [];
     return logs.some((l) => l && l.time_out);
 }
@@ -191,6 +169,7 @@ export function computeDayPay({
     restDays = [0],
     canOvertime = true,
     salaryIncludesHolidayPay = false,
+    paidLeaveDates = new Set(),
 }) {
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
@@ -227,9 +206,14 @@ export function computeDayPay({
             };
         }
 
-        const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays);
-        // Fixed-salary employees (weekly/monthly) already receive an unworked regular
-        // holiday INSIDE their salary. Adding another daily rate pays the day twice (200%).
+        // Other regular / special non-working holidays right before this one are not workdays either.
+        const nonWorkingDates = new Set();
+        for (const [date, h] of holidaysByDate) {
+            if (h && (h.type === HOLIDAY_TYPES.REGULAR || h.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING)) {
+                nonWorkingDates.add(date);
+            }
+        }
+        const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays, { nonWorkingDates, paidLeaveDates });
         const alreadyInSalary = salaryIncludesHolidayPay && eligible;
         const pay = eligible && !alreadyInSalary ? round2(dailyRate) : 0;
         return {
@@ -256,11 +240,13 @@ export function computeDayPay({
     }
 
     const multiplier = restDayToday ? table.workedRestDay : table.worked;
-    // Art. 94: a worked regular holiday pays 200% in TOTAL. Fixed-salary employees already
-    // have 100% of that day inside their salary, so only the premium above it is added here;
-    // otherwise the day is paid 100% (salary) + 200% (this) = 300%.
-    // Overtime hours are not covered by the salary, so they keep the full multiplier below.
-    const salaryCredit = salaryIncludesHolidayPay && holiday.type === HOLIDAY_TYPES.REGULAR ? 1 : 0;
+    // A worked holiday pays its multiplier in TOTAL (Regular 200%, Special Non-Working 130%,
+    // Special Working 100%, or 260% / 150% / 130% when it also falls on the rest day). A
+    // fixed-salary employee already has 100% of the day (P610) inside the salary, so only the
+    // premium above it is added here; otherwise the day would be paid salary (100%) + multiplier,
+    // e.g. 300% for a regular holiday or 230% for a special day.
+    // Overtime hours keep the full multiplier below.
+    const salaryCredit = salaryIncludesHolidayPay ? 1 : 0;
     const basicHolidayPay = toSafeNumber(hourlyRate) * (multiplier - salaryCredit) * regularHours;
     const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
     const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
@@ -302,6 +288,7 @@ export function computeHolidayPayForPeriod({
     salaryIncludesHolidayPay = false,
     dailyRate: dailyRateOverride,
     hourlyRate: hourlyRateOverride,
+    paidLeaveDates = [],
 }) {
     // Contractual rates win over the DOLE-derived ones (see calculateStatutoryLeavePay).
     const derived = deriveRates(monthlySalary);
@@ -313,6 +300,7 @@ export function computeHolidayPayForPeriod({
         : (overrideDaily > 0 ? round2(dailyRate / STANDARD_SHIFT_HOURS) : derived.hourlyRate);
     const holidaysByDate = indexHolidays(holidayList);
     const attendanceByDate = indexAttendanceByDate(attendanceLogs);
+    const paidLeaveDateSet = new Set(paidLeaveDates);
 
     const items = [];
     for (const dateStr of getPayPeriodDates(periodStart, periodEnd)) {
@@ -329,6 +317,7 @@ export function computeHolidayPayForPeriod({
             restDays,
             canOvertime,
             salaryIncludesHolidayPay,
+            paidLeaveDates: paidLeaveDateSet,
         });
         if (result) items.push(result);
     }

@@ -1130,12 +1130,13 @@ const PayrollCreate = () => {
         if (isLoadingGroupAttendance || expectedWorkingDays <= 0) return map;
         if (Object.keys(groupAttendanceMap).length === 0) return map;
 
-        // BUG #4 FIX: a Special Non-Working Day is not a scheduled workday, so a worker who
-        // didn't clock in that day is not absent. Only days that fall inside the expected
-        // working days for this cutoff mode are considered (Sunday / weekends never count).
-        const specialNonWorkingDates = Array.from(new Set(
+        // BUG #4 FIX: Special Non-Working Days AND Regular Holidays are not scheduled workdays, so a
+        // worker who didn't clock in on one is not absent (nothing to declare either). Only days that
+        // fall inside the expected working days for this cutoff mode are considered (Sunday /
+        // weekends never count). A worker who DID clock in that day is still counted present.
+        const nonWorkingHolidayDates = Array.from(new Set(
             (holidayPreview?.items || [])
-                .filter(item => item && item.holidayType === 'special_non_working' && item.date)
+                .filter(item => item && (item.holidayType === 'special_non_working' || item.holidayType === 'regular') && item.date)
                 .map(item => extractDateStr(item.date))
                 .filter(dateStr => {
                     const dow = new Date(`${dateStr}T00:00:00`).getDay();
@@ -1148,8 +1149,8 @@ const PayrollCreate = () => {
             const idStr = String(emp.id);
             const daysPresent = groupAttendanceMap[idStr] || 0;
             const workedDates = new Set(groupWorkedDatesMap[idStr] || []);
-            const unworkedSpecialDays = specialNonWorkingDates.filter(d => !workedDates.has(d)).length;
-            const expectedForWorker = Math.max(0, expectedWorkingDays - unworkedSpecialDays);
+            const unworkedHolidayDays = nonWorkingHolidayDates.filter(d => !workedDates.has(d)).length;
+            const expectedForWorker = Math.max(0, expectedWorkingDays - unworkedHolidayDays);
             const daysAbsent = Math.max(0, expectedForWorker - daysPresent);
             if (daysAbsent > 0) {
                 map[idStr] = { employee: emp, daysPresent, daysAbsent, expectedWorkingDays: expectedForWorker };
