@@ -42,7 +42,7 @@ export const MULTIPLIERS = Object.freeze({
         unworked: 0,
     },
     [HOLIDAY_TYPES.SPECIAL_WORKING]: {
-
+        worked: 1.0,
         workedRestDay: 1.3,
         unworked: 0,
     },

@@ -61,6 +61,18 @@ export const MainLayout = ({ children }) => {
     };
   }, []);
 
+  // Dynamically load Tabler icon fonts only when authenticated inside the application shell
+  useEffect(() => {
+    const id = 'tabler-icons-webfont';
+    if (!document.getElementById(id)) {
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css';
+      document.head.appendChild(link);
+    }
+  }, []);
+
   // Scroll to top and close navigation on route transition
   useEffect(() => {
     setSidebarOpen(false);

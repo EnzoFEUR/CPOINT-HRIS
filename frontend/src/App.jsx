@@ -9,14 +9,22 @@ import MainLayout from './layouts/MainLayout';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
 
-// Auth Pages
+// Auth Pages - Login is eagerly loaded for instant initial render
 import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ForcePasswordChange from './pages/ForcePasswordChange';
-import BiometricSetup from './pages/BiometricSetup';
-import VerifyEmail from './pages/VerifyEmail';
+
+// Secondary Auth & Mandatory Setup Pages (Lazy loaded for sub-second initial load)
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ForcePasswordChange = lazy(() => import('./pages/ForcePasswordChange'));
+const BiometricSetup = lazy(() => import('./pages/BiometricSetup'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+
+const AuthFallback = (
+  <div className="h-[100dvh] w-screen flex items-center justify-center bg-slate-50">
+    <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+  </div>
+);
 
 // Lazy Loaded Core Flow Pages (Code-Split for sub-second initial loads)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -93,14 +101,14 @@ function App() {
       <Routes>
         {/* Public / Authentication Flow */}
         <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
-        <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
-        <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
-        <Route path="/reset-password" element={<PublicOnlyRoute><ResetPassword /></PublicOnlyRoute>} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/register" element={<PublicOnlyRoute><Suspense fallback={AuthFallback}><Register /></Suspense></PublicOnlyRoute>} />
+        <Route path="/forgot-password" element={<PublicOnlyRoute><Suspense fallback={AuthFallback}><ForgotPassword /></Suspense></PublicOnlyRoute>} />
+        <Route path="/reset-password" element={<PublicOnlyRoute><Suspense fallback={AuthFallback}><ResetPassword /></Suspense></PublicOnlyRoute>} />
+        <Route path="/verify-email" element={<Suspense fallback={AuthFallback}><VerifyEmail /></Suspense>} />
 
         {/* Mandatory Setup Routes */}
-        <Route path="/force-password-change" element={<ForcePasswordChange />} />
-        <Route path="/biometric-setup" element={<ProtectedRoute><BiometricSetup /></ProtectedRoute>} />
+        <Route path="/force-password-change" element={<Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense>} />
+        <Route path="/biometric-setup" element={<ProtectedRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></ProtectedRoute>} />
 
         {/* Standalone Fullscreen Terminal Views */}
         <Route

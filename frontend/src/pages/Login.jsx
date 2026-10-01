@@ -501,7 +501,7 @@ export default function Login() {
     };
 
     return (
-        <div className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 relative overflow-hidden select-none p-4 sm:p-6">
+        <main className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 relative overflow-hidden select-none p-4 sm:p-6">
             {/* Top branding spacer */}
             <div className="pt-2 sm:pt-4" />
 
@@ -788,7 +788,7 @@ export default function Login() {
             <div className="pb-2 text-center pointer-events-none">
                 <p className="text-slate-400 text-[10px] font-semibold tracking-wider uppercase"> </p>
             </div>
-        </div>
+        </main>
     );
 }
 

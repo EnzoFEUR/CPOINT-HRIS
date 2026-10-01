@@ -15,8 +15,7 @@ import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
 const router = express.Router();
 
-// BUG #6 FIX: statutory rates/caps come from the `statutory_settings` table (edited in the
-// Statutory Settings UI). These defaults are only a fallback when the table is empty/unreachable.
+// Statutory rates and caps with fallback defaults when configuration is unreachable
 const DEFAULT_STATUTORY_SETTINGS = Object.freeze({
     sss_employee_rate: 5,
     sss_employer_rate: 10,
@@ -29,7 +28,20 @@ const DEFAULT_STATUTORY_SETTINGS = Object.freeze({
     pagibig_max_contribution: 200,
 });
 
+let statutorySettingsCache = null;
+let statutorySettingsCacheExpires = 0;
+
+export const invalidateStatutorySettingsCache = () => {
+    statutorySettingsCache = null;
+    statutorySettingsCacheExpires = 0;
+};
+
 const getStatutorySettings = async () => {
+    const now = Date.now();
+    if (statutorySettingsCache && now < statutorySettingsCacheExpires) {
+        return statutorySettingsCache;
+    }
+
     const merged = { ...DEFAULT_STATUTORY_SETTINGS };
     try {
         const { data, error } = await supabase
@@ -37,23 +49,23 @@ const getStatutorySettings = async () => {
             .select('*')
             .limit(1)
             .maybeSingle();
-        if (error || !data) return merged;
-
-        for (const key of Object.keys(DEFAULT_STATUTORY_SETTINGS)) {
-            const raw = data[key];
-            if (raw !== null && raw !== undefined && raw !== '' && Number.isFinite(Number(raw))) {
-                merged[key] = Number(raw);
+        if (!error && data) {
+            for (const key of Object.keys(DEFAULT_STATUTORY_SETTINGS)) {
+                const raw = data[key];
+                if (raw !== null && raw !== undefined && raw !== '' && Number.isFinite(Number(raw))) {
+                    merged[key] = Number(raw);
+                }
             }
         }
     } catch (err) {
         console.error('Failed to load statutory settings, using defaults:', err.message);
     }
+    statutorySettingsCache = merged;
+    statutorySettingsCacheExpires = now + 60000; // 60-second in-memory cache
     return merged;
 };
 
-// BUG #8 FIX: the ledger/CSV/summary cards read the per-item statutory columns, but inserts only
-// saved the total. Save the breakdown too; if the table doesn't have a column yet, drop just that
-// column and retry so payroll saving never fails because of it.
+// Optional breakdown columns: gracefully fallback and omit unmigrated schema columns without failing
 const OPTIONAL_PAYROLL_COLUMNS = [
     'holiday_pay',
     'holiday_breakdown',
@@ -75,8 +87,7 @@ const insertPayrollRow = async (payload) => {
     return { data: null, error: new Error('Payroll insert failed after removing optional columns.') };
 };
 
-// BUG #9 FIX (server side): weekly payroll can never cover more than 7 calendar days, even if a
-// client tries to send a longer range.
+// Weekly cutoff span constraint: enforces strict calendar day bounds (maximum 7 days)
 const MAX_WEEKLY_CUTOFF_DAYS = 7;
 const getCutoffSpanDays = (start, end) => {
     const s = new Date(`${String(start).substring(0, 10)}T00:00:00`);
@@ -85,8 +96,7 @@ const getCutoffSpanDays = (start, end) => {
     return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
 };
 
-// DOLE Art. 94 holiday-pay eligibility looks at the workday BEFORE a regular holiday, which can fall
-// before the pay period starts (e.g. a Monday holiday -> last Saturday). Look back this many days.
+// DOLE Art. 94 holiday-pay eligibility looks at the workday before a holiday (lookback window)
 const HOLIDAY_LOOKBACK_DAYS = 7;
 
 const shiftDateStr = (dateStr, days) => {
@@ -362,6 +372,7 @@ router.put('/statutory-settings', async (req, res) => {
 
         if (error) throw error;
 
+        invalidateStatutorySettingsCache();
         invalidateCache(['/api/payroll/statutory-settings']);
         broadcastPayrollUpdate('STATUTORY_SETTINGS_UPDATED', { admin_id, settings: cleanSettings });
         res.json({ success: true, message: 'Statutory settings updated successfully.' });
@@ -811,8 +822,7 @@ router.post('/preview', async (req, res) => {
             canOvertime: !isFactoryWorker,
             // Keep the preview identical to what the saved payroll will pay.
             salaryIncludesHolidayPay: !isFactoryWorker,
-            // BUG #3 FIX: use the contractual rates as-is (see main route). Re-deriving them from the
-            // synthetic monthly salary (daily x 26 / 21.75) inflates the daily rate by 19.5%.
+            // Contractual rates are applied directly without synthetic monthly inflation
             dailyRate: toSafeNumber(employee.daily_rate || employee.daily_pay),
             hourlyRate: toSafeNumber(employee.hourly_rate),
         });
@@ -1003,8 +1013,7 @@ router.post('/', async (req, res) => {
             canOvertime: !isFactory,
             // Non-factory staff are paid a fixed weekly salary that already covers a normal workday.
             salaryIncludesHolidayPay: !isFactory,
-            // BUG #3 FIX: pass the resolved contractual rates so holiday pay is not re-derived
-            // from monthlySalary (which inflated a P610 daily rate to P729.20).
+            // Contractual daily and hourly rates take precedence to preserve exact compensation terms
             dailyRate,
             hourlyRate,
         });
@@ -1037,15 +1046,7 @@ router.post('/', async (req, res) => {
             }
             if (expectedWorkDays === 0) expectedWorkDays = 6;
 
-            // BUG #4 FIX: a Special Non-Working Day is a declared non-working day, not a scheduled
-            // workday, so skipping it is NOT an absence (previously only Regular Holidays were
-            // excluded, so an unworked Special Non-Working Day was deducted as an unexcused absence).
-            // Holidays that fall on the employee's rest day are already outside expectedWorkDays,
-            // so they are ignored here to avoid cancelling out a real absence.
-            //
-            // DOLE Art. 94: a Regular Holiday the employee FORFEITED (absent without pay the workday
-            // before it) is not a paid day, so it must NOT offset an absence. It stays counted as an
-            // unworked day and is deducted from the fixed salary like any other absence.
+            // Declared Special Non-Working Days and Regular Holidays are non-working by law; unworked days are not absences
             const forfeitedHolidayDates = new Set(
                 (holidayBreakdown || [])
                     .filter(i => i.holidayType === 'regular' && !i.worked && !i.eligible && !i.isRestDay)
@@ -1085,12 +1086,7 @@ router.post('/', async (req, res) => {
             }
         }
 
-        // Lateness Policy Handling (2-Hour Rule for Regular Employees)
-        // BUG #10 FIX: the 2-hour rule applies to a SINGLE shift. It used to be tested against the
-        // whole period's cumulative lateness, so 5 days x 30 min (150 min) was treated as one
-        // 2.5-hour-late shift. Now every shift is judged on its own:
-        //   - a shift 2+ hours late is converted to hourly pay for the hours actually worked
-        //   - a shift under 2 hours late gets the normal per-minute deduction
+        // Lateness Policy Handling: Evaluates 2-hour policy per shift rather than cumulative period minutes
         const LATE_HOURLY_CONVERSION_MINS = 120;
         let lateMins = 0;
         let perMinuteLateMins = 0;
@@ -1226,10 +1222,7 @@ router.post('/', async (req, res) => {
         // Combined Gross Pay: Basic + OT + Holiday Pay + Statutory Leaves + Maternity Differential + HR Approved Paid Leaves
         const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + safePaidLeavePay);
 
-        // Deductions schedule evaluation
-        // BUG #5 FIX: contributions are already divided by the pay-frequency divisor
-        // (weekly = 4, semi-monthly = 2), so weekly/semi-monthly payrolls must deduct EVERY
-        // period. Only monthly payroll waits for the month-end cutoff (day >= 22).
+        // Deductions schedule: prorated contributions apply per cycle for weekly/semi-monthly, or month-end for monthly
         const periodEndDay = new Date(`${pEnd}T00:00:00`).getDate();
         const shouldDeductStatutory = apply_deductions !== undefined
             ? Boolean(apply_deductions)
@@ -1406,22 +1399,34 @@ router.post('/batch', async (req, res) => {
             });
         }
 
+        const empIds = entries.map(e => e.employee_id).filter(Boolean);
+
+        // Optimized single-roundtrip prefetch for existing payrolls and employee metadata
+        const [{ data: existingRecords }, { data: empList }] = await Promise.all([
+            supabase
+                .from('payrolls')
+                .select('employee_id')
+                .in('employee_id', empIds)
+                .eq('period_start', pStart)
+                .eq('period_end', pEnd),
+            supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name')
+                .in('id', empIds)
+        ]);
+
+        const existingSet = new Set((existingRecords || []).map(r => String(r.employee_id)));
+        const empMap = new Map((empList || []).map(e => [String(e.id), e]));
+
         const results = [];
         const skipped = [];
+        const asyncTasks = [];
 
         for (const entry of entries) {
             const employee_id = entry.employee_id;
             if (!employee_id) { skipped.push({ employee_id, reason: 'Missing employee_id' }); continue; }
 
-            const { data: existing } = await supabase
-                .from('payrolls')
-                .select('id')
-                .eq('employee_id', employee_id)
-                .eq('period_start', pStart)
-                .eq('period_end', pEnd)
-                .maybeSingle();
-
-            if (existing) {
+            if (existingSet.has(String(employee_id))) {
                 skipped.push({ employee_id, reason: 'Payslip already exists for this period' });
                 continue;
             }
@@ -1449,9 +1454,7 @@ router.post('/batch', async (req, res) => {
                 ? entry.operations_breakdown.map(op => `${op.operation}: ₱${toSafeNumber(op.share).toFixed(2)}`).join(', ')
                 : '';
 
-            // Workers who missed days are paid on declared output (quantity made x rate)
-            // rather than an attendance-weighted share. Record that basis on the payslip
-            // so the figure can be audited later.
+            // Workers with missed days are audited on declared output basis
             const declaredOutput = Array.isArray(entry.declared_output) ? entry.declared_output : [];
             const absenceSummary = entry.is_absent
                 ? ` | ABSENT ${toSafeNumber(entry.days_absent)} of ${toSafeNumber(entry.expected_working_days)} day(s), present ${toSafeNumber(entry.days_present)} - paid on declared output${declaredOutput.length > 0
@@ -1487,38 +1490,42 @@ router.post('/batch', async (req, res) => {
 
             results.push({ id: insertedRec?.id, employee_id, net_pay: netPay });
 
-            const { data: emp } = await supabase
-                .from('employees')
-                .select('id, company_id, first_name, last_name')
-                .eq('id', employee_id)
-                .maybeSingle();
-
+            const emp = empMap.get(String(employee_id));
             const avatarUrl = emp?.company_id && emp?.id
                 ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${emp.company_id}/${emp.id}.jpg`
                 : null;
 
-            await createNotification({
-                target: employee_id,
-                title: 'New Payslip Available',
-                text: `Your payslip for ${pStart} to ${pEnd} is ready (Net Pay: ₱${netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}).`,
-                type: 'payroll',
-                sender_id: emp?.id,
-                company_id: emp?.company_id,
-                sender_name: 'HR & Payroll',
-                sender_avatar: avatarUrl
-            }).catch(() => { });
+            asyncTasks.push(
+                createNotification({
+                    target: employee_id,
+                    title: 'New Payslip Available',
+                    text: `Your payslip for ${pStart} to ${pEnd} is ready (Net Pay: ₱${netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}).`,
+                    type: 'payroll',
+                    sender_id: emp?.id,
+                    company_id: emp?.company_id,
+                    sender_name: 'HR & Payroll',
+                    sender_avatar: avatarUrl
+                }).catch(() => { })
+            );
 
             if (req.body.admin_id || entry.admin_id) {
-                await createAuditLog({
-                    log_name: 'payroll',
-                    description: `Computed factory batch payroll for employee ID ${employee_id}`,
-                    subject_type: 'App\\Models\\Payroll',
-                    subject_id: null,
-                    event: 'created',
-                    causer_id: req.body.admin_id || entry.admin_id,
-                    properties: { gross_pay: grossPay, net_pay: netPay, group: entry.group }
-                }).catch(() => { });
+                asyncTasks.push(
+                    createAuditLog({
+                        log_name: 'payroll',
+                        description: `Computed factory batch payroll for employee ID ${employee_id}`,
+                        subject_type: 'App\\Models\\Payroll',
+                        subject_id: null,
+                        event: 'created',
+                        causer_id: req.body.admin_id || entry.admin_id,
+                        properties: { gross_pay: grossPay, net_pay: netPay, group: entry.group }
+                    }).catch(() => { })
+                );
             }
+        }
+
+        // Fire-and-forget notifications and audit logging in parallel
+        if (asyncTasks.length > 0) {
+            Promise.allSettled(asyncTasks).catch(() => { });
         }
 
         if (results.length === 0) {

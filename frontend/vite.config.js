@@ -39,22 +39,22 @@ export default defineConfig({
             if (normalizedId.includes('html5-qrcode')) {
               return 'vendor-scanner';
             }
+            if (normalizedId.includes('jszip') || normalizedId.includes('file-saver')) {
+              return 'vendor-export';
+            }
+            if (normalizedId.includes('qrcode')) {
+              return 'vendor-qrcode';
+            }
             if (normalizedId.includes('@supabase')) {
               return 'vendor-supabase';
-            }
-            if (normalizedId.includes('framer-motion')) {
-              return 'vendor-motion';
             }
             if (normalizedId.includes('@tanstack/react-query')) {
               return 'vendor-query';
             }
-            if (normalizedId.includes('flatpickr') || normalizedId.includes('sweetalert2')) {
-              return 'vendor-ui-heavy';
-            }
-            if (normalizedId.includes('@tabler/icons-react') || normalizedId.includes('lucide-react')) {
+            if (normalizedId.includes('lucide-react') || normalizedId.includes('@tabler/icons-react')) {
               return 'vendor-icons';
             }
-            if (normalizedId.includes('node_modules/dayjs')) {
+            if (normalizedId.includes('dayjs')) {
               return 'vendor-dayjs';
             }
             return 'vendor-core';
@@ -69,13 +69,7 @@ export default defineConfig({
       'react-dom',
       'react-router-dom',
       '@tanstack/react-query',
-      'framer-motion',
       '@supabase/supabase-js',
-      '@fullcalendar/core',
-      '@fullcalendar/react',
-      '@fullcalendar/daygrid',
-      '@fullcalendar/interaction',
-      '@fullcalendar/google-calendar',
     ],
   },
 });

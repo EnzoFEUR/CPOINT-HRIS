@@ -28,8 +28,7 @@ import EmployeeSelectionModal from './components/EmployeeSelectionModal';
 // Re-export matchJobTitle for backwards-compatibility (e.g. FactoryPiece.jsx)
 export { matchJobTitle };
 
-// BUG #9 FIX: payroll is weekly, so no cutoff may span more than 7 days. Free Mode was removed;
-// this limit still protects against an over-long period arriving through a prefilled link.
+// Weekly payroll cutoff policy enforces strict calendar boundary (maximum 7 days)
 const MAX_CUTOFF_DAYS = 7;
 
 const PayrollCreate = () => {
@@ -147,7 +146,7 @@ const PayrollCreate = () => {
     const [success, setSuccess] = useState(null);
     const [holidayPreview, setHolidayPreview] = useState({ items: [], totalHolidayPay: 0 });
 
-    // BUG #6 FIX: statutory rates/caps come from the Statutory Settings screen (DB), not hardcoded.
+    // Dynamic statutory deduction rates and caps loaded from system settings
     const [statutoryRates, setStatutoryRates] = useState({
         sss_employee_rate: 5,
         sss_max_msc: 35000,
@@ -1130,10 +1129,7 @@ const PayrollCreate = () => {
         if (isLoadingGroupAttendance || expectedWorkingDays <= 0) return map;
         if (Object.keys(groupAttendanceMap).length === 0) return map;
 
-        // BUG #4 FIX: Special Non-Working Days AND Regular Holidays are not scheduled workdays, so a
-        // worker who didn't clock in on one is not absent (nothing to declare either). Only days that
-        // fall inside the expected working days for this cutoff mode are considered (Sunday /
-        // weekends never count). A worker who DID clock in that day is still counted present.
+        // Declared Special Non-Working Days and Regular Holidays are non-working by law; unworked days are not absences
         const nonWorkingHolidayDates = Array.from(new Set(
             (holidayPreview?.items || [])
                 .filter(item => item && (item.holidayType === 'special_non_working' || item.holidayType === 'regular') && item.date)

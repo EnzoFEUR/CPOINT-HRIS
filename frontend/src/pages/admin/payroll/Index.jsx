@@ -113,9 +113,7 @@ const getStatusVisuals = (status) => {
     };
 };
 
-// BUG #7 FIX: the ledger used to fall back to "Semi-Monthly" whenever a record had no
-// pay_frequency saved, which mislabelled every weekly payslip (company policy is 1-week payroll).
-// Use the saved frequency when present; otherwise derive it from the pay period length.
+// Pay frequency resolver: utilizes saved frequency or derives from cutoff duration
 const FREQUENCY_LABELS = {
     weekly: 'Weekly',
     'semi-monthly': 'Semi-Monthly',
@@ -138,9 +136,7 @@ const getPayFrequencyLabel = (payroll) => {
     return 'Weekly';
 };
 
-// BUG #8 FIX: older payslips were saved without per-item statutory columns, so the ledger,
-// summary cards and CSV showed P0.00. Use the saved column when it has a value; otherwise read the
-// amount from the payslip remarks text ("SSS: 123.45 ... PhilHealth: ... Pag-IBIG: ... Tax: ...").
+// Statutory breakdown extractor: supports explicit columns with fallback to parsed payslip remarks
 const readRemarkAmount = (remarks, label) => {
     if (!remarks) return 0;
     const match = String(remarks).match(new RegExp(`${label}:\\s*₱?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)`, 'i'));
@@ -765,27 +761,27 @@ export default function PayrollIndex() {
         }
     };
 
-    // Realtime Supabase subscription for live ledger updates
+    // Realtime Supabase subscription for live ledger updates with debounced invalidation
     useEffect(() => {
+        let debounceTimer = null;
+        const triggerDebouncedSync = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
+            }, 150);
+        };
+
         const channel = supabase
             .channel('admin-live-payroll-ledger')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'production_groups' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
-            })
-            .on('broadcast', { event: '*' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, triggerDebouncedSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'production_groups' }, triggerDebouncedSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, triggerDebouncedSync)
+            .on('broadcast', { event: '*' }, triggerDebouncedSync)
             .subscribe();
 
         return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(channel);
         };
     }, [queryClient]);
