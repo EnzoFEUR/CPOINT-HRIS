@@ -1,0 +1,15 @@
+# C-Point HRIS & Workforce Portal
+
+> Enterprise Human Resource Information System & Biometric Workforce Management Portal
+
+## Overview
+C-Point HRIS delivers workforce management, biometric attendance verification, and Philippine statutory payroll compliance.
+
+## System Modules
+- Biometric verification and contactless facial recognition timekeeping
+- Automated Philippine weekly and semi-monthly statutory payroll processing (SSS, PhilHealth, Pag-IBIG, BIR Tax)
+- Comprehensive audit logging and role-based access control (RBAC)
+
+## Links
+- [Workforce Portal](https://cpointhris.vercel.app/login)
+- [System Sitemap](https://cpointhris.vercel.app/sitemap.xml)

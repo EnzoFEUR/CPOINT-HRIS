@@ -1,0 +1,12 @@
+{
+  "specVersion": "1.0",
+  "entries": [
+    {
+      "identifier": "cpoint-hris-portal",
+      "displayName": "C-Point HRIS Portal",
+      "type": "agent",
+      "description": "Enterprise Human Resource Information System & Biometric Workforce Management Portal",
+      "url": "https://cpointhris.vercel.app"
+    }
+  ]
+}

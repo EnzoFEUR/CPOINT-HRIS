@@ -33,7 +33,7 @@ export default defineConfig({
           }
 
           if (normalizedId.includes('node_modules')) {
-            if (normalizedId.includes('face-api.js')) {
+            if (normalizedId.includes('face-api.js') || normalizedId.includes('@tensorflow')) {
               return 'vendor-faceapi';
             }
             if (normalizedId.includes('html5-qrcode')) {
@@ -42,13 +42,13 @@ export default defineConfig({
             if (normalizedId.includes('jszip') || normalizedId.includes('file-saver')) {
               return 'vendor-export';
             }
-            if (normalizedId.includes('qrcode')) {
+            if (normalizedId.includes('qrcode') || normalizedId.includes('dijkstrajs') || normalizedId.includes('iceberg-js')) {
               return 'vendor-qrcode';
             }
             if (normalizedId.includes('@supabase')) {
               return 'vendor-supabase';
             }
-            if (normalizedId.includes('@tanstack/react-query')) {
+            if (normalizedId.includes('@tanstack')) {
               return 'vendor-query';
             }
             if (normalizedId.includes('lucide-react') || normalizedId.includes('@tabler/icons-react')) {
