@@ -10,6 +10,7 @@ import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
+import { isSecurity, isAdmin } from '../routes/guards';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -42,9 +43,10 @@ const EmployeeDashboard = () => {
     const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
     useEffect(() => {
-        const role = (storedUser?.role || '').toLowerCase();
-        if (role === 'security' || role === 'guard' || role === 'security_guard') {
-            window.location.href = '/scanner';
+        if (isSecurity(storedUser)) {
+            window.location.replace('/scanner');
+        } else if (isAdmin(storedUser)) {
+            window.location.replace('/');
         }
     }, [storedUser]);
 
@@ -77,13 +79,36 @@ const EmployeeDashboard = () => {
         return { attendanceData, payrollData, discData, leaveData };
     };
 
+    const getCachedDashboard = (userId) => {
+        if (!userId) return undefined;
+        try {
+            const cached = sessionStorage.getItem(`cpoint_emp_dash_${userId}`);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed && (parsed.attendanceData || parsed.payrollData)) {
+                    return parsed;
+                }
+            }
+        } catch (_) {}
+        return undefined;
+    };
+
     const { data, isLoading } = useQuery({
         queryKey: ['employeeDashboard', user.id],
         queryFn: () => fetchDashboardData(user.id),
+        initialData: () => getCachedDashboard(user.id),
         enabled: !!user.id && user.role !== 'security',
         staleTime: 60_000,
         refetchOnWindowFocus: false,
     });
+
+    useEffect(() => {
+        if (data && user?.id && (data.attendanceData || data.payrollData)) {
+            try {
+                sessionStorage.setItem(`cpoint_emp_dash_${user.id}`, JSON.stringify(data));
+            } catch (_) {}
+        }
+    }, [data, user?.id]);
 
     // Real-time synchronization
     useEffect(() => {
@@ -283,81 +308,6 @@ const EmployeeDashboard = () => {
             })
             .subscribe();
 
-        const employeeLiveBus = supabase
-            .channel(`employee-live-dashboard-${user.id}`)
-            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'suspended',
-                        is_active: false,
-                        is_suspended: true,
-                        is_terminated: false,
-                        operational_status: 'Suspended'
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'inactive',
-                        is_active: false,
-                        is_suspended: false,
-                        is_terminated: true,
-                        operational_status: 'Terminated',
-                        archived_at: payload.archived_at || new Date().toISOString(),
-                        separation_reason: payload.reason
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    setUser(prev => ({
-                        ...prev,
-                        has_registered_biometrics: true,
-                        biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRICS_RESET' }, () => {
-                setUser(prev => ({
-                    ...prev,
-                    has_registered_biometrics: false,
-                    biometric_baseline_path: null
-                }));
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .subscribe();
-
         const handleRefresh = () => {
             queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
         };
@@ -383,7 +333,6 @@ const EmployeeDashboard = () => {
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(broadcastBus);
-            supabase.removeChannel(employeeLiveBus);
             window.removeEventListener('refresh_dashboard', handleRefresh);
             window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);

@@ -7,6 +7,7 @@ import { fetchWithAuth } from '../utils/api';
 import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
 import { playBiometricSound as playSound } from '../utils/audio';
+import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 
 // Primary CDN with high reliability and fallback
 const MODEL_SOURCES = [
@@ -418,8 +419,8 @@ export default function BiometricSetup() {
       localStorage.setItem('user', JSON.stringify(updated));
 
       setTimeout(() => {
-        if (user.role === 'admin') navigate('/');
-        else if (user.role === 'security') navigate('/scanner');
+        if (isAdmin(user)) navigate('/');
+        else if (isSecurity(user)) navigate('/scanner');
         else navigate('/employee/dashboard');
       }, 2000);
 
@@ -623,6 +624,23 @@ export default function BiometricSetup() {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: '/biometric-setup' }} />;
+  }
+
+  if (user.requires_password_change) {
+    return <Navigate to="/force-password-change" replace />;
+  }
+
+  if (isSecurity(user)) {
+    return <Navigate to="/scanner" replace />;
+  }
+
+  if (isAdmin(user)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
+  if (hasBiometrics || isMedicalExempt(user)) {
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   const displayName = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Authorized Staff';

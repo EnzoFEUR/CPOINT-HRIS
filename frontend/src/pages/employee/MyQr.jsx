@@ -1,11 +1,68 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import {
+  ShieldCheck,
+  Archive,
+  Receipt,
+  Lock,
+  FileText,
+  ScanFace,
+  Camera,
+  UserCheck
+} from 'lucide-react';
 import QRCode from '../../components/QRCode';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
+
+/**
+ * Isolated LiveClock leaf component.
+ * Prevents 1-second state updates from re-rendering the heavy QRCode generator and parent page on mobile devices.
+ */
+const LiveClock = React.memo(() => {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formattedDate = useMemo(() => {
+    return now.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    });
+  }, [now.toDateString()]);
+
+  const formattedTime = now.toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+
+  return (
+    <div className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2">
+      <span>{formattedDate}</span>
+      <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
+        {formattedTime}
+      </span>
+    </div>
+  );
+});
+
+/**
+ * Memoized QR card container to eliminate canvas/SVG redraws
+ */
+const QrCodeCard = React.memo(({ qrValue }) => (
+  <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">
+    <QRCode
+      value={qrValue}
+      size={260}
+      fgColor="#0f172a"
+      bgColor="#ffffff"
+      className="rounded-xl"
+    />
+  </div>
+));
 
 const MyQr = () => {
   const [user, setUser] = useState(() => {
@@ -15,8 +72,6 @@ const MyQr = () => {
       return {};
     }
   });
-
-  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Read initial disciplinary status from cache
   const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(user?.id));
@@ -43,11 +98,6 @@ const MyQr = () => {
     const diff = Math.ceil((new Date(medicalExemption.valid_until).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
   }, [isMedicalExempt, medicalExemption]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Listen for disciplinary cache updates
   useEffect(() => {
@@ -131,22 +181,37 @@ const MyQr = () => {
       })
       .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
         if (!payload || payload.employee_id === user.id) {
-          setUser(prev => ({
-            ...prev,
-            has_registered_biometrics: true,
-            biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
-          }));
-          toast.success('Face Biometrics Enrolled! QR Pass activated.', { id: 'bio-qr-live' });
+          setUser(prev => {
+            const updated = {
+              ...prev,
+              has_registered_biometrics: true,
+              biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
+            };
+            try {
+              const stored = JSON.parse(localStorage.getItem('user') || '{}');
+              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
+            } catch (_) {}
+            return updated;
+          });
+          toast.success('Face Biometrics Enrolled! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
           syncProfile();
         }
       })
       .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
         if (!payload || payload.employee_id === user.id) {
-          setUser(prev => ({
-            ...prev,
-            has_registered_biometrics: false,
-            biometric_baseline_path: null
-          }));
+          setUser(prev => {
+            const updated = {
+              ...prev,
+              has_registered_biometrics: false,
+              biometric_baseline_path: null
+            };
+            try {
+              const stored = JSON.parse(localStorage.getItem('user') || '{}');
+              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
+            } catch (_) {}
+            return updated;
+          });
+          toast.error('Face Biometrics Reset: Pass locked until re-registration.', { id: 'bio-reset-toast', duration: 5000 });
           syncProfile();
         }
       })
@@ -159,11 +224,6 @@ const MyQr = () => {
             setMedicalExemption(null);
             toast('Medical Grace ended: Standard dual-factor verification restored.');
           }
-          syncProfile();
-        }
-      })
-      .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
           syncProfile();
         }
       })
@@ -292,62 +352,11 @@ const MyQr = () => {
           checkDisciplinary();
         }
       })
-      .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          setUser(prev => {
-            const updated = {
-              ...prev,
-              has_registered_biometrics: true,
-              biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
-            };
-            try {
-              const stored = JSON.parse(localStorage.getItem('user') || '{}');
-              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
-            } catch (_) {}
-            return updated;
-          });
-          toast.success('Face Biometrics Enrolled! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
-          syncProfile();
-        }
-      })
-      .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          setUser(prev => {
-            const updated = {
-              ...prev,
-              has_registered_biometrics: false,
-              biometric_baseline_path: null
-            };
-            try {
-              const stored = JSON.parse(localStorage.getItem('user') || '{}');
-              localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
-            } catch (_) {}
-            return updated;
-          });
-          toast.error('Face Biometrics Reset: Pass locked until re-registration.', { id: 'bio-reset-toast', duration: 5000 });
-          syncProfile();
-        }
-      })
-      .subscribe();
-
-    const scannerChannel = supabase
-      .channel('scanner_disciplinary_realtime')
-      .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
-          if (payload.is_exempt && payload.exemption) {
-            setMedicalExemption(payload.exemption);
-          } else if (!payload.is_exempt) {
-            setMedicalExemption(null);
-          }
-          syncProfile();
-        }
-      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(broadcastBus);
-      supabase.removeChannel(scannerChannel);
     };
   }, [user?.id, checkDisciplinary, syncProfile]);
 
@@ -405,10 +414,6 @@ const MyQr = () => {
     return null;
   }, [user]);
 
-  const formattedDate = currentTime.toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
-  });
-
   return (
     <div className="w-full max-w-sm sm:max-w-md mx-auto font-sans px-2 sm:px-4 pt-3 sm:pt-4">
       <div className="w-full flex flex-col">
@@ -451,7 +456,7 @@ const MyQr = () => {
               </span>
             ) : isMedicalExempt ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1">
-                <i className="ti ti-first-aid-kit text-xs text-amber-700" />
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                 <span>Medical Grace</span>
               </span>
             ) : (
@@ -465,7 +470,7 @@ const MyQr = () => {
         {isTerminated ? (
           <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200 shadow-sm text-center">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 mb-4">
-              <i className="ti ti-archive text-2xl" />
+              <Archive className="w-6 h-6 text-amber-700" />
             </div>
             <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider rounded-full mb-2">
               {isPendingArchive ? `Pending Archive · ${daysUntilPermanentArchive}d Cooldown` : 'Cold Storage Archive'}
@@ -479,7 +484,7 @@ const MyQr = () => {
                 to="/employee/dashboard" 
                 className="w-full py-2.5 bg-slate-900 hover:bg-black text-white font-medium text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
               >
-                <i className="ti ti-receipt text-sm" />
+                <Receipt className="w-4 h-4" />
                 <span>View Historical Payslips</span>
               </Link>
             </div>
@@ -487,7 +492,7 @@ const MyQr = () => {
         ) : isSuspended ? (
           <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200 shadow-sm text-center">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-4">
-              <i className="ti ti-lock text-2xl" />
+              <Lock className="w-6 h-6 text-amber-600" />
             </div>
             <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded-full mb-2">
               Attendance Suspended
@@ -511,14 +516,14 @@ const MyQr = () => {
                 to="/employee/dashboard?view=disciplinary" 
                 className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
               >
-                <i className="ti ti-file-text text-sm" />
+                <FileText className="w-4 h-4" />
                 <span>Review Disciplinary Notice</span>
               </Link>
               <Link 
                 to="/employee/dashboard" 
                 className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
               >
-                <i className="ti ti-receipt text-sm" />
+                <Receipt className="w-4 h-4" />
                 <span>View Payslips</span>
               </Link>
             </div>
@@ -531,9 +536,9 @@ const MyQr = () => {
         ) : !hasFaceBiometrics ? (
           <div className="w-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200/90 shadow-xs text-center relative overflow-hidden">
             <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 mb-4 shadow-inner relative">
-              <i className="ti ti-scan-eye text-4xl animate-pulse" />
+              <ScanFace className="w-10 h-10 animate-pulse" />
               <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
-                <i className="ti ti-lock" />
+                <Lock className="w-3 h-3" />
               </div>
             </div>
 
@@ -554,7 +559,7 @@ const MyQr = () => {
                 to="/biometric-setup"
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <i className="ti ti-camera text-base" />
+                <Camera className="w-4 h-4" />
                 <span>Enroll Facial Biometrics Now</span>
               </Link>
             </div>
@@ -568,22 +573,14 @@ const MyQr = () => {
             </div>
           </div>
         ) : (
-          <div className="w-full bg-white rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-center border border-slate-100 shadow-xs">
-            <QRCode
-              value={qrValue}
-              size={260}
-              fgColor="#0f172a"
-              bgColor="#ffffff"
-              className="rounded-xl"
-            />
-          </div>
+          <QrCodeCard qrValue={qrValue} />
         )}
 
         {/* Medical Grace Exemption Status Callout */}
         {isMedicalExempt && !isTerminated && !isSuspended && (
           <div className="w-full mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left shadow-2xs">
             <div className="flex items-center gap-2 text-amber-950 font-bold text-xs">
-              <i className="ti ti-first-aid-kit text-base text-amber-700 shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
               <span>Medical Grace Protocol Active</span>
             </div>
             <p className="text-[11px] text-amber-900/85 mt-1 leading-relaxed font-medium">
@@ -601,20 +598,15 @@ const MyQr = () => {
             )}
             {medicalExemption?.granted_by && (
               <p className="mt-1.5 text-[10px] text-amber-900/80 font-medium flex items-center gap-1">
-                <i className="ti ti-user-check text-amber-700" />
+                <UserCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                 <span>Authorized by: <strong>{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
               </p>
             )}
           </div>
         )}
 
-        {/* Date and time footer */}
-        <div className="mt-5 sm:mt-6 flex items-center justify-between w-full text-xs text-slate-400 font-medium px-2">
-          <span>{formattedDate}</span>
-          <span className="font-mono font-bold tabular-nums text-slate-700 text-xs sm:text-sm">
-            {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </span>
-        </div>
+        {/* Isolated live clock leaf to eliminate per-second page re-renders */}
+        <LiveClock />
 
       </div>
     </div>

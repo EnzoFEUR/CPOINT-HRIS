@@ -6,13 +6,34 @@ const Dashboard = lazy(() => import('../pages/Dashboard'));
 export const getRole = (user) => (user?.role || '').toLowerCase();
 
 export const isSecurity = (user) => {
+  if (!user) return false;
   const r = getRole(user);
-  return r === 'security' || r === 'guard' || r === 'security_guard';
+  const dept = (user?.department || '').toLowerCase();
+  const title = (user?.job_title || user?.position || '').toLowerCase();
+  return (
+    r === 'security' ||
+    r === 'guard' ||
+    r === 'security_guard' ||
+    dept === 'security' ||
+    title.includes('security') ||
+    title.includes('guard') ||
+    title.includes('gate attendant')
+  );
 };
 
 export const isAdmin = (user) => {
+  if (!user) return false;
   const r = getRole(user);
-  return r === 'admin' || r === 'superadmin' || r === 'super_admin' || r === 'hr' || r === 'hr_manager';
+  const dept = (user?.department || '').toLowerCase();
+  return (
+    r === 'admin' ||
+    r === 'superadmin' ||
+    r === 'super_admin' ||
+    r === 'hr' ||
+    r === 'hr_manager' ||
+    dept === 'administration' ||
+    dept === 'human resources'
+  );
 };
 
 export const getUser = () => {
@@ -93,7 +114,8 @@ export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometric
     return <Navigate to="/force-password-change" replace />;
   }
 
-  if (requireBiometrics && !user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) {
+  const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
+  if (requireBiometrics && !hasBiometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) {
     return <Navigate to="/biometric-setup" replace />;
   }
 
@@ -114,14 +136,49 @@ export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometric
   return children;
 };
 
+/**
+ * Route Guard: Biometric Registration Gatekeeper
+ * Strictly limits access to un-enrolled regular employees registering their account.
+ * - Security guards: permanently routed to /scanner
+ * - Admins / HR: routed to /
+ * - Medical exempt or already registered employees: routed to /employee/dashboard
+ */
+export const BiometricSetupRoute = ({ children }) => {
+  const user = getUser();
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: '/biometric-setup' }} />;
+  }
+
+  if (user.requires_password_change) {
+    return <Navigate to="/force-password-change" replace />;
+  }
+
+  if (isSecurity(user)) {
+    return <Navigate to="/scanner" replace />;
+  }
+
+  if (isAdmin(user)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
+  if (hasBiometrics || isMedicalExempt(user)) {
+    return <Navigate to="/employee/dashboard" replace />;
+  }
+
+  return children;
+};
+
 // Route Guard: Public-Only Routes (Redirects already authenticated users)
 export const PublicOnlyRoute = ({ children }) => {
   const user = getUser();
   if (user) {
     if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-    if (!user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
     if (isSecurity(user)) return <Navigate to="/scanner" replace />;
     if (isAdmin(user)) return <Navigate to="/" replace />;
+    const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
+    if (!hasBiometrics && !isMedicalExempt(user)) return <Navigate to="/biometric-setup" replace />;
     return <Navigate to="/employee/dashboard" replace />;
   }
   return children;
@@ -132,8 +189,9 @@ export const RootRoute = () => {
   const user = getUser();
   if (!user) return <Navigate to="/login" replace />;
   if (user.requires_password_change) return <Navigate to="/force-password-change" replace />;
-  if (!user.has_registered_biometrics && !isMedicalExempt(user) && !isSecurity(user) && !isAdmin(user)) return <Navigate to="/biometric-setup" replace />;
   if (isSecurity(user)) return <Navigate to="/scanner" replace />;
   if (isAdmin(user)) return <Dashboard />;
+  const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
+  if (!hasBiometrics && !isMedicalExempt(user)) return <Navigate to="/biometric-setup" replace />;
   return <Navigate to="/employee/dashboard" replace />;
 };

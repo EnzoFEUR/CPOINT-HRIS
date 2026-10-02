@@ -43,7 +43,15 @@ export default function MyProfile() {
         return null;
     })();
 
-    // Query profile and documents
+    // Query profile and documents with 0ms SWR session cache
+    const initialProfileData = (() => {
+        try {
+            const cached = sessionStorage.getItem('cpoint_my_profile_cache');
+            if (cached) return JSON.parse(cached);
+        } catch (_) {}
+        return initialUser ? { success: true, user: initialUser, documents: [] } : undefined;
+    })();
+
     const { data: profileResponse, isLoading: isQueryLoading } = useQuery({
         queryKey: ['myProfile'],
         queryFn: async () => {
@@ -51,9 +59,17 @@ export default function MyProfile() {
             const data = await res.json();
             return data;
         },
-        initialData: initialUser ? { success: true, user: initialUser, documents: [] } : undefined,
+        initialData: initialProfileData,
         staleTime: 60000,
     });
+
+    useEffect(() => {
+        if (profileResponse && (profileResponse.user || profileResponse.employee || profileResponse.data)) {
+            try {
+                sessionStorage.setItem('cpoint_my_profile_cache', JSON.stringify(profileResponse));
+            } catch (_) {}
+        }
+    }, [profileResponse]);
 
     const raw = profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {};
     

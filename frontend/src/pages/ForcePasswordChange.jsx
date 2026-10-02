@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
+import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 
 export default function ForcePasswordChange() {
     const [password, setPassword] = useState('');
@@ -56,12 +57,22 @@ export default function ForcePasswordChange() {
                 localStorage.setItem('user', JSON.stringify(currentUser));
             }
 
-            if (user.role === 'security' || user.role === 'admin') {
+            const isSec = isSecurity(user);
+            const isAdm = isAdmin(user);
+            const needsBio = !user.has_registered_biometrics && !user.biometric_baseline_path && !isMedicalExempt(user) && !isSec && !isAdm;
+
+            if (isSec) {
                 toast.success("Password secured!");
-                navigate(user.role === 'security' ? '/scanner' : '/');
-            } else {
-                toast.success("Password secured! Proceeding to Biometrics.");
+                navigate('/scanner');
+            } else if (isAdm) {
+                toast.success("Password secured!");
+                navigate('/');
+            } else if (needsBio) {
+                toast.success("Password secured! Proceeding to Biometrics enrollment.");
                 navigate('/biometric-setup');
+            } else {
+                toast.success("Password secured!");
+                navigate('/employee/dashboard');
             }
         } catch (err) {
             setError(err.message || "Failed to update password. Please try again.");

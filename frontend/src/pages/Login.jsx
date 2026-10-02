@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
+import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import {
   Mail,
   Lock,
@@ -473,21 +474,21 @@ export default function Login() {
                 clearDisciplinaryCache(userData.id);
             }
 
-            const role = (userData.role || '').toLowerCase();
-            const isSecurityRole = role === 'security' || role === 'guard' || role === 'security_guard';
-            const isAdminRole = role === 'admin' || role === 'superadmin' || role === 'hr';
+            const isSec = isSecurity(userData);
+            const isAdm = isAdmin(userData);
+            const needsBio = !userData.has_registered_biometrics && !userData.biometric_baseline_path && !isMedicalExempt(userData) && !isSec && !isAdm;
 
             if (userData.requires_password_change) {
                 toast.success('Please update your password.');
                 navigate('/force-password-change');
-            } else if (!userData.has_registered_biometrics && !isSecurityRole && !isAdminRole) {
+            } else if (needsBio) {
                 toast.success('Please complete your biometric enrollment.');
                 navigate('/biometric-setup');
             } else {
                 toast.success('Signed in successfully');
-                if (isAdminRole) {
+                if (isAdm) {
                     navigate('/');
-                } else if (isSecurityRole) {
+                } else if (isSec) {
                     navigate('/scanner');
                 } else {
                     navigate('/employee/dashboard');

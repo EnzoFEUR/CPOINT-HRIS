@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
-import { ProtectedRoute, PublicOnlyRoute, RootRoute } from './routes/guards';
+import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
 import MainLayout from './layouts/MainLayout';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
@@ -108,7 +108,7 @@ function App() {
 
         {/* Mandatory Setup Routes */}
         <Route path="/force-password-change" element={<Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense>} />
-        <Route path="/biometric-setup" element={<ProtectedRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></ProtectedRoute>} />
+        <Route path="/biometric-setup" element={<BiometricSetupRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></BiometricSetupRoute>} />
 
         {/* Standalone Fullscreen Terminal Views */}
         <Route
@@ -162,10 +162,10 @@ function App() {
           <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
 
           {/* Employee Flow */}
-          <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
-          <Route path="/employee/qr" element={<MyQr />} />
+          <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />
+          <Route path="/employee/qr" element={<ProtectedRoute allowedRoles={['employee']}><MyQr /></ProtectedRoute>} />
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
-          <Route path="/employee/profile" element={<MyProfile />} />
+          <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee']}><MyProfile /></ProtectedRoute>} />
           <Route path="/profile" element={<MyProfile />} />
         </Route>
       </Routes>
