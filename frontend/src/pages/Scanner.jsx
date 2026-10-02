@@ -7,7 +7,6 @@ import {
   RefreshCw,
   X,
   Eye,
-  Shield,
   ShieldCheck,
   AlertTriangle,
   AlertCircle,
@@ -1628,21 +1627,10 @@ const Scanner = () => {
                     Confidence: {state.matchScore}%
                   </p>
                 )}
-                {state.employee?.is_medical_exempt ? (
+                {state.employee?.is_medical_exempt && (
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-amber-300">
                     <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
                     <span>Medical Exemption Active</span>
-                  </div>
-                ) : (
-                  <div className={`flex items-center justify-center gap-1.5 mt-1.5 text-[11px] font-medium ${state.liveness.passed ? 'text-emerald-400' : 'text-cyan-300'}`}>
-                    {state.liveness.passed ? (
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <Shield className="w-3.5 h-3.5 text-cyan-300" />
-                    )}
-                    <span className="font-mono font-semibold">
-                      {state.liveness.passed ? '3D LIVENESS VERIFIED' : '3D BIO-SHIELD ACTIVE'}
-                    </span>
                   </div>
                 )}
               </div>

@@ -42,10 +42,10 @@ export default defineConfig({
             if (normalizedId.includes('jszip') || normalizedId.includes('file-saver')) {
               return 'vendor-export';
             }
-            if (normalizedId.includes('qrcode') || normalizedId.includes('dijkstrajs') || normalizedId.includes('iceberg-js')) {
+            if (normalizedId.includes('qrcode') || normalizedId.includes('dijkstrajs')) {
               return 'vendor-qrcode';
             }
-            if (normalizedId.includes('@supabase')) {
+            if (normalizedId.includes('@supabase') || normalizedId.includes('iceberg-js')) {
               return 'vendor-supabase';
             }
             if (normalizedId.includes('@tanstack')) {
