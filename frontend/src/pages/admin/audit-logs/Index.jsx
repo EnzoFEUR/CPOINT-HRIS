@@ -1,68 +1,115 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
+import {
+    Search,
+    X,
+    Cpu,
+    User,
+    ChevronLeft,
+    ChevronRight,
+    RotateCcw,
+    Activity
+} from 'lucide-react';
 
 export default function AuditLogsIndex() {
+    const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
     const [filterDate, setFilterDate] = useState(searchParams.get('date') || '');
     const [filterUserId, setFilterUserId] = useState(searchParams.get('user_id') || '');
     const [searchQuery, setSearchQuery] = useState('');
-    
-    const [logs, setLogs] = useState([]);
-    const [users, setUsers] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
+    // Enterprise query for audit logs with 30s staleTime & 5min gcTime
+    const {
+        data: logs = [],
+        isLoading: isLogsLoading,
+        isFetching: isLogsFetching,
+    } = useQuery({
+        queryKey: ['adminAuditLogs', filterDate, filterUserId],
+        queryFn: async () => {
+            let url = '/api/audit-logs';
+            const queryParams = new URLSearchParams();
+            if (filterDate) queryParams.append('date', filterDate);
+            if (filterUserId) queryParams.append('user_id', filterUserId);
+            if (queryParams.toString()) url += `?${queryParams.toString()}`;
+
+            const res = await fetchWithAuth(url);
+            if (!res.ok) throw new Error('Failed to load audit logs');
+            const result = await res.json();
+            return Array.isArray(result) ? result : (result.data || []);
+        },
+        staleTime: 30_000,
+        gcTime: 300_000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Enterprise query for personnel directory (shared cache with EmployeesIndex)
+    const { data: users = [] } = useQuery({
+        queryKey: ['adminEmployees'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/employees');
+            if (!res.ok) throw new Error('Failed to load employees');
+            const result = await res.json();
+            return Array.isArray(result) ? result : (result.data || []);
+        },
+        staleTime: 60_000,
+        gcTime: 300_000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Real-time synchronization: listen for inserts on audit tables
     useEffect(() => {
-        const fetchLogs = async () => {
-            try {
-                let url = '/api/audit-logs';
-                const queryParams = new URLSearchParams();
-                if (filterDate) queryParams.append('date', filterDate);
-                if (filterUserId) queryParams.append('user_id', filterUserId);
-                if (queryParams.toString()) url += `?${queryParams.toString()}`;
-
-                const res = await fetchWithAuth(url);
-                if (res.ok) {
-                    const result = await res.json();
-                    const records = Array.isArray(result) ? result : (result.data || []);
-                    setLogs(records);
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setIsLoading(false);
-            }
+        let debounceTimer = null;
+        const debouncedInvalidate = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['adminAuditLogs'] });
+            }, 300);
         };
 
-        const fetchUsers = async () => {
-            try {
-                const res = await fetchWithAuth('/api/employees');
-                if (res.ok) {
-                    const result = await res.json();
-                    const userRecords = Array.isArray(result) ? result : (result.data || []);
-                    setUsers(userRecords);
-                }
-            } catch (err) {
-                console.error(err);
-            }
+        const channel = supabase
+            .channel('admin-live-audit-logs')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'activity_log' },
+                debouncedInvalidate
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'audit_logs' },
+                debouncedInvalidate
+            )
+            .subscribe();
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            supabase.removeChannel(channel);
         };
+    }, [queryClient]);
 
-        fetchLogs();
-        fetchUsers();
-    }, [filterDate, filterUserId]);
-
-    const handleApplyFilters = (e) => {
-        e.preventDefault();
+    // Reactive filter handlers (eliminates redundant submit button)
+    const handleDateChange = (val) => {
+        setFilterDate(val);
+        setCurrentPage(1);
         const params = {};
-        if (filterDate) params.date = filterDate;
+        if (val) params.date = val;
         if (filterUserId) params.user_id = filterUserId;
         setSearchParams(params);
+    };
+
+    const handleUserChange = (val) => {
+        setFilterUserId(val);
         setCurrentPage(1);
+        const params = {};
+        if (filterDate) params.date = filterDate;
+        if (val) params.user_id = val;
+        setSearchParams(params);
     };
 
     const handleResetFilters = () => {
@@ -93,6 +140,10 @@ export default function AuditLogsIndex() {
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+    // One-time loading screen: only shows on cold initial load when no cached logs exist in memory
+    const hasLogsInCache = Boolean(queryClient.getQueryData(['adminAuditLogs', filterDate, filterUserId]));
+    const isLoading = isLogsLoading && !hasLogsInCache;
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
@@ -110,6 +161,7 @@ export default function AuditLogsIndex() {
                 description="Log of user actions, administrative changes, and security events."
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                        <Activity className="w-3.5 h-3.5 text-slate-500" />
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Events:</span>
                         <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{logs.length}</span>
                     </div>
@@ -119,39 +171,60 @@ export default function AuditLogsIndex() {
             <div className="space-y-4 sm:space-y-6">
                 {/* FILTER BAR */}
                 <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
-                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200 relative">
-                        <i className="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
+                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200 relative flex items-center">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input 
                             type="text" 
                             placeholder="Search actions, records, or admin operators..." 
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-slate-500 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
+                            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-slate-500 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
                         />
-                    </div>
-
-                    <form onSubmit={handleApplyFilters} className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-xl shadow-xs border border-slate-200 w-full md:w-auto gap-2">
-                        <input 
-                            type="date" 
-                            value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1"
-                        />
-                        <select 
-                            value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1"
-                        >
-                            <option value="">All Admins / System</option>
-                            {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-                        </select>
-                        <button type="submit" className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition-colors">
-                            Filter
-                        </button>
-                        {(filterDate || filterUserId || searchQuery) && (
-                            <button type="button" onClick={handleResetFilters} className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors">
-                                <i className="ti ti-x" />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                title="Clear search"
+                            >
+                                <X className="w-3.5 h-3.5" />
                             </button>
                         )}
-                    </form>
+                    </div>
+
+                    <div className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-xl shadow-xs border border-slate-200 w-full md:w-auto gap-2 items-center">
+                        <input 
+                            type="date" 
+                            value={filterDate} 
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            title="Filter by event date"
+                        />
+                        <select 
+                            value={filterUserId} 
+                            onChange={(e) => handleUserChange(e.target.value)}
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            title="Filter by operator"
+                        >
+                            <option value="">All Admins / System</option>
+                            {users.map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {u.first_name} {u.last_name}
+                                </option>
+                            ))}
+                        </select>
+                        {(filterDate || filterUserId || searchQuery) && (
+                            <button 
+                                type="button" 
+                                onClick={handleResetFilters} 
+                                className="px-3 py-2 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                title="Reset all filters"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Reset</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* DATA TABLE */}
@@ -190,8 +263,8 @@ export default function AuditLogsIndex() {
 
                                             <td className="px-6 py-3.5">
                                                 {isSystem ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 text-white text-[11px] font-semibold uppercase tracking-wider">
-                                                        <i className="ti ti-cpu text-xs" /> System
+                                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 text-white text-[11px] font-semibold uppercase tracking-wider">
+                                                        <Cpu className="w-3 h-3" /> System
                                                     </span>
                                                 ) : (
                                                     <div className="flex items-center gap-2.5">
@@ -289,7 +362,7 @@ export default function AuditLogsIndex() {
 
                                     <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-slate-50">
                                         <div className="flex items-center gap-1.5">
-                                            <i className="ti ti-user text-xs" />
+                                            <User className="w-3.5 h-3.5 text-slate-400" />
                                             <span className="font-semibold text-slate-700">{isSystem ? 'System' : userNameStr}</span>
                                         </div>
                                         <span className="font-mono text-[10px] text-slate-400">
@@ -320,9 +393,9 @@ export default function AuditLogsIndex() {
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={currentPage === 1}
-                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1"
+                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
                             >
-                                <i className="ti ti-chevron-left text-xs" /> Prev
+                                <ChevronLeft className="w-3.5 h-3.5" /> Prev
                             </button>
                             
                             <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono font-medium text-xs tabular-nums">
@@ -332,9 +405,9 @@ export default function AuditLogsIndex() {
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={currentPage >= totalPages}
-                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1"
+                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
                             >
-                                Next <i className="ti ti-chevron-right text-xs" />
+                                Next <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                         </div>
                     </div>

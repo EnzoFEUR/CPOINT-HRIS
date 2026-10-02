@@ -415,9 +415,27 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         const forecast = computePayrollForecastFromData(employees, attendances);
 
         // 5. Cached AI briefing and insights (returns immediately if already generated)
-        const cachedBriefing = Brain.Analytics.getCachedBriefing();
+        const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
         const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal) : null;
         const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || null } : null;
+
+        // Background pre-warm: if briefing is not yet cached, generate asynchronously without blocking response
+        if (!cachedBriefing) {
+            setImmediate(() => {
+                const briefingData = {
+                    totalEmployees: employees.length || 1,
+                    presentCount: presentTodayCount,
+                    lateCount: lateTodayCount,
+                    onLeaveCount,
+                    absentCount: Math.max(0, (employees.length || 1) - presentTodayCount - onLeaveCount),
+                    attendanceRate: Math.round((presentTodayCount / (employees.length || 1)) * 100),
+                    departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
+                };
+                Brain.Analytics.generateWorkforceBriefing(briefingData, false, todayStr).catch(err => {
+                    console.warn('[DASHBOARD_PREWARM] AI briefing pre-warm skipped:', err.message);
+                });
+            });
+        }
 
         res.json({
             admin: {
@@ -450,18 +468,21 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
 
 /**
  * Dedicated Asynchronous AI Workforce Briefing & Analytics Endpoint
- * Never blocks the main dashboard load; supports instant cache hits and manual fresh refresh.
+ * Enterprise concurrent execution: generates workforce briefing & payroll insight in parallel.
  */
 router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
     try {
         const forceFresh = req.query.fresh === 'true';
         const todayStr = toDateStr(new Date());
 
-        // Return cached briefing immediately unless user explicitly requested fresh AI generation
+        // Instant cache hit (< 2ms) unless client explicitly requested fresh regeneration
         if (!forceFresh) {
-            const cachedBriefing = Brain.Analytics.getCachedBriefing();
+            const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
             if (cachedBriefing) {
-                return res.json({ briefing: cachedBriefing });
+                return res.json({ 
+                    briefing: cachedBriefing,
+                    payrollInsight: null
+                });
             }
         }
 
@@ -529,18 +550,20 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
         };
 
-        const [briefing, payrollForecast] = await Promise.all([
-            Brain.Analytics.generateWorkforceBriefing(briefingData, forceFresh),
-            computePayrollForecast().catch(err => {
-                console.warn('[DASHBOARD_ROUTE] Payroll forecast computation skipped:', err.message);
-                return null;
-            })
+        // Concurrent execution: run workforce briefing and payroll insight in parallel
+        const [briefing, payrollInsight] = await Promise.all([
+            Brain.Analytics.generateWorkforceBriefing(briefingData, forceFresh, todayStr),
+            (async () => {
+                try {
+                    const forecast = await computePayrollForecast();
+                    if (!forecast) return null;
+                    return await Brain.Analytics.generatePayrollInsight(forecast);
+                } catch (err) {
+                    console.warn('[DASHBOARD_ROUTE] Parallel payroll insight skipped:', err.message);
+                    return null;
+                }
+            })()
         ]);
-
-        let payrollInsight = null;
-        if (payrollForecast) {
-            payrollInsight = await Brain.Analytics.generatePayrollInsight(payrollForecast).catch(() => null);
-        }
 
         res.json({ 
             briefing, 

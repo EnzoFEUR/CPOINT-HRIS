@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
@@ -9,10 +9,89 @@ import Badge from '../../../components/ui/Badge';
 
 export default function DisciplinaryIndex() {
     const queryClient = useQueryClient();
-    const [records, setRecords] = useState([]);
-    const [employees, setEmployees] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Query for disciplinary records with 30s staleTime & 5min gcTime
+    const {
+        data: serverRecords,
+        isLoading: isRecordsLoading,
+        isFetching: isRecordsFetching,
+    } = useQuery({
+        queryKey: ['adminDisciplinaryRecords'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/disciplinary');
+            if (!res.ok) throw new Error('Failed to load disciplinary records');
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data?.data || []);
+        },
+        staleTime: 30_000,
+        gcTime: 300_000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Query for employees with 30s staleTime & 5min gcTime
+    const {
+        data: serverEmployees,
+        isLoading: isEmployeesLoading,
+        isFetching: isEmployeesFetching,
+    } = useQuery({
+        queryKey: ['adminEmployees'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/employees');
+            if (!res.ok) throw new Error('Failed to load employees');
+            const data = await res.json();
+            const empList = Array.isArray(data) ? data : (data?.data || []);
+            return empList;
+        },
+        staleTime: 30_000,
+        gcTime: 300_000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Instant perceived latency: initialize from query cache if present
+    const [records, setRecords] = useState(() => {
+        const cached = queryClient.getQueryData(['adminDisciplinaryRecords']);
+        return Array.isArray(cached) ? cached : [];
+    });
+    const [employees, setEmployees] = useState(() => {
+        const cached = queryClient.getQueryData(['adminEmployees']);
+        return Array.isArray(cached) ? cached.filter(e => e.role !== 'admin') : [];
+    });
+
+    // Reconcile server records with local state while protecting optimistic overturns
+    useEffect(() => {
+        if (serverRecords) {
+            setRecords(prev => {
+                if (!prev || prev.length === 0) return serverRecords;
+                const prevMap = new Map(prev.map(r => [r.id, r]));
+                return serverRecords.map(fetched => {
+                    const existing = prevMap.get(fetched.id);
+                    if (existing && (existing.status === 'Overturned' || existing.status === 'Resolved') && fetched.status === 'Active') {
+                        return { ...fetched, status: existing.status, reason: existing.reason, employee_status: 'active', employee_is_active: true };
+                    }
+                    return fetched;
+                });
+            });
+        }
+    }, [serverRecords]);
+
+    // Reconcile server employees
+    useEffect(() => {
+        if (serverEmployees) {
+            setEmployees(serverEmployees.filter(e => e.role !== 'admin'));
+        }
+    }, [serverEmployees]);
+
+    // Keep query cache synchronized with local state
+    useEffect(() => {
+        if (records.length > 0) {
+            queryClient.setQueryData(['adminDisciplinaryRecords'], records);
+        }
+    }, [records, queryClient]);
+
+    // One-time loading screen: only shows on cold start when no cached data exists in memory
+    const hasRecordsInCache = Boolean(queryClient.getQueryData(['adminDisciplinaryRecords']));
+    const isLoading = isRecordsLoading && !hasRecordsInCache;
+    const isRefreshing = isRecordsFetching || isEmployeesFetching;
     
     // Search, Filter & Sort State
     const [searchQuery, setSearchQuery] = useState('');
@@ -48,61 +127,13 @@ export default function DisciplinaryIndex() {
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [selectedEmployeeProfile, setSelectedEmployeeProfile] = useState(null);
 
-    // Fetch disciplinary records & employee directory
-    const fetchData = async (isBackground = false) => {
-        try {
-            if (!isBackground && records.length === 0) {
-                setIsLoading(true);
-            } else {
-                setIsRefreshing(true);
-            }
-
-            const [recRes, empRes] = await Promise.all([
-                fetchWithAuth('/api/disciplinary'),
-                fetchWithAuth('/api/employees')
-            ]);
-            
-            if (recRes.ok) {
-                const data = await recRes.json();
-                const fetchedRecords = Array.isArray(data) ? data : (data?.data || []);
-                setRecords(prev => {
-                    if (!prev || prev.length === 0) return fetchedRecords;
-                    const prevMap = new Map(prev.map(r => [r.id, r]));
-                    return fetchedRecords.map(fetched => {
-                        const existing = prevMap.get(fetched.id);
-                        // Prevent race-condition rollbacks: if local state has already resolved or overturned
-                        // this record, do not allow a stale server read to revert it back to 'Active'!
-                        if (existing && (existing.status === 'Overturned' || existing.status === 'Resolved') && fetched.status === 'Active') {
-                            return { ...fetched, status: existing.status, reason: existing.reason, employee_status: 'active', employee_is_active: true };
-                        }
-                        return fetched;
-                    });
-                });
-            }
-            if (empRes.ok) {
-                const data = await empRes.json();
-                const empList = Array.isArray(data) ? data : (data?.data || []);
-                setEmployees(empList.filter(e => e.role !== 'admin'));
-            }
-        } catch (err) {
-            console.error(err);
-            if (!isBackground) {
-                toast.error('Failed to load disciplinary records');
-            }
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
-    };
-
     useEffect(() => {
-        fetchData();
-
         let debounceTimer = null;
         const debouncedRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                fetchData(true);
+                queryClient.invalidateQueries({ queryKey: ['adminDisciplinaryRecords'] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
             }, 300);
         };
 
@@ -610,7 +641,8 @@ export default function DisciplinaryIndex() {
                 setSeverity('Low');
                 setDurationDays(3);
                 setCustomDays('');
-                fetchData(true);
+                queryClient.invalidateQueries({ queryKey: ['adminDisciplinaryRecords'] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
             } else {
                 toast.error(data.error || 'Failed to log action');
             }

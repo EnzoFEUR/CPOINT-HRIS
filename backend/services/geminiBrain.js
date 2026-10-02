@@ -291,10 +291,11 @@ Respond with strictly valid JSON:
 
   Analytics: {
     /**
-     * Fast retrieval of cached daily executive workforce briefing
+     * Fast retrieval of cached daily executive workforce briefing (aligned to Manila timezone)
      */
-    getCachedBriefing() {
-      const cacheKey = `workforce_briefing_${new Date().toISOString().slice(0, 10)}`;
+    getCachedBriefing(dateStr = null) {
+      const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      const cacheKey = `workforce_briefing_${today}`;
       return aiCache.get(cacheKey) || null;
     },
 
@@ -308,10 +309,11 @@ Respond with strictly valid JSON:
     },
 
     /**
-     * Generate daily executive workforce briefing
+     * Generate daily executive workforce briefing with Manila timezone alignment
      */
-    async generateWorkforceBriefing(data, forceFresh = false) {
-      const cacheKey = `workforce_briefing_${new Date().toISOString().slice(0, 10)}`;
+    async generateWorkforceBriefing(data, forceFresh = false, dateStr = null) {
+      const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      const cacheKey = `workforce_briefing_${today}`;
       if (!forceFresh && aiCache.has(cacheKey)) {
         return aiCache.get(cacheKey);
       }
@@ -345,7 +347,7 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
 }`;
 
       try {
-        const raw = await executeGemini(prompt, systemInstruction, { isJson: true, timeoutMs: 8000 });
+        const raw = await executeGemini(prompt, systemInstruction, { isJson: true, timeoutMs: 6000 });
         const parsed = safeParseJson(raw, {
           executive_summary: `Workforce attendance is operating at ${data.attendanceRate || 95}% with ${data.presentCount || 0} active staff on site today.`,
           punctuality_grade: 'A',
@@ -356,7 +358,7 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
           actionable_recommendations: ['Monitor afternoon departure logs.', 'Review pending leave approvals for upcoming cutoffs.']
         });
 
-        aiCache.set(cacheKey, parsed);
+        aiCache.set(cacheKey, parsed, 3600);
         return parsed;
       } catch (err) {
         console.warn('[BRAIN_ANALYTICS] Briefing fallback active:', err.message);
