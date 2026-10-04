@@ -419,17 +419,10 @@ export default function LeavesIndex() {
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center justify-end gap-2 text-right">
+                                                <div className="flex items-center justify-end text-right">
                                                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
                                                         <i className="ti ti-lock" /> Locked
                                                     </span>
-                                                    <button
-                                                        onClick={() => handleStatusChange(leave.id, 'New')}
-                                                        className="text-[10px] font-bold text-slate-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100 transition-colors duration-100"
-                                                        title="Re-open request"
-                                                    >
-                                                        Edit
-                                                    </button>
                                                 </div>
                                             )}
                                         </td>

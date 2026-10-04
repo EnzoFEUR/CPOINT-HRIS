@@ -4,7 +4,10 @@ import {
     generateTotpSecret,
     verifyTotpCode,
     generateBackupCodes,
-    verifyAndConsumeBackupCode
+    verifyAndConsumeBackupCode,
+    checkTotpRateLimit,
+    recordTotpFailure,
+    clearTotpRateLimit
 } from '../services/totpService.js';
 import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
@@ -133,8 +136,30 @@ router.post('/setup', verifyToken, async (req, res) => {
         }
 
         const user = authData.user;
-        const email = user.email || req.user?.email || 'admin@cpoint.ph';
+        const meta = user.user_metadata || {};
+        const { password } = req.body || {};
 
+        // If reconfiguring an already active 2FA token, enforce account password confirmation
+        if (meta.totp_enabled && meta.totp_secret) {
+            if (!password || !String(password).trim()) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Account password is required to reconfigure authenticator.'
+                });
+            }
+            const { error: pwdErr } = await supabase.auth.signInWithPassword({
+                email: user.email,
+                password: String(password).trim()
+            });
+            if (pwdErr) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Incorrect account password. Reconfiguration rejected.'
+                });
+            }
+        }
+
+        const email = user.email || req.user?.email || 'admin@cpoint.ph';
         const secretObj = generateTotpSecret(email, 'C-Point HRIS');
 
         // Store pending secret in user metadata (not active until confirmed)
@@ -261,12 +286,48 @@ router.post('/verify', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Authenticator 2FA is not enabled for this account.' });
         }
 
+        const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+        const rateLimitKey = `totp_verify:${String(rawTarget).trim().toLowerCase()}:${clientIp}`;
+
+        // 1. Enforce low-latency in-memory rate limiting (<0.005ms)
+        const rateCheck = checkTotpRateLimit(rateLimitKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+        if (!rateCheck.allowed) {
+            return res.status(429).json({
+                success: false,
+                error: `Too many failed 2FA verification attempts. Account protected. Please try again in ${rateCheck.retryAfterSeconds} seconds.`,
+                retryAfterSeconds: rateCheck.retryAfterSeconds
+            });
+        }
+
         // PATH 1: Emergency Backup Code Verification
         if (isBackupCode || String(code).trim().startsWith('CP-') || String(code).trim().length > 6) {
             const backupResult = verifyAndConsumeBackupCode(String(code).trim(), meta.totp_backup_codes || []);
             if (!backupResult.valid) {
-                return res.status(401).json({ success: false, error: 'Invalid or already consumed backup code.' });
+                const failRecord = recordTotpFailure(rateLimitKey, 5, 5 * 60 * 1000);
+                if (failRecord.locked) {
+                    await createAuditLog({
+                        log_name: 'security',
+                        description: `2FA brute-force lockout triggered for ${user.email} from IP ${clientIp}.`,
+                        subject_type: 'Security',
+                        subject_id: user.id,
+                        event: 'TOTP_BRUTE_FORCE_BLOCKED',
+                        causer_id: user.id,
+                        properties: { email: user.email, ip: clientIp }
+                    });
+                    return res.status(429).json({
+                        success: false,
+                        error: 'Too many consecutive failed attempts. 2FA verification locked for 5 minutes.',
+                        retryAfterSeconds: failRecord.retryAfterSeconds
+                    });
+                }
+                return res.status(401).json({
+                    success: false,
+                    error: `Invalid or already consumed backup code. (${failRecord.remainingAttempts} attempts remaining before temporary lockout)`
+                });
             }
+
+            // Successful backup code: clear rate limit counter
+            clearTotpRateLimit(rateLimitKey);
 
             // Persist remaining backup codes
             await supabase.auth.admin.updateUserById(user.id, {
@@ -286,7 +347,7 @@ router.post('/verify', async (req, res) => {
                 properties: {
                     email: user.email,
                     remaining_backup_codes: backupResult.remainingCodes.length,
-                    ip: req.ip || req.headers['x-forwarded-for']
+                    ip: clientIp
                 }
             });
 
@@ -301,8 +362,31 @@ router.post('/verify', async (req, res) => {
         // PATH 2: Live Time-Based Token Verification
         const verifyResult = verifyTotpCode(meta.totp_secret, code);
         if (!verifyResult.valid) {
-            return res.status(401).json({ success: false, error: verifyResult.error || 'Invalid authenticator code.' });
+            const failRecord = recordTotpFailure(rateLimitKey, 5, 5 * 60 * 1000);
+            if (failRecord.locked) {
+                await createAuditLog({
+                    log_name: 'security',
+                    description: `2FA brute-force lockout triggered for ${user.email} from IP ${clientIp}.`,
+                    subject_type: 'Security',
+                    subject_id: user.id,
+                    event: 'TOTP_BRUTE_FORCE_BLOCKED',
+                    causer_id: user.id,
+                    properties: { email: user.email, ip: clientIp }
+                });
+                return res.status(429).json({
+                    success: false,
+                    error: 'Too many consecutive failed attempts. 2FA verification locked for 5 minutes.',
+                    retryAfterSeconds: failRecord.retryAfterSeconds
+                });
+            }
+            return res.status(401).json({
+                success: false,
+                error: `${verifyResult.error || 'Invalid authenticator code.'} (${failRecord.remainingAttempts} attempts remaining before temporary lockout)`
+            });
         }
+
+        // Clear rate limit counter on valid code entry
+        clearTotpRateLimit(rateLimitKey);
 
         res.json({
             success: true,
@@ -323,7 +407,7 @@ router.post('/verify', async (req, res) => {
 router.post('/disable', verifyToken, async (req, res) => {
     try {
         const userId = req.user?.id;
-        const { code } = req.body;
+        const { password, code } = req.body || {};
 
         if (!userId) {
             return res.status(401).json({ success: false, error: 'Unauthorized.' });
@@ -340,20 +424,50 @@ router.post('/disable', verifyToken, async (req, res) => {
             return res.json({ success: true, message: 'Authenticator 2FA is already disabled.' });
         }
 
-        // Optional code verification (supports 6-digit TOTP or emergency backup code)
-        if (code && String(code).trim()) {
+        // Step-Up Verification: Must provide account password OR emergency recovery code / TOTP token
+        let stepUpVerified = false;
+
+        // Verification Path A: Account Password
+        if (password && String(password).trim()) {
+            const { error: pwdErr } = await supabase.auth.signInWithPassword({
+                email: user.email,
+                password: String(password).trim()
+            });
+            if (!pwdErr) {
+                stepUpVerified = true;
+            } else if (!code) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Incorrect account password. Deactivation rejected.'
+                });
+            }
+        }
+
+        // Verification Path B: Emergency Backup Code or Active Authenticator Token
+        if (!stepUpVerified && code && String(code).trim()) {
             const cleanCode = String(code).trim();
             if (cleanCode.startsWith('CP-') || cleanCode.length > 6) {
                 const backupResult = verifyAndConsumeBackupCode(cleanCode, meta.totp_backup_codes || []);
-                if (!backupResult.valid) {
+                if (backupResult.valid) {
+                    stepUpVerified = true;
+                } else {
                     return res.status(400).json({ success: false, error: 'Invalid or already consumed backup recovery code.' });
                 }
             } else {
                 const verifyResult = verifyTotpCode(meta.totp_secret, cleanCode);
-                if (!verifyResult.valid) {
-                    return res.status(400).json({ success: false, error: 'Invalid authenticator code. If you lost your device, confirm deactivation directly.' });
+                if (verifyResult.valid) {
+                    stepUpVerified = true;
+                } else {
+                    return res.status(400).json({ success: false, error: 'Invalid authenticator code.' });
                 }
             }
+        }
+
+        if (!stepUpVerified) {
+            return res.status(400).json({
+                success: false,
+                error: 'Account password or emergency recovery code is required to disable 2FA.'
+            });
         }
 
         // Explicitly set keys to null/false so Supabase jsonb merge removes them

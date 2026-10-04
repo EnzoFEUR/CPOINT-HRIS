@@ -55,7 +55,9 @@ export default function MyProfile() {
     });
     const [showTotpModal, setShowTotpModal] = useState(false);
     const [showReconfigureModal, setShowReconfigureModal] = useState(false);
+    const [reconfigurePassword, setReconfigurePassword] = useState('');
     const [showDisableModal, setShowDisableModal] = useState(false);
+    const [disablePassword, setDisablePassword] = useState('');
     const [disableCode, setDisableCode] = useState('');
     const [totpSetupData, setTotpSetupData] = useState(null);
     const [totpVerifyCode, setTotpVerifyCode] = useState('');
@@ -102,14 +104,21 @@ export default function MyProfile() {
         fetchTotpStatus(storedUser?.id || storedUser?.email);
     }, [storedUser?.id, storedUser?.email]);
 
-    const executeTotpSetup = async () => {
+    const executeTotpSetup = async (pwd = '') => {
         setTotpSubmitting(true);
         try {
-            const res = await fetchWithAuth('/api/auth/totp/setup', { method: 'POST' });
+            const bodyPayload = pwd ? JSON.stringify({ password: pwd }) : undefined;
+            const res = await fetchWithAuth('/api/auth/totp/setup', {
+                method: 'POST',
+                headers: bodyPayload ? { 'Content-Type': 'application/json' } : undefined,
+                body: bodyPayload
+            });
             const data = await res.json();
             if (!res.ok || !data.success) {
                 throw new Error(data.error || 'Failed to start authenticator setup.');
             }
+            setShowReconfigureModal(false);
+            setReconfigurePassword('');
             setTotpSetupData(data);
             setTotpVerifyCode('');
             setTotpStep(1);
@@ -123,6 +132,7 @@ export default function MyProfile() {
 
     const handleStartTotpSetup = () => {
         if (totpStatus.enabled) {
+            setReconfigurePassword('');
             setShowReconfigureModal(true);
         } else {
             executeTotpSetup();
@@ -159,9 +169,16 @@ export default function MyProfile() {
 
     const handleConfirmDisableTotp = async (e) => {
         e?.preventDefault();
+        if (!disablePassword.trim() && !disableCode.trim()) {
+            toast.error('Please enter your account password or emergency code.');
+            return;
+        }
         setTotpSubmitting(true);
         try {
-            const payload = disableCode.trim() ? { code: disableCode.trim() } : {};
+            const payload = {
+                password: disablePassword.trim() || undefined,
+                code: disableCode.trim() || undefined
+            };
             const res = await fetchWithAuth('/api/auth/totp/disable', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -173,8 +190,9 @@ export default function MyProfile() {
             }
             toast.success('Authenticator 2FA has been disabled.');
             setShowDisableModal(false);
+            setDisablePassword('');
             setDisableCode('');
-            fetchTotpStatus(storedUser?.id || storedUser?.email);
+            await fetchTotpStatus(storedUser?.id || storedUser?.email);
         } catch (err) {
             toast.error(err.message || 'Error disabling 2FA.');
         } finally {
@@ -1735,11 +1753,20 @@ export default function MyProfile() {
                         </div>
                         <div className="p-5 space-y-3">
                             <p className="text-xs text-slate-600 leading-relaxed">
-                                Generating a new QR code will replace your existing Google Authenticator key. Once you confirm the new setup, your old 6-digit codes will no longer work.
+                                Generating a new QR code will replace your existing Google Authenticator key. For security, please confirm your account password.
                             </p>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                                Do you want to proceed and generate a new QR code?
-                            </p>
+                            <div className="space-y-1 pt-1">
+                                <label className="block text-[11px] font-semibold text-slate-700">
+                                    Account Password (Required)
+                                </label>
+                                <input
+                                    type="password"
+                                    value={reconfigurePassword}
+                                    onChange={(e) => setReconfigurePassword(e.target.value)}
+                                    placeholder="Enter your current password"
+                                    className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900"
+                                />
+                            </div>
                         </div>
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
                             <button
@@ -1752,13 +1779,26 @@ export default function MyProfile() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setShowReconfigureModal(false);
-                                    executeTotpSetup();
+                                    if (!reconfigurePassword.trim()) {
+                                        toast.error('Please enter your account password.');
+                                        return;
+                                    }
+                                    executeTotpSetup(reconfigurePassword.trim());
                                 }}
-                                className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
+                                disabled={totpSubmitting}
+                                className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
                             >
-                                <span>Proceed to Setup</span>
-                                <i className="ti ti-arrow-right text-xs" />
+                                {totpSubmitting ? (
+                                    <>
+                                        <i className="ti ti-loader-2 animate-spin text-xs" />
+                                        <span>Verifying...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Proceed to Setup</span>
+                                        <i className="ti ti-arrow-right text-xs" />
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -1776,7 +1816,7 @@ export default function MyProfile() {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-slate-900 text-sm">Disable Authenticator 2FA</h3>
-                                    <p className="text-[11px] text-slate-500">Deactivate two-factor protection</p>
+                                    <p className="text-[11px] text-slate-500">Step-up security verification</p>
                                 </div>
                             </div>
                             <button
@@ -1789,21 +1829,34 @@ export default function MyProfile() {
                         </div>
                         <div className="p-5 space-y-3">
                             <p className="text-xs text-slate-600 leading-relaxed">
-                                Are you sure you want to disable Authenticator 2FA? This will remove two-factor security from your account and return you to standard password login.
+                                Enter your account password or emergency backup code to confirm deactivation.
                             </p>
-                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-800 flex items-start gap-2">
-                                <i className="ti ti-info-circle text-amber-600 text-sm shrink-0 mt-0.5" />
-                                <span>If you deleted your Google Authenticator app or switched phones, you can confirm directly below to remove 2FA.</span>
+                            <div className="space-y-1">
+                                <label className="block text-[11px] font-semibold text-slate-700">
+                                    Account Password (Recommended)
+                                </label>
+                                <input
+                                    type="password"
+                                    value={disablePassword}
+                                    onChange={(e) => setDisablePassword(e.target.value)}
+                                    placeholder="Enter your account password"
+                                    className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900"
+                                />
                             </div>
-                            <div className="space-y-1 pt-1">
-                                <label className="block text-[11px] font-semibold text-slate-600">
-                                    Emergency Backup Code or Current Code (Optional)
+                            <div className="relative flex py-0.5 items-center">
+                                <div className="grow border-t border-slate-200"></div>
+                                <span className="shrink mx-2 text-[10px] uppercase font-bold text-slate-400">or</span>
+                                <div className="grow border-t border-slate-200"></div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="block text-[11px] font-semibold text-slate-700">
+                                    Emergency Backup Code or Token
                                 </label>
                                 <input
                                     type="text"
                                     value={disableCode}
                                     onChange={(e) => setDisableCode(e.target.value)}
-                                    placeholder="e.g. CP-XXXX-XXXX or 6-digit code"
+                                    placeholder="e.g. CP-XXXX-XXXX or 6-digit token"
                                     className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-mono"
                                 />
                             </div>

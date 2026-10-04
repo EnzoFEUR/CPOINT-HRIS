@@ -206,3 +206,80 @@ export function verifyAndConsumeBackupCode(inputCode, hashedCodes = []) {
     remainingCodes.splice(index, 1);
     return { valid: true, remainingCodes };
 }
+
+// In-memory rate-limiter: key -> { attempts: number, lockedUntil: number, firstAttemptAt: number }
+const rateLimitCache = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitCache.entries()) {
+        if (entry.lockedUntil && entry.lockedUntil < now) {
+            rateLimitCache.delete(key);
+        } else if (!entry.lockedUntil && (now - entry.firstAttemptAt > 5 * 60 * 1000)) {
+            rateLimitCache.delete(key);
+        }
+    }
+}, 60 * 1000);
+
+/**
+ * Checks if an identifier or IP is rate-limited for TOTP verification
+ * @param {string} key
+ * @param {number} maxAttempts
+ * @param {number} windowMs
+ * @param {number} lockoutMs
+ * @returns {{ allowed: boolean, remainingAttempts: number, retryAfterSeconds?: number }}
+ */
+export function checkTotpRateLimit(key, maxAttempts = 5, windowMs = 5 * 60 * 1000, lockoutMs = 5 * 60 * 1000) {
+    if (!key) return { allowed: true, remainingAttempts: maxAttempts };
+    const now = Date.now();
+    const entry = rateLimitCache.get(key);
+
+    if (entry) {
+        if (entry.lockedUntil && entry.lockedUntil > now) {
+            const retryAfterSeconds = Math.ceil((entry.lockedUntil - now) / 1000);
+            return { allowed: false, remainingAttempts: 0, retryAfterSeconds };
+        }
+        if (now - entry.firstAttemptAt > windowMs) {
+            rateLimitCache.delete(key);
+        }
+    }
+    const currentAttempts = rateLimitCache.get(key)?.attempts || 0;
+    return { allowed: true, remainingAttempts: Math.max(0, maxAttempts - currentAttempts) };
+}
+
+/**
+ * Records a failed TOTP attempt and applies lockout if threshold exceeded
+ * @param {string} key
+ * @param {number} maxAttempts
+ * @param {number} lockoutMs
+ * @returns {{ locked: boolean, retryAfterSeconds?: number, remainingAttempts: number }}
+ */
+export function recordTotpFailure(key, maxAttempts = 5, lockoutMs = 5 * 60 * 1000) {
+    if (!key) return { locked: false, remainingAttempts: maxAttempts };
+    const now = Date.now();
+    let entry = rateLimitCache.get(key);
+
+    if (!entry || (now - entry.firstAttemptAt > 5 * 60 * 1000 && !entry.lockedUntil)) {
+        entry = { attempts: 1, firstAttemptAt: now, lockedUntil: 0 };
+    } else {
+        entry.attempts += 1;
+    }
+
+    if (entry.attempts >= maxAttempts) {
+        entry.lockedUntil = now + lockoutMs;
+        rateLimitCache.set(key, entry);
+        return { locked: true, retryAfterSeconds: Math.ceil(lockoutMs / 1000), remainingAttempts: 0 };
+    }
+
+    rateLimitCache.set(key, entry);
+    return { locked: false, remainingAttempts: maxAttempts - entry.attempts };
+}
+
+/**
+ * Clears failed attempt counters upon successful TOTP verification
+ * @param {string} key
+ */
+export function clearTotpRateLimit(key) {
+    if (key) {
+        rateLimitCache.delete(key);
+    }
+}
