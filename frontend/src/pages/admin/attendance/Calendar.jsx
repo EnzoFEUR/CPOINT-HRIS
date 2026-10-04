@@ -191,7 +191,21 @@ const Calendar = () => {
         });
     }, [daysInMonth, year, month, selectedDate, activeDateSet]);
 
-    const dailyLogs = calendarData?.dailyLogs || [];
+    const isExemptOperator = (emp) => {
+        if (!emp) return false;
+        const r = (emp.role || '').toLowerCase().replace(/_/g, '');
+        const dept = (emp.department || '').toLowerCase();
+        const title = (emp.job_title || emp.position || '').toLowerCase();
+        return (
+            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+            dept === 'security' || dept === 'administration' || dept === 'human resources' ||
+            title.includes('guard') || title.includes('security') || title.includes('administrator')
+        );
+    };
+
+    const dailyLogs = useMemo(() => {
+        return (calendarData?.dailyLogs || []).filter(log => !isExemptOperator(log.employees));
+    }, [calendarData?.dailyLogs]);
 
     // Chronological logs
     const sortedLogs = useMemo(() => {

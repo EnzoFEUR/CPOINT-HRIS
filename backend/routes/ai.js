@@ -135,4 +135,55 @@ router.get('/analytics/anomalies', requireRole(['admin', 'hr', 'manager']), cach
     }
 });
 
+// In-Memory Rate Limiting Guardrail (Protects Free Tier: max 15 requests/minute per user)
+const userAiRateLimits = new Map();
+const checkUserAiRate = (identifier) => {
+    const now = Date.now();
+    const windowStart = now - 60_000;
+    let timestamps = userAiRateLimits.get(identifier) || [];
+    timestamps = timestamps.filter(t => t > windowStart);
+    if (timestamps.length >= 15) {
+        return false;
+    }
+    timestamps.push(now);
+    userAiRateLimits.set(identifier, timestamps);
+    return true;
+};
+
+/**
+ * POST /api/ai/omnibar
+ * Real-time enterprise AI intent resolution and dynamic action routing
+ * Features: Rate limiting, 250-char sanitization, and session guardrails
+ */
+router.post('/omnibar', async (req, res) => {
+    try {
+        const { query } = req.body;
+        if (!query || typeof query !== 'string' || !query.trim()) {
+            return res.status(400).json({ success: false, error: 'Query string is required.' });
+        }
+
+        const userId = String(req.user?.id || req.ip || 'session_user');
+        if (!checkUserAiRate(userId)) {
+            return res.status(429).json({
+                success: false,
+                error: 'AI query rate limit reached (15 queries/min). Please wait a moment.'
+            });
+        }
+
+        const sanitizedQuery = query.trim().slice(0, 250);
+        const userContext = {
+            role: req.user?.role || 'employee',
+            name: `${req.user?.first_name || ''} ${req.user?.last_name || ''}`.trim()
+        };
+        const result = await Brain.Copilot.resolveQuery(sanitizedQuery, userContext);
+        return res.json({
+            success: true,
+            data: result
+        });
+    } catch (err) {
+        console.error('[AI_OMNIBAR_ROUTE] Error:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 export default router;

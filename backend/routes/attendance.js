@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
 import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
+import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
 
 const router = express.Router();
 
@@ -380,9 +381,11 @@ router.get(
       ip_address: req.ip,
     }).catch(err => logger.error(reqId, 'Background audit log failed', { error: err.message }));
 
+    const filteredData = (data || []).filter(log => !log.employees || isWorkforceEmployee(log.employees));
+
     res.json({
       status: 'success',
-      data,
+      data: filteredData,
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -419,7 +422,7 @@ router.get(
     
     let query = supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, medical_record_url');
+      .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, role, medical_record_url');
 
     if (isUUID) {
       query = query.eq('id', target);
@@ -433,7 +436,7 @@ router.get(
     if (!employee) {
       const { data: fallbackEmp } = await supabase
         .from('employees')
-        .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, medical_record_url')
+        .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, role, medical_record_url')
         .or(`company_id.ilike.${target},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${target}`)
         .maybeSingle();
 
@@ -443,6 +446,19 @@ router.get(
     if (!employee) {
       logger.warn(reqId, 'Employee not found for QR scan', { query: target });
       throw new NotFoundError(`Employee not found for QR value: ${target}`);
+    }
+
+    // System operators (Admins, HR, Security Guards) do not log attendance
+    if (isAttendanceExempt(employee)) {
+      logger.info(reqId, 'QR scan flagged exempt: Personnel is an attendance-exempt operator', { employee_id: employee.id, role: employee.role });
+      return res.json({
+        status: 'success',
+        data: {
+          ...employee,
+          is_attendance_exempt: true,
+          name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Staff'
+        }
+      });
     }
 
     let isMedicalGrace = false;
@@ -508,13 +524,18 @@ router.post(
     // Fetch Employee (with row-level locking intent via single())
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, first_name, last_name, company_id, status, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change, medical_record_url')
+      .select('id, first_name, last_name, company_id, status, has_registered_biometrics, biometric_baseline_path, is_active, requires_password_change, medical_record_url, role, department, job_title')
       .eq('id', employee_id)
       .single();
 
     if (empErr || !employee) {
       logger.security(reqId, 'Scan attempt with invalid employee_id', { employee_id, ip: req.ip });
       throw new NotFoundError('Invalid credentials. Employee not found.');
+    }
+
+    if (isAttendanceExempt(employee)) {
+      logger.info(reqId, 'Scan blocked: Personnel is an attendance-exempt operator', { employee_id, role: employee.role });
+      throw new ValidationError('Exempt personnel (Admin / Security Guard). Attendance clock-in is not required.');
     }
 
     const isSuspended = employee.status === 'Suspended' || employee.status === 'suspended';
@@ -782,11 +803,15 @@ router.get(
 
     logger.info(reqId, 'Calendar data fetched', { date, dailyCount: dailyLogsResult.data?.length, activeDatesCount: activeDates.length });
 
+    const dailyLogs = (dailyLogsResult.data || []).filter(log => {
+      return log.employees && isWorkforceEmployee(log.employees);
+    });
+
     res.json({
       status: 'success',
       data: {
         selectedDate: date,
-        dailyLogs: dailyLogsResult.data,
+        dailyLogs,
         activeDates,
       },
     });

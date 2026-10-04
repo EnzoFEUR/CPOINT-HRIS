@@ -31,6 +31,7 @@ import { compressImage } from '../utils/imageCompress';
 import { supabase } from '../supabaseClient';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { playScannerSound as playSound } from '../utils/audio';
+import { performLogout } from '../utils/authSession';
 
 // Scanner configuration
 const ENV = {
@@ -915,6 +916,10 @@ const Scanner = () => {
       
       const emp = data.data;
 
+      if (emp.is_attendance_exempt) {
+        throw new Error('ATTENDANCE_EXEMPT');
+      }
+
       const empStatus = String(emp.status || '').toLowerCase();
       if (!emp.is_active || empStatus === 'suspended' || empStatus === 'inactive' || empStatus === 'terminated') {
         if (empStatus === 'suspended') throw new Error('EMPLOYEE_SUSPENDED');
@@ -1003,6 +1008,7 @@ const Scanner = () => {
       dispatch({ type: 'SET_LOADING', payload: '' });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
       const errFriendly =
+        err.message === 'ATTENDANCE_EXEMPT' ? 'Personnel is an attendance-exempt operator (Admin / Guard). Attendance clock-in is not required.' :
         err.message === 'EMPLOYEE_NOT_FOUND' ? 'ID card not recognized. Please scan again.' :
         err.message === 'EMPLOYEE_SUSPENDED' ? 'Account suspended. Please speak with HR.' :
         err.message === 'EMPLOYEE_TERMINATED' ? 'Account inactive. Please contact HR.' :
@@ -1739,7 +1745,7 @@ const Scanner = () => {
             </button>
           )}
           <button
-            onClick={async () => { await supabase.auth.signOut(); localStorage.removeItem('user'); window.location.href = '/login'; }}
+            onClick={() => performLogout('/login')}
             className="h-9 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-md border border-slate-700 transition-colors duration-100 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>

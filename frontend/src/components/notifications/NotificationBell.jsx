@@ -8,13 +8,35 @@ import { getNotificationVisuals, getNotificationAvatar } from '../../utils/notif
 import NotificationAvatar from './NotificationAvatar';
 import { getNotificationPermission, subscribeUserToPush, sendTestPush } from '../../utils/pushNotifications';
 
+// High-precision reactive mobile device detection
+const checkIsMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  const isMobileUa = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
+  const isCoarseTouch = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1024;
+  return Boolean(isMobileUa || isCoarseTouch);
+};
+
 export const NotificationBell = ({ user }) => {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [employeeMap, setEmployeeMap] = useState(new Map());
   const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
+  const [isMobile, setIsMobile] = useState(checkIsMobileDevice);
   const containerRef = useRef(null);
   const navigate = useNavigate();
+
+  // Real-time mobile viewport and orientation synchronizer
+  useEffect(() => {
+    const handleViewportSync = () => {
+      setIsMobile(checkIsMobileDevice());
+    };
+    window.addEventListener('resize', handleViewportSync);
+    window.addEventListener('orientationchange', handleViewportSync);
+    return () => {
+      window.removeEventListener('resize', handleViewportSync);
+      window.removeEventListener('orientationchange', handleViewportSync);
+    };
+  }, []);
 
   // Load employee directory for avatar lookup on-demand
   useEffect(() => {
@@ -85,12 +107,12 @@ export const NotificationBell = ({ user }) => {
     };
   }, [user?.id, user?.role]);
 
-  // Push subscription sync
+  // Push subscription sync - strictly scoped to mobile devices
   useEffect(() => {
-    if (user?.id && getNotificationPermission() === 'granted') {
+    if (isMobile && user?.id && getNotificationPermission() === 'granted') {
       subscribeUserToPush(user.id, true).catch(() => {});
     }
-  }, [user?.id]);
+  }, [user?.id, isMobile]);
 
   const handleNotificationClick = useCallback(async (notif) => {
     setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
@@ -305,42 +327,44 @@ export const NotificationBell = ({ user }) => {
             )}
           </div>
 
-          {/* Native Phone Lock-Screen Push Notifications Banner */}
-          <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="h-7 w-7 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                <i className="ti ti-device-mobile-message text-sm"></i>
+          {/* Native Phone Lock-Screen Push Notifications Banner (Strictly Mobile / Phone Only) */}
+          {isMobile && (
+            <div className="lg:hidden p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-7 w-7 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <i className="ti ti-device-mobile-message text-sm"></i>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
+                  <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold text-slate-800 leading-none">Phone Push Alerts</p>
-                <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">Lock-screen notifications</p>
-              </div>
-            </div>
 
-            {pushStatus === 'granted' ? (
-              <button
-                onClick={async () => {
-                  await sendTestPush(user?.id);
-                }}
-                className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Send a test notification to your phone"
-              >
-                <i className="ti ti-bell-ringing text-blue-600"></i>
-                Test Buzz
-              </button>
-            ) : (
-              <button
-                onClick={async () => {
-                  const res = await subscribeUserToPush(user?.id);
-                  if (res.success) setPushStatus('granted');
-                }}
-                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
-              >
-                <i className="ti ti-bell-plus"></i>
-                Enable
-              </button>
-            )}
-          </div>
+              {pushStatus === 'granted' ? (
+                <button
+                  onClick={async () => {
+                    await sendTestPush(user?.id);
+                  }}
+                  className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
+                  title="Send a test notification to your phone"
+                >
+                  <i className="ti ti-bell-ringing text-blue-600"></i>
+                  Test Buzz
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    const res = await subscribeUserToPush(user?.id);
+                    if (res.success) setPushStatus('granted');
+                  }}
+                  className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <i className="ti ti-bell-plus"></i>
+                  Enable
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

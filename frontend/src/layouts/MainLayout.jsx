@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import MobileNav from './MobileNav';
 import PwaInstallModal from '../components/pwa/PwaInstallModal';
-import { getUser } from '../routes/guards';
+import { getUser, isAdmin, isSecurity } from '../routes/guards';
+import { subscribeToAuthSync, performLogout } from '../utils/authSession';
 
 export const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Current user from storage
-  const [user] = useState(() => getUser() || { name: 'Admin User', role: 'admin' });
+  // Reactive current user from storage and auth events
+  const [user, setUser] = useState(() => getUser() || { name: 'Admin User', role: 'admin' });
 
   // PWA Install State & Platform Detection
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -99,9 +101,58 @@ export const MainLayout = ({ children }) => {
   }, [deferredPrompt]);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('user');
-    window.location.href = '/login';
+    performLogout('/login');
   }, []);
+
+  // Real-time multi-tab authentication & role synchronization
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthSync({
+      onUserChange: (freshUser) => {
+        if (!freshUser) {
+          handleLogout();
+          return;
+        }
+
+        setUser((prev) => {
+          if (!prev || prev.id !== freshUser.id || prev.role !== freshUser.role) {
+            const currentPath = location.pathname;
+            const wasAdmin = isAdmin(prev);
+            const isNowAdmin = isAdmin(freshUser);
+            const isNowSecurity = isSecurity(freshUser);
+
+            if (wasAdmin && !isNowAdmin) {
+              if (currentPath.startsWith('/admin') || currentPath === '/') {
+                if (isNowSecurity) {
+                  navigate('/scanner', { replace: true });
+                } else {
+                  navigate('/employee/dashboard', { replace: true });
+                }
+                toast('Active session switched to ' + (freshUser.name || 'Employee account'), {
+                  id: 'auth-session-switch'
+                });
+              }
+            } else if (!wasAdmin && isNowAdmin) {
+              if (currentPath.startsWith('/employee')) {
+                navigate('/', { replace: true });
+                toast('Active session switched to ' + (freshUser.name || 'Administrator'), {
+                  id: 'auth-session-switch'
+                });
+              }
+            }
+            return freshUser;
+          }
+          return prev;
+        });
+      },
+      onLogout: () => {
+        handleLogout();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [location.pathname, navigate, handleLogout]);
 
   return (
     <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
@@ -112,7 +163,7 @@ export const MainLayout = ({ children }) => {
       <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px]">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
           {/* Header */}
-          <Header user={user} setSidebarOpen={setSidebarOpen} />
+          <Header user={user} />
 
           {/* Page Content */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">

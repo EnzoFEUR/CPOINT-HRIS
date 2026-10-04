@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { performLogout } from '../utils/authSession';
 
 export default function ForcePasswordChange() {
     const [password, setPassword] = useState('');
@@ -80,9 +81,7 @@ export default function ForcePasswordChange() {
     };
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem('user');
-        navigate('/login');
+        await performLogout('/login');
     };
 
     if (!user) return null;

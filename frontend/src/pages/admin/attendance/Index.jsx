@@ -25,8 +25,23 @@ const Index = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
+    const isExemptOperator = (emp) => {
+        if (!emp) return false;
+        const r = (emp.role || '').toLowerCase().replace(/_/g, '');
+        const dept = (emp.department || '').toLowerCase();
+        const title = (emp.job_title || emp.position || '').toLowerCase();
+        return (
+            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+            dept === 'security' || dept === 'administration' || dept === 'human resources' ||
+            title.includes('guard') || title.includes('security') || title.includes('administrator')
+        );
+    };
+
+    // Strictly filter out Admins, HR, and Security Guards from attendance tracking
+    const workforceLogs = logs.filter(log => !isExemptOperator(log.employees));
+
     const todayStr = new Date().toISOString().split('T')[0];
-    const todaysCount = logs.filter(log => log.date === todayStr).length;
+    const todaysCount = workforceLogs.filter(log => log.date === todayStr).length;
 
     const openImageModal = (imageUrl, type) => {
         if (!imageUrl) return;
@@ -50,9 +65,9 @@ const Index = () => {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isModalOpen]);
 
-    const filteredLogs = logs.filter(log => {
-        const name = `${log.employees?.first_name} ${log.employees?.last_name}`.toLowerCase();
-        return name.includes(searchQuery.toLowerCase()) || log.date.includes(searchQuery);
+    const filteredLogs = workforceLogs.filter(log => {
+        const name = `${log.employees?.first_name || ''} ${log.employees?.last_name || ''}`.toLowerCase();
+        return name.includes(searchQuery.toLowerCase()) || (log.date || '').includes(searchQuery);
     });
 
     const totalItems = filteredLogs.length;

@@ -6,6 +6,7 @@ import { fetchWithAuth } from '../utils/api';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { broadcastAuthChange } from '../utils/authSession';
 import {
   Mail,
   Lock,
@@ -458,11 +459,20 @@ export default function Login() {
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
 
-            // Clear 2FA temporary session and cooldown upon successful authentication
+            // Clear 2FA temporary session, cooldown, and purge stale profile caches
             try {
                 sessionStorage.removeItem('cpoint_login_2fa_session');
+                Object.keys(sessionStorage).forEach((key) => {
+                    if (key.startsWith('cpoint_my_profile_cache')) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+                sessionStorage.removeItem('cpoint_my_profile_cache');
                 clearCooldown();
             } catch {}
+
+            // Broadcast real-time authentication update to all open tabs
+            broadcastAuthChange(userData);
 
             // Prime disciplinary cache synchronously for instant zero-flash screen loading
             if (userData.status === 'inactive' || userData.is_active === false) {

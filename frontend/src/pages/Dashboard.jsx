@@ -63,6 +63,18 @@ export default function Dashboard() {
             const todayStr = toManilaDate(new Date());
             const thirtyFiveDaysAgo = toManilaDate(new Date(Date.now() - 35 * DAY_MS));
 
+            const isExemptOperator = (emp) => {
+                if (!emp) return true;
+                const r = (emp.role || '').toLowerCase().replace(/_/g, '');
+                const dept = (emp.department || '').toLowerCase();
+                const title = (emp.job_title || emp.position || '').toLowerCase();
+                return (
+                    ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+                    dept === 'security' || dept === 'administration' || dept === 'human resources' ||
+                    title.includes('guard') || title.includes('security') || title.includes('administrator')
+                );
+            };
+
             const [
                 { data: rawEmployees },
                 { data: rawAttendances },
@@ -70,10 +82,9 @@ export default function Dashboard() {
             ] = await Promise.all([
                 supabase
                     .from('employees')
-                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status')
+                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status, job_title')
                     .not('company_id', 'is', null)
-                    .neq('role', 'admin')
-                    .neq('role', 'security'),
+                    .not('role', 'in', '("admin","superadmin","super_admin","security","guard","security_guard","hr","hr_manager")'),
                 supabase
                     .from('attendances')
                     .select('id, employee_id, date, status, created_at, time_in, time_out')
@@ -84,14 +95,16 @@ export default function Dashboard() {
                     .select('status, start_date, end_date')
             ]);
 
-            const employees = rawEmployees || [];
-            const attendances = rawAttendances || [];
-            const leaves = rawLeaves || [];
-
-            const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
+            const employees = (rawEmployees || []).filter(e => !isExemptOperator(e));
             const empMap = new Map();
             employees.forEach(emp => {
                 empMap.set(emp.id, emp);
+            });
+            const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));
+            const leaves = rawLeaves || [];
+
+            const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
+            employees.forEach(emp => {
                 const dept = emp.department || 'Other';
                 if (dept === 'Factory') deptBreakdown.Factory++;
                 else if (dept === 'Retail') deptBreakdown.Retail++;
@@ -166,11 +179,11 @@ export default function Dashboard() {
                 anomalyData: null
             };
         },
-        staleTime: 30000,
-        refetchInterval: 60000,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
-    // 2. Decoupled Asynchronous AI Briefing Query (Non-blocking background)
+    // 2. Decoupled Asynchronous AI Briefing Query (Non-blocking background with enterprise lifecycle)
     const { 
         data: aiQueryData, 
         isLoading: isAIQueryLoading, 
@@ -186,8 +199,11 @@ export default function Dashboard() {
             }
             return { briefing: null, payrollInsight: null };
         },
-        staleTime: 5 * 60 * 1000,
-        refetchOnWindowFocus: false,
+        staleTime: 24 * 60 * 60 * 1000, // 24 hours: Daily briefing is persistent for current shift/day
+        gcTime: 24 * 60 * 60 * 1000,    // Retain in memory across page/tab navigation
+        refetchOnMount: false,          // Never auto-refetch when switching back to Dashboard module
+        refetchOnWindowFocus: false,    // Never auto-refetch when switching browser tabs
+        refetchOnReconnect: false,      // Never auto-refetch on network reconnections
     });
 
     const dashboardData = overviewData?.admin || null;
@@ -196,21 +212,27 @@ export default function Dashboard() {
     const anomalyData = overviewData?.anomalyData || null;
     const isAnomalyLoading = isLoading && !anomalyData;
 
-    // Persisted SWR Cache for Instant 0ms perceived load of AI Briefing
+    const getTodayManilaKey = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    // Persisted Storage for Instant 0ms perceived load of AI Briefing
     const [localAIBriefing, setLocalAIBriefing] = useState(() => {
         try {
-            const stored = sessionStorage.getItem('cpoint_ai_briefing_cache');
-            return stored ? JSON.parse(stored) : null;
+            const today = getTodayManilaKey();
+            const stored = localStorage.getItem(`cpoint_ai_briefing_${today}`);
+            if (stored) return JSON.parse(stored);
+            const sessionStored = sessionStorage.getItem('cpoint_ai_briefing_cache');
+            return sessionStored ? JSON.parse(sessionStored) : null;
         } catch {
             return null;
         }
     });
 
-    // Save fresh AI data to sessionStorage whenever updated
+    // Save fresh AI data to localStorage whenever updated
     useEffect(() => {
         if (aiQueryData?.briefing) {
             try {
-                sessionStorage.setItem('cpoint_ai_briefing_cache', JSON.stringify(aiQueryData.briefing));
+                const today = getTodayManilaKey();
+                localStorage.setItem(`cpoint_ai_briefing_${today}`, JSON.stringify(aiQueryData.briefing));
                 setLocalAIBriefing(aiQueryData.briefing);
             } catch {
                 // Ignore storage quota limits
@@ -260,7 +282,7 @@ export default function Dashboard() {
         || liveSynthesizedBriefing;
 
     const payrollInsight = aiQueryData?.payrollInsight || payrollData?.insight || null;
-    const isAILoading = isManualRefreshingAI || isAIFetching;
+    const isAILoading = isManualRefreshingAI || (!briefing && isAIFetching);
 
     // Manual Refresh of AI Briefing only (zero overhead on telemetry)
     const handleRefreshAI = async () => {
@@ -272,7 +294,8 @@ export default function Dashboard() {
                 const fresh = await res.json();
                 queryClient.setQueryData(['adminDashboardAI'], fresh);
                 if (fresh?.briefing) {
-                    sessionStorage.setItem('cpoint_ai_briefing_cache', JSON.stringify(fresh.briefing));
+                    const today = getTodayManilaKey();
+                    localStorage.setItem(`cpoint_ai_briefing_${today}`, JSON.stringify(fresh.briefing));
                     setLocalAIBriefing(fresh.briefing);
                 }
             }
@@ -304,30 +327,19 @@ export default function Dashboard() {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [activeModal]);
 
-    // Real-time synchronization - invalidates fast overview telemetry and debounces AI re-briefing
+    // Real-time synchronization - invalidates fast overview telemetry on actual database changes
     useEffect(() => {
-        let aiDebounceTimer = null;
-        const debouncedInvalidateAI = () => {
-            if (aiDebounceTimer) clearTimeout(aiDebounceTimer);
-            aiDebounceTimer = setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['adminDashboardAI'] });
-            }, 15000);
-        };
-
         const liveChannel = supabase
             .channel('dashboard_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
                 queryClient.invalidateQueries({ queryKey: ['attendanceToday'] });
-                debouncedInvalidateAI();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
-                debouncedInvalidateAI();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
-                debouncedInvalidateAI();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'], refetchType: 'active' });
@@ -338,7 +350,6 @@ export default function Dashboard() {
             .subscribe();
 
         return () => {
-            if (aiDebounceTimer) clearTimeout(aiDebounceTimer);
             supabase.removeChannel(liveChannel);
         };
     }, [queryClient]);
@@ -408,7 +419,7 @@ export default function Dashboard() {
                             <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Google Gemini Brief
                             </span>
-                            {(isManualRefreshingAI || (isAIFetching && !aiQueryData?.briefing)) && (
+                            {(isManualRefreshingAI || (!briefing && isAIFetching)) && (
                                 <span className="text-[11px] text-emerald-400/80 font-semibold flex items-center gap-1.5">
                                     <Loader2 className="w-3 h-3 animate-spin" /> Analyzing live signals...
                                 </span>
@@ -419,8 +430,8 @@ export default function Dashboard() {
                             disabled={isAILoading}
                             className="self-start sm:self-center h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isAILoading ? 'animate-spin' : ''}`} />
-                            <span>{isAILoading ? 'Updating...' : 'Refresh summary'}</span>
+                            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
+                            <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>
                         </button>
                     </div>
 

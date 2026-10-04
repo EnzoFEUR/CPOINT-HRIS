@@ -13,47 +13,75 @@ const EXPIRY_WARNING_DAYS = 30;
 
 export default function MyProfile() {
     const queryClient = useQueryClient();
-    const initialUser = (() => {
+
+    // Reactive current user from storage to instantly sync if session changes
+    const [storedUser, setStoredUser] = useState(() => {
         try {
             const raw = localStorage.getItem('user');
-            if (raw && raw !== 'undefined') {
-                const u = JSON.parse(raw);
-                return {
-                    id: u.id || u.user_id,
-                    company_id: u.company_id || u.employee_id || u.emp_id || 'CP-MAIN',
-                    first_name: u.first_name || (u.name ? u.name.split(' ')[0] : ''),
-                    last_name: u.last_name || (u.name ? u.name.split(' ').slice(1).join(' ') : ''),
-                    email: u.email || 'N/A',
-                    phone: u.phone || u.contact_no || '',
-                    gender: u.gender || 'N/A',
-                    birth_date: u.birth_date || null,
-                    address: u.address || '',
-                    department: u.department || 'Operations',
-                    job_title: u.job_title || u.position || 'Staff Member',
-                    status: u.status || 'active',
-                    is_active: u.is_active ?? true,
-                    created_at: u.created_at || null,
-                    avatar_url: u.avatar_url || u.photo_url || null,
-                    photo_url: u.photo_url || u.avatar_url || null,
-                    has_registered_biometrics: u.has_registered_biometrics ?? true,
-                    medical_record_url: u.medical_record_url || null,
-                };
-            }
+            if (raw && raw !== 'undefined') return JSON.parse(raw);
         } catch { }
         return null;
-    })();
+    });
 
-    // Query profile and documents with 0ms SWR session cache
+    useEffect(() => {
+        const handleSync = () => {
+            try {
+                const raw = localStorage.getItem('user');
+                if (raw && raw !== 'undefined') {
+                    const parsed = JSON.parse(raw);
+                    setStoredUser((prev) => (prev?.id !== parsed?.id ? parsed : prev));
+                }
+            } catch {}
+        };
+        window.addEventListener('storage', handleSync);
+        return () => window.removeEventListener('storage', handleSync);
+    }, []);
+
+    const initialUser = useMemo(() => {
+        if (!storedUser) return null;
+        return {
+            id: storedUser.id || storedUser.user_id,
+            company_id: storedUser.company_id || storedUser.employee_id || storedUser.emp_id || 'CP-MAIN',
+            first_name: storedUser.first_name || (storedUser.name ? storedUser.name.split(' ')[0] : ''),
+            last_name: storedUser.last_name || (storedUser.name ? storedUser.name.split(' ').slice(1).join(' ') : ''),
+            email: storedUser.email || 'N/A',
+            phone: storedUser.phone || storedUser.contact_no || '',
+            gender: storedUser.gender || 'N/A',
+            birth_date: storedUser.birth_date || null,
+            address: storedUser.address || '',
+            department: storedUser.department || 'Operations',
+            job_title: storedUser.job_title || storedUser.position || 'Staff Member',
+            status: storedUser.status || 'active',
+            is_active: storedUser.is_active ?? true,
+            created_at: storedUser.created_at || null,
+            avatar_url: storedUser.avatar_url || storedUser.photo_url || null,
+            photo_url: storedUser.photo_url || storedUser.avatar_url || null,
+            has_registered_biometrics: storedUser.has_registered_biometrics ?? true,
+            medical_record_url: storedUser.medical_record_url || null,
+        };
+    }, [storedUser]);
+
+    const currentUserId = initialUser?.id;
+    const cacheStorageKey = currentUserId ? `cpoint_my_profile_cache_${currentUserId}` : 'cpoint_my_profile_cache';
+
+    // Query profile and documents with 0ms SWR session cache scoped strictly to the authenticated user ID
     const initialProfileData = (() => {
         try {
-            const cached = sessionStorage.getItem('cpoint_my_profile_cache');
-            if (cached) return JSON.parse(cached);
+            const cachedRaw = sessionStorage.getItem(cacheStorageKey);
+            if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw);
+                const cachedId = cached?.user?.id || cached?.employee?.id || cached?.data?.id || cached?.id;
+                // Strict validation: Only accept cache if it precisely matches the current user
+                if (!currentUserId || !cachedId || cachedId === currentUserId) {
+                    return cached;
+                }
+            }
         } catch (_) {}
         return initialUser ? { success: true, user: initialUser, documents: [] } : undefined;
     })();
 
     const { data: profileResponse, isLoading: isQueryLoading } = useQuery({
-        queryKey: ['myProfile'],
+        queryKey: ['myProfile', currentUserId || 'session'],
         queryFn: async () => {
             const res = await fetchWithAuth('/api/profile');
             const data = await res.json();
@@ -66,10 +94,13 @@ export default function MyProfile() {
     useEffect(() => {
         if (profileResponse && (profileResponse.user || profileResponse.employee || profileResponse.data)) {
             try {
-                sessionStorage.setItem('cpoint_my_profile_cache', JSON.stringify(profileResponse));
+                const fetchedId = profileResponse?.user?.id || profileResponse?.employee?.id || profileResponse?.data?.id;
+                if (!currentUserId || !fetchedId || fetchedId === currentUserId) {
+                    sessionStorage.setItem(cacheStorageKey, JSON.stringify(profileResponse));
+                }
             } catch (_) {}
         }
-    }, [profileResponse]);
+    }, [profileResponse, cacheStorageKey, currentUserId]);
 
     const raw = profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {};
     

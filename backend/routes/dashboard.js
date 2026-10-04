@@ -4,6 +4,7 @@ import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.j
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
+import { isWorkforceEmployee, applyWorkforceFilter } from '../utils/workforce.js';
 
 const router = express.Router();
 
@@ -326,12 +327,11 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             { data: rawAttendances, error: attErr },
             { data: rawLeaves, error: leaveErr }
         ] = await Promise.all([
-            supabase
-                .from('employees')
-                .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status')
-                .not('company_id', 'is', null)
-                .neq('role', 'admin')
-                .neq('role', 'security'),
+            applyWorkforceFilter(
+                supabase
+                    .from('employees')
+                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status, job_title')
+            ),
             supabase
                 .from('attendances')
                 .select('id, employee_id, date, status, created_at, time_in, time_out')
@@ -346,16 +346,18 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         if (attErr) throw attErr;
         if (leaveErr) throw leaveErr;
 
-        const employees = rawEmployees || [];
-        const attendances = rawAttendances || [];
+        // Strictly workforce employees: excludes Admins, HR, and Security Guards
+        const employees = (rawEmployees || []).filter(isWorkforceEmployee);
+        const empMap = new Map(employees.map(e => [e.id, e]));
+
+        // Filter attendances strictly to active workforce personnel
+        const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));
         const leaves = rawLeaves || [];
 
         // 2. In-Memory Calculations & Map Lookups (< 1ms)
         const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
-        const empMap = new Map();
 
         employees.forEach(emp => {
-            empMap.set(emp.id, emp);
             const dept = emp.department || 'Other';
             if (dept === 'Factory') deptBreakdown.Factory++;
             else if (dept === 'Retail') deptBreakdown.Retail++;
@@ -479,9 +481,18 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
         if (!forceFresh) {
             const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
             if (cachedBriefing) {
+                let cachedPayrollInsight = null;
+                try {
+                    const forecast = await computePayrollForecast();
+                    if (forecast) {
+                        cachedPayrollInsight = Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal);
+                    }
+                } catch {
+                    // Non-blocking fallback
+                }
                 return res.json({ 
                     briefing: cachedBriefing,
-                    payrollInsight: null
+                    payrollInsight: cachedPayrollInsight?.insight || null
                 });
             }
         }
@@ -492,12 +503,11 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             { data: rawAttendances },
             { data: rawLeaves }
         ] = await Promise.all([
-            supabase
-                .from('employees')
-                .select('id, department, role, status')
-                .not('company_id', 'is', null)
-                .neq('role', 'admin')
-                .neq('role', 'security'),
+            applyWorkforceFilter(
+                supabase
+                    .from('employees')
+                    .select('id, department, role, status, job_title')
+            ),
             supabase
                 .from('attendances')
                 .select('id, employee_id, date, status')
@@ -507,8 +517,9 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
                 .select('status, start_date, end_date')
         ]);
 
-        const employees = rawEmployees || [];
-        const attendances = rawAttendances || [];
+        const employees = (rawEmployees || []).filter(isWorkforceEmployee);
+        const empMap = new Map(employees.map(e => [e.id, e]));
+        const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));
         const leaves = rawLeaves || [];
 
         const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
@@ -704,28 +715,32 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
                 .from('attendances')
                 .select('id, employee_id, date, status, time_in, time_out')
                 .eq('date', todayStr),
-            supabase
-                .from('employees')
-                .select('id, first_name, last_name, department, shift')
-                .not('company_id', 'is', null)
+            applyWorkforceFilter(
+                supabase
+                    .from('employees')
+                    .select('id, first_name, last_name, department, shift, role, job_title')
+            )
         ]);
 
         if (attErr) throw attErr;
         if (empErr) throw empErr;
 
-        const empMap = new Map((rawEmployees || []).map(e => [e.id, e]));
+        const employees = (rawEmployees || []).filter(isWorkforceEmployee);
+        const empMap = new Map(employees.map(e => [e.id, e]));
 
         const present = [];
         const late = [];
 
         (rawAttendances || []).forEach(att => {
             const emp = empMap.get(att.employee_id);
+            if (!emp) return; // Strictly ignore non-workforce system operators
+
             const lateMinutes = computeLateMinutes(att.time_in);
             const entry = {
                 id: att.id,
                 employee_id: att.employee_id,
-                name: emp ? `${emp.first_name} ${emp.last_name}` : 'Staff Member',
-                department: emp?.department || 'Unassigned',
+                name: `${emp.first_name} ${emp.last_name}`,
+                department: emp.department || 'Unassigned',
                 time_in: att.time_in,
                 time_out: att.time_out,
                 status: att.status,
@@ -774,12 +789,11 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
             { data: rawAttendances, error: attErr },
             { data: rawLeaves, error: leaveErr }
         ] = await Promise.all([
-            supabase
-                .from('employees')
-                .select('id, department, role, shift, company_id, first_name, last_name')
-                .not('company_id', 'is', null)
-                .neq('role', 'admin')
-                .neq('role', 'security'),
+            applyWorkforceFilter(
+                supabase
+                    .from('employees')
+                    .select('id, department, role, shift, company_id, first_name, last_name, job_title')
+            ),
             supabase
                 .from('attendances')
                 .select('id, employee_id, date, status, created_at, time_in, time_out')
@@ -794,16 +808,18 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         if (attErr) throw attErr;
         if (leaveErr) throw leaveErr;
 
-        const employees = rawEmployees || [];
-        const attendances = rawAttendances || [];
+        // Strictly workforce employees: excludes Admins, HR, and Security Guards
+        const employees = (rawEmployees || []).filter(isWorkforceEmployee);
+        const empMap = new Map(employees.map(e => [e.id, e]));
+
+        // Filter attendances strictly to workforce personnel
+        const attendances = (rawAttendances || []).filter(att => empMap.has(att.employee_id));
         const leaves = rawLeaves || [];
 
         // 1. Employee Department Breakdown
         const deptBreakdown = { Factory: 0, Retail: 0, IT: 0, HR: 0 };
-        const empMap = new Map();
 
         employees.forEach(emp => {
-            empMap.set(emp.id, emp);
             const dept = emp.department || 'Other';
             if (dept === 'Factory') deptBreakdown.Factory++;
             else if (dept === 'Retail') deptBreakdown.Retail++;

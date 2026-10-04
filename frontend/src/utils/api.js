@@ -36,8 +36,15 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
         // 5. Global Error Handling for Unauthorized access
         if (response.status === 401) {
             console.error('[API_INTERCEPTOR] 401 Unauthorized. Session expired or missing token.');
-            await supabase.auth.signOut();
+            try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
             localStorage.removeItem('user');
+            try {
+                Object.keys(sessionStorage).forEach((key) => {
+                    if (key.startsWith('cpoint_') || key.includes('profile') || key.includes('auth')) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+            } catch (_) {}
             
             // Only redirect if not already on the login page
             if (window.location.pathname !== '/login') {

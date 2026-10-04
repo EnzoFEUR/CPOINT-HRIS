@@ -8,6 +8,7 @@ import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { performLogout } from '../utils/authSession';
 
 // Primary CDN with high reliability and fallback
 const MODEL_SOURCES = [
@@ -617,10 +618,8 @@ export default function BiometricSetup() {
   const handleLogout = useCallback(async () => {
     if (loopRef.current) clearInterval(loopRef.current);
     stopHardwareStream(streamRef.current);
-    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* silent */ }
-    localStorage.removeItem('user');
-    navigate('/login');
-  }, [navigate]);
+    await performLogout('/login');
+  }, []);
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: '/biometric-setup' }} />;

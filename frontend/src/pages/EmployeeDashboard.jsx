@@ -11,6 +11,7 @@ import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } fr
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 import { isSecurity, isAdmin } from '../routes/guards';
+import { performLogout } from '../utils/authSession';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
@@ -603,8 +604,7 @@ const EmployeeDashboard = () => {
 
 
     const handleLogout = () => {
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+        performLogout('/login');
     };
 
     return (
