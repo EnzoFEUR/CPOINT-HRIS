@@ -12,11 +12,11 @@
       ]
     },
     {
-      "source": "/(favicon.svg|manifest.json|sw.js|pwa-.*\\.png|apple-touch-icon\\.png)",
+      "source": "/(.*\\.(?:webp|png|jpg|jpeg|svg|ico|json|txt))",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=86400, must-revalidate"
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     },

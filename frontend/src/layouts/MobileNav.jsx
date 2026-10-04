@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import logoIcon from '../assets/logo-icon.png';
+import logoIconWebp from '../assets/logo-icon.webp';
 
 export const MobileNav = ({
   user,
@@ -182,11 +183,17 @@ export const MobileNav = ({
             {!isStandalone && (
               <div className="mb-4 p-3.5 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
-                  <img 
-                    src={logoIcon} 
-                    alt="C-Point" 
-                    className="w-8 h-8 rounded-md object-contain bg-slate-800 p-1 shrink-0" 
-                  />
+                  <picture>
+                    <source srcSet={logoIconWebp} type="image/webp" />
+                    <img 
+                      src={logoIcon} 
+                      alt="C-Point" 
+                      width="32"
+                      height="32"
+                      decoding="async"
+                      className="w-8 h-8 rounded-md object-contain bg-slate-800 p-1 shrink-0" 
+                    />
+                  </picture>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate">Install C-Point HRIS</p>
                     <p className="text-[9px] text-blue-200 truncate">Add shortcut to home screen</p>

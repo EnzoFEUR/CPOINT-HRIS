@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../utils/api';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import toast from 'react-hot-toast';
 import logoDark from '../assets/logo-dark.png';
+import logoDarkWebp from '../assets/logo-dark.webp';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -385,11 +386,17 @@ export default function ForgotPassword() {
         {/* Header */}
         <div className="text-center mb-6">
           <div className="flex items-center justify-center mb-4">
-            <img 
-              src={logoDark} 
-              alt="C-Point HRIS" 
-              className="h-10 sm:h-11 w-auto max-w-[200px] object-contain select-none" 
-            />
+            <picture>
+              <source srcSet={logoDarkWebp} type="image/webp" />
+              <img 
+                src={logoDark} 
+                alt="C-Point HRIS" 
+                width="200"
+                height="44"
+                decoding="async"
+                className="h-10 sm:h-11 w-auto max-w-[200px] object-contain select-none" 
+              />
+            </picture>
           </div>
           <h1 className="text-lg font-bold text-slate-900 tracking-tight">Account Recovery</h1>
           <p className="text-slate-500 text-xs mt-1">Verify your identity to reset your password</p>

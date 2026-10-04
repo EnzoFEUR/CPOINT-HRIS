@@ -5,9 +5,10 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
 import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
-import MainLayout from './layouts/MainLayout';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
+
+const MainLayout = lazy(() => import('./layouts/MainLayout'));
 
 // Auth Pages - Login is eagerly loaded for instant initial render
 import Login from './pages/Login';
@@ -131,7 +132,15 @@ function App() {
         />
 
         {/* Authenticated Persistent Shell */}
-        <Route element={<ProtectedRoute requireBiometrics><MainLayout /></ProtectedRoute>}>
+        <Route
+          element={
+            <ProtectedRoute requireBiometrics>
+              <Suspense fallback={AuthFallback}>
+                <MainLayout />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        >
           <Route path="/" element={<RootRoute />} />
 
           {/* Admin - Employees Directory */}

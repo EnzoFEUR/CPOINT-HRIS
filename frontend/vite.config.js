@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
     proxy: {
@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   esbuild: {
-    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
   },
   build: {
     target: 'esnext',
@@ -25,14 +25,27 @@ export default defineConfig({
         manualChunks(id) {
           const normalizedId = id.replace(/\\/g, '/');
 
-          if (
-            normalizedId.includes('/src/utils/') ||
-            normalizedId.includes('/src/supabaseClient')
-          ) {
-            return 'app-shared';
+          if (normalizedId.includes('/src/supabaseClient')) {
+            return 'app-supabase';
           }
 
           if (normalizedId.includes('node_modules')) {
+            if (
+              normalizedId.includes('/react/') ||
+              normalizedId.includes('/react-dom/') ||
+              normalizedId.includes('/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
+            if (
+              normalizedId.includes('/react-router/') ||
+              normalizedId.includes('/react-router-dom/')
+            ) {
+              return 'vendor-router';
+            }
+            if (normalizedId.includes('/react-hot-toast/')) {
+              return 'vendor-toast';
+            }
             if (normalizedId.includes('face-api.js') || normalizedId.includes('@tensorflow')) {
               return 'vendor-faceapi';
             }
@@ -72,4 +85,4 @@ export default defineConfig({
       '@supabase/supabase-js',
     ],
   },
-});
+}));

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import cpointLogo from '../assets/logo-crop.png';
+import cpointLogoWebp from '../assets/logo-crop.webp';
 import sidebarCover from '../assets/sidebar-cover.jpg';
 
 export const Sidebar = ({ user, handleLogout }) => {
@@ -24,6 +25,9 @@ export const Sidebar = ({ user, handleLogout }) => {
         <img
           src={sidebarCover}
           alt=""
+          width="288"
+          height="160"
+          decoding="async"
           aria-hidden="true"
           draggable={false}
           className="absolute inset-0 h-full w-full select-none object-cover object-[50%_16%] saturate-[0.6] pointer-events-none"
@@ -41,11 +45,17 @@ export const Sidebar = ({ user, handleLogout }) => {
             aria-label="C-Point HRIS home"
             className="flex items-center justify-center rounded-md cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
           >
-            <img
-              src={cpointLogo}
-              alt="C-Point HRIS"
-              className="h-15 w-auto max-w-[200px] object-contain select-none pointer-events-none drop-shadow-[0_2px_8px_rgba(15,23,42,0.55)]"
-            />
+            <picture>
+              <source srcSet={cpointLogoWebp} type="image/webp" />
+              <img
+                src={cpointLogo}
+                alt="C-Point HRIS"
+                width="200"
+                height="60"
+                decoding="async"
+                className="h-15 w-auto max-w-[200px] object-contain select-none pointer-events-none drop-shadow-[0_2px_8px_rgba(15,23,42,0.55)]"
+              />
+            </picture>
           </Link>
         </div>
       </div>

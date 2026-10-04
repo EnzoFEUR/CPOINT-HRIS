@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import shoemakersBg from '../assets/shoemakers.jpg';
 import cpointLogo from '../assets/logo-crop.png';
+import cpointLogoWebp from '../assets/logo-crop.webp';
 
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
 const MAX_FAILED_ATTEMPTS = 5;
@@ -736,6 +737,9 @@ export default function Login() {
                     <img 
                         src={shoemakersBg} 
                         alt="C-Point Workforce" 
+                        width="720"
+                        height="480"
+                        decoding="async"
                         className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none"
                     />
 
@@ -750,11 +754,18 @@ export default function Login() {
                     {/* Center Title and Description */}
                     <div className="relative z-10 w-full max-w-[320px] flex flex-col items-center">
                         <div className="mb-6 flex items-center justify-center">
-                            <img 
-                                src={cpointLogo} 
-                                alt="C-Point" 
-                                className="h-10 sm:h-12 w-auto max-w-[220px] object-contain drop-shadow-md select-none pointer-events-none"
-                            />
+                            <picture>
+                                <source srcSet={cpointLogoWebp} type="image/webp" />
+                                <img 
+                                    src={cpointLogo} 
+                                    alt="C-Point" 
+                                    width="220"
+                                    height="48"
+                                    fetchPriority="high"
+                                    decoding="async"
+                                    className="h-10 sm:h-12 w-auto max-w-[220px] object-contain drop-shadow-md select-none pointer-events-none"
+                                />
+                            </picture>
                         </div>
                         <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight drop-shadow-sm">
                             Get Started with Us
