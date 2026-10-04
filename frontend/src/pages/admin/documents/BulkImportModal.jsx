@@ -215,36 +215,36 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl">
-                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg max-w-3xl w-full max-h-[88vh] flex flex-col shadow-xl border border-slate-200">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
                     <div>
-                        <h2 className="text-lg font-black text-slate-800">Bulk Import (ZIP)</h2>
+                        <h2 className="text-base font-bold text-slate-900">Bulk import (ZIP)</h2>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            Every file in the zip is added to this employee's 201 file.
+                            Every file in the zip is added to this employee's records.
                         </p>
                     </div>
-                    <button onClick={handleClose} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Close modal">
+                    <button onClick={handleClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors duration-100 cursor-pointer" aria-label="Close modal">
                         <i className="ti ti-x text-base" />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-5">
+                <div className="flex-1 overflow-y-auto px-5 py-4">
                     {step === 'select' && (
                         <div className="space-y-4">
-                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium leading-relaxed">
+                            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-600 font-medium leading-relaxed">
                                 Structure the zip archive with folders by category (<span className="font-bold">Contract/</span>,{' '}
                                 <span className="font-bold">Government ID/</span>, <span className="font-bold">Clearance/</span>,{' '}
                                 <span className="font-bold">Certificate/</span>, <span className="font-bold">Performance/</span>) or
                                 upload flat files. Uncategorized files are assigned to "Other".
                             </div>
 
-                            <label className="flex flex-col items-center justify-center gap-2 py-12 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors">
-                                <i className="ti ti-file-zip text-3xl text-slate-300" />
-                                <span className="text-sm font-bold text-slate-600">
-                                    {isParsing ? 'Reading zip…' : 'Click to choose a .zip file'}
+                            <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50/20 transition-colors duration-100">
+                                <i className="ti ti-file-zip text-3xl text-slate-400" />
+                                <span className="text-xs font-semibold text-slate-700">
+                                    {isParsing ? 'Reading ZIP file...' : 'Click to choose a .zip file'}
                                 </span>
-                                <span className="text-[11px] text-slate-400">or drag & drop</span>
+                                <span className="text-[11px] text-slate-400">or drag and drop here</span>
                                 <input
                                     type="file"
                                     accept=".zip"
@@ -259,19 +259,19 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                     {step === 'review' && (
                         <div className="space-y-4">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="px-2.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-black">
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-sm text-[11px] font-bold">
                                     {counts.total} file{counts.total === 1 ? '' : 's'} found
                                 </span>
                                 {committed && (
-                                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-black">
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm text-[11px] font-bold">
                                         {counts.uploaded} uploaded · {counts.failed} failed
                                     </span>
                                 )}
                             </div>
 
-                            <div className="border border-slate-100 rounded-xl overflow-hidden">
+                            <div className="border border-slate-200 rounded-md overflow-hidden">
                                 <table className="w-full text-xs">
-                                    <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px]">
+                                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                                         <tr>
                                             <th className="text-left px-3 py-2 w-8"></th>
                                             <th className="text-left px-3 py-2">File</th>
@@ -294,7 +294,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                                     <p className="font-bold text-slate-700 truncate" title={row.zipPath}>
                                                         {row.fileName}
                                                     </p>
-                                                    <p className="text-slate-400 truncate">{row.zipPath}</p>
+                                                    <p className="text-slate-400 truncate text-[11px]">{row.zipPath}</p>
                                                 </td>
                                                 <td className="px-3 py-2">
                                                     <select
@@ -303,7 +303,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                                         onChange={(e) =>
                                                             updateRow(row.id, { category: e.target.value, categoryConfidence: 'manual' })
                                                         }
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] mb-1"
+                                                        className="w-full bg-white border border-slate-200 rounded-md h-7 px-2 text-[11px] mb-1"
                                                     >
                                                         {categories.map((c) => (
                                                             <option key={c} value={c}>
@@ -311,7 +311,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                                             </option>
                                                         ))}
                                                     </select>
-                                                    <span className="inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold bg-slate-50 text-slate-400 border-slate-200">
+                                                    <span className="inline-block px-1.5 py-0.5 rounded-sm border text-[10px] font-medium bg-slate-50 text-slate-500 border-slate-200">
                                                         {CONFIDENCE_LABEL[row.categoryConfidence]}
                                                     </span>
                                                 </td>
@@ -324,8 +324,8 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                                         <i className="ti ti-circle-check text-emerald-600 text-sm" />
                                                     )}
                                                     {row.status === 'error' && (
-                                                        <span className="text-rose-600 font-bold" title={row.error}>
-                                                            <i className="ti ti-circle-x text-sm" /> Failed
+                                                        <span className="text-rose-600 font-semibold" title={row.error}>
+                                                          <i className="ti ti-circle-x text-sm" /> Failed
                                                         </span>
                                                     )}
                                                 </td>
@@ -338,13 +338,13 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                     )}
                 </div>
 
-                <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-slate-100">
+                <div className="flex items-center justify-between gap-2 px-5 py-3 border-t border-slate-200">
                     {step === 'review' && !committed && (
                         <button
                             type="button"
                             onClick={resetAll}
                             disabled={isCommitting}
-                            className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer disabled:opacity-50"
+                            className="h-8 px-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer disabled:opacity-50 transition-colors duration-100 flex items-center gap-1"
                         >
                             <i className="ti ti-arrow-left text-sm" /> Choose a different file
                         </button>
@@ -355,25 +355,25 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                             type="button"
                             onClick={handleCommit}
                             disabled={isCommitting || counts.included === 0}
-                            className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl cursor-pointer transition-colors"
+                            className="h-9 px-3.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
                         >
-                            {isCommitting ? 'Importing…' : `Import ${counts.included} File${counts.included === 1 ? '' : 's'}`}
+                            {isCommitting ? 'Importing…' : `Import ${counts.included} file${counts.included === 1 ? '' : 's'}`}
                         </button>
                     )}
                     {committed && counts.failed > 0 && (
                         <button
                             type="button"
                             onClick={handleRetryFailed}
-                            className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer"
+                            className="h-9 px-3.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
                         >
-                            Retry {counts.failed} Failed
+                            Retry {counts.failed} failed
                         </button>
                     )}
                     {committed && (
                         <button
                             type="button"
                             onClick={handleClose}
-                            className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-xl cursor-pointer"
+                            className="h-9 px-3.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
                         >
                             Done
                         </button>

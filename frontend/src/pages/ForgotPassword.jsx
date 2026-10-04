@@ -349,27 +349,27 @@ export default function ForgotPassword() {
       <div className="pt-2 sm:pt-4" />
 
       {/* Corporate Auth Card (Aligned with Login.jsx) */}
-      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-7">
+      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-lg shadow-xl p-6 sm:p-7">
         
         {/* Header */}
         <div className="text-center mb-5 sm:mb-6">
-          <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-900 text-white shadow-xs mb-2.5">
-            <i className="ti ti-shield-lock text-xl" />
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white shadow-2xs mb-2.5">
+            <i className="ti ti-shield-lock text-lg" />
           </div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Account Recovery</h1>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Account Recovery</h1>
           <p className="text-slate-500 text-xs mt-0.5">Verify your identity to reset your password</p>
         </div>
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 font-medium leading-relaxed">
             {error}
           </div>
         )}
 
         {/* Global Success Banner */}
         {successMsg && (
-          <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 font-medium leading-relaxed">
             {successMsg}
           </div>
         )}
@@ -379,14 +379,12 @@ export default function ForgotPassword() {
           <form onSubmit={handleRequestReset} className="space-y-3.5">
             {/* Active Code Resume Card */}
             {isCooldown && maskedPhone && (
-              <div className="p-3 bg-blue-50/80 border border-blue-200/90 rounded-xl text-left shadow-2xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <span className="relative flex h-2 w-2">
-                    </span>
+                  <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
                     <span>Code active via {method === 'sms' ? 'SMS' : 'Email'}</span>
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                  <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
                     {cooldown}s cooldown
                   </span>
                 </div>
@@ -396,7 +394,7 @@ export default function ForgotPassword() {
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                 >
                   <span>Enter Existing Code</span>
                   <i className="ti ti-arrow-right text-xs" />
@@ -408,14 +406,14 @@ export default function ForgotPassword() {
               <div className="flex items-center justify-between mb-1 ml-0.5">
                 <label className="block text-xs font-semibold text-slate-700">Workplace Email or Employee ID</label>
                 {accountStatus === 'checking' && (
-                  <span className="text-[10px] text-blue-600 font-medium flex items-center gap-1">
+                  <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
                     <i className="ti ti-loader-2 animate-spin text-[11px]" />
                     <span>Verifying...</span>
                   </span>
                 )}
               </div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
                   <i className="ti ti-mail" />
                 </div>
                 <input
@@ -428,21 +426,21 @@ export default function ForgotPassword() {
                   required
                   autoFocus
                   placeholder="name@company.com or CP-2026-..."
-                  className={`w-full pl-9 pr-3.5 py-2.5 bg-white border rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none transition-colors shadow-2xs ${
+                  className={`w-full h-9 pl-9 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs ${
                     accountStatus === 'verified'
-                      ? 'border-emerald-500 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
+                      ? 'border-emerald-500 focus:border-emerald-600'
                       : accountStatus === 'not_found'
-                      ? 'border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-rose-50/20'
+                      ? 'border-rose-400 focus:border-rose-500 bg-rose-50/20'
                       : accountStatus === 'no_email'
-                      ? 'border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 bg-amber-50/20'
-                      : 'border-slate-300 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15'
+                      ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20'
+                      : 'border-slate-300 focus:border-slate-500'
                   }`}
                 />
               </div>
 
               {/* Real-Time Workplace Account Verification Feedback */}
               {accountStatus === 'verified' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                <div className="mt-2 p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-md text-xs text-emerald-800">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <i className="ti ti-circle-check text-emerald-600 text-base shrink-0" />
@@ -458,7 +456,7 @@ export default function ForgotPassword() {
                         )}
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm border border-emerald-200 shrink-0">
                       Verified
                     </span>
                   </div>
@@ -466,7 +464,7 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'not_found' && (
-                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2">
+                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 flex items-start gap-2">
                   <i className="ti ti-alert-circle text-rose-500 text-base shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold text-rose-800 block">No Registered Account Found</span>
@@ -478,7 +476,7 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'no_email' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 flex items-start gap-2">
                   <i className="ti ti-alert-triangle text-amber-600 text-base shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold text-amber-900 block">{accountInfo.name} ({accountInfo.company_id})</span>
@@ -490,7 +488,7 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'inactive' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-slate-100 border border-slate-300 rounded-lg text-xs text-slate-700 flex items-start gap-2">
+                <div className="mt-2 p-2.5 bg-slate-100 border border-slate-300 rounded-md text-xs text-slate-700 flex items-start gap-2">
                   <i className="ti ti-ban text-slate-500 text-base shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold text-slate-900 block">{accountInfo.name} ({accountInfo.company_id})</span>
@@ -505,14 +503,14 @@ export default function ForgotPassword() {
             {/* Segmented Control for Recovery Method */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Recovery Method</label>
-              <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs">
+              <div className="grid grid-cols-3 p-0.5 bg-slate-100 rounded-md border border-slate-200 text-xs">
                 <button
                   type="button"
                   onClick={() => setMethod('sms')}
-                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
+                  className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'sms'
-                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   SMS OTP
@@ -520,10 +518,10 @@ export default function ForgotPassword() {
                 <button
                   type="button"
                   onClick={() => setMethod('email')}
-                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
+                  className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'email'
-                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   Email OTP
@@ -531,10 +529,10 @@ export default function ForgotPassword() {
                 <button
                   type="button"
                   onClick={() => setMethod('key')}
-                  className={`py-1.5 font-medium rounded-md transition-all cursor-pointer ${
+                  className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'key'
-                      ? 'bg-white text-slate-900 font-bold shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="Emergency Master Recovery Key"
                 >
@@ -551,13 +549,13 @@ export default function ForgotPassword() {
                   <button
                     type="button"
                     onClick={() => setRecoveryKey('CPOINT-RECOVERY-2026')}
-                    className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                    className="text-[10px] text-slate-600 hover:text-slate-900 hover:underline font-semibold cursor-pointer"
                   >
                     Demo key
                   </button>
                 </div>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
                     <i className="ti ti-key" />
                   </div>
                   <input
@@ -566,7 +564,7 @@ export default function ForgotPassword() {
                     onChange={(e) => setRecoveryKey(e.target.value)}
                     required={method === 'key'}
                     placeholder="Enter Master Recovery Key"
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs font-mono"
+                    className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs font-mono"
                   />
                 </div>
               </div>
@@ -582,14 +580,14 @@ export default function ForgotPassword() {
                 accountStatus === 'no_email' ||
                 accountStatus === 'inactive'
               }
-              className={`w-full mt-2 text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-all duration-150 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer ${
+              className={`w-full h-10 mt-2 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer ${
                 accountStatus === 'not_found'
                   ? 'bg-rose-600 hover:bg-rose-700'
                   : accountStatus === 'no_email'
                   ? 'bg-amber-600 hover:bg-amber-700'
                   : accountStatus === 'inactive'
                   ? 'bg-slate-500 hover:bg-slate-600'
-                  : 'bg-slate-900 hover:bg-slate-800 active:scale-[0.98]'
+                  : 'bg-slate-900 hover:bg-slate-800'
               }`}
             >
               {loading ? (
@@ -645,11 +643,10 @@ export default function ForgotPassword() {
 
             {/* Test Sandbox 1-Click Code (for SMS or Simulation) */}
             {previewCode && (
-              <div className="flex items-center justify-between p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 shadow-2xs">
+              <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-800 shadow-2xs">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
-                  <span className="text-[11px] font-semibold text-blue-700 shrink-0">Demo Code:</span>
-                  <strong className="font-mono text-sm tracking-wider text-blue-950 font-bold">{previewCode}</strong>
+                  <span className="text-[11px] font-semibold text-slate-700 shrink-0">Demo Code:</span>
+                  <strong className="font-mono text-sm tracking-wider text-slate-950 font-bold">{previewCode}</strong>
                 </div>
                 <button
                   type="button"
@@ -658,7 +655,7 @@ export default function ForgotPassword() {
                     setOtp(digits);
                     handleVerifyOtp(previewCode);
                   }}
-                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold rounded-md shadow-2xs transition-all cursor-pointer shrink-0"
+                  className="h-7 px-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded-md shadow-2xs transition-colors duration-100 cursor-pointer shrink-0"
                 >
                   1-Click Autofill
                 </button>
@@ -667,7 +664,7 @@ export default function ForgotPassword() {
 
             {/* Real Brevo Email Notice */}
             {method === 'email' && !previewCode && (
-              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
                 <i className="ti ti-mail-check text-base text-slate-800 shrink-0 mt-0.5" />
                 <p className="text-[11px] leading-relaxed">
                   Real-time security code dispatched via Brevo Mail Gateway. Please check your inbox and spam folder.
@@ -688,7 +685,7 @@ export default function ForgotPassword() {
                   onChange={(e) => handleOtpChange(idx, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                   onPaste={handlePasteOtp}
-                  className="w-10 h-11 sm:w-11 sm:h-12 text-center font-mono font-bold text-base sm:text-lg bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
+                  className="w-10 h-11 sm:w-11 sm:h-12 text-center font-mono font-bold text-base bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
                 />
               ))}
             </div>
@@ -697,7 +694,7 @@ export default function ForgotPassword() {
               type="button"
               onClick={() => handleVerifyOtp()}
               disabled={loading || otp.join('').length < 6}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+              className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -735,7 +732,7 @@ export default function ForgotPassword() {
                   type="button"
                   onClick={() => handleRequestReset(null, true)}
                   disabled={cooldown > 0 || loading}
-                  className="text-blue-600 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
+                  className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
                 >
                   {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
                 </button>
@@ -748,7 +745,7 @@ export default function ForgotPassword() {
         <div className="mt-5 pt-4 border-t border-slate-100 text-center">
           <Link
             to="/login"
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+            className="text-xs font-semibold text-slate-700 hover:text-slate-900 hover:underline transition-colors duration-100"
           >
             Back to Login
           </Link>

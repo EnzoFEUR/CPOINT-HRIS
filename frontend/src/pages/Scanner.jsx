@@ -256,13 +256,13 @@ const Scanner = () => {
   if (!isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6">
-        <div className="bg-red-950/30 p-10 rounded-3xl shadow-2xl max-w-md text-center border border-red-500/30 backdrop-blur-xl">
+        <div className="bg-slate-900 p-10 rounded-2xl shadow-2xl max-w-md text-center border border-rose-500/40">
           <div className="flex justify-center mb-6">
             <Lock className="w-16 h-16 text-red-500" />
           </div>
-          <h2 className="text-3xl font-black text-white mb-2 tracking-widest uppercase">Access Denied</h2>
-          <p className="text-red-300 text-sm mb-8">Security clearance insufficient.</p>
-          <button onClick={() => window.location.href = '/login'} className="py-4 px-8 w-full bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition-all">Sign In</button>
+          <h2 className="text-2xl font-bold text-white mb-2">Access restricted</h2>
+          <p className="text-red-300 text-sm mb-8">This terminal is restricted to security staff and administrators.</p>
+          <button onClick={() => window.location.href = '/login'} className="py-3 px-6 w-full bg-red-600 hover:bg-red-500 text-white font-semibold rounded-md transition-colors text-sm">Sign in to your account</button>
         </div>
       </div>
     );
@@ -544,32 +544,32 @@ const Scanner = () => {
 
         // Map HTTP status codes to user-friendly messages
         if (res.status === 429) friendly = 'Too many scans. Please wait 60 seconds.';
-        else if (res.status === 403) friendly = `SECURITY ALERT: ${friendly}`;
-        else if (res.status === 503) friendly = 'Biometric verification service offline. Contact IT.';
+        else if (res.status === 403) friendly = friendly;
+        else if (res.status === 503) friendly = 'Attendance scanner is temporarily offline. Please notify HR.';
         else if (res.status === 409) friendly = 'Attendance already recorded today.';
         else if (res.status === 404) friendly = 'Employee record not found.';
 
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'ACCESS DENIED', message: friendly, requestId: reqId, code: errCode, image: img64 } });
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'Clock-in failed', message: friendly, requestId: reqId, code: errCode, image: img64 } });
         playSound('error'); haptic('error');
       } else if (data.status === 'success') {
         const isOut = data.code === 'TIME_OUT' || data.message?.toUpperCase().includes('OUT');
         dispatch({ type: 'SET_FEEDBACK', payload: {
           type: 'success',
-          title: isOut ? 'CLOCKED OUT' : 'CLOCKED IN',
+          title: isOut ? 'Clocked out' : 'Clocked in',
           message: data.message || 'Attendance recorded.',
           code: data.code,
           image: img64
         }});
         playSound('success'); haptic('success');
       } else {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'UNKNOWN RESPONSE', message: data.message || 'Unexpected server state.', image: img64 } });
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'Server error', message: data.message || 'Could not record attendance. Please try again.', image: img64 } });
         playSound('error'); haptic('error');
       }
     } catch (err) {
       if (err.name === 'AbortError') {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'CANCELLED', message: 'Scan was interrupted.', image: img64 } });
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'Cancelled', message: 'Scan was interrupted.', image: img64 } });
       } else {
-        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'OFFLINE', message: 'Cannot reach attendance server. Check network.', image: img64 } });
+        dispatch({ type: 'SET_FEEDBACK', payload: { type: 'error', title: 'Connection error', message: 'Cannot reach attendance server. Check internet connection.', image: img64 } });
       }
       playSound('error'); haptic('error');
     }
@@ -655,7 +655,7 @@ const Scanner = () => {
       if (!det) {
         vault.lockFrames = Math.max(0, vault.lockFrames - 2);
         throttledDispatch({ scanProgress: Math.max(0, (vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100), matchScore: null });
-        updateStatus('SEARCHING FOR FACE...');
+        updateStatus('Look directly at the camera to clock in');
         return;
       }
 
@@ -689,7 +689,7 @@ const Scanner = () => {
       if (!centered || !bigEnough) {
         vault.lockFrames = Math.max(0, vault.lockFrames - 1);
         throttledDispatch({ scanProgress: Math.max(0, (vault.lockFrames / ENV.REQUIRED_LOCK_FRAMES) * 100) });
-        updateStatus(!bigEnough ? 'MOVE CLOSER TO CAMERA' : 'CENTER YOUR FACE');
+        updateStatus(!bigEnough ? 'Move closer to the camera' : 'Center your face in the frame');
         drawFaceMesh(ctx, det.landmarks, box, 'scanning');
         return;
       }
@@ -697,7 +697,7 @@ const Scanner = () => {
       if (!matched) {
         vault.lockFrames = 0;
         throttledDispatch({ scanProgress: 0, matchScore: currentScore });
-        updateStatus(`IDENTITY MISMATCH [${currentScore}%]: ACCESS DENIED`);
+        updateStatus('Face not recognized. Try again');
         drawFaceMesh(ctx, det.landmarks, box, 'mismatch');
         return;
       }
@@ -733,7 +733,7 @@ const Scanner = () => {
           vault.lockFrames += 1;
           const progress = Math.min((vault.lockFrames / 3) * 25, 25);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
-          updateStatus('FACE ALIGNED. PREPARING LIVENESS CHECK...');
+          updateStatus('Face detected. Checking presence...');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
 
           if (vault.lockFrames >= 3) {
@@ -753,7 +753,7 @@ const Scanner = () => {
           }
         } else {
           vault.lockFrames = Math.max(0, vault.lockFrames - 1);
-          updateStatus('LOOK DIRECTLY AT CAMERA');
+          updateStatus('Look directly at the camera');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
         }
         return;
@@ -763,14 +763,14 @@ const Scanner = () => {
       if (vault.padStage === 'CHALLENGE') {
         const targetTurnMet = vault.targetDirection === 'TURN_LEFT' ? pose.isTurnedLeft : pose.isTurnedRight;
         const directiveText = vault.targetDirection === 'TURN_LEFT'
-          ? 'TURN HEAD SLIGHTLY LEFT'
-          : 'TURN HEAD SLIGHTLY RIGHT';
+          ? 'Turn your head slightly to the left'
+          : 'Turn your head slightly to the right';
 
         if (targetTurnMet) {
           vault.challengeTurnFrames += 1;
           const progress = 25 + Math.min((vault.challengeTurnFrames / 2) * 35, 35);
           throttledDispatch({ scanProgress: progress, matchScore: currentScore });
-          updateStatus('HEAD TURN CONFIRMED');
+          updateStatus('Head turn detected');
           drawFaceMesh(ctx, det.landmarks, box, 'locked');
 
           if (vault.challengeTurnFrames >= 2) {
@@ -801,14 +801,14 @@ const Scanner = () => {
       if (vault.padStage === 'CENTER_BLINK') {
         if (!pose.isCentered) {
           throttledDispatch({ scanProgress: 60, matchScore: currentScore });
-          updateStatus('RETURN HEAD TO CENTER');
+          updateStatus('Turn face back to center');
           drawFaceMesh(ctx, det.landmarks, box, 'scanning');
           return;
         }
 
         if (vault.blinkCount < ENV.REQUIRED_BLINKS) {
           throttledDispatch({ scanProgress: 75, matchScore: currentScore });
-          updateStatus('BLINK YOUR EYES TO CONFIRM');
+          updateStatus('Blink your eyes to confirm');
           dispatch({
             type: 'SET_LIVENESS',
             payload: {
@@ -825,7 +825,7 @@ const Scanner = () => {
         // Completed challenge and blink
         vault.padStage = 'FLASH_CAPTURE';
         throttledDispatch({ scanProgress: 90, matchScore: currentScore });
-        updateStatus('LIVENESS CONFIRMED. CAPTURING...');
+        updateStatus('Face verified. Recording clock-in...');
         dispatch({
           type: 'SET_LIVENESS',
           payload: {
@@ -1003,12 +1003,12 @@ const Scanner = () => {
       dispatch({ type: 'SET_LOADING', payload: '' });
       dispatch({ type: 'SET_MODE', payload: MODES.PREP });
       const errFriendly =
-        err.message === 'EMPLOYEE_NOT_FOUND' ? 'Invalid ID card.' :
-        err.message === 'EMPLOYEE_SUSPENDED' ? 'ACCESS DENIED: Account under active disciplinary suspension.' :
-        err.message === 'EMPLOYEE_TERMINATED' ? 'ACCESS DENIED: Employment terminated. Pass revoked.' :
-        err.message === 'EMPLOYEE_INACTIVE' ? 'ACCESS DENIED: Account deactivated.' :
-        err.message === 'BIOMETRICS_NOT_REGISTERED' ? 'ACCESS DENIED: Facial biometrics not registered. Complete enrollment at HR / Security.' :
-        (err.message?.includes('BIOMETRICS REQUIRED') ? 'ACCESS DENIED: Facial biometrics not registered. Complete enrollment at HR / Security.' : 'Identification error.');
+        err.message === 'EMPLOYEE_NOT_FOUND' ? 'ID card not recognized. Please scan again.' :
+        err.message === 'EMPLOYEE_SUSPENDED' ? 'Account suspended. Please speak with HR.' :
+        err.message === 'EMPLOYEE_TERMINATED' ? 'Account inactive. Please contact HR.' :
+        err.message === 'EMPLOYEE_INACTIVE' ? 'Account inactive. Please contact HR.' :
+        err.message === 'BIOMETRICS_NOT_REGISTERED' ? 'Face scan not registered. Please visit HR to set up your profile.' :
+        (err.message?.includes('BIOMETRICS REQUIRED') ? 'Face scan not registered. Please visit HR to set up your profile.' : 'Identification error. Please try again.');
       toast.error(errFriendly, { id: 'qr-scan-error', duration: 4500 });
       playSound('error');
       haptic('error');
@@ -1023,7 +1023,7 @@ const Scanner = () => {
   // QR scanner initialization
   const startQr = useCallback(async (isUserGesture = false) => {
     if (qrRef.current) return;
-    dispatch({ type: 'SET_LOADING', payload: 'CONNECTING OPTICAL CAMERA...' });
+    dispatch({ type: 'SET_LOADING', payload: 'Connecting camera...' });
 
     const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
     const isPortrait = window.innerHeight > window.innerWidth;
@@ -1148,8 +1148,8 @@ const Scanner = () => {
         }
       } catch (err) {
         console.error('[BOOT]', err);
-        toast.error('Neural net failed to load. Check network.');
-        dispatch({ type: 'SET_ERROR', payload: { message: 'Failed to load AI models. Refresh to retry.', code: 'MODEL_LOAD_ERROR' } });
+        toast.error('Unable to load face scanner. Check network connection.');
+        dispatch({ type: 'SET_ERROR', payload: { message: 'Failed to load face scanner. Refresh to retry.', code: 'MODEL_LOAD_ERROR' } });
       }
     })();
 
@@ -1258,7 +1258,7 @@ const Scanner = () => {
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white rounded-bl-xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white rounded-br-xl" />
           </div>
-          <p className="absolute bottom-28 text-slate-400 font-mono text-xs tracking-wider uppercase">Align badge within corners</p>
+          <p className="absolute bottom-28 text-slate-400 text-xs">Align badge within corners</p>
         </div>
       </div>
 
@@ -1315,45 +1315,43 @@ const Scanner = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[60] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4"
+            className="absolute inset-0 z-[60] bg-slate-950/95 flex items-center justify-center p-4"
           >
             <div
-              initial={{ scale: 0.94, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-md p-6 sm:p-8 flex flex-col text-left shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-md p-5 sm:p-6 flex flex-col text-left shadow-xl max-h-[90vh] overflow-y-auto"
             >
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
-                    <SlidersHorizontal className="w-5 h-5 text-blue-400" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
+                    <SlidersHorizontal className="w-4 h-4 text-blue-400" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">Browser Camera Permissions</h3>
+                    <h3 className="text-sm font-bold text-white">Browser Camera Permissions</h3>
                     <p className="text-[11px] text-slate-400">Step-by-step unblock instructions</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowPermHelp(false)}
-                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+                  className="w-8 h-8 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors duration-100 cursor-pointer"
                 >
-                  <X className="w-4 h-4 text-slate-400" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* OS Tabs */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-black/40 rounded-xl mb-5 border border-white/5">
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-md mb-4 border border-white/5">
                 <button
                   onClick={() => setPermTab('ios')}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    permTab === 'ios' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                  className={`h-8 text-xs font-semibold rounded-sm transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    permTab === 'ios' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Apple className="w-3.5 h-3.5" /> iPhone (iOS)
                 </button>
                 <button
                   onClick={() => setPermTab('android')}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    permTab === 'android' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                  className={`h-8 text-xs font-semibold rounded-sm transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer ${
+                    permTab === 'android' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Smartphone className="w-3.5 h-3.5" /> Android
@@ -1362,21 +1360,21 @@ const Scanner = () => {
 
               {/* iOS Guide */}
               {permTab === 'ios' && (
-                <div className="space-y-3.5 text-xs text-slate-300">
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded">aA</span> icon in your Safari address bar.</p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1 py-0.5 rounded-sm">aA</span> icon in your Safari address bar.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
                     <p>Select <span className="font-bold text-white">Website Settings</span>.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
                     <p>Change <span className="font-bold text-white">Camera</span> from Deny to <span className="font-bold text-emerald-400">Allow</span>.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
                     <p>Tap <span className="font-bold text-white">Done</span> and tap the button below to start.</p>
                   </div>
                 </div>
@@ -1384,21 +1382,21 @@ const Scanner = () => {
 
               {/* Android Guide */}
               {permTab === 'android' && (
-                <div className="space-y-3.5 text-xs text-slate-300">
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1"><Lock className="w-3 h-3 text-blue-400 inline" /> Lock</span> icon next to the URL.</p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1 py-0.5 rounded-sm inline-flex items-center gap-1"><Lock className="w-3 h-3 text-blue-400 inline" /> Lock</span> icon next to the URL.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
                     <p>Tap <span className="font-bold text-white">Permissions</span> &rarr; <span className="font-bold text-white">Camera</span>.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
                     <p>Switch setting to <span className="font-bold text-emerald-400">Allow</span>.</p>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                  <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
+                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
                     <p>Return to this page and tap <span className="font-bold text-white">Retry Connection</span>.</p>
                   </div>
                 </div>
@@ -1409,7 +1407,7 @@ const Scanner = () => {
                   setShowPermHelp(false);
                   startQr(true);
                 }}
-                className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold tracking-wider uppercase text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                className="mt-5 w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-md font-semibold tracking-wider uppercase text-xs transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Retry Connection
               </button>
@@ -1422,38 +1420,35 @@ const Scanner = () => {
       
         {state.mode === MODES.PREP && (
           <div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="absolute inset-0 z-40 bg-black/80 flex items-center justify-center p-4"
           >
             <div
-              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-              className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center w-full max-w-sm p-7 text-center"
+              className="bg-slate-900 border border-slate-800 rounded-lg shadow-xl flex flex-col items-center w-full max-w-sm p-6 text-center"
             >
               {state.employeePhotoUrl ? (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-slate-700 mb-4 bg-slate-800">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 border-slate-700 mb-3 bg-slate-800">
                   <img src={state.employeePhotoUrl} alt="Baseline" className="w-full h-full object-cover" />
                 </div>
               ) : (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center mb-4 text-slate-400">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md bg-slate-800 border-2 border-slate-700 flex items-center justify-center mb-3 text-slate-400">
                   <User className="w-10 h-10" />
                 </div>
               )}
-              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
                 {state.employee ? (state.employee.name || `${state.employee.first_name || ''} ${state.employee.last_name || ''}`.trim() || 'Employee') : 'Employee'}
               </h2>
-              <span className="inline-block px-2.5 py-0.5 mt-1 rounded-md bg-slate-800 text-slate-300 font-mono text-xs">
+              <span className="inline-block px-2 py-0.5 mt-1 rounded-sm bg-slate-800 text-slate-300 font-mono text-xs">
                 {state.employee?.company_id || 'NO ID'}
               </span>
 
               {state.employee?.is_medical_exempt ? (
-                <div className="w-full my-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-2xl text-left">
+                <div className="w-full my-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-md text-left">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
                     <HeartPulse className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Medical Exemption Active</span>
+                    <span>Medical exemption on file</span>
                   </div>
                   <p className="text-[11px] text-amber-200/80 mt-1 leading-tight">
-                    Facial recognition comparison bypassed. A camera snapshot will be archived for attendance verification.
+                    Face scan bypassed. A photo will be saved for attendance records.
                   </p>
                   {state.employee?.medical_exemption?.valid_until && (
                     <div className="mt-1.5 text-[10px] text-amber-400/90 font-mono">
@@ -1462,21 +1457,21 @@ const Scanner = () => {
                   )}
                 </div>
               ) : (
-                <p className="text-slate-400 text-xs mt-3 mb-6 leading-relaxed">
+                <p className="text-slate-400 text-xs mt-2.5 mb-5 leading-relaxed">
                   Please look directly at the camera to verify your clock-in.
                 </p>
               )}
 
               <button
                 onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
-                className={`w-full py-3.5 ${state.employee?.is_medical_exempt ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'} text-white rounded-xl font-bold text-xs tracking-wide active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg`}
+                className={`w-full h-10 ${state.employee?.is_medical_exempt ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'} text-white rounded-md font-semibold text-xs tracking-wide transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer`}
               >
                 {state.employee?.is_medical_exempt ? <Camera className="w-4 h-4" /> : <Scan className="w-4 h-4" />}
-                <span>{state.employee?.is_medical_exempt ? 'Capture Medical Attendance Photo' : 'Start Face Verification'}</span>
+                <span>{state.employee?.is_medical_exempt ? 'Take attendance photo' : 'Start face scan'}</span>
               </button>
               <button
                 onClick={handleReset}
-                className="mt-3 w-full py-2.5 text-slate-400 hover:text-slate-200 text-xs transition-colors"
+                className="mt-2.5 w-full h-8 text-slate-400 hover:text-slate-200 text-xs transition-colors duration-100 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1488,7 +1483,7 @@ const Scanner = () => {
       {/* Face verification mode */}
       
         {state.mode === MODES.FACE && (
-          <div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-20 bg-black overflow-hidden">
+          <div className="absolute inset-0 z-20 bg-black overflow-hidden">
             <video 
               ref={videoRef} 
               className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${cameraFacing === 'user' ? '-scale-x-100' : 'scale-x-100'}`} 
@@ -1510,15 +1505,15 @@ const Scanner = () => {
             {state.liveness.stage === 'CHALLENGE' && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-6 sm:px-14 z-30">
                 {state.liveness.targetDirection === 'TURN_LEFT' ? (
-                  <div className="flex flex-col items-center gap-2 bg-slate-950/85 border-2 border-amber-400 text-amber-300 px-5 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-pulse">
-                    <ArrowLeft className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400" />
-                    <span className="text-[11px] font-black font-mono tracking-widest uppercase">TURN LEFT</span>
+                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-amber-400 text-amber-300 px-4 py-3 rounded-md shadow-xl animate-pulse">
+                    <ArrowLeft className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
+                    <span className="text-[11px] font-bold tracking-wide">Turn left</span>
                   </div>
                 ) : <div />}
                 {state.liveness.targetDirection === 'TURN_RIGHT' ? (
-                  <div className="flex flex-col items-center gap-2 bg-slate-950/85 border-2 border-amber-400 text-amber-300 px-5 py-4 rounded-3xl shadow-2xl backdrop-blur-md animate-pulse">
-                    <ArrowRight className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400" />
-                    <span className="text-[11px] font-black font-mono tracking-widest uppercase">TURN RIGHT</span>
+                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-amber-400 text-amber-300 px-4 py-3 rounded-md shadow-xl animate-pulse">
+                    <ArrowRight className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
+                    <span className="text-[11px] font-bold tracking-wide">Turn right</span>
                   </div>
                 ) : <div />}
               </div>
@@ -1529,23 +1524,23 @@ const Scanner = () => {
               {/* Cancel Button */}
               <button
                 onClick={handleReset}
-                className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center tap-active"
+                className="w-8 h-8 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 transition-colors duration-100 flex items-center justify-center cursor-pointer shadow-2xs"
                 title="Cancel Scan"
               >
                 <X className="w-4 h-4" />
               </button>
 
               {/* Status Badge */}
-              <span className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide border shadow-lg backdrop-blur-md flex items-center gap-2 ${statusMeta.pill}`}>
+              <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide border shadow-2xs flex items-center gap-2 ${statusMeta.pill}`}>
                 {state.employee?.is_medical_exempt ? (
                   <>
                     <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Medical Exemption: Recording Photo...</span>
+                    <span>Medical exemption: Recording photo...</span>
                   </>
                 ) : state.liveness.stage === 'ALIGN' ? (
                   <>
                     <Scan className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-                    <span>Position face inside scanning frame</span>
+                    <span>Look directly at the camera</span>
                   </>
                 ) : state.liveness.stage === 'CHALLENGE' ? (
                   <>
@@ -1555,31 +1550,31 @@ const Scanner = () => {
                       <ArrowRight className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
                     )}
                     <span className="font-bold tracking-wider text-amber-300">
-                      {state.liveness.targetDirection === 'TURN_LEFT' ? 'TURN HEAD SLIGHTLY LEFT' : 'TURN HEAD SLIGHTLY RIGHT'}
+                      {state.liveness.targetDirection === 'TURN_LEFT' ? 'Turn your head slightly left' : 'Turn your head slightly right'}
                     </span>
                   </>
                 ) : state.liveness.stage === 'CENTER_BLINK' ? (
                   <>
                     <Eye className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                    <span className="font-bold text-cyan-300">CENTER HEAD & BLINK EYES</span>
+                    <span className="font-bold text-cyan-300">Face camera and blink your eyes</span>
                   </>
                 ) : state.liveness.passed && state.scanProgress < 100 ? (
                   <>
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Liveness confirmed. Capturing...</span>
+                    <span>Face verified. Recording clock-in...</span>
                   </>
                 ) : state.scanProgress >= 100 ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                    <span>Processing attendance...</span>
+                    <span>Recording attendance...</span>
                   </>
                 ) : state.matchScore !== null && state.matchScore < 50 ? (
                   <>
                     <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-                    <span>Photo mismatch</span>
+                    <span>Face not recognized</span>
                   </>
                 ) : (
-                  <span>Verifying face...</span>
+                  <span>Checking face...</span>
                 )}
               </span>
 
@@ -1587,7 +1582,7 @@ const Scanner = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={toggleCameraFacing}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
+                  className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
                   title="Flip Camera (Front / Rear)"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
@@ -1595,7 +1590,7 @@ const Scanner = () => {
                     {cameraFacing === 'user' ? 'Front' : 'Rear'}
                   </span>
                 </button>
-                <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2.5 py-1 rounded-lg border border-white/10 tabular-nums hidden sm:block">
+                <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2 py-1 rounded-md border border-white/10 tabular-nums hidden sm:block">
                   {state.clockTime}
                 </div>
               </div>
@@ -1618,8 +1613,8 @@ const Scanner = () => {
               </div>
 
               {/* Identity Card */}
-              <div className="bg-slate-900/85 px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl text-center min-w-[200px]">
-                <h3 className="text-sm sm:text-base font-bold text-white">
+              <div className="bg-slate-900/90 px-4 py-2 rounded-md border border-white/10 shadow-xl text-center min-w-[200px]">
+                <h3 className="text-sm font-bold text-white">
                   {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : '—'}
                 </h3>
                 {state.matchScore !== null && (
@@ -1630,7 +1625,7 @@ const Scanner = () => {
                 {state.employee?.is_medical_exempt && (
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-amber-300">
                     <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Medical Exemption Active</span>
+                    <span>Medical exemption on file</span>
                   </div>
                 )}
               </div>
@@ -1643,31 +1638,28 @@ const Scanner = () => {
       
         {state.mode === MODES.FEEDBACK && state.feedback.title && (
           <div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className={`absolute inset-0 z-50 flex items-center justify-center p-4 ${state.feedback.type === 'success' ? 'bg-black/85' : 'bg-black/90'}`}
           >
             <div
-              initial={{ scale: 0.95, y: 15 }} animate={{ scale: 1, y: 0 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-              className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 p-6 sm:p-8 w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl"
+              className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 p-5 sm:p-6 w-full max-w-lg rounded-lg bg-slate-900 border border-slate-800 shadow-xl"
             >
               {state.feedback.image && (
-                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-emerald-500' : 'border-red-500'}`}>
+                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-emerald-500' : 'border-red-500'}`}>
                   <img src={state.feedback.image} alt="" className="w-full h-full object-cover -scale-x-100" />
                 </div>
               )}
               <div className="text-center sm:text-left flex-1 w-full">
                 <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center text-sm text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-                    {state.feedback.type === 'success' ? <Check className="w-4 h-4 text-white" /> : <X className="w-4 h-4 text-white" />}
+                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-xs text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                    {state.feedback.type === 'success' ? <Check className="w-3.5 h-3.5 text-white" /> : <X className="w-3.5 h-3.5 text-white" />}
                   </div>
-                  <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <h2 className={`text-lg sm:text-xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {state.feedback.title}
                   </h2>
                 </div>
-                <p className="text-sm font-medium text-slate-200">{state.feedback.message}</p>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3 text-xs text-slate-400">
-                  <span className="font-mono bg-slate-800 px-2 py-0.5 rounded">
+                <p className="text-xs font-medium text-slate-200">{state.feedback.message}</p>
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2.5 text-xs text-slate-400">
+                  <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded-sm">
                     {new Date().toLocaleTimeString('en-US', { hour12: false })}
                   </span>
                   {state.matchScore !== null && (
@@ -1685,14 +1677,14 @@ const Scanner = () => {
       {/* Error state */}
       
         {state.mode === MODES.ERROR && (
-          <div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-sm w-full text-center">
-              <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto mb-3">
-                <AlertCircle className="w-6 h-6 text-red-400" />
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-sm w-full text-center shadow-xl">
+              <div className="w-10 h-10 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto mb-3">
+                <AlertCircle className="w-5 h-5 text-rose-400" />
               </div>
-              <h2 className="text-lg font-bold text-white mb-1">Scan Interrupted</h2>
-              <p className="text-slate-400 text-xs mb-5">{state.error?.message || 'An unexpected error occurred.'}</p>
-              <button onClick={handleReset} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold text-xs transition-all">
+              <h2 className="text-base font-bold text-white mb-1">Scan Interrupted</h2>
+              <p className="text-slate-400 text-xs mb-4">{state.error?.message || 'An unexpected error occurred.'}</p>
+              <button onClick={handleReset} className="w-full h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-semibold text-xs transition-colors duration-100 cursor-pointer shadow-2xs">
                 Return to Scanner
               </button>
             </div>
@@ -1702,10 +1694,10 @@ const Scanner = () => {
 
       {/* Top HUD (QR Mode Header) */}
       {state.mode === MODES.QR && (
-        <div className="absolute top-0 inset-x-0 z-30 bg-black/60 backdrop-blur-xs pb-4 pointer-events-none">
+        <div className="absolute top-0 inset-x-0 z-30 bg-slate-950/90 border-b border-slate-800 pb-3 pointer-events-none">
           <div className="flex justify-between items-center px-4 sm:px-6 pt-[max(env(safe-area-inset-top,12px),12px)]">
-            <div className="flex items-center gap-2.5 pt-1">
-              <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center text-slate-200 border border-white/10">
+            <div className="flex items-center gap-2 pt-1">
+              <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-slate-200 border border-slate-700">
                 {deviceInfo.isMobile ? (
                   <Smartphone className="w-4 h-4 text-slate-200" />
                 ) : (
@@ -1718,7 +1710,7 @@ const Scanner = () => {
                 </h1>
               </div>
             </div>
-            <div className="font-mono text-xs font-semibold bg-slate-900/80 text-slate-300 px-2.5 py-1 rounded-lg border border-white/10 tabular-nums pointer-events-auto">
+            <div className="font-mono text-xs font-semibold bg-slate-900 text-slate-300 px-2 py-1 rounded-md border border-slate-700 tabular-nums pointer-events-auto">
               {state.clockTime}
             </div>
           </div>
@@ -1741,14 +1733,14 @@ const Scanner = () => {
                   else toast.error('No employees found');
                 } catch { toast.error('Mock scan failed'); }
               }}
-              className="h-9 px-3.5 bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 rounded-xl border border-blue-500/30 transition-all font-semibold text-xs flex items-center gap-1.5"
+              className="h-9 px-3.5 bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 rounded-md border border-blue-500/30 transition-colors duration-100 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
               <Sparkles className="w-3.5 h-3.5" /> <span>Mock Badge</span>
             </button>
           )}
           <button
             onClick={async () => { await supabase.auth.signOut(); localStorage.removeItem('user'); window.location.href = '/login'; }}
-            className="h-9 px-4 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white rounded-xl border border-white/10 transition-all font-semibold text-xs flex items-center gap-1.5"
+            className="h-9 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-md border border-slate-700 transition-colors duration-100 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
             <LogOut className="w-3.5 h-3.5" /> <span>Sign Out</span>
           </button>
@@ -1759,18 +1751,14 @@ const Scanner = () => {
       
         {state.mode === MODES.BOOT && (
           <div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
             className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 select-none"
           >
-            <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4" />
-            <h2 className="text-sm font-bold text-white tracking-wide mb-1">
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <h2 className="text-xs font-bold text-white tracking-wide mb-1">
               {state.loadingMsg || 'Starting attendance kiosk...'}
             </h2>
-            <p className="text-xs text-slate-400">
-              Loading facial recognition models...
+            <p className="text-[11px] text-slate-400">
+              Loading face scanner...
             </p>
           </div>
         )}
@@ -1778,7 +1766,7 @@ const Scanner = () => {
 
       {/* Status indicator */}
       {state.mode !== MODES.BOOT && state.loadingMsg && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-1.5 bg-slate-900 border border-slate-700 rounded-full shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-md shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
           <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
           <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
         </div>
@@ -1786,7 +1774,7 @@ const Scanner = () => {
 
       {/* Debug panel */}
       {state.debugMode && (
-        <div className="absolute top-20 left-4 z-[55] bg-black/80 border border-white/10 rounded-xl p-4 w-64 text-[10px] font-mono text-slate-300">
+        <div className="absolute top-20 left-4 z-[55] bg-black/80 border border-white/10 rounded-md p-3.5 w-64 text-[10px] font-mono text-slate-300">
           <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Info</h3>
           <div className="space-y-1">
             <p>Mode: {state.mode}</p>

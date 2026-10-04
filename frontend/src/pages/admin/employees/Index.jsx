@@ -6,6 +6,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
+import ActionMenu from '../../../components/ui/ActionMenu';
 import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
@@ -390,24 +391,22 @@ export default function EmployeesIndex() {
             {/* Header */}
             <PageHeader
                 breadcrumbs={['Admin', 'Employees', 'Directory']}
-                title="Employee Directory"
-                description="Employee profiles, job assignments, and salary details."
                 actions={
-                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
                         <button
                             type="button"
                             onClick={handleArchiveAccessClick}
-                            className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-xs touch-manipulation cursor-pointer"
+                            className="h-9 flex-1 sm:flex-initial px-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-md font-medium text-sm transition-colors duration-100 flex items-center justify-center gap-1.5 border border-slate-200 shadow-2xs cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
                         >
-                            <i className="ti ti-folders text-slate-500 text-base shrink-0" />
+                            <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
                             <span className="whitespace-nowrap">Archive</span>
                         </button>
 
                         <Link
                             to="/admin/employees/create"
-                            className="flex-1 sm:flex-initial justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-xs flex items-center gap-1.5 touch-manipulation"
+                            className="h-9 flex-1 sm:flex-initial px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-md font-medium text-sm transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600"
                         >
-                            <i className="ti ti-user-plus text-base shrink-0" />
+                            <i className="ti ti-user-plus text-sm shrink-0" />
                             <span className="whitespace-nowrap">Add Employee</span>
                         </Link>
                     </div>
@@ -417,33 +416,34 @@ export default function EmployeesIndex() {
             <div className="space-y-4 sm:space-y-5">
 
                 {/* Filter and search toolbar */}
-                <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
-                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 sm:gap-3">
+                <div className="bg-white p-3 rounded-lg shadow-2xs border border-slate-200 space-y-2.5">
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
                         
-                        {/* Search input */}
+                        {/* Search input: rigid h-9 (36px) */}
                         <div className="relative flex-1 min-w-0">
-                            <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
+                            <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
                             <input
                                 type="text"
                                 placeholder="Search by name, company ID, email, role, or craft..."
                                 value={searchQuery}
                                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                                className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 transition-all"
+                                className="h-9 w-full pl-9 pr-8 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-900 placeholder-slate-400 outline-none hover:border-slate-300 focus:bg-white focus:border-slate-950 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 transition-colors duration-100"
                             />
                             {searchQuery && (
                                 <button
+                                    type="button"
                                     onClick={() => setSearchQuery('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg active:bg-slate-200 cursor-pointer"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
                                     title="Clear search"
                                 >
-                                    <i className="ti ti-x text-sm" />
+                                    <i className="ti ti-x text-xs" />
                                 </button>
                             )}
                         </div>
 
-                        {/* Status filter tabs & View switcher */}
-                        <div className="flex items-center gap-2 justify-between lg:justify-end">
-                            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar touch-pan-x bg-slate-100 p-1 rounded-xl shrink-0">
+                        {/* Status filter tabs & View switcher: rigid h-9 */}
+                        <div className="flex items-center gap-2 justify-between lg:justify-end overflow-x-auto">
+                            <div className="h-9 flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 {[
                                     { id: 'All', label: 'All', count: counts.all, dot: null },
                                     { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
@@ -456,20 +456,21 @@ export default function EmployeesIndex() {
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
+                                        type="button"
                                         onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
-                                        className={`px-3 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95 touch-manipulation ${
+                                        className={`h-7 px-2.5 rounded text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
                                             filterStatus === tab.id
-                                                ? 'bg-white text-slate-900 shadow-xs'
-                                                : 'text-slate-500 hover:text-slate-800'
+                                                ? 'bg-white text-slate-950 shadow-2xs font-semibold'
+                                                : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/60'
                                         }`}
                                     >
                                         <span>{tab.label}</span>
-                                        <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
+                                        <span className={`text-[10px] font-mono px-1 py-0.2 rounded-xs border ${
                                             filterStatus === tab.id 
-                                                ? 'bg-slate-100 text-slate-700' 
+                                                ? 'bg-slate-100 text-slate-900 border-slate-200' 
                                                 : tab.alert 
-                                                    ? 'bg-amber-100 text-amber-700 font-bold'
-                                                    : 'bg-slate-200/80 text-slate-500'
+                                                    ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold'
+                                                    : 'bg-slate-200/60 text-slate-500 border-transparent'
                                         }`}>
                                             {tab.count}
                                         </span>
@@ -477,21 +478,23 @@ export default function EmployeesIndex() {
                                 ))}
                             </div>
 
-                            {/* View Switcher (Grid / Stack) */}
-                            <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
+                            {/* View Switcher: Icon-only h-9 w-9 square pair */}
+                            <div className="h-9 flex items-center gap-0.5 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 <button
+                                    type="button"
                                     onClick={() => setViewMode('grid')}
-                                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                        viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                                    className={`h-7 w-7 p-0 flex items-center justify-center rounded transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
+                                        viewMode === 'grid' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Card Grid View"
                                 >
                                     <i className="ti ti-layout-grid text-sm" />
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={() => setViewMode('table')}
-                                    className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                        viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                                    className={`h-7 w-7 p-0 flex items-center justify-center rounded transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
+                                        viewMode === 'table' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
                                     title="Stacked List View"
                                 >
@@ -503,33 +506,35 @@ export default function EmployeesIndex() {
                     </div>
 
                     {/* Department dropdown and results count */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100 text-xs">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
                         <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider shrink-0">Department:</span>
-                            <div className="relative flex-1 sm:w-48">
+                            <label htmlFor="dept-filter" className="text-[11px] font-medium text-slate-500 shrink-0">Department:</label>
+                            <div className="relative">
                                 <select
+                                    id="dept-filter"
                                     value={selectedDepartment}
                                     onChange={(e) => { setSelectedDepartment(e.target.value); setCurrentPage(1); }}
-                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-8 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 outline-none cursor-pointer focus:bg-white focus:border-indigo-500 transition-colors"
+                                    className="h-8 pl-2.5 pr-7 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 appearance-none outline-none hover:border-slate-300 focus:border-slate-950 focus-visible:ring-1 focus-visible:ring-slate-950 transition-colors duration-100 cursor-pointer"
                                 >
                                     <option value="All">All Departments</option>
                                     {departments.filter(d => d !== 'All').map(d => (
                                         <option key={d} value={d}>{d}</option>
                                     ))}
                                 </select>
-                                <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <i className="ti ti-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs" />
                             </div>
                         </div>
 
                         <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
-                            <span className="text-slate-500 font-medium text-[11px] sm:text-xs">
-                                Showing <strong className="text-slate-900 font-bold">{totalItems}</strong> matching personnel
+                            <span className="text-[11px] font-medium text-slate-500">
+                                Showing <strong className="font-mono font-semibold text-slate-950">{totalItems}</strong> matching personnel
                             </span>
 
                             {isFiltered && (
                                 <button
+                                    type="button"
                                     onClick={handleClearFilters}
-                                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer touch-manipulation"
+                                    className="h-7 px-2 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-md text-[11px] font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
                                     title="Reset all filters"
                                 >
                                     <i className="ti ti-filter-off text-xs" /> Reset Filters
@@ -541,13 +546,13 @@ export default function EmployeesIndex() {
 
                 {/* Pending Archive Review Notice Banner */}
                 {counts.pendingTermination > 0 && filterStatus !== 'Pending Termination' && (
-                    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
                         <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                                <i className="ti ti-archive text-lg" />
+                            <div className="w-8 h-8 rounded-md bg-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                                <i className="ti ti-archive text-base" />
                             </div>
                             <div>
-                                <p className="font-bold text-slate-800 text-sm">
+                                <p className="font-semibold text-slate-900 text-sm">
                                     {counts.pendingTermination} separated {counts.pendingTermination === 1 ? 'account is' : 'accounts are'} awaiting archive review
                                 </p>
                                 <p className="text-slate-500 font-medium">
@@ -558,7 +563,7 @@ export default function EmployeesIndex() {
                         <button
                             type="button"
                             onClick={() => { setFilterStatus('Pending Termination'); setCurrentPage(1); }}
-                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer touch-manipulation"
+                            className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium rounded-md transition-colors duration-100 flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer touch-manipulation"
                         >
                             <span>Review Separated Staff</span>
                             <i className="ti ti-arrow-right text-xs" />
@@ -594,12 +599,12 @@ export default function EmployeesIndex() {
                                 return (
                                     <div
                                         key={employee.id}
-                                        className={`rounded-2xl p-4 sm:p-5 border shadow-xs transition-all duration-150 flex flex-col justify-between group hover:-translate-y-0.5 ${
+                                        className={`rounded-lg p-4 border shadow-2xs transition-colors duration-100 flex flex-col justify-between group ${
                                             isTerminated
                                                 ? 'bg-slate-50/90 border-slate-300 opacity-75 hover:opacity-100 hover:border-slate-400'
                                                 : isSuspended
-                                                ? 'bg-amber-50/15 border-amber-200 hover:border-amber-400 hover:shadow-md'
-                                                : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                                                ? 'bg-amber-50/15 border-amber-200 hover:border-amber-400'
+                                                : 'bg-white border-slate-200 hover:border-slate-300'
                                         }`}
                                     >
                                         <div className="space-y-3.5">
@@ -623,31 +628,31 @@ export default function EmployeesIndex() {
                                                     </div>
                                                     
                                                     <div className="min-w-0 flex-1">
-                                                        <h4 className={`font-bold text-sm sm:text-base leading-tight truncate transition-colors ${
-                                                            isTerminated ? 'text-slate-600' : 'text-slate-900 group-hover:text-indigo-600'
+                                                        <h4 className={`font-semibold text-sm sm:text-base leading-tight truncate transition-colors ${
+                                                            isTerminated ? 'text-slate-600' : 'text-slate-900 group-hover:text-blue-600'
                                                         }`}>
                                                             {employee.first_name} {employee.last_name}
                                                         </h4>
-                                                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-semibold text-slate-500 truncate">
+                                                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-medium text-slate-500 truncate">
                                                             {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600 shrink-0`} />}
                                                             <span className="truncate">{employee.job_title || 'General Staff'}</span>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {/* Status indicator pill */}
+                                                {/* Status indicator badge */}
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                                                             {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                                             Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                                             Active
                                                         </span>
                                                     )}
@@ -656,8 +661,8 @@ export default function EmployeesIndex() {
 
                                             {/* Separation Notice */}
                                             {isTerminated && (
-                                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-rose-700">
+                                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-md text-rose-900 space-y-0.5">
+                                                    <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-rose-700">
                                                         <span className="flex items-center gap-1"><i className="ti ti-ban" /> DOLE Separated</span>
                                                         <span className="font-mono text-rose-600">Access Revoked</span>
                                                     </div>
@@ -668,8 +673,8 @@ export default function EmployeesIndex() {
                                             )}
 
                                             {isSuspended && (
-                                                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                                                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-md text-amber-900 space-y-0.5">
+                                                    <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-amber-800">
                                                         <span className="flex items-center gap-1"><i className="ti ti-clock-pause" /> Disciplinary Hold</span>
                                                         <span className="font-mono text-amber-700">QR Suspended</span>
                                                     </div>
@@ -680,7 +685,7 @@ export default function EmployeesIndex() {
                                             )}
 
                                             {/* Employee Details Summary */}
-                                            <div className={`rounded-xl p-3 border space-y-2.5 ${
+                                            <div className={`rounded-md p-3 border space-y-2.5 ${
                                                 isTerminated
                                                     ? 'bg-slate-100/70 border-slate-200/80 text-slate-500'
                                                     : 'bg-slate-50 border-slate-100'
@@ -689,13 +694,13 @@ export default function EmployeesIndex() {
                                                 {/* Line 1: ID & Department Tag */}
                                                 <div className="flex items-center justify-between gap-2">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ID:</span>
-                                                        <span className="font-mono text-xs font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200/80">
+                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">ID:</span>
+                                                        <span className="font-mono text-xs font-semibold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200/80">
                                                             {companyId}
                                                         </span>
                                                     </div>
 
-                                                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border flex items-center gap-1 shrink-0 ${
+                                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border flex items-center gap-1 shrink-0 ${
                                                         isTerminated
                                                             ? 'bg-slate-200 text-slate-700 border-slate-300'
                                                             : isFactory
@@ -710,25 +715,25 @@ export default function EmployeesIndex() {
                                                 {/* Line 2: Compensation & Schedule */}
                                                 <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
                                                     <div>
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
                                                             {isFactory ? 'Wage Structure' : 'Daily / Hourly Rate'}
                                                         </span>
                                                         {isFactory ? (
-                                                            <span className="text-xs font-bold text-slate-700 flex items-center gap-1 mt-0.5">
+                                                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
                                                                 <i className="ti ti-box-multiple text-slate-500 text-xs" /> Group Piece-Rate
                                                             </span>
                                                         ) : (
-                                                            <span className="font-mono text-xs sm:text-sm font-bold text-slate-700 block mt-0.5">
-                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-semibold text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
+                                                            <span className="font-mono text-xs sm:text-sm font-semibold text-slate-700 block mt-0.5">
+                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-medium text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
                                                             </span>
                                                         )}
                                                     </div>
 
                                                     <div className="text-right">
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
                                                             Standard Schedule
                                                         </span>
-                                                        <span className="text-[11px] font-semibold text-slate-600 block mt-0.5">
+                                                        <span className="text-[11px] font-medium text-slate-600 block mt-0.5">
                                                             {isFactory ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM'}
                                                         </span>
                                                     </div>
@@ -745,11 +750,11 @@ export default function EmployeesIndex() {
 
                                                     <div className="shrink-0">
                                                         {isBiometricEnrolled ? (
-                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-700 bg-slate-200/70 px-2 py-0.5 rounded border border-slate-300">
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-200/70 px-2 py-0.5 rounded border border-slate-300">
                                                                 <i className="ti ti-face-id text-xs text-slate-500" /> Biometrics
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                                                                 <i className="ti ti-alert-circle text-xs text-amber-600" /> Pending Face
                                                             </span>
                                                         )}
@@ -761,47 +766,48 @@ export default function EmployeesIndex() {
                                         </div>
 
                                         {/* Card Actions */}
-                                        <div className="pt-3.5 mt-3 border-t border-slate-200/80 flex items-center gap-2">
-                                            {isTerminated ? (
-                                                <>
-                                                    <Link
-                                                        to={`/admin/documents?employee_id=${employee.id}`}
-                                                        className="flex-1 justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
-                                                        title="View Documents"
-                                                    >
-                                                        <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
-                                                        <span className="whitespace-nowrap">Documents</span>
-                                                    </Link>
+                                        <div className="pt-3.5 mt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                                            <Link
+                                                to={`/admin/employees/${employee.id}`}
+                                                className={`flex-1 h-8 px-3 font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${
+                                                    isTerminated
+                                                        ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                                                        : 'bg-slate-900 hover:bg-blue-600 text-white'
+                                                }`}
+                                            >
+                                                <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
+                                                <i className="ti ti-arrow-right text-xs shrink-0" />
+                                            </Link>
 
-                                                    <Link
-                                                        to={`/admin/employees/${employee.id}`}
-                                                        className="flex-1 justify-center py-2 px-3 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
-                                                        title="Review employee record before archive"
-                                                    >
-                                                        <i className="ti ti-file-search text-xs shrink-0" />
-                                                        <span className="whitespace-nowrap">Review</span>
-                                                    </Link>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Link
-                                                        to={`/admin/documents?employee_id=${employee.id}`}
-                                                        className="flex-1 justify-center py-2 px-3 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-xl border border-sky-200/80 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer group/docs touch-manipulation"
-                                                        title="View Documents"
-                                                    >
-                                                        <i className="ti ti-folders text-sky-600 text-sm group-hover/docs:scale-110 transition-transform shrink-0" />
-                                                        <span className="whitespace-nowrap">Documents</span>
-                                                    </Link>
-
-                                                    <Link
-                                                        to={`/admin/employees/${employee.id}`}
-                                                        className="flex-1 justify-center py-2 px-3 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer touch-manipulation"
-                                                    >
-                                                        <span className="whitespace-nowrap">Profile</span>
-                                                        <i className="ti ti-arrow-right text-xs shrink-0" />
-                                                    </Link>
-                                                </>
-                                            )}
+                                            <ActionMenu
+                                                align="right"
+                                                title={`Actions for ${employee.first_name}`}
+                                                items={[
+                                                    {
+                                                        label: '201 Documents',
+                                                        icon: 'ti-folders',
+                                                        to: `/admin/documents?employee_id=${employee.id}`,
+                                                    },
+                                                    ...(!isTerminated ? [
+                                                        {
+                                                            label: 'Edit Employee',
+                                                            icon: 'ti-pencil',
+                                                            to: `/admin/employees/${employee.id}/edit`,
+                                                        },
+                                                        {
+                                                            label: 'Print Badge',
+                                                            icon: 'ti-qrcode',
+                                                            to: `/admin/employees/${employee.id}`,
+                                                        }
+                                                    ] : []),
+                                                    { divider: true },
+                                                    {
+                                                        label: 'Copy Company ID',
+                                                        icon: 'ti-copy',
+                                                        onClick: () => copyToClipboard(companyId, 'Company ID'),
+                                                    }
+                                                ]}
+                                            />
                                         </div>
                                     </div>
                                 );
@@ -809,7 +815,7 @@ export default function EmployeesIndex() {
                         </div>
                     ) : (
                         /* ── STACKED LIST / TABLE UI ── */
-                        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
+                        <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
                             
                             {/* Mobile Stacked List (Phones) */}
                             <div className="block md:hidden divide-y divide-slate-100">
@@ -840,12 +846,12 @@ export default function EmployeesIndex() {
                                             {/* Header */}
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-center gap-3 min-w-0">
-                                                    <EmployeeAvatar employee={employee} size="h-11 w-11" />
+                                                    <EmployeeAvatar employee={employee} size="h-10 w-10" />
                                                     <div className="min-w-0">
-                                                        <p className={`font-bold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
+                                                        <p className={`font-semibold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
                                                             {employee.first_name} {employee.last_name}
                                                         </p>
-                                                        <p className="text-xs font-semibold text-slate-500 truncate flex items-center gap-1 mt-0.5">
+                                                        <p className="text-xs font-medium text-slate-500 truncate flex items-center gap-1 mt-0.5">
                                                             {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
                                                             {employee.job_title || 'Staff'}
                                                         </p>
@@ -854,15 +860,15 @@ export default function EmployeesIndex() {
 
                                                 <div className="shrink-0">
                                                     {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                                                             {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                                             Suspended
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                                             Active
                                                         </span>
                                                     )}
@@ -870,63 +876,74 @@ export default function EmployeesIndex() {
                                             </div>
 
                                             {/* Stack Details Box */}
-                                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                                            <div className="bg-slate-50 rounded-md p-3 border border-slate-100 grid grid-cols-2 gap-2 text-xs">
                                                 <div>
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">ID & Dept</span>
-                                                    <span className="font-mono font-bold text-slate-700 block">{companyId}</span>
-                                                    <span className="text-[11px] font-semibold text-slate-600 block truncate">
+                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">ID & Dept</span>
+                                                    <span className="font-mono font-semibold text-slate-700 block">{companyId}</span>
+                                                    <span className="text-[11px] font-medium text-slate-600 block truncate">
                                                         {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail')}
                                                     </span>
                                                 </div>
 
                                                 <div className="text-right">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Wage Basis</span>
+                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Wage Basis</span>
                                                     {isFactory ? (
-                                                        <span className="text-xs font-bold text-amber-700 block">Group Piece-Rate</span>
+                                                        <span className="text-xs font-semibold text-amber-700 block">Group Piece-Rate</span>
                                                     ) : (
-                                                        <span className="font-mono font-bold text-emerald-700 block">
-                                                            ₱{daily.toFixed(2)}/day <span className="text-[10px] text-slate-400">· ₱{hourly.toFixed(2)}/hr</span>
+                                                        <span className="font-mono font-semibold text-emerald-700 block">
+                                                            ₱{daily.toFixed(2)}/day <span className="text-[10px] font-medium text-slate-400">· ₱{hourly.toFixed(2)}/hr</span>
                                                         </span>
                                                     )}
-                                                    <span className="text-[10px] font-bold text-slate-400 block">
+                                                    <span className="text-[10px] font-semibold text-slate-400 block">
                                                         {isBiometricEnrolled ? 'Biometrics Enrolled' : 'Face Pending'}
                                                     </span>
                                                 </div>
                                             </div>
 
                                             {/* Action links */}
-                                            {isTerminated ? (
-                                                <div className="flex items-center gap-2 pt-1">
-                                                    <Link
-                                                        to={`/admin/documents?employee_id=${employee.id}`}
-                                                        className="flex-1 py-1.5 text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 transition-colors"
-                                                    >
-                                                        Documents
-                                                    </Link>
-                                                    <Link
-                                                        to={`/admin/employees/${employee.id}`}
-                                                        className="flex-1 py-1.5 text-center bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
-                                                    >
-                                                        <i className="ti ti-file-search text-xs" />
-                                                        <span>Review</span>
-                                                    </Link>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-2 pt-1">
-                                                    <Link
-                                                        to={`/admin/documents?employee_id=${employee.id}`}
-                                                        className="flex-1 py-1.5 text-center bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs rounded-lg border border-sky-200 transition-colors"
-                                                    >
-                                                        Documents
-                                                    </Link>
-                                                    <Link
-                                                        to={`/admin/employees/${employee.id}`}
-                                                        className="flex-1 py-1.5 text-center bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-lg transition-colors"
-                                                    >
-                                                        View Profile
-                                                    </Link>
-                                                </div>
-                                            )}
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <Link
+                                                    to={`/admin/employees/${employee.id}`}
+                                                    className={`flex-1 h-8 text-center font-medium text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        isTerminated
+                                                            ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                                                            : 'bg-slate-900 hover:bg-blue-600 text-white'
+                                                    }`}
+                                                >
+                                                    <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
+                                                    <i className="ti ti-arrow-right text-xs" />
+                                                </Link>
+
+                                                <ActionMenu
+                                                    align="right"
+                                                    title={`Actions for ${employee.first_name}`}
+                                                    items={[
+                                                        {
+                                                            label: '201 Documents',
+                                                            icon: 'ti-folders',
+                                                            to: `/admin/documents?employee_id=${employee.id}`,
+                                                        },
+                                                        ...(!isTerminated ? [
+                                                            {
+                                                                label: 'Edit Employee',
+                                                                icon: 'ti-pencil',
+                                                                to: `/admin/employees/${employee.id}/edit`,
+                                                            },
+                                                            {
+                                                                label: 'Print Badge',
+                                                                icon: 'ti-qrcode',
+                                                                to: `/admin/employees/${employee.id}`,
+                                                            }
+                                                        ] : []),
+                                                        { divider: true },
+                                                        {
+                                                            label: 'Copy Company ID',
+                                                            icon: 'ti-copy',
+                                                            onClick: () => copyToClipboard(companyId, 'Company ID'),
+                                                        }
+                                                    ]}
+                                                />
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -935,21 +952,21 @@ export default function EmployeesIndex() {
                             {/* Desktop Stacked Table View (Tablet & Desktop) */}
                             <div className="hidden md:block overflow-x-auto no-scrollbar touch-pan-x">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
-                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-bold border-b border-slate-200">
+                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
                                         <tr>
-                                            <th className="px-5 py-3.5">Personnel</th>
-                                            <th className="px-4 py-3.5">Standing</th>
-                                            <th className="px-4 py-3.5">Department & Craft</th>
-                                            <th className="px-4 py-3.5">Wage Structure</th>
-                                            <th className="px-4 py-3.5">Biometrics</th>
-                                            <th className="px-4 py-3.5">Joined</th>
-                                            <th className="px-5 py-3.5 text-right">Actions</th>
+                                            <th className="px-5 py-3">Employee</th>
+                                            <th className="px-4 py-3">Status</th>
+                                            <th className="px-4 py-3">Department & Role</th>
+                                            <th className="px-4 py-3">Pay Rate</th>
+                                            <th className="px-4 py-3">Face Scan</th>
+                                            <th className="px-4 py-3">Joined</th>
+                                            <th className="px-5 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-xs">
                                         {paginatedEmployees.map((employee) => {
                                             const isFactory = (employee.department || '').toLowerCase().includes('factory');
-                                            const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
+                                            const shoeRole = getShoeRoleDetails(employee.job_title);
                                             const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
                                             const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
                                             const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
@@ -970,7 +987,7 @@ export default function EmployeesIndex() {
                                             return (
                                                 <tr 
                                                     key={employee.id} 
-                                                    className={`transition-colors ${
+                                                    className={`transition-colors duration-100 ${
                                                         isTerminated
                                                             ? 'bg-slate-100/50 hover:bg-slate-100/80 text-slate-500 opacity-80 hover:opacity-100'
                                                             : isSuspended
@@ -979,13 +996,13 @@ export default function EmployeesIndex() {
                                                     }`}
                                                 >
                                                     {/* Personnel */}
-                                                    <td className="px-5 py-3.5">
+                                                    <td className="px-5 py-3">
                                                         <div className="flex items-center gap-3">
                                                             <div className="relative shrink-0">
                                                                 <EmployeeAvatar employee={employee} size="h-9 w-9" />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <p className={`font-bold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
+                                                                <p className={`font-semibold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
                                                                     {employee.first_name} {employee.last_name}
                                                                 </p>
                                                                 <p className="text-slate-400 font-mono text-[11px] truncate">
@@ -996,30 +1013,30 @@ export default function EmployeesIndex() {
                                                     </td>
 
                                                     {/* Standing */}
-                                                    <td className="px-4 py-3.5">
+                                                    <td className="px-4 py-3">
                                                         {isTerminated ? (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-md border border-rose-300">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 text-[11px] font-semibold rounded-md border border-rose-200">
                                                                 <i className="ti ti-circle-x text-xs text-rose-600" /> {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Terminated'}
                                                             </span>
                                                         ) : isSuspended ? (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-md border border-amber-300">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-800 text-[11px] font-semibold rounded-md border border-amber-200">
                                                                 <i className="ti ti-clock-pause text-xs text-amber-600" /> Suspended
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-md border border-emerald-200">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] font-semibold rounded-md border border-emerald-200">
                                                                 Active
                                                             </span>
                                                         )}
                                                     </td>
 
                                                     {/* Department & Craft */}
-                                                    <td className="px-4 py-3.5">
+                                                    <td className="px-4 py-3">
                                                         <div>
-                                                            <p className={`font-bold flex items-center gap-1.5 ${isTerminated ? 'text-slate-600' : 'text-slate-800'}`}>
+                                                            <p className={`font-semibold flex items-center gap-1.5 ${isTerminated ? 'text-slate-600' : 'text-slate-800'}`}>
                                                                 {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
                                                                 {employee.job_title || 'Staff'}
                                                             </p>
-                                                            <span className={`inline-block mt-0.5 px-2 py-0.2 rounded text-[10px] font-bold uppercase border ${
+                                                            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${
                                                                 isTerminated
                                                                     ? 'bg-slate-200 text-slate-700 border-slate-300'
                                                                     : isFactory
@@ -1032,22 +1049,22 @@ export default function EmployeesIndex() {
                                                     </td>
 
                                                     {/* Wage Structure */}
-                                                    <td className="px-4 py-3.5">
+                                                    <td className="px-4 py-3">
                                                         {isFactory ? (
                                                             <div>
-                                                                <p className="font-mono font-bold text-xs text-slate-700 flex items-center gap-1">
+                                                                <p className="font-mono font-semibold text-xs text-slate-700 flex items-center gap-1">
                                                                     <i className="ti ti-box-multiple text-slate-500" /> Batch Pool
                                                                 </p>
-                                                                <p className="text-slate-400 text-[10px] uppercase font-bold">
+                                                                <p className="text-slate-400 text-[10px] uppercase font-semibold">
                                                                     Group Piece-Rate
                                                                 </p>
                                                             </div>
                                                         ) : (
                                                             <div>
-                                                                <p className="font-mono font-bold text-sm text-slate-700">
+                                                                <p className="font-mono font-semibold text-sm text-slate-700">
                                                                     ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-[10px] text-slate-400">/day</span>
                                                                 </p>
-                                                                <p className="text-slate-500 text-[10px] font-semibold">
+                                                                <p className="text-slate-500 text-[10px] font-medium">
                                                                     ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr
                                                                 </p>
                                                             </div>
@@ -1055,63 +1072,68 @@ export default function EmployeesIndex() {
                                                     </td>
 
                                                     {/* Biometrics */}
-                                                    <td className="px-4 py-3.5">
+                                                    <td className="px-4 py-3">
                                                         {isBiometricEnrolled ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-200/70 text-slate-700 rounded text-[11px] font-bold border border-slate-300">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-200/70 text-slate-700 rounded text-[11px] font-semibold border border-slate-300">
                                                                 <i className="ti ti-face-id text-slate-500" /> Enrolled
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[11px] font-bold border border-amber-200">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[11px] font-semibold border border-amber-200">
                                                                 <i className="ti ti-alert-circle text-amber-600" /> Pending
                                                             </span>
                                                         )}
                                                     </td>
 
                                                     {/* Joined */}
-                                                    <td className="px-4 py-3.5 font-medium text-slate-600 tabular-nums">
+                                                    <td className="px-4 py-3 font-medium text-slate-600 tabular-nums">
                                                         {formatDate(employee.created_at)}
                                                     </td>
 
                                                     {/* Actions */}
-                                                    <td className="px-5 py-3.5 text-right">
-                                                        {isTerminated ? (
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                <Link
-                                                                    to={`/admin/documents?employee_id=${employee.id}`}
-                                                                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                                    title="View Documents"
-                                                                >
-                                                                    <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
-                                                                    <span>Documents</span>
-                                                                </Link>
-                                                                <Link
-                                                                    to={`/admin/employees/${employee.id}`}
-                                                                    className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                                    title="Review record before archive"
-                                                                >
-                                                                    <i className="ti ti-file-search text-xs shrink-0" />
-                                                                    <span>Review</span>
-                                                                </Link>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                <Link
-                                                                    to={`/admin/documents?employee_id=${employee.id}`}
-                                                                    className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-800 font-bold text-xs rounded-lg border border-sky-200/80 transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                                    title="View Documents"
-                                                                >
-                                                                    <i className="ti ti-folders text-sky-600 text-sm shrink-0" />
-                                                                    <span>Documents</span>
-                                                                </Link>
-                                                                <Link
-                                                                    to={`/admin/employees/${employee.id}`}
-                                                                    className="px-3 py-1.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation"
-                                                                >
-                                                                    <span>Profile</span>
-                                                                    <i className="ti ti-arrow-right text-xs shrink-0" />
-                                                                </Link>
-                                                            </div>
-                                                        )}
+                                                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <Link
+                                                                to={`/admin/employees/${employee.id}`}
+                                                                className={`h-8 px-3 font-medium text-xs rounded-md transition-colors duration-100 flex items-center gap-1 cursor-pointer ${
+                                                                    isTerminated
+                                                                        ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                                                                        : 'bg-slate-900 hover:bg-blue-600 text-white'
+                                                                }`}
+                                                            >
+                                                                <span>{isTerminated ? 'Review' : 'Profile'}</span>
+                                                                <i className="ti ti-arrow-right text-xs shrink-0" />
+                                                            </Link>
+
+                                                            <ActionMenu
+                                                                align="right"
+                                                                title={`Actions for ${employee.first_name}`}
+                                                                items={[
+                                                                    {
+                                                                        label: '201 Documents',
+                                                                        icon: 'ti-folders',
+                                                                        to: `/admin/documents?employee_id=${employee.id}`,
+                                                                    },
+                                                                    ...(!isTerminated ? [
+                                                                        {
+                                                                            label: 'Edit Employee',
+                                                                            icon: 'ti-pencil',
+                                                                            to: `/admin/employees/${employee.id}/edit`,
+                                                                        },
+                                                                        {
+                                                                            label: 'Print Badge',
+                                                                            icon: 'ti-qrcode',
+                                                                            to: `/admin/employees/${employee.id}`,
+                                                                        }
+                                                                    ] : []),
+                                                                    { divider: true },
+                                                                    {
+                                                                        label: 'Copy Company ID',
+                                                                        icon: 'ti-copy',
+                                                                        onClick: () => copyToClipboard(companyId, 'Company ID'),
+                                                                    }
+                                                                ]}
+                                                            />
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1123,30 +1145,30 @@ export default function EmployeesIndex() {
                     )
                 ) : (
                     /* Empty state */
-                    <div className="bg-white rounded-2xl p-8 sm:p-12 text-center border border-slate-200 shadow-xs space-y-3">
+                    <div className="bg-white rounded-lg p-8 sm:p-12 text-center border border-slate-200 shadow-2xs space-y-3">
                         {filterStatus === 'Pending Termination' && !searchQuery.trim() && selectedDepartment === 'All' ? (
                             <>
-                                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
-                                    <i className="ti ti-circle-check text-3xl" />
+                                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center mx-auto border border-emerald-200">
+                                    <i className="ti ti-circle-check text-2xl" />
                                 </div>
-                                <h3 className="text-base font-bold text-slate-900">No records pending archive review</h3>
+                                <h3 className="text-base font-semibold text-slate-900">No records pending archive review</h3>
                                 <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
                                     All separated accounts have been processed or moved to the permanent archive.
                                 </p>
                             </>
                         ) : (
                             <>
-                                <div className="w-14 h-14 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center mx-auto border border-slate-200">
-                                    <i className="ti ti-users text-3xl" />
+                                <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-md flex items-center justify-center mx-auto border border-slate-200">
+                                    <i className="ti ti-users text-2xl" />
                                 </div>
-                                <h3 className="text-base font-bold text-slate-900">No personnel records match your search</h3>
+                                <h3 className="text-base font-semibold text-slate-900">No personnel records match your search</h3>
                                 <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
                                     Try adjusting your search keywords, clear active status filters, or pick another department.
                                 </p>
                                 {isFiltered && (
                                     <button
                                         onClick={handleClearFilters}
-                                        className="mt-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer touch-manipulation"
+                                        className="mt-2 h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer touch-manipulation"
                                     >
                                         Reset All Filters
                                     </button>
@@ -1157,12 +1179,12 @@ export default function EmployeesIndex() {
                 )}
 
                 {/* Pagination */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
+                <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-medium">
                     <div className="text-center sm:text-left text-[11px] sm:text-xs">
                         {totalItems > 0 ? (
-                            <span>Showing <span className="text-slate-900 font-bold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-900 font-bold">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-900 font-bold">{totalItems}</span> personnel</span>
+                            <span>Showing <span className="text-slate-900 font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-900 font-semibold">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-900 font-semibold">{totalItems}</span> personnel</span>
                         ) : (
-                            <span>Showing <span className="text-slate-900 font-bold">0</span> of <span className="text-slate-900 font-bold">0</span></span>
+                            <span>Showing <span className="text-slate-900 font-semibold">0</span> of <span className="text-slate-900 font-semibold">0</span></span>
                         )}
                     </div>
 
@@ -1170,19 +1192,19 @@ export default function EmployeesIndex() {
                         <button
                             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                             disabled={currentPage === 1}
-                            className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 touch-manipulation"
+                            className="flex-1 sm:flex-initial justify-center h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors duration-100 flex items-center gap-1.5 cursor-pointer touch-manipulation"
                         >
                             <i className="ti ti-chevron-left text-sm" /> Prev
                         </button>
 
-                        <span className="px-3.5 py-2.5 sm:py-1.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-900 font-bold text-xs shrink-0 font-mono">
+                        <span className="h-8 px-3 bg-slate-50 border border-slate-200 rounded-md text-slate-700 font-medium text-xs shrink-0 font-mono flex items-center justify-center">
                             {currentPage} / {totalPages}
                         </span>
 
                         <button
                             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                             disabled={currentPage >= totalPages}
-                            className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 touch-manipulation"
+                            className="flex-1 sm:flex-initial justify-center h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors duration-100 flex items-center gap-1.5 cursor-pointer touch-manipulation"
                         >
                             Next <i className="ti ti-chevron-right text-sm" />
                         </button>
@@ -1193,15 +1215,15 @@ export default function EmployeesIndex() {
 
             {/* Temporary password credentials modal */}
             {tempCreds && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-6 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-                    <div className="bg-white rounded-2xl p-4 sm:p-7 max-w-md w-full my-auto shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 max-h-[90vh] overflow-y-auto">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-6 bg-slate-950/70 overflow-y-auto">
+                    <div className="bg-white rounded-lg p-5 max-w-md w-full my-auto shadow-xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
                         
-                        <div className="text-center space-y-2">
-                            <div className="h-11 w-11 sm:h-12 sm:w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
-                                <i className="ti ti-check text-2xl font-bold" />
+                        <div className="text-center space-y-1.5">
+                            <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-md mx-auto flex items-center justify-center border border-emerald-200 shadow-2xs">
+                                <i className="ti ti-check text-xl font-bold" />
                             </div>
-                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                                Account Created Successfully!
+                            <h3 className="text-base font-semibold text-slate-900 tracking-tight">
+                                Account Created Successfully
                             </h3>
                             <p className="text-xs text-slate-500 font-medium">
                                 Provide these temporary login credentials to the employee.
@@ -1209,21 +1231,21 @@ export default function EmployeesIndex() {
                         </div>
 
                         {/* Credentials */}
-                        <div className="bg-slate-50 rounded-xl p-3.5 sm:p-4 border border-slate-200 space-y-3">
+                        <div className="bg-slate-50 rounded-md p-3 border border-slate-200 space-y-2.5">
                             {tempCreds.name && (
                                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Employee</span>
-                                    <span className="text-xs font-black text-slate-800 truncate text-right">{tempCreds.name}</span>
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">Employee</span>
+                                    <span className="text-xs font-semibold text-slate-800 truncate text-right">{tempCreds.name}</span>
                                 </div>
                             )}
 
                             {tempCreds.company_id && (
                                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Company ID</span>
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">Company ID</span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(tempCreds.company_id, 'Company ID')}
-                                        className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer active:scale-95 touch-manipulation"
+                                        className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer touch-manipulation"
                                     >
                                         <span>{tempCreds.company_id}</span>
                                         <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs`} />
@@ -1233,11 +1255,11 @@ export default function EmployeesIndex() {
 
                             {tempCreds.email && (
                                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/60">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Login Email</span>
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">Login Email</span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(tempCreds.email, 'Email')}
-                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer min-w-0 max-w-[200px] truncate active:scale-95 touch-manipulation"
+                                        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-blue-600 cursor-pointer min-w-0 max-w-[200px] truncate touch-manipulation"
                                     >
                                         <span className="truncate">{tempCreds.email}</span>
                                         <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
@@ -1246,30 +1268,30 @@ export default function EmployeesIndex() {
                             )}
 
                             {/* Temporary password */}
-                            <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
+                            <div className="p-3 bg-slate-900 rounded-md text-white space-y-1.5 border border-slate-800">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1">
                                         <i className="ti ti-key text-xs" /> Temporary Password
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                                        className="text-slate-400 hover:text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
                                     >
                                         <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-xs`} />
                                         {showPassword ? 'Hide' : 'Show'}
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-mono text-base sm:text-lg font-black tracking-wider text-white select-all">
+                                    <span className="font-mono text-base font-semibold tracking-wider text-white select-all">
                                         {showPassword ? (tempCreds.temp_password || 'Emp-1234') : '••••••••'}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(tempCreds.temp_password, 'Password')}
-                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer touch-manipulation"
+                                        className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded font-medium text-xs flex items-center gap-1 transition-colors duration-100 cursor-pointer touch-manipulation"
                                     >
-                                        <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy'} text-xs`} />
+                                        <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy text-slate-300'} text-xs`} />
                                         {copiedField === 'Password' ? 'Copied' : 'Copy'}
                                     </button>
                                 </div>
@@ -1280,10 +1302,10 @@ export default function EmployeesIndex() {
                         <button
                             type="button"
                             onClick={copyAllCredentials}
-                            className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 cursor-pointer touch-manipulation"
+                            className="h-9 w-full px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-medium text-xs flex items-center justify-center gap-1.5 transition-colors duration-100 border border-blue-200 cursor-pointer touch-manipulation"
                         >
                             <i className={`ti ${copiedAll ? 'ti-check text-emerald-600' : 'ti-clipboard-check'} text-sm`} />
-                            {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
+                            {copiedAll ? 'Copied to Clipboard' : 'Copy All Login Credentials'}
                         </button>
 
                         <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
@@ -1296,7 +1318,7 @@ export default function EmployeesIndex() {
                             <button
                                 type="button"
                                 onClick={() => setTempCreds(null)}
-                                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                                className="h-9 w-full px-3 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer"
                             >
                                 Dismiss & View Directory
                             </button>

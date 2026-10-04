@@ -445,8 +445,8 @@ export default function MyProfile() {
             onDrop={handleDrop}
         >
             {isDraggingFile && (
-                <div className="fixed inset-0 z-[60] bg-blue-600/10 backdrop-blur-xs flex items-center justify-center pointer-events-none">
-                    <div className="bg-white rounded-xl shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
+                <div className="fixed inset-0 z-[60] bg-blue-950/20 flex items-center justify-center pointer-events-none">
+                    <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
                         <i className="ti ti-cloud-upload text-4xl text-blue-600 mb-2" />
                         <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your documents</p>
@@ -455,15 +455,15 @@ export default function MyProfile() {
             )}
 
             {/* Profile header */}
-            <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
+            <div className="bg-slate-900 rounded-lg p-5 sm:p-7 border border-slate-800 text-white shadow-2xs relative">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                     <div className="relative h-24 w-24 sm:h-28 sm:w-28 shrink-0">
                         <EmployeeAvatar
                             employee={profile}
                             size="h-24 w-24 sm:h-28 sm:w-28"
-                            rounded="rounded-xl"
-                            border="border-2 border-slate-700"
-                            shadow="shadow-xs"
+                            rounded="rounded-lg"
+                            border="border border-slate-700"
+                            shadow="shadow-2xs"
                             theme="dark"
                             textSize="text-3xl sm:text-4xl"
                         />
@@ -472,7 +472,7 @@ export default function MyProfile() {
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
                             {isTerminated && (
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded border ${
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-md border ${
                                     isPendingArchive 
                                         ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
                                         : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
@@ -481,27 +481,27 @@ export default function MyProfile() {
                                     {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
                                 </span>
                             )}
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
                                 <i className="ti ti-id text-slate-400" /> {profile?.company_id || 'EMPLOYEE'}
                             </span>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-md border border-blue-500/30">
                                 {profile?.department || 'Operations'}
                             </span>
                             {(profile?.department || '').toLowerCase().includes('factory') ? (
                                 <>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-md border border-amber-500/30">
                                         Factory (08:00 - 17:00 • No OT)
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-md border border-purple-500/30">
                                         Piece-Rate Production
                                     </span>
                                 </>
                             ) : (
                                 <>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-md border border-blue-500/30">
                                         Regular (08:00 - 20:00 • OT Eligible)
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded-md border border-emerald-500/30">
                                         Salaried Monthly
                                     </span>
                                 </>
@@ -529,18 +529,18 @@ export default function MyProfile() {
 
                     <div className="flex sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
                         {alerts.length > 0 && (
-                            <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold">
+                            <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md text-xs font-semibold">
                                 <i className="ti ti-alert-triangle text-amber-400 text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
                             </div>
                         )}
                         {isTerminated ? (
-                            <span className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 text-slate-400 border border-slate-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                            <span className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
                                 <i className="ti ti-lock text-sm" /> Uploads Disabled
                             </span>
                         ) : (
                             <button
                                 onClick={() => openUploadModal()}
-                                className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                className="w-full sm:w-auto h-9 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <i className="ti ti-upload text-sm" /> Upload Document
                             </button>
@@ -551,15 +551,16 @@ export default function MyProfile() {
 
             {/* Disciplinary Suspension Notification */}
             {isSuspended && !isPendingArchive && (
-                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-lg shrink-0 mt-0.5">
+                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-md shrink-0 mt-0.5">
                             <i className="ti ti-lock-exclamation text-xl" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-amber-950 text-sm">Disciplinary Suspension Active</h4>
-                                <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold rounded-md">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
                                     Operational Hold
                                 </span>
                             </div>
@@ -573,15 +574,16 @@ export default function MyProfile() {
 
             {/* Pending Archive Clearance Notification */}
             {isPendingArchive && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-lg shrink-0 mt-0.5">
+                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-md shrink-0 mt-0.5">
                             <i className="ti ti-hourglass-empty text-xl animate-pulse" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-amber-950 text-sm">Account in Clearance Cooldown</h4>
-                                <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold rounded-md">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
                                     {daysUntilPermanentArchive} Days Left
                                 </span>
                             </div>
@@ -593,7 +595,7 @@ export default function MyProfile() {
                         </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
-                        <span className="text-[11px] font-mono font-medium text-amber-700 bg-amber-100/60 px-2.5 py-1 rounded border border-amber-200">
+                        <span className="text-[11px] font-mono font-medium text-amber-700 bg-amber-100/60 px-2.5 py-1 rounded-md border border-amber-200">
                             Clearance Cooldown: 14 Days
                         </span>
                     </div>
@@ -603,9 +605,9 @@ export default function MyProfile() {
             {/* Personal and employment details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 {/* Personal Information */}
-                <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                        <div className="h-9 w-9 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
                             <i className="ti ti-user text-lg" />
                         </div>
                         <div>
@@ -643,9 +645,9 @@ export default function MyProfile() {
                 </div>
 
                 {/* Employment & Payroll Details */}
-                <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                        <div className="h-9 w-9 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
                             <i className="ti ti-briefcase text-lg" />
                         </div>
                         <div>
@@ -673,7 +675,7 @@ export default function MyProfile() {
                         </div>
                         <div className="col-span-2">
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Employment Status</p>
-                            <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold text-[11px] rounded border border-emerald-200">
+                            <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold text-[11px] rounded-md border border-emerald-200">
                                 Active Full-Time
                             </span>
                         </div>
@@ -682,10 +684,10 @@ export default function MyProfile() {
             </div>
 
             {/* Biometric Authentication & Gate Access */}
-            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+            <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
-                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center border ${
+                        <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
                             isMedicalExempt 
                                 ? 'bg-amber-50 text-amber-700 border-amber-200' 
                                 : profile?.has_registered_biometrics 
@@ -695,8 +697,8 @@ export default function MyProfile() {
                             <i className={`ti ${isMedicalExempt ? 'ti-bandage' : 'ti-fingerprint'} text-lg`} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Biometric Authentication & Gate Access</h3>
-                            <p className="text-[11px] text-slate-500">Turnstile credentials, biometric verification status, and medical protocols</p>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Gate Access &amp; Face Scan</h3>
+                            <p className="text-[11px] text-slate-500">Badge access, face scan status, and medical exemptions</p>
                         </div>
                     </div>
 
@@ -723,7 +725,7 @@ export default function MyProfile() {
 
                 {isMedicalExempt ? (
                     <div className="space-y-3">
-                        <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-2 text-xs">
+                        <div className="p-4 rounded-md bg-amber-50/50 border border-amber-200 space-y-2 text-xs">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="font-bold text-amber-950 flex items-center gap-1.5">
                                     <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
@@ -750,28 +752,28 @@ export default function MyProfile() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                 <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Turnstile Mode</p>
                                 <p className="font-bold text-slate-800 flex items-center gap-1">
                                     <i className="ti ti-qrcode text-emerald-600" />
                                     QR-Only (Medical Grace)
                                 </p>
                             </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                 <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Audit Trail</p>
                                 <p className="font-bold text-slate-800 flex items-center gap-1">
                                     <i className="ti ti-camera text-blue-600" />
                                     Camera Snapshot Logged
                                 </p>
                             </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                            <div className="p-3 bg-slate-50 rounded-md border border-slate-200 flex items-center justify-between">
                                 <div>
                                     <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Digital Pass</p>
                                     <p className="font-bold text-slate-800">Ready to Scan</p>
                                 </div>
                                 <Link
                                     to="/employee/qr"
-                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-xs transition-all cursor-pointer"
+                                    className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium text-xs shadow-2xs transition-colors duration-100 cursor-pointer flex items-center justify-center"
                                 >
                                     View QR
                                 </Link>
@@ -780,64 +782,64 @@ export default function MyProfile() {
                     </div>
                 ) : profile?.has_registered_biometrics ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Facial Biometric</p>
+                        <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
+                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Face Scan</p>
                             <p className="font-bold text-emerald-700 flex items-center gap-1">
                                 <i className="ti ti-circle-check text-emerald-600" />
-                                Calibrated & Registered
+                                Verified &amp; Active
                             </p>
                         </div>
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Authentication Mode</p>
+                        <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
+                            <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Clock-in Method</p>
                             <p className="font-bold text-slate-800 flex items-center gap-1">
                                 <i className="ti ti-shield-check text-blue-600" />
-                                Dual Factor (QR + Face)
+                                Badge + Face Scan
                             </p>
                         </div>
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                        <div className="p-3 bg-slate-50 rounded-md border border-slate-200 flex items-center justify-between">
                             <div>
-                                <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Digital Gate Pass</p>
-                                <p className="font-bold text-slate-800">Active Credential</p>
+                                <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Digital Badge</p>
+                                <p className="font-bold text-slate-800">Ready to use</p>
                             </div>
                             <Link
                                 to="/employee/qr"
-                                className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg font-bold text-xs shadow-xs transition-all cursor-pointer"
+                                className="h-8 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-md font-medium text-xs shadow-2xs transition-colors duration-100 cursor-pointer flex items-center justify-center"
                             >
-                                View QR
+                                View badge
                             </Link>
                         </div>
                     </div>
                 ) : (
-                    <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="p-4 rounded-md bg-blue-50/50 border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                             <p className="font-bold text-blue-900 flex items-center gap-1.5">
                                 <i className="ti ti-scan text-blue-600 text-sm" />
-                                Facial Biometric Setup Required
+                                Face scan setup required
                             </p>
                             <p className="text-blue-700 mt-0.5">
-                                Your account needs biometric face calibration to enable turnstile entrance credentials.
+                                Please complete your face scan setup to enable clocking in at company kiosks.
                             </p>
                         </div>
                         <Link
                             to="/biometric-setup"
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-xs text-center shrink-0 transition-all cursor-pointer"
+                            className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-xs shadow-2xs text-center shrink-0 transition-colors duration-100 cursor-pointer flex items-center justify-center"
                         >
-                            Calibrate Face Biometrics
+                            Set up face scan
                         </Link>
                     </div>
                 )}
             </div>
 
             {/* Compliance & Disciplinary Standing */}
-            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200 space-y-4">
+            <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+                        <div className="h-9 w-9 rounded-md bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
                             <i className="ti ti-scale text-lg" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Compliance & Disciplinary Records</h3>
-                            <p className="text-[11px] text-slate-500">Official DOLE due process records, written warnings, and standing</p>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Policy &amp; Incident Reports</h3>
+                            <p className="text-[11px] text-slate-500">Documented workplace incidents, written notices, and current standing</p>
                         </div>
                     </div>
 
@@ -863,8 +865,8 @@ export default function MyProfile() {
                 </div>
 
                 {disciplinaryLogs.length === 0 ? (
-                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-md bg-emerald-50/50 border border-emerald-200 text-xs">
+                        <div className="w-8 h-8 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                             <i className="ti ti-shield-check text-base" />
                         </div>
                         <div className="flex-1 text-center sm:text-left">
@@ -884,7 +886,7 @@ export default function MyProfile() {
                             return (
                                 <div
                                     key={log.id}
-                                    className={`p-4 rounded-xl border text-xs transition-all ${
+                                    className={`p-4 rounded-md border text-xs transition-colors duration-100 ${
                                         isResolvedTermination
                                             ? 'bg-emerald-50/30 border-emerald-200'
                                             : log.status === 'Active'
@@ -896,7 +898,7 @@ export default function MyProfile() {
                                 >
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border flex items-center gap-1 ${
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
                                                 isResolvedTermination
                                                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                                     : log.type === 'Termination'
@@ -951,7 +953,7 @@ export default function MyProfile() {
                                             </span>
                                             <Link
                                                 to="/employee/dashboard"
-                                                className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] uppercase transition-colors shrink-0"
+                                                className="h-7 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-md text-[10px] uppercase transition-colors duration-100 shrink-0 flex items-center justify-center shadow-2xs"
                                             >
                                                 Review Notice
                                             </Link>
@@ -981,9 +983,9 @@ export default function MyProfile() {
             {/* 201 documents */}
             <div className="space-y-4">
                 {alerts.length > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5">
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 shadow-2xs">
                         <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
+                            <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-md flex items-center justify-center">
                                 <i className="ti ti-alert-triangle text-base" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -995,7 +997,7 @@ export default function MyProfile() {
                                     {alerts.map(({ doc, status }) => (
                                         <span
                                             key={doc.id}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}
                                         >
                                             <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-xs`} />
                                             {doc.title || doc.file_name} · {status.label}
@@ -1007,11 +1009,11 @@ export default function MyProfile() {
                     </div>
                 )}
 
-                <div className="bg-white rounded-xl p-5 sm:p-6 shadow-xs border border-slate-200">
+                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                     {/* Separation notice */}
                     {isTerminated && (
-                        <div className="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                        <div className="mb-5 p-4 rounded-md bg-rose-50 border border-rose-200 flex items-start gap-3.5">
+                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
                                 <i className="ti ti-lock text-base font-bold" />
                             </div>
                             <div className="text-xs">
@@ -1025,7 +1027,7 @@ export default function MyProfile() {
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+                            <div className="h-9 w-9 rounded-md bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
                                 <i className="ti ti-folders text-lg" />
                             </div>
                             <div>
@@ -1042,7 +1044,7 @@ export default function MyProfile() {
                                         placeholder="Search files..."
                                         value={docSearch}
                                         onChange={(e) => setDocSearch(e.target.value)}
-                                        className="pl-7 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-500 font-medium text-xs text-slate-800 transition-all w-36 sm:w-48"
+                                        className="h-8 pl-7 pr-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:bg-white focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 w-36 sm:w-48"
                                     />
                                 </div>
                             )}
@@ -1054,7 +1056,7 @@ export default function MyProfile() {
 
                     {documents.length === 0 ? (
                         isTerminated ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                            <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200 space-y-2">
                                 <i className="ti ti-folder-off text-3xl text-slate-400 block" />
                                 <div>
                                     <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents on file</p>
@@ -1064,7 +1066,7 @@ export default function MyProfile() {
                         ) : (
                             <div
                                 onClick={() => openUploadModal()}
-                                className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-blue-300 hover:bg-blue-50/20 transition-colors"
+                                className="text-center py-10 bg-slate-50 rounded-md border-2 border-dashed border-slate-200 space-y-2.5 cursor-pointer hover:border-slate-300 hover:bg-slate-100/50 transition-colors duration-100"
                             >
                                 <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
                                 <div>
@@ -1073,14 +1075,14 @@ export default function MyProfile() {
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
-                                    className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                                    className="h-8 px-3 bg-blue-600 text-white hover:bg-blue-700 rounded-md text-xs font-medium transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-upload" /> Upload First Document
                                 </button>
                             </div>
                         )
                     ) : filteredDocuments.length === 0 ? (
-                        <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200">
                             <i className="ti ti-file-search text-3xl text-slate-400 block mb-1" />
                             <p className="font-semibold text-slate-600 text-xs">No files match "{docSearch}"</p>
                         </div>
@@ -1094,13 +1096,13 @@ export default function MyProfile() {
                                     : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/documents/${doc.file_path}`;
 
                                 return (
-                                    <div key={doc.id} className="p-3.5 rounded-lg border border-slate-200 hover:border-blue-200 hover:shadow-xs transition-all flex items-start gap-3 bg-white">
+                                    <div key={doc.id} className="p-3.5 rounded-md border border-slate-200 hover:border-slate-300 transition-colors duration-100 flex items-start gap-3 bg-white">
                                         {isImageFile(doc.file_name) ? (
-                                            <div className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-slate-200">
+                                            <div className="h-10 w-10 shrink-0 rounded-md overflow-hidden border border-slate-200">
                                                 <img src={fileUrl} alt="" className="h-full w-full object-cover" />
                                             </div>
                                         ) : (
-                                            <div className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
+                                            <div className={`h-10 w-10 shrink-0 rounded-md flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
                                                 <i className={`ti ${meta.icon} text-lg`} />
                                             </div>
                                         )}
@@ -1137,11 +1139,11 @@ export default function MyProfile() {
 
             {/* Modal for file upload */}
             {showUploadModal && !isTerminated && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-                    <div className="bg-white rounded-xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                                <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-md flex items-center justify-center shrink-0 border border-blue-100">
                                     <i className="ti ti-file-upload text-base" />
                                 </div>
                                 <div>
@@ -1153,7 +1155,7 @@ export default function MyProfile() {
                                 type="button"
                                 onClick={() => { if (!isUploading) { setShowUploadModal(false); resetUploadForm(); } }}
                                 disabled={isUploading}
-                                className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+                                className="h-7 w-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
                             >
                                 <i className="ti ti-x text-xs" />
                             </button>
@@ -1161,24 +1163,24 @@ export default function MyProfile() {
 
                         <form onSubmit={handleUploadSubmit} className="space-y-3.5">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">Document Title</label>
+                                <label className="block text-xs font-medium text-slate-700 mb-1">Document Title</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
                                     value={uploadForm.title}
                                     onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
+                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
                                     required
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
                                     <select
                                         value={uploadForm.category}
                                         onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })}
-                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none cursor-pointer"
                                     >
                                         {CATEGORIES.map((cat) => (
                                             <option key={cat} value={cat}>{cat}</option>
@@ -1186,21 +1188,21 @@ export default function MyProfile() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">
                                         Expiry Date {!showExpiryField && <span className="font-normal text-slate-400">(opt)</span>}
                                     </label>
                                     <input
                                         type="date"
                                         value={uploadForm.expiryDate}
                                         onChange={(e) => setUploadForm({ ...uploadForm, expiryDate: e.target.value })}
-                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">Select File</label>
-                                <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
+                                <label className="block text-xs font-medium text-slate-700 mb-1">Select File</label>
+                                <div className="relative border-2 border-dashed border-slate-200 rounded-md p-4 text-center hover:bg-slate-50 hover:border-slate-300 transition-colors duration-100 cursor-pointer overflow-hidden min-h-[110px] flex items-center justify-center">
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -1226,7 +1228,7 @@ export default function MyProfile() {
                                             <img
                                                 src={URL.createObjectURL(uploadForm.file)}
                                                 alt=""
-                                                className="h-12 w-12 rounded object-cover border border-slate-200"
+                                                className="h-12 w-12 rounded-md object-cover border border-slate-200"
                                             />
                                             <div className="text-left">
                                                 <p className="text-xs font-semibold text-slate-800 truncate max-w-[180px]">{uploadForm.file.name}</p>
@@ -1256,14 +1258,14 @@ export default function MyProfile() {
                                     type="button"
                                     onClick={() => { setShowUploadModal(false); resetUploadForm(); }}
                                     disabled={isUploading}
-                                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                                    className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-medium transition-colors duration-100 disabled:opacity-50 cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isUploading || !uploadForm.file}
-                                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                    className="h-9 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                                 >
                                     {isUploading ? (
                                         <>

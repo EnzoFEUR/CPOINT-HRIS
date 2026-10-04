@@ -275,19 +275,19 @@ export default function OtpVerificationModal({
     return (
         <div className="fixed inset-0 z-[4000] flex items-center justify-center p-4 font-sans">
             <div
-                className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+                className="fixed inset-0 bg-slate-950/70 transition-opacity animate-in fade-in duration-200"
                 onClick={() => !isVerifying && !isSending && onClose()}
             />
 
-            <div className="relative bg-white rounded-3xl p-8 shadow-2xl w-full max-w-md border border-slate-100 z-10 transition-all animate-in zoom-in-95 duration-200">
+            <div className="relative bg-white rounded-lg p-6 shadow-xl w-full max-w-md border border-slate-200 z-10 transition-all duration-100">
                 
                 {step === 'select' && (
-                    <div className="space-y-6">
-                        <div className="text-center space-y-2">
-                            <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-2xl mx-auto flex items-center justify-center border border-blue-100 shadow-xs">
-                                <i className="ti ti-shield-check text-2xl" />
+                    <div className="space-y-5">
+                        <div className="text-center space-y-1.5">
+                            <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-md mx-auto flex items-center justify-center border border-blue-200 shadow-2xs">
+                                <i className="ti ti-shield-check text-xl" />
                             </div>
-                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                                 Two-Factor Authentication
                             </h2>
                             <p className="text-xs text-slate-500 font-medium">
@@ -297,7 +297,7 @@ export default function OtpVerificationModal({
 
                         {/* Active Code Resume Card if valid (< 5 mins) */}
                         {expiryTimer > 0 && (
-                            <div className="p-3.5 bg-blue-50/80 border border-blue-200/90 rounded-2xl text-left shadow-2xs">
+                            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-md text-left shadow-2xs">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                                         <span className="relative flex h-2 w-2">
@@ -308,13 +308,13 @@ export default function OtpVerificationModal({
                                         {Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')}
                                     </span>
                                 </div>
-                                <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
+                                <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
                                     A verification code is already active and valid for 5 minutes. You can enter the code already sent to your device.
                                 </p>
                                 <button
                                     type="button"
                                     onClick={() => setStep('verify')}
-                                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                    className="w-full h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                                 >
                                     <span>Enter Existing Code</span>
                                     <i className="ti ti-arrow-right text-xs" />
@@ -322,53 +322,53 @@ export default function OtpVerificationModal({
                             </div>
                         )}
 
-                        <div className="space-y-3 pt-1">
+                        <div className="space-y-2.5 pt-1">
                             <button
                                 type="button"
                                 onClick={() => handleSelectMethod('sms')}
                                 disabled={isSending}
-                                className="w-full group p-4 bg-white hover:bg-slate-50/80 border border-slate-200 hover:border-slate-300 rounded-2xl transition-all flex items-center justify-between text-left cursor-pointer active:scale-98 shadow-xs disabled:opacity-50"
+                                className="w-full group p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md transition-colors duration-100 flex items-center justify-between text-left cursor-pointer shadow-2xs disabled:opacity-50"
                             >
-                                <div className="flex items-center gap-3.5">
-                                    <div className="h-10 w-10 bg-slate-100 group-hover:bg-blue-50 text-slate-600 group-hover:text-blue-600 rounded-xl flex items-center justify-center transition-colors">
-                                        <i className="ti ti-device-mobile text-lg" />
+                                <div className="flex items-center gap-3">
+                                    <div className="h-9 w-9 bg-slate-100 group-hover:bg-blue-50 text-slate-600 group-hover:text-blue-600 rounded-md flex items-center justify-center transition-colors duration-100">
+                                        <i className="ti ti-device-mobile text-base" />
                                     </div>
                                     <div>
                                         <h4 className="text-xs font-bold text-slate-800">Send via SMS</h4>
-                                        <p className="text-[11px] text-slate-400 font-medium">
+                                        <p className="text-[11px] text-slate-500 font-medium">
                                             Mobile ending in {phoneMask || '***89'}
                                         </p>
                                     </div>
                                 </div>
-                                <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all text-sm" />
+                                <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-600 transition-colors text-sm" />
                             </button>
 
                             <button
                                 type="button"
                                 onClick={() => handleSelectMethod('email')}
                                 disabled={isSending}
-                                className="w-full group p-4 bg-white hover:bg-slate-50/80 border border-slate-200 hover:border-slate-300 rounded-2xl transition-all flex items-center justify-between text-left cursor-pointer active:scale-98 shadow-xs disabled:opacity-50"
+                                className="w-full group p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md transition-colors duration-100 flex items-center justify-between text-left cursor-pointer shadow-2xs disabled:opacity-50"
                             >
-                                <div className="flex items-center gap-3.5">
-                                    <div className="h-10 w-10 bg-slate-100 group-hover:bg-blue-50 text-slate-600 group-hover:text-blue-600 rounded-xl flex items-center justify-center transition-colors">
-                                        <i className="ti ti-mail text-lg" />
+                                <div className="flex items-center gap-3">
+                                    <div className="h-9 w-9 bg-slate-100 group-hover:bg-blue-50 text-slate-600 group-hover:text-blue-600 rounded-md flex items-center justify-center transition-colors duration-100">
+                                        <i className="ti ti-mail text-base" />
                                     </div>
                                     <div>
                                         <h4 className="text-xs font-bold text-slate-800">Send via Email</h4>
-                                        <p className="text-[11px] text-slate-400 font-medium">
+                                        <p className="text-[11px] text-slate-500 font-medium">
                                             {email}
                                         </p>
                                     </div>
                                 </div>
-                                <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all text-sm" />
+                                <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-600 transition-colors text-sm" />
                             </button>
                         </div>
 
-                        <div className="text-center pt-2">
+                        <div className="text-center pt-1">
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="text-xs text-slate-500 hover:text-slate-800 font-bold transition-colors cursor-pointer"
+                                className="text-xs text-slate-500 hover:text-slate-800 font-semibold transition-colors duration-100 cursor-pointer"
                             >
                                 Return
                             </button>
@@ -377,12 +377,12 @@ export default function OtpVerificationModal({
                 )}
 
                 {step === 'verify' && (
-                    <div className="space-y-6">
-                        <div className="text-center space-y-2">
-                            <div className="h-12 w-12 bg-emerald-50 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-100 shadow-xs">
-                                <i className="ti ti-dialpad text-2xl" />
+                    <div className="space-y-5">
+                        <div className="text-center space-y-1.5">
+                            <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-md mx-auto flex items-center justify-center border border-emerald-200 shadow-2xs">
+                                <i className="ti ti-dialpad text-xl" />
                             </div>
-                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                                 Security Code
                             </h2>
                             <p className="text-xs text-slate-500 font-medium">
@@ -399,10 +399,10 @@ export default function OtpVerificationModal({
                                         setDigits(demoOtpCode.split(''));
                                         verifyOtpCode(demoOtpCode);
                                     }}
-                                    className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    className="h-7 px-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-bolt text-amber-600" />
-                                    <span>Security Code: <strong className="font-mono text-sm tracking-wider font-bold text-amber-950">{demoOtpCode}</strong> (Autofill)</span>
+                                    <span>Security Code: <strong className="font-mono text-xs tracking-wider font-bold text-amber-950">{demoOtpCode}</strong> (Autofill)</span>
                                 </button>
                             </div>
                         )}
@@ -420,19 +420,19 @@ export default function OtpVerificationModal({
                                         onChange={(e) => handleInputChange(index, e.target.value)}
                                         onKeyDown={(e) => handleKeyDown(index, e)}
                                         disabled={isSending || isVerifying}
-                                        className={`w-full h-12 text-center font-mono font-extrabold text-xl rounded-2xl border outline-none transition-all ${
+                                        className={`w-full h-11 text-center font-mono font-bold text-lg rounded-md border outline-none transition-colors duration-100 ${
                                             errorMessage
-                                                ? 'border-rose-400 bg-rose-50/50 text-rose-900 focus:ring-2 focus:ring-rose-500/20'
+                                                ? 'border-rose-400 bg-rose-50/50 text-rose-900 focus:ring-1 focus:ring-rose-500/20'
                                                 : digit
                                                 ? 'border-blue-500 bg-blue-50/20 text-blue-950'
-                                                : 'border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+                                                : 'border-slate-200 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-100'
                                         } disabled:opacity-50`}
                                     />
                                 ))}
                             </div>
 
                             {errorMessage && (
-                                <p className="text-xs text-rose-600 font-semibold flex items-center justify-center gap-1 pt-1 animate-in fade-in">
+                                <p className="text-xs text-rose-600 font-semibold flex items-center justify-center gap-1 pt-1">
                                     <i className="ti ti-alert-circle text-sm" />
                                     <span>{errorMessage}</span>
                                 </p>
@@ -443,7 +443,7 @@ export default function OtpVerificationModal({
                             type="button"
                             onClick={() => verifyOtpCode()}
                             disabled={isVerifying || isSending || digits.some((d) => !d)}
-                            className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-98 disabled:opacity-50 text-white font-bold rounded-2xl text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full h-10 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-semibold rounded-md text-xs transition-colors duration-100 shadow-2xs cursor-pointer flex items-center justify-center gap-2"
                         >
                             {isVerifying ? (
                                 <>
@@ -455,7 +455,7 @@ export default function OtpVerificationModal({
                             )}
                         </button>
 
-                        <div className="text-xs text-slate-400 font-medium flex items-center justify-center gap-1.5 pt-1">
+                        <div className="text-xs text-slate-500 font-medium flex items-center justify-center gap-1.5 pt-1">
                             <span>
                                 Code expires in{' '}
                                 <strong className="text-slate-700 font-mono">
@@ -477,7 +477,7 @@ export default function OtpVerificationModal({
                             </button>
                         </div>
 
-                        <div className="text-center pt-2">
+                        <div className="text-center pt-1">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -485,7 +485,7 @@ export default function OtpVerificationModal({
                                     setDigits(['', '', '', '', '', '']);
                                     setErrorMessage('');
                                 }}
-                                className="text-xs text-slate-400 hover:text-slate-600 font-semibold transition-colors cursor-pointer"
+                                className="text-xs text-slate-500 hover:text-slate-700 font-semibold transition-colors duration-100 cursor-pointer"
                             >
                                 Switch Method
                             </button>

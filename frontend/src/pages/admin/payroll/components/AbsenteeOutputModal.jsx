@@ -40,13 +40,13 @@ const AbsenteeOutputModal = ({
     const canClose = missingCount === 0 && overDeclaredCount === 0;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-xs p-0 sm:p-4">
-            <div className="bg-white w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[88vh] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 p-0 sm:p-4">
+            <div className="bg-white w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[88vh] rounded-t-lg sm:rounded-lg shadow-xl flex flex-col overflow-hidden border border-slate-200">
 
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
                     <div className="min-w-0">
-                        <h3 className="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-2">
+                        <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
                             <i className="ti ti-user-exclamation text-lg text-amber-600" />
                             Declare output for workers who missed days
                         </h3>
@@ -59,10 +59,10 @@ const AbsenteeOutputModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                        className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer shrink-0"
                         aria-label="Close"
                     >
-                        <i className="ti ti-x text-lg" />
+                        <i className="ti ti-x text-base font-semibold" />
                     </button>
                 </div>
 
@@ -77,7 +77,7 @@ const AbsenteeOutputModal = ({
                             </p>
                         </div>
                     ) : workerSections.map(section => (
-                        <div key={section.idStr} className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                        <div key={section.idStr} className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
                             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <EmployeeAvatar employee={section.employee} size="h-9 w-9" textSize="text-[11px]" />
@@ -90,7 +90,7 @@ const AbsenteeOutputModal = ({
                                         </span>
                                     </div>
                                 </div>
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg shrink-0 text-center leading-tight">
+                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md shrink-0 text-center leading-tight">
                                     {section.daysPresent}/{section.expectedWorkingDays} days
                                     <span className="block font-extrabold">
                                         {section.daysAbsent} absent
@@ -140,11 +140,11 @@ const AbsenteeOutputModal = ({
                                                             value={raw}
                                                             onChange={(e) => setQty(section.idStr, row.id, e.target.value)}
                                                             placeholder="Qty made"
-                                                            className={`w-28 px-3 py-2 text-xs font-mono font-bold rounded-xl border outline-none transition-all ${exceeds
-                                                                ? 'border-red-400 bg-red-50 text-red-700 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                                                            className={`w-28 h-8 px-2.5 text-xs font-mono font-bold rounded-md border outline-none transition-colors duration-100 ${exceeds
+                                                                ? 'border-red-400 bg-red-50 text-red-700 focus:border-red-500'
                                                                 : hasQty
-                                                                    ? 'border-slate-200 bg-white text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
-                                                                    : 'border-amber-300 bg-amber-50 text-amber-900 placeholder:text-amber-500/70 focus:border-amber-500 focus:ring-2 focus:ring-amber-100'
+                                                                    ? 'border-slate-200 bg-white text-slate-800 focus:border-blue-600'
+                                                                    : 'border-amber-300 bg-amber-50 text-amber-900 placeholder:text-amber-500/70 focus:border-amber-500'
                                                                 }`}
                                                         />
                                                     </div>
@@ -203,7 +203,7 @@ const AbsenteeOutputModal = ({
                         type="button"
                         onClick={onClose}
                         disabled={!canClose}
-                        className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-full sm:w-auto h-9 px-5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                     >
                         Apply to batch
                     </button>

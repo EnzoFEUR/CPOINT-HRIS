@@ -6,7 +6,7 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
     const [isExpanded, setIsExpanded] = useState(false);
 
     return (
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2.5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
+        <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2.5 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col justify-between">
             <div className="space-y-2.5">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2 truncate">

@@ -217,7 +217,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                     {isGroupChild && (
                         <i className="ti ti-corner-down-right text-emerald-600/70 shrink-0 text-sm" title="Factory Line Member" />
                     )}
-                    <div className="shrink-0 relative group-hover:scale-105 transition-transform duration-150">
+                    <div className="shrink-0 relative">
                         <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-11 w-11" theme="emerald" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -347,18 +347,18 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                                 isFactoryEmployee: isFactoryDept(payroll.employees?.department),
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
                         >
-                            <i className="ti ti-player-play text-xs font-bold text-amber-700" />
+                            <i className="ti ti-player-play text-xs font-medium text-amber-700" />
                             <span>Process</span>
                         </Link>
                     ) : (
                         <Link
                             to={`/admin/payroll/${payroll.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-600 hover:text-white text-slate-700 font-bold text-xs rounded-xl shadow-2xs group-hover:border-emerald-400 group-hover:text-emerald-700 group-hover:bg-emerald-50/80 transition-all active:scale-95 cursor-pointer"
+                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-600 hover:text-white text-slate-700 font-medium text-xs rounded-md shadow-2xs group-hover:border-emerald-400 group-hover:text-emerald-700 group-hover:bg-emerald-50 transition-colors duration-100 cursor-pointer"
                         >
-                            <i className="ti ti-receipt-2 text-xs font-bold" />
+                            <i className="ti ti-receipt-2 text-xs font-medium" />
                             <span>View Slip</span>
                         </Link>
                     )}
@@ -409,8 +409,8 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
             <td className="py-5 px-3 xl:px-4 align-middle">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div
-                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-base transition-all shadow-2xs shrink-0 ${isExpanded
-                            ? 'bg-emerald-600 text-white shadow-emerald-500/20'
+                        className={`w-10 h-10 rounded-md flex items-center justify-center text-base transition-colors duration-100 shadow-2xs shrink-0 ${isExpanded
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
                             }`}
                     >
@@ -519,14 +519,14 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                             e.stopPropagation();
                             onToggle();
                         }}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${isExpanded
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
-                            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50/60'
+                        className={`h-8 inline-flex items-center gap-1.5 px-2.5 font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer border ${isExpanded
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
                             }`}
                         title={isExpanded ? `Collapse ${group.groupName}` : `Inspect workers in ${group.groupName}`}
                     >
                         <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
-                        <i className={`ti ti-chevron-${isExpanded ? 'up' : 'down'} text-xs font-bold`} />
+                        <i className={`ti ti-chevron-${isExpanded ? 'up' : 'down'} text-xs font-medium`} />
                     </button>
                 </div>
             </td>
@@ -543,7 +543,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
     return (
         <div
-            className={`p-4 space-y-3 rounded-2xl border transition-all ${isSelected ? 'bg-red-50/60 border-red-300' : isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200/90 hover:border-emerald-300 shadow-xs'
+            className={`p-4 space-y-3 rounded-lg border transition-colors duration-100 ${isSelected ? 'bg-red-50/60 border-red-300' : isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200 shadow-2xs'
                 }`}
         >
             <div className="flex items-start justify-between gap-3">
@@ -558,23 +558,23 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                     )}
                     <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="emerald" />
                     <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-800 truncate">
+                        <p className="text-sm font-semibold text-slate-900 truncate">
                             {payroll._fullName || 'Unknown'}
                         </p>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+                            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider truncate">
                                 {payroll._jobTitle || payroll._dept || 'Staff'} &bull; {payroll._companyId || `#${empIdStr.substring(0, 6)}`}
                             </span>
                             {isGroupEmp ? (
                                 (viewMode === 'flat' || !isGroupChild) && (
-                                    <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded text-[9px] font-black uppercase inline-flex items-center gap-0.5">
+                                    <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[9px] font-semibold uppercase inline-flex items-center gap-0.5">
                                         <i className="ti ti-building-factory-2 text-[10px]" />
                                         <span>Group{payroll._line ? ` • ${payroll._line}` : ''}</span>
                                     </span>
                                 )
                             ) : (
                                 (viewMode === 'flat' || rosterCategory === 'all') && (
-                                    <span className="px-1.5 py-0.2 bg-slate-100 text-slate-600 border border-slate-200/80 rounded text-[9px] font-bold uppercase inline-flex items-center gap-0.5">
+                                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded text-[9px] font-medium uppercase inline-flex items-center gap-0.5">
                                         <i className="ti ti-user text-[10px]" />
                                         <span>Regular</span>
                                     </span>
@@ -584,43 +584,43 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                     </div>
                 </div>
 
-                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md flex items-center shrink-0 ${statusVisuals.badgeClass}`}>
+                <span className={`px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider rounded-md flex items-center shrink-0 ${statusVisuals.badgeClass}`}>
                     {statusVisuals.label}
                 </span>
             </div>
 
-            <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2">
+            <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-500">Pay Period</span>
-                    <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200/70 text-[11px]">
+                    <span className="font-medium text-slate-500">Pay Period</span>
+                    <span className="font-semibold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 text-[11px]">
                         {payroll._startFormatted} &rarr; {payroll._endFormatted}
                     </span>
                 </div>
 
                 {payroll.isPending ? (
-                    <div className="pt-2 border-t border-slate-200/50 text-xs text-center text-amber-700 font-bold py-1 bg-amber-50/50 rounded-lg">
+                    <div className="pt-2 border-t border-slate-200 text-xs text-center text-amber-700 font-medium py-1 bg-amber-50 rounded-md">
                         Awaiting Computation for Current Cycle
                     </div>
                 ) : (
                     <>
-                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/40 text-xs">
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 text-xs">
                             <div>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Pay</span>
-                                <p className="font-mono font-bold text-slate-800 text-xs">
+                                <span className="text-[10px] font-medium text-slate-400 uppercase">Gross Pay</span>
+                                <p className="font-mono font-semibold text-slate-800 text-xs">
                                     ₱{payroll._gross.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </p>
                             </div>
                             <div className="text-right">
-                                <span className="text-[10px] font-bold text-red-400 uppercase">Deductions</span>
-                                <p className="font-mono font-bold text-red-500 text-xs">
+                                <span className="text-[10px] font-medium text-red-400 uppercase">Deductions</span>
+                                <p className="font-mono font-semibold text-red-500 text-xs">
                                     ₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                            <span className="text-xs font-black uppercase text-slate-600">Net Take-Home Pay</span>
-                            <span className="text-base font-black text-emerald-600 font-mono">
+                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase text-slate-600">Net Take-Home Pay</span>
+                            <span className="text-base font-bold text-emerald-600 font-mono">
                                 ₱{payroll._net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -643,7 +643,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                         daily_rate: payroll.employees?.daily_rate,
                         isFactoryEmployee: isFactoryDept(payroll.employees?.department),
                     }}
-                    className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                    className="w-full h-9 bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                 >
                     <i className="ti ti-player-play text-base" />
                     <span>Process Payroll</span>
@@ -651,7 +651,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
             ) : (
                 <Link
                     to={`/admin/payroll/${payroll.id}`}
-                    className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                    className="w-full h-9 bg-slate-900 hover:bg-emerald-600 text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                 >
                     <i className="ti ti-receipt-2 text-base" />
                     <span>View Full Payslip</span>
@@ -1476,14 +1476,12 @@ export default function PayrollIndex() {
         <div className="w-full pb-24 lg:pb-8 font-sans space-y-5">
             <PageHeader
                 breadcrumbs={['Admin', 'Payroll', 'Payroll History']}
-                title="Payroll Ledger"
-                description="Employee salary records, statutory deductions, and payroll history."
                 actions={
                     <div className="flex items-center gap-2 flex-wrap">
                         <button
                             type="button"
                             onClick={handleExportCSV}
-                            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-2xs cursor-pointer active:scale-95"
+                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs cursor-pointer"
                             title="Export filtered records to CSV"
                         >
                             <i className="ti ti-download text-base text-slate-500" />
@@ -1492,18 +1490,18 @@ export default function PayrollIndex() {
 
                         <Link
                             to="/admin/payroll/statutory-settings"
-                            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center gap-1.5 border border-slate-200 shadow-2xs active:scale-95"
+                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs"
                         >
                             <i className="ti ti-adjustments-horizontal text-base text-slate-500" />
-                            <span>Statutory Settings</span>
+                            <span>Statutory settings</span>
                         </Link>
 
                         <Link
                             to="/admin/payroll/process"
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs sm:text-sm transition-all shadow-xs flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                            className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                         >
                             <i className="ti ti-calculator text-base" />
-                            <span>Compute Payroll</span>
+                            <span>Compute payroll</span>
                         </Link>
                     </div>
                 }
@@ -1511,12 +1509,12 @@ export default function PayrollIndex() {
 
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-lg border border-emerald-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider">
                             Total Net Payout
                         </span>
-                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-cash" />
                         </div>
                     </div>
@@ -1530,12 +1528,12 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
                             Gross Compensation
                         </span>
-                        <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-calculator" />
                         </div>
                     </div>
@@ -1549,12 +1547,12 @@ export default function PayrollIndex() {
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
                             Statutory Deductions
                         </span>
-                        <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-scale" />
                         </div>
                     </div>
@@ -1566,17 +1564,17 @@ export default function PayrollIndex() {
                             className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate"
                             title={`SSS: ₱${metrics.totalSSS.toFixed(2)} | PH: ₱${metrics.totalPhilHealth.toFixed(2)} | HDMF: ₱${metrics.totalPagIbig.toFixed(2)} | Tax: ₱${metrics.totalTax.toFixed(2)}`}
                         >
-                            SSS, PhilHealth, HDMF &amp; BIR Tax
+                            Automatic deductions for SSS, PhilHealth, and Pag-IBIG
                         </p>
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
-                            Cycle Audit Health
+                            Cutoff progress
                         </span>
-                        <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-shield-check" />
                         </div>
                     </div>
@@ -1586,12 +1584,12 @@ export default function PayrollIndex() {
                                 {metrics.completionRate}%
                             </div>
                             <span className="text-xs font-bold text-slate-500">
-                                <span className="text-emerald-600 font-black">{metrics.completedCount}</span> / {metrics.totalCount} Paid
+                                <span className="text-emerald-600 font-black">{metrics.completedCount}</span> / {metrics.totalCount} paid
                             </span>
                         </div>
-                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1.5">
+                        <div className="w-full bg-slate-100 h-1.5 rounded overflow-hidden mt-1.5">
                             <div
-                                className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                                className="bg-emerald-500 h-full rounded transition-all duration-300"
                                 style={{ width: `${metrics.completionRate}%` }}
                             />
                         </div>
@@ -1600,7 +1598,7 @@ export default function PayrollIndex() {
             </div>
 
             {/* Filter & Search Toolbar */}
-            <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-2xs border border-slate-200 space-y-3">
+            <div className="bg-white p-3 sm:p-4 rounded-lg shadow-2xs border border-slate-200 space-y-3">
                 <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                     <div className="relative flex-1 min-w-[240px]">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
@@ -1609,7 +1607,7 @@ export default function PayrollIndex() {
                             placeholder="Search employee name, company ID, line (Line A), position..."
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/15 focus:border-emerald-500 transition-all"
+                            className="w-full h-9 pl-10 pr-9 bg-slate-50 border border-slate-200 rounded-md text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition-colors duration-100"
                         />
                         {searchQuery && (
                             <button
@@ -1623,7 +1621,7 @@ export default function PayrollIndex() {
                         )}
                     </div>
 
-                    <div className="flex bg-slate-100/80 p-0.5 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
+                    <div className="flex bg-slate-100/80 p-0.5 rounded-md overflow-x-auto no-scrollbar shrink-0 gap-1">
                         {[
                             { id: 'All', label: 'All', count: metrics.totalCount },
                             { id: 'Completed', label: 'Completed', count: metrics.completedCount },
@@ -1633,7 +1631,7 @@ export default function PayrollIndex() {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${filterStatus === tab.id
+                                className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${filterStatus === tab.id
                                     ? (tab.id === 'Completed'
                                         ? 'bg-emerald-600 text-white shadow-2xs'
                                         : tab.id === 'Pending'
@@ -1643,7 +1641,7 @@ export default function PayrollIndex() {
                                     }`}
                             >
                                 <span>{tab.label}</span>
-                                <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono tabular-nums ${filterStatus === tab.id
+                                <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-mono tabular-nums ${filterStatus === tab.id
                                     ? 'bg-white/20 text-white'
                                     : tab.alert
                                         ? 'bg-amber-100 text-amber-800 font-bold'
@@ -1663,7 +1661,7 @@ export default function PayrollIndex() {
                                 <select
                                     value={selectedDepartment}
                                     onChange={(e) => { setSelectedDepartment(e.target.value); setCurrentPage(1); }}
-                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 transition-colors"
+                                    className="w-full h-9 appearance-none bg-slate-50 border border-slate-200 rounded-md pl-3 pr-8 text-xs font-medium text-slate-700 outline-none cursor-pointer focus:border-slate-400 transition-colors duration-100"
                                 >
                                     <option value="All">All Departments</option>
                                     {departments.filter(d => d !== 'All').map(d => (
@@ -1678,20 +1676,20 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={openCalendar}
-                                className="min-w-[130px] flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-3 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:border-emerald-500 transition-colors flex items-center gap-1.5"
+                                className="h-9 min-w-[130px] flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-md px-3 text-xs font-medium text-slate-700 outline-none cursor-pointer hover:border-slate-300 transition-colors duration-100 flex items-center gap-1.5"
                             >
                                 <i className="ti ti-calendar text-sm text-slate-400" />
                                 <span>{calendarLabel}</span>
                             </button>
 
                             {isCalendarOpen && (
-                                <div className="absolute z-20 mt-1.5 left-0 bg-white border border-slate-200 rounded-xl shadow-lg p-3 w-64">
+                                <div className="absolute z-20 mt-1.5 left-0 bg-white border border-slate-200 rounded-lg shadow-md p-3 w-64">
                                     <div className="flex items-center justify-between mb-2">
                                         <button
                                             type="button"
                                             onClick={() => setCalendarViewYear(y => Math.max(y - 1, years[0]))}
                                             disabled={calendarViewYear <= years[0]}
-                                            className="p-1 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                            className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                                         >
                                             <i className="ti ti-chevron-left text-sm" />
                                         </button>
@@ -1700,7 +1698,7 @@ export default function PayrollIndex() {
                                             type="button"
                                             onClick={() => setCalendarViewYear(y => Math.min(y + 1, years[years.length - 1]))}
                                             disabled={calendarViewYear >= years[years.length - 1]}
-                                            className="p-1 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                            className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                                         >
                                             <i className="ti ti-chevron-right text-sm" />
                                         </button>
@@ -1714,7 +1712,7 @@ export default function PayrollIndex() {
                                                     key={m}
                                                     type="button"
                                                     onClick={() => handleCalendarSelect(m)}
-                                                    className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${isSelected
+                                                    className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors duration-100 cursor-pointer ${isSelected
                                                         ? 'bg-emerald-600 text-white'
                                                         : 'text-slate-600 hover:bg-slate-100'
                                                         }`}
@@ -1727,7 +1725,7 @@ export default function PayrollIndex() {
                                     <button
                                         type="button"
                                         onClick={handleCalendarClear}
-                                        className="w-full mt-2.5 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 cursor-pointer text-center"
+                                        className="w-full mt-2.5 px-2 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:bg-slate-100 cursor-pointer text-center"
                                     >
                                         All Time
                                     </button>
@@ -1736,11 +1734,11 @@ export default function PayrollIndex() {
                         </div>
 
                         {rosterCategory !== 'regular' && (
-                            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/60 shrink-0">
+                            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-md border border-slate-200/60 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => { setViewMode('grouped'); setCurrentPage(1); }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
+                                    className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'grouped'
                                         ? 'bg-white text-slate-900 shadow-2xs'
                                         : 'text-slate-500 hover:text-slate-800'
                                         }`}
@@ -1753,7 +1751,7 @@ export default function PayrollIndex() {
                                 <button
                                     type="button"
                                     onClick={() => { setViewMode('flat'); setCurrentPage(1); }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
+                                    className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'flat'
                                         ? 'bg-white text-slate-900 shadow-2xs'
                                         : 'text-slate-500 hover:text-slate-800'
                                         }`}
@@ -1770,7 +1768,7 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={jumpToCurrentCycle}
-                                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                className="h-9 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer whitespace-nowrap"
                                 title="Jump to current active payroll cycle"
                             >
                                 <i className="ti ti-calendar-event text-xs" />
@@ -1788,7 +1786,7 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={handleClearFilters}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                className="h-9 px-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer"
                                 title="Reset all filters"
                             >
                                 <i className="ti ti-filter-off text-xs" />
@@ -1801,12 +1799,12 @@ export default function PayrollIndex() {
 
             {/* Bulk Actions Bar */}
             {selectedIds.size > 0 && (
-                <div className="sticky top-2 z-20 bg-red-600 text-white rounded-2xl shadow-lg px-4 sm:px-5 py-3 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="sticky top-2 z-20 bg-slate-900 text-white rounded-lg shadow-xl px-4 sm:px-5 py-2.5 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-slate-800">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-md bg-slate-800 text-indigo-400 border border-slate-700 flex items-center justify-center shrink-0">
                             <i className="ti ti-checkbox text-lg" />
                         </div>
-                        <span className="text-sm font-extrabold">
+                        <span className="text-sm font-bold">
                             {selectedIds.size} record{selectedIds.size === 1 ? '' : 's'} selected
                         </span>
                     </div>
@@ -1814,14 +1812,14 @@ export default function PayrollIndex() {
                         <button
                             type="button"
                             onClick={clearSelection}
-                            className="flex-1 sm:flex-none px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                            className="flex-1 sm:flex-none h-8 px-3.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer flex items-center justify-center"
                         >
                             Clear
                         </button>
                         <button
                             type="button"
                             onClick={() => setIsBulkDeleteModalOpen(true)}
-                            className="flex-1 sm:flex-none px-4 py-2 bg-white hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            className="flex-1 sm:flex-none h-8 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer flex items-center justify-center gap-1.5"
                         >
                             <i className="ti ti-trash text-sm" />
                             <span>Delete Selected</span>
@@ -1831,7 +1829,7 @@ export default function PayrollIndex() {
             )}
 
             {/* Table & Content Container */}
-            <div className="bg-white rounded-2xl shadow-2xs border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
                 {isLoading ? (
                     <div className="animate-pulse">
                         <div className="hidden lg:block w-full overflow-x-auto">
@@ -1875,8 +1873,8 @@ export default function PayrollIndex() {
                                             <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-24 bg-slate-200 rounded ml-auto" /></td>
                                             <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-28 bg-rose-100 rounded ml-auto" /><div className="h-2.5 w-20 bg-slate-100 rounded ml-auto mt-1.5" /></td>
                                             <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4.5 w-24 bg-emerald-100 rounded ml-auto" /></td>
-                                            <td className="px-3 xl:px-4 py-5 text-center"><div className="h-6 w-20 bg-slate-100 rounded-lg mx-auto" /></td>
-                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-8 w-24 bg-slate-100 rounded-xl ml-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-center"><div className="h-6 w-20 bg-slate-100 rounded-md mx-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-8 w-24 bg-slate-100 rounded-md ml-auto" /></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1884,7 +1882,7 @@ export default function PayrollIndex() {
                         </div>
                         <div className="block lg:hidden p-3 space-y-3">
                             {[1, 2, 3, 4].map(n => (
-                                <div key={n} className="p-4 rounded-2xl border border-slate-200 space-y-3">
+                                <div key={n} className="p-4 rounded-lg border border-slate-200 space-y-3">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-full bg-slate-200 shrink-0" />
                                         <div className="space-y-1.5 flex-1">
@@ -1893,11 +1891,11 @@ export default function PayrollIndex() {
                                         </div>
                                         <div className="h-5 w-16 bg-slate-100 rounded-md shrink-0" />
                                     </div>
-                                    <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                                    <div className="bg-slate-50 rounded-md p-3 space-y-2">
                                         <div className="h-3 bg-slate-100 rounded w-full" />
                                         <div className="h-3 bg-slate-100 rounded w-2/3" />
                                     </div>
-                                    <div className="h-9 bg-slate-200 rounded-xl" />
+                                    <div className="h-9 bg-slate-200 rounded-md" />
                                 </div>
                             ))}
                         </div>
@@ -1926,7 +1924,7 @@ export default function PayrollIndex() {
                                 const isGroupFullySelectedM = groupSelectableIdsM.length > 0 && groupSelectedCountM === groupSelectableIdsM.length;
 
                                 return (
-                                    <div key={item.id} className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+                                    <div key={item.id} className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
                                         <div
                                             onClick={() => toggleGroup(item.id)}
                                             className="p-4 bg-slate-100/90 hover:bg-slate-200/60 cursor-pointer space-y-3 transition-colors"
@@ -1943,7 +1941,7 @@ export default function PayrollIndex() {
                                                             className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer shrink-0"
                                                         />
                                                     )}
-                                                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                                                    <div className="w-8 h-8 rounded-md bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
                                                         <i className="ti ti-building-factory-2" />
                                                     </div>
                                                     <div>
@@ -1963,7 +1961,7 @@ export default function PayrollIndex() {
                                                 </button>
                                             </div>
 
-                                            <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs font-mono tabular-nums">
+                                            <div className="bg-white p-3 rounded-md border border-slate-200 space-y-1.5 text-xs font-mono tabular-nums">
                                                 <div className="flex justify-between font-sans">
                                                     <span className="text-slate-500 font-bold">Processed Line Gross</span>
                                                     <span className="font-mono font-bold text-slate-700">
@@ -2022,7 +2020,7 @@ export default function PayrollIndex() {
                                     </div>
                                 );
                             }) : (
-                                <div className="p-8 text-center text-slate-400 bg-white rounded-xl">
+                                <div className="p-8 text-center text-slate-400 bg-white rounded-md">
                                     <i className="ti ti-receipt-off text-3xl text-slate-300 block mb-2" />
                                     <p className="text-xs font-bold text-slate-600">No payroll records found</p>
                                     <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your filters or search terms.</p>
@@ -2043,7 +2041,7 @@ export default function PayrollIndex() {
                                     <col className="w-[110px]" />
                                     <col className="w-[145px]" />
                                 </colgroup>
-                                <thead className="bg-slate-50/95 backdrop-blur-sm text-slate-500 text-[11px] uppercase tracking-wider font-bold border-b border-slate-200 select-none sticky top-0 z-10">
+                                <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider font-bold border-b border-slate-200 select-none sticky top-0 z-10 shadow-2xs">
                                     <tr>
                                         {/* 0. Select */}
                                         <th className="px-3 xl:px-4 py-4.5 align-middle">
@@ -2224,7 +2222,7 @@ export default function PayrollIndex() {
                                 <select
                                     value={pageSize}
                                     onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-slate-700 outline-none cursor-pointer"
+                                    className="bg-white border border-slate-200 rounded-md px-2 py-1 text-xs font-medium text-slate-700 outline-none cursor-pointer"
                                 >
                                     <option value={10}>10</option>
                                     <option value={25}>25</option>
@@ -2239,7 +2237,7 @@ export default function PayrollIndex() {
                                     type="button"
                                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                     disabled={currentPage === 1}
-                                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                    className="h-8 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-100 cursor-pointer"
                                 >
                                     Previous
                                 </button>
@@ -2250,7 +2248,7 @@ export default function PayrollIndex() {
                                     type="button"
                                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                     disabled={currentPage === totalPages || totalPages === 0}
-                                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                    className="h-8 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-100 cursor-pointer"
                                 >
                                     Next
                                 </button>
@@ -2262,11 +2260,11 @@ export default function PayrollIndex() {
 
             {/* Bulk Delete Modal */}
             {isBulkDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in duration-150">
+                <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5 text-rose-600">
-                                <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-xl">
+                                <div className="w-10 h-10 rounded-md bg-rose-50 flex items-center justify-center text-xl">
                                     <i className="ti ti-alert-triangle" />
                                 </div>
                                 <h3 className="text-lg font-bold text-slate-900">Confirm Bulk Delete</h3>
@@ -2290,14 +2288,14 @@ export default function PayrollIndex() {
                             placeholder="Type DELETE to confirm"
                             value={bulkDeleteConfirmText}
                             onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
-                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+                            className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 transition-colors duration-100"
                         />
 
                         <div className="flex items-center justify-end gap-2 pt-2">
                             <button
                                 type="button"
                                 onClick={() => { setIsBulkDeleteModalOpen(false); setBulkDeleteConfirmText(''); }}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer"
                             >
                                 Cancel
                             </button>
@@ -2305,7 +2303,7 @@ export default function PayrollIndex() {
                                 type="button"
                                 onClick={handleBulkDelete}
                                 disabled={bulkDeleteConfirmText !== 'DELETE' || isBulkDeleting}
-                                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                                className="h-9 px-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                             >
                                 {isBulkDeleting ? (
                                     <>

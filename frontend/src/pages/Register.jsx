@@ -79,20 +79,20 @@ export default function Register() {
       <div className="pt-2 sm:pt-4" />
 
       {/* Corporate Auth Card (Aligned with Login.jsx) */}
-      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-7">
+      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-lg shadow-xl p-6 sm:p-7">
         
         {/* Header */}
         <div className="text-center mb-5 sm:mb-6">
-          <div className="inline-flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-900 text-white shadow-xs mb-2.5">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white shadow-2xs mb-2.5">
             <UserPlus className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Create Account</h1>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Create Account</h1>
           <p className="text-slate-500 text-xs mt-0.5">Register your workplace profile with 2FA protection</p>
         </div>
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 font-medium leading-relaxed">
             {error}
           </div>
         )}
@@ -100,15 +100,15 @@ export default function Register() {
         {/* Global Success Banner */}
         {msg ? (
           <div className="text-center py-4 space-y-3">
-            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xl mx-auto border border-emerald-200">
-              <Check className="w-6 h-6 text-emerald-600" />
+            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center text-xl mx-auto border border-emerald-200">
+              <Check className="w-5 h-5 text-emerald-600" />
             </div>
             <h2 className="text-sm font-bold text-slate-900">Registration Complete</h2>
             <p className="text-xs text-slate-600 leading-relaxed px-2">{msg}</p>
             <div className="pt-2">
               <Link
                 to="/login"
-                className="inline-block w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
+                className="inline-flex items-center justify-center w-full h-10 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-2xs transition-colors duration-100"
               >
                 Proceed to Login
               </Link>
@@ -120,7 +120,7 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Full Name</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <User className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
@@ -129,7 +129,7 @@ export default function Register() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   placeholder="Juan Dela Cruz"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
+                  className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
                 />
               </div>
             </div>
@@ -138,7 +138,7 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Mail className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
@@ -147,7 +147,7 @@ export default function Register() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="juan@company.com"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs"
+                  className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
                 />
               </div>
             </div>
@@ -159,7 +159,7 @@ export default function Register() {
                   Mobile Number <span className="text-rose-500">*</span>
                 </label>
                 {phone && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm transition-colors duration-100 ${
                     phoneValidation.isValid
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                       : phoneValidation.status === 'invalid_prefix'
@@ -171,7 +171,7 @@ export default function Register() {
                 )}
               </div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-xs font-semibold font-mono">
                   +63
                 </div>
                 <input
@@ -180,12 +180,12 @@ export default function Register() {
                   onChange={(e) => setPhone(formatPhPhone(e.target.value))}
                   required
                   placeholder="0917 123 4567"
-                  className={`w-full pl-20 pr-3.5 py-2.5 bg-white border rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 font-mono transition-colors shadow-2xs ${
+                  className={`w-full h-9 pl-11 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none font-mono transition-colors duration-100 shadow-2xs ${
                     phone && phoneValidation.isValid
-                      ? 'border-emerald-300 focus:border-emerald-600 focus:ring-emerald-600/15'
+                      ? 'border-emerald-300 focus:border-emerald-600'
                       : phone && !phoneValidation.isValid
-                      ? 'border-amber-300 focus:border-amber-600 focus:ring-amber-600/15'
-                      : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
+                      ? 'border-amber-300 focus:border-amber-600'
+                      : 'border-slate-300 focus:border-slate-500'
                   }`}
                 />
               </div>
@@ -195,7 +195,7 @@ export default function Register() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Password</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Lock className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
@@ -204,7 +204,7 @@ export default function Register() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors shadow-2xs font-mono"
+                  className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs font-mono"
                 />
               </div>
 
@@ -234,7 +234,7 @@ export default function Register() {
             <button
               type="submit"
               disabled={loading || !phoneValidation.isValid || !isEntropyCompliant}
-              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-semibold py-2.5 sm:py-3 rounded-lg shadow-xs transition-transform duration-75 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+              className="w-full h-10 mt-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -253,7 +253,7 @@ export default function Register() {
           <span className="text-xs text-slate-500 font-medium">Already have an account? </span>
           <Link
             to="/login"
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+            className="text-xs font-semibold text-slate-700 hover:text-slate-900 hover:underline transition-colors duration-100"
           >
             Sign in
           </Link>

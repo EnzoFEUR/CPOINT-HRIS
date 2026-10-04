@@ -279,36 +279,36 @@ export default function Edit() {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
-            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-                <Link to={`/admin/employees/${id}`} className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-xs sm:shadow-sm border border-slate-100 flex items-center gap-1.5 sm:gap-2 tap-active">
-                    <i className="ti ti-arrow-left text-base sm:text-lg" /> Cancel Edit
+            <div className="flex items-center justify-between">
+                <Link to={`/admin/employees/${id}`} className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-blue-600 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
+                    <i className="ti ti-arrow-left text-sm" /> Cancel Edit
                 </Link>
             </div>
 
-            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
-                <div className="mb-6 sm:mb-10 flex items-center gap-3 sm:gap-5">
-                    <div className="h-12 w-12 sm:h-16 sm:w-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100 shrink-0">
-                        <i className="ti ti-pencil-code text-2xl sm:text-3xl" />
+            <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
+                <div className="mb-6 flex items-center gap-3.5">
+                    <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-md flex items-center justify-center border border-blue-200 shrink-0">
+                        <i className="ti ti-pencil text-xl" />
                     </div>
                     <div>
-                        <h2 className="text-xl sm:text-3xl font-black text-slate-800 tracking-tight">Edit Profile</h2>
-                        <p className="text-slate-500 font-medium text-xs sm:text-sm mt-0.5">Updating records for {employee.first_name} {employee.last_name}</p>
+                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Edit Profile</h2>
+                        <p className="text-slate-500 font-medium text-xs mt-0.5">Updating records for {employee.first_name} {employee.last_name}</p>
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+                <form onSubmit={handleSubmit} className="space-y-6">
                     {/* ACCOUNT DETAILS */}
-                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
-                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-indigo-600 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-mail text-lg sm:text-xl" /></span>
+                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-mail text-base" /></span>
                             Account Info
                         </h3>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
                                 <input type="email" name="email" required defaultValue={employee.email || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
 
                             <div>
@@ -317,7 +317,7 @@ export default function Edit() {
                                         Mobile Phone <span className="text-rose-500">*</span>
                                     </label>
                                     {phone && (
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
                                             phoneValidation.isValid
                                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                 : phoneValidation.status === 'invalid_prefix'
@@ -329,7 +329,7 @@ export default function Edit() {
                                     )}
                                 </div>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
                                         +63
                                     </div>
                                     <input
@@ -339,12 +339,12 @@ export default function Edit() {
                                         value={phone}
                                         onChange={(e) => setPhone(formatPhPhone(e.target.value))}
                                         placeholder="0917 123 4567"
-                                        className={`w-full pl-20 pr-3.5 sm:pr-4 py-2.5 sm:py-3 bg-white border rounded-xl focus:outline-none focus:ring-4 font-bold text-xs sm:text-sm text-slate-700 transition-all placeholder:text-slate-400 font-mono ${
+                                        className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 font-mono shadow-2xs ${
                                             phone && phoneValidation.isValid
-                                                ? 'border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/10'
+                                                ? 'border-emerald-300 focus:border-emerald-500'
                                                 : phone && !phoneValidation.isValid
-                                                ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10'
-                                                : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10'
+                                                ? 'border-amber-300 focus:border-amber-500'
+                                                : 'border-slate-200 focus:border-blue-500'
                                         }`}
                                     />
                                 </div>
@@ -353,7 +353,7 @@ export default function Edit() {
                             <div className="md:col-span-2">
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={employee.role || 'employee'}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
                                     <option value="admin">System Administrator</option>
@@ -363,21 +363,21 @@ export default function Edit() {
                     </div>
 
                     {/* EMPLOYEE INFORMATION */}
-                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
-                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-purple-600 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-id text-lg sm:text-xl" /></span>
+                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-id text-base" /></span>
                             Personal Profile
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
                                 <input type="text" name="first_name" required defaultValue={employee.first_name || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
                                 <input type="text" name="last_name" required defaultValue={employee.last_name || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
 
                             <div>
@@ -386,7 +386,7 @@ export default function Edit() {
                                     name="department"
                                     value={department}
                                     onChange={(e) => setDepartment(e.target.value)}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
                                 >
                                     <option value="Factory">Factory Floor (Shoe Production)</option>
                                     <option value="Retail">Retail Store</option>
@@ -401,7 +401,7 @@ export default function Edit() {
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
                                     <input type="text" name="job_title" required defaultValue={employee.job_title || ''}
-                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 font-bold text-xs sm:text-sm text-slate-700 transition-all" />
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                                 </div>
                             ) : null}
 
@@ -426,15 +426,15 @@ export default function Edit() {
                                                         type="button"
                                                         key={craft.id}
                                                         onClick={() => setSelectedCraft(craft.id)}
-                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${
+                                                        className={`p-3 rounded-md border text-left transition-colors duration-100 flex flex-col justify-between space-y-2 cursor-pointer ${
                                                             isSelected
-                                                                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
-                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                                                ? 'bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/30 shadow-2xs'
+                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                                                         }`}
                                                     >
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${
+                                                                <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs shrink-0 ${
                                                                     isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
                                                                 }`}>
                                                                     <i className={`ti ${craft.icon}`} />
@@ -458,7 +458,7 @@ export default function Edit() {
                                     </div>
 
                                     {/* PRODUCTION LINE ASSIGNMENT */}
-                                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80">
+                                    <div className="p-3 bg-white rounded-md border border-amber-200">
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
                                             <div>
                                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
@@ -479,7 +479,7 @@ export default function Edit() {
                                                         setSelectedGroup(existingLines[0] || 'Line A');
                                                     }
                                                 }}
-                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors duration-100"
                                             >
                                                 <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
                                                 <span>{isCustomLine ? 'Choose from existing' : '+ Create new line'}</span>
@@ -494,7 +494,7 @@ export default function Edit() {
                                                     onChange={(e) => setSelectedGroup(e.target.value)}
                                                     placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
                                                     autoFocus
-                                                    className="w-full px-3 py-2 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                    className="w-full h-9 px-3 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
                                                 />
                                                 <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
                                                     <i className="ti ti-sparkles text-xs" />
@@ -516,7 +516,7 @@ export default function Edit() {
                                                             if (found) setSelectedGroup(found.name);
                                                         }
                                                     }}
-                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-amber-500 transition-colors duration-100 cursor-pointer shadow-2xs"
                                                 >
                                                     {productionGroups.length > 0 ? (
                                                         productionGroups.map(group => (
@@ -539,11 +539,11 @@ export default function Edit() {
                             )}
 
                             <div className="md:col-span-2">
-                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                <div className={`p-3 rounded-md border flex items-center justify-between gap-3 ${
                                     isFactory ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
                                 }`}>
                                     <div className="flex items-center gap-2.5">
-                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
+                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-base shrink-0`} />
                                         <div>
                                             <p className="text-xs font-bold">
                                                 {isFactory ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
@@ -553,7 +553,7 @@ export default function Edit() {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
                                         isFactory ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
                                     }`}>
                                         {isFactory ? 'No OT' : 'OT Eligible'}
@@ -564,23 +564,23 @@ export default function Edit() {
                     </div>
 
                     {/* PAYROLL DETAILS */}
-                    <div className={`p-4 sm:p-6 rounded-2xl border transition-all ${isFactory ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-100'}`}>
-                        <h3 className={`text-base sm:text-lg font-black tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3 ${isFactory ? 'text-amber-800' : 'text-emerald-800'}`}>
-                            <span className={`w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-xl flex items-center justify-center shadow-xs ${isFactory ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                <i className={`ti ${isFactory ? 'ti-file-barcode' : 'ti-cash-banknote'} text-lg sm:text-xl`} />
+                    <div className={`p-4 sm:p-5 rounded-lg border ${isFactory ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-200'}`}>
+                        <h3 className={`text-sm font-bold tracking-tight mb-4 flex items-center gap-2.5 ${isFactory ? 'text-amber-900' : 'text-emerald-900'}`}>
+                            <span className={`w-7 h-7 bg-white rounded-md flex items-center justify-center shadow-2xs ${isFactory ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                <i className={`ti ${isFactory ? 'ti-file-barcode' : 'ti-cash-banknote'} text-base`} />
                             </span>
-                            Payroll Configuration {isFactory && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-800 font-black tracking-wider uppercase ml-auto">Pakyawan Pool Mode</span>}
+                            Payroll Configuration {isFactory && <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-semibold ml-auto"><span className="w-1.5 h-1.5 rounded-full bg-amber-600" />Pakyawan Pool Mode</span>}
                         </h3>
 
                         {isFactory ? (
-                            <div className="space-y-3.5">
-                                <div className="p-4 rounded-xl border border-amber-200 bg-white text-amber-900 space-y-2">
+                            <div className="space-y-3">
+                                <div className="p-3.5 rounded-md border border-amber-200 bg-white text-amber-900 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-amber-900">
-                                            <i className="ti ti-box-multiple text-lg text-amber-600" />
+                                        <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                                            <i className="ti ti-box-multiple text-base text-amber-600" />
                                             Group Output Piece-Rate Model (Shoe Production Pool)
                                         </div>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
                                             Pakyawan Pool
                                         </span>
                                     </div>
@@ -607,17 +607,17 @@ export default function Edit() {
                                         Daily Pay Rate
                                     </label>
                                     <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
                                         <input
                                             type="text"
                                             value={displayDailyPay}
                                             onChange={handleDailyPayChange}
-                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="daily_rate" value={rawDailyPay} />
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
                                         <i className="ti ti-calendar" /> Base daily compensation rate
                                     </p>
                                 </div>
@@ -627,17 +627,17 @@ export default function Edit() {
                                         Hourly Pay Rate
                                     </label>
                                     <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
                                         <input
                                             type="text"
                                             value={displayHourlyPay}
                                             onChange={handleHourlyPayChange}
-                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
                                         <i className="ti ti-clock" /> Calculated per 8-hour workday standard
                                     </p>
                                 </div>
@@ -646,9 +646,9 @@ export default function Edit() {
                     </div>
 
                     {/* SUBMIT */}
-                    <div className="pt-2 sm:pt-4">
-                        <button type="submit" className="w-full py-3.5 sm:py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm sm:text-base tracking-wide rounded-xl shadow-lg shadow-indigo-600/20 tap-active transition-all flex items-center justify-center gap-2 cursor-pointer">
-                            <i className="ti ti-device-floppy text-lg sm:text-xl" /> Save Changes
+                    <div className="pt-2">
+                        <button type="submit" className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs tracking-wide rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer">
+                            <i className="ti ti-device-floppy text-sm" /> Save Changes
                         </button>
                     </div>
                 </form>

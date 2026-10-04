@@ -434,40 +434,35 @@ useEffect(() => {
             onDrop={handleDrop}
         >
             {/* PAGE-WIDE DRAG OVERLAY */}
-            
-                {isDraggingPage && (
-                    <div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[60] bg-indigo-600/10 backdrop-blur-[2px] flex items-center justify-center pointer-events-none"
-                    >
-                        <div className="bg-white rounded-3xl shadow-2xl border-2 border-dashed border-indigo-400 px-12 py-10 flex flex-col items-center">
-                            <i className="ti ti-cloud-upload text-5xl text-indigo-600 mb-2" />
-                            <p className="font-black text-slate-800 text-sm uppercase tracking-widest">Drop to Upload</p>
-                            <p className="text-xs text-slate-400 font-medium mt-1">We'll take it from here</p>
-                        </div>
+            {isDraggingPage && (
+                <div
+                    className="fixed inset-0 z-[60] bg-slate-950/20 flex items-center justify-center pointer-events-none"
+                >
+                    <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-slate-400 px-10 py-8 flex flex-col items-center">
+                        <i className="ti ti-cloud-upload text-4xl text-slate-700 mb-2" />
+                        <p className="font-bold text-slate-900 text-xs uppercase tracking-wider">Drop to Upload</p>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">Files will be attached to this profile</p>
                     </div>
-                )}
-            
+                </div>
+            )}
 
             {/* TOP NAVIGATION */}
-            <div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
                 <Link
                     to={employeeId ? `/admin/employees/${employeeId}` : '/admin/employees'}
-                    className="px-4 py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm border border-slate-100 flex items-center gap-2 tap-active"
+                    className="h-8 px-3 bg-white text-slate-600 hover:text-slate-900 font-medium text-xs rounded-md hover:bg-slate-50 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-2"
                 >
-                    <i className="ti ti-arrow-left text-lg" /> Back to Profile
+                    <i className="ti ti-arrow-left text-base" /> Back to Profile
                 </Link>
 
                 {isTerminated ? (
                     <button
                         type="button"
                         disabled
-                        title="Uploads disabled: Employee account is separated/terminated."
-                        className="px-4 py-2.5 bg-slate-100 text-slate-400 border border-slate-200 font-bold text-xs uppercase tracking-widest rounded-xl shadow-xs flex items-center gap-2 cursor-not-allowed select-none"
+                        title="Uploads disabled: Employee account is separated."
+                        className="h-8 px-3 bg-slate-100 text-slate-400 border border-slate-200 font-medium text-xs rounded-md shadow-2xs flex items-center gap-1.5 cursor-not-allowed select-none"
                     >
-                        <i className="ti ti-lock text-base" /> Uploads Disabled
+                        <i className="ti ti-lock text-sm" /> Uploads disabled
                     </button>
                 ) : (
                     <div className="flex items-center gap-2">
@@ -475,42 +470,42 @@ useEffect(() => {
                             <button
                                 type="button"
                                 onClick={() => setIsBulkImportOpen(true)}
-                                className="px-4 py-2.5 bg-white text-slate-600 border border-slate-200 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                                className="h-8 px-3 bg-white text-slate-700 border border-slate-200 font-medium text-xs rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                             >
-                                <i className="ti ti-file-zip text-lg" /> Bulk Import
+                                <i className="ti ti-file-zip text-base" /> Bulk import
                             </button>
                         )}
                         <button
                             onClick={() => setIsUploadModalOpen(true)}
-                            className="px-4 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 tap-active cursor-pointer"
+                            className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer"
                         >
-                            <i className="ti ti-upload text-lg" /> Upload Document
+                            <i className="ti ti-upload text-base" /> Upload document
                         </button>
                     </div>
                 )}
             </div>
 
             {/* Header */}
-            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`bg-white rounded-2xl shadow-sm border ${isTerminated ? 'border-rose-200' : 'border-slate-100'} p-6 sm:p-8`}>
+            <div className={`bg-white rounded-lg shadow-2xs border ${isTerminated ? 'border-rose-200' : 'border-slate-200'} p-5 sm:p-6`}>
                 <div className="flex items-center gap-4">
-                    <div className={`h-12 w-12 ${isTerminated ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-sky-50 text-sky-600 border-sky-100'} rounded-2xl flex items-center justify-center border`}>
-                        <i className={`ti ${isTerminated ? 'ti-file-off' : 'ti-folders'} text-2xl`} />
+                    <div className={`h-10 w-10 ${isTerminated ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'} rounded-md flex items-center justify-center border shrink-0`}>
+                        <i className={`ti ${isTerminated ? 'ti-file-off' : 'ti-folders'} text-xl`} />
                     </div>
                     <div>
                         <div className="flex flex-wrap items-center gap-2.5">
-                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Documents</h1>
+                            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Documents</h1>
                             {isTerminated && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
-                                    <i className="ti ti-lock text-xs" /> Separated · Read-Only Audit
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <i className="ti ti-lock text-xs" /> Separated · Read-only audit
                                 </span>
                             )}
                         </div>
-                        <p className="text-slate-500 text-sm font-medium mt-0.5">
+                        <p className="text-slate-500 text-xs font-medium mt-0.5">
                             {employee 
                                 ? `${employee.first_name} ${employee.last_name} (${employee.company_id || 'No ID'}) · ${employee.department || 'Staff'}` 
                                 : employeeId 
                                 ? `Managing files for Employee ID: ${employeeId}` 
-                                : 'Managing company files'}
+                                : 'Company employee documents and records'}
                         </p>
                     </div>
                 </div>
@@ -518,22 +513,22 @@ useEffect(() => {
 
             {/* TERMINATED AUDIT BANNER */}
             {isTerminated && (
-                <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs">
-                    <div className="flex items-start gap-3.5">
-                        <div className="h-10 w-10 shrink-0 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center border border-rose-200">
-                            <i className="ti ti-lock text-xl font-bold" />
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 shadow-2xs">
+                    <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 shrink-0 bg-rose-100 text-rose-600 rounded-md flex items-center justify-center border border-rose-200">
+                            <i className="ti ti-lock text-lg" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <h4 className="text-sm font-black text-rose-950 uppercase tracking-wide">
-                                    Document Uploads Disabled (Separated Account)
+                                <h4 className="text-xs font-bold text-rose-950 uppercase tracking-wide">
+                                    Document uploads disabled (separated account)
                                 </h4>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 text-rose-800">
-                                    Read-Only Audit Mode
+                                <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold bg-rose-200 text-rose-800">
+                                    Read-only audit mode
                                 </span>
                             </div>
                             <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
-                                This employee is separated from the company. To comply with Philippine DOLE labor standards and record-keeping rules, document uploads and edits are locked. Historical 201 records remain available below for review and export.
+                                This employee is separated from the company. Under Philippine labor rules, document uploads and edits are locked. Historical 201 records remain available below for review and export.
                             </p>
                         </div>
                     </div>
@@ -541,50 +536,43 @@ useEffect(() => {
             )}
 
             {/* COMPLIANCE ALERTS */}
-            
-                {alerts.length > 0 && (
-                    <div
-                        initial={{ opacity: 0, y: -8, height: 0 }}
-                        animate={{ opacity: 1, y: 0, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5"
-                    >
-                        <div className="flex items-start gap-3">
-                            <div className="h-9 w-9 shrink-0 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
-                                <i className="ti ti-alert-triangle text-lg" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-black text-amber-800">
-                                    {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} attention
-                                </p>
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {alerts.map(({ doc, status }) => (
-                                        <span
-                                            key={doc.id}
-                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold ${expiryBadgeStyles[status.level]}`}
-                                        >
-                                            <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-sm`} />
-                                            {doc.title} · {status.level === 'expired' ? `Expired ${Math.abs(status.daysLeft)}d ago` : status.label}
-                                        </span>
-                                    ))}
-                                </div>
+            {alerts.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-2xs">
+                    <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-600 rounded-md flex items-center justify-center">
+                            <i className="ti ti-alert-triangle text-base" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-amber-900">
+                                {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} attention
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                {alerts.map(({ doc, status }) => (
+                                    <span
+                                        key={doc.id}
+                                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[11px] font-medium ${expiryBadgeStyles[status.level]}`}
+                                    >
+                                        <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : 'ti-clock'} text-xs`} />
+                                        {doc.title} · {status.level === 'expired' ? `Expired ${Math.abs(status.daysLeft)}d ago` : status.label}
+                                    </span>
+                                ))}
                             </div>
                         </div>
                     </div>
-                )}
-            
+                </div>
+            )}
 
             {/* CONTROLS */}
-            <div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-4">
+            <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
                     <div className="relative w-full sm:w-80">
-                        <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
+                        <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
                         <input
                             type="text"
                             placeholder="Search documents..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-600 font-medium text-xs text-slate-700 transition-all shadow-sm"
+                            className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-700 transition-colors duration-100 shadow-2xs"
                         />
                     </div>
 
@@ -593,7 +581,7 @@ useEffect(() => {
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}
-                                className="appearance-none pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-600 font-bold text-xs text-slate-600 transition-all shadow-sm cursor-pointer"
+                                className="appearance-none h-9 pl-3 pr-8 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-700 transition-colors duration-100 shadow-2xs cursor-pointer"
                             >
                                 {SORT_OPTIONS.map((opt) => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -602,28 +590,28 @@ useEffect(() => {
                             <i className="ti ti-chevron-down absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
                         </div>
 
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                            {filteredDocuments.length} File{filteredDocuments.length !== 1 ? 's' : ''}
+                        <span className="text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                            {filteredDocuments.length} file{filteredDocuments.length !== 1 ? 's' : ''}
                         </span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                     {CATEGORIES.map((cat) => {
                         const count = cat === 'All' ? documents.length : documents.filter((d) => d.category === cat).length;
                         return (
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
-                                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                className={`h-7 px-2.5 rounded-md font-medium text-xs whitespace-nowrap transition-colors duration-100 flex items-center gap-1.5 ${
                                     selectedCategory === cat
-                                        ? 'bg-slate-800 text-white shadow-sm'
+                                        ? 'bg-slate-900 text-white shadow-2xs'
                                         : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                                 }`}
                             >
                                 {cat}
                                 {count > 0 && (
-                                    <span className={`text-[10px] px-1.5 rounded-full ${selectedCategory === cat ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+                                    <span className={`text-[10px] font-mono px-1 rounded-sm border ${selectedCategory === cat ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                         {count}
                                     </span>
                                 )}
@@ -637,107 +625,102 @@ useEffect(() => {
             {isLoading ? (
                 <div className="py-20 flex flex-col items-center justify-center text-slate-400">
                     <i className="ti ti-loader animate-spin text-4xl text-indigo-600 mb-2" />
-                    <p className="text-xs font-bold uppercase tracking-widest">Loading Documents...</p>
+                    <p className="text-xs font-semibold text-slate-500">Loading documents...</p>
                 </div>
             ) : filteredDocuments.length === 0 ? (
                 <div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
                     onClick={() => !isTerminated && documents.length === 0 && setIsUploadModalOpen(true)}
-                    className={`border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 bg-white shadow-sm ${!isTerminated && documents.length === 0 ? 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors' : ''}`}
+                    className={`border border-dashed border-slate-200 rounded-lg p-10 flex flex-col items-center justify-center text-slate-400 bg-white shadow-2xs ${!isTerminated && documents.length === 0 ? 'cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-colors duration-100' : ''}`}
                 >
-                    <i className="ti ti-file-x text-5xl mb-3 text-slate-300" />
-                    <p className="text-sm font-bold uppercase tracking-widest text-slate-500">
-                        {documents.length === 0 ? (isTerminated ? 'No Archived Documents on Record' : 'No Documents Yet') : 'No Matching Documents Found'}
+                    <i className="ti ti-file-x text-4xl mb-2 text-slate-300" />
+                    <p className="text-xs font-semibold text-slate-700">
+                        {documents.length === 0 ? (isTerminated ? 'No archived documents on file' : 'No documents uploaded yet') : 'No matching documents found'}
                     </p>
-                    <p className="text-xs text-slate-400 font-medium mt-1 text-center">
+                    <p className="text-xs text-slate-500 font-medium mt-0.5 text-center">
                         {documents.length === 0 
-                            ? (isTerminated ? 'This separated account has no archived 201 documents. File uploads are locked.' : 'Click here, or drag & drop a file anywhere on this page.') 
+                            ? (isTerminated ? 'This separated employee has no archived documents on record.' : 'Click here or drag and drop a file anywhere on this page.') 
                             : 'Try adjusting your search query or selected category filter.'}
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    
-                        {filteredDocuments.map((doc) => {
-                            const iconClasses = getFileIcon(doc.file_name);
-                            const status = getExpiryStatus(doc);
-                            const publicUrl = getPublicUrl(doc.file_path);
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                    {filteredDocuments.map((doc) => {
+                        const iconClasses = getFileIcon(doc.file_name);
+                        const status = getExpiryStatus(doc);
+                        const publicUrl = getPublicUrl(doc.file_path);
 
-                            return (
-                                <div
-                                    key={doc.id}
-                                    className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
-                                >
-                                    <div>
-                                        <div className="flex items-start justify-between gap-3 mb-3">
-                                            {isImageFile(doc.file_name) ? (
-                                                <div className="h-11 w-11 rounded-xl overflow-hidden border border-slate-100 shrink-0">
-                                                    <img src={publicUrl} alt="" className="h-full w-full object-cover" />
-                                                </div>
-                                            ) : (
-                                                <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${iconClasses}`}>
-                                                    <i className={`ti ${iconClasses.split(' ')[0]} text-2xl`} />
-                                                </div>
-                                            )}
-                                            <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold text-[10px] uppercase tracking-wider rounded-lg">
-                                                {doc.category}
-                                            </span>
-                                        </div>
-
-                                        <h3 className="font-bold text-slate-800 text-sm tracking-tight line-clamp-1 group-hover:text-indigo-600 transition-colors" title={doc.title}>
-                                            {doc.title}
-                                            {doc.employees && (
-                                            <p className="text-[11px] font-bold text-indigo-600 mt-0.5">
-                                                <i className="ti ti-user text-xs mr-1" />
-                                                {doc.employees.first_name} {doc.employees.last_name} ({doc.employees.company_id || 'N/A'})
-                                            </p>
+                        return (
+                            <div
+                                key={doc.id}
+                                className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs hover:shadow-xs transition-colors duration-100 flex flex-col justify-between group"
+                            >
+                                <div>
+                                    <div className="flex items-start justify-between gap-3 mb-2.5">
+                                        {isImageFile(doc.file_name) ? (
+                                            <div className="h-9 w-9 rounded-md overflow-hidden border border-slate-200 shrink-0">
+                                                <img src={publicUrl} alt="" className="h-full w-full object-cover" />
+                                            </div>
+                                        ) : (
+                                            <div className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 border border-slate-200/60 ${iconClasses}`}>
+                                                <i className={`ti ${iconClasses.split(' ')[0]} text-lg`} />
+                                            </div>
                                         )}
-                                        </h3>
-                                        <p className="text-slate-400 text-xs font-medium truncate mt-0.5" title={doc.file_name}>
-                                            {doc.file_name}
-                                        </p>
-
-                                        {status && (
-                                            <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-md border text-[10px] font-bold ${expiryBadgeStyles[status.level]}`}>
-                                                <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : status.level === 'warning' ? 'ti-clock' : 'ti-circle-check'} text-xs`} />
-                                                {status.level === 'expired' ? `Expired ${Math.abs(status.daysLeft)}d ago` : status.level === 'warning' ? status.label : `Valid · exp. ${doc.expiry_date}`}
-                                            </span>
-                                        )}
+                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 font-medium text-[10px] uppercase tracking-wider rounded-sm border border-slate-200/60">
+                                            {doc.category}
+                                        </span>
                                     </div>
 
-                                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-medium">
-                                        <div>
-                                            <p className="text-[11px] text-slate-500 font-bold">
-                                                {new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                            </p>
-                                            <p className="text-[10px]">{doc.file_size}</p>
-                                        </div>
+                                    <h3 className="font-semibold text-slate-900 text-sm tracking-tight line-clamp-1 group-hover:text-slate-700 transition-colors duration-100" title={doc.title}>
+                                        {doc.title}
+                                    </h3>
+                                    {doc.employees && (
+                                        <p className="text-[11px] font-medium text-slate-600 mt-0.5 truncate">
+                                            <i className="ti ti-user text-xs mr-1 text-slate-400" />
+                                            {doc.employees.first_name} {doc.employees.last_name} ({doc.employees.company_id || 'N/A'})
+                                        </p>
+                                    )}
+                                    <p className="text-slate-400 text-xs font-mono truncate mt-0.5" title={doc.file_name}>
+                                        {doc.file_name}
+                                    </p>
 
-                                        <div className="flex items-center gap-1">
-                                            <a
-                                                href={publicUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition"
-                                                title="View / Download"
-                                            >
-                                                <i className="ti ti-download text-lg" />
-                                            </a>
-                                            <button
-                                                onClick={() => handleDeleteDocument(doc)}
-                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                                                title="Delete"
-                                            >
-                                                <i className="ti ti-trash text-lg" />
-                                            </button>
-                                        </div>
+                                    {status && (
+                                        <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-sm border text-[10px] font-medium ${expiryBadgeStyles[status.level]}`}>
+                                            <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : status.level === 'warning' ? 'ti-clock' : 'ti-circle-check'} text-xs`} />
+                                            {status.level === 'expired' ? `Expired ${Math.abs(status.daysLeft)}d ago` : status.level === 'warning' ? status.label : `Valid · exp. ${doc.expiry_date}`}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-medium">
+                                    <div>
+                                        <p className="text-[11px] text-slate-600 font-medium">
+                                            {new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 font-mono">{doc.file_size}</p>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                        <a
+                                            href={publicUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors duration-100"
+                                            title="View / Download"
+                                        >
+                                            <i className="ti ti-download text-base" />
+                                        </a>
+                                        <button
+                                            onClick={() => handleDeleteDocument(doc)}
+                                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors duration-100 cursor-pointer"
+                                            title="Delete"
+                                        >
+                                            <i className="ti ti-trash text-base" />
+                                        </button>
                                     </div>
                                 </div>
-                            );
-                        })}
-                    
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
@@ -752,178 +735,171 @@ useEffect(() => {
             />
 
             {/* UPLOAD DOCUMENT MODAL */}
-            
-                {isUploadModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                            onClick={() => !isUploading && setIsUploadModalOpen(false)}
-                        />
+            {isUploadModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-950/70"
+                        onClick={() => !isUploading && setIsUploadModalOpen(false)}
+                    />
 
-                        <div
-                            initial={{ scale: 0.95, y: 20, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.95, y: 20, opacity: 0 }}
-                            className="relative bg-white rounded-3xl p-6 sm:p-8 shadow-2xl w-full max-w-lg border border-slate-100 z-10 max-h-[90vh] overflow-y-auto"
-                        >
-                            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                                        <i className="ti ti-file-upload text-xl" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-black text-slate-800">Upload Document</h2>
-                                        <p className="text-xs text-slate-400 font-medium">Attach PDF, images, or documents</p>
-                                    </div>
+                    <div
+                        className="relative bg-white rounded-lg p-5 sm:p-6 shadow-xl w-full max-w-lg border border-slate-200 z-10 max-h-[90vh] overflow-y-auto"
+                    >
+                        <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 bg-slate-100 text-slate-700 rounded-md flex items-center justify-center border border-slate-200">
+                                    <i className="ti ti-file-upload text-base" />
                                 </div>
-                                <button
-                                    onClick={() => setIsUploadModalOpen(false)}
-                                    className="text-slate-400 hover:text-slate-600 p-2 rounded-xl"
-                                    disabled={isUploading}
-                                >
-                                    <i className="ti ti-x text-xl" />
-                                </button>
+                                <div>
+                                    <h2 className="text-sm font-bold text-slate-900">Upload Document</h2>
+                                    <p className="text-xs text-slate-500 font-medium">Attach PDF, images, or documents</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setIsUploadModalOpen(false)}
+                                className="w-8 h-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md flex items-center justify-center transition-colors duration-100"
+                                disabled={isUploading}
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUploadSubmit} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                                    Document title
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Employment Contract, NBI Clearance"
+                                    value={documentTitle}
+                                    onChange={(e) => setDocumentTitle(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 shadow-2xs"
+                                />
                             </div>
 
-                            <form onSubmit={handleUploadSubmit} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        Document Title
+                                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                                        Category
+                                    </label>
+                                    <select
+                                        value={category}
+                                        onChange={(e) => setCategory(e.target.value)}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 shadow-2xs cursor-pointer"
+                                    >
+                                        {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                                        Expiry date {!showExpiryField && <span className="normal-case font-normal text-slate-400">(optional)</span>}
                                     </label>
                                     <input
-                                        type="text"
-                                        placeholder="e.g. Employment Contract, NBI Clearance"
-                                        value={documentTitle}
-                                        onChange={(e) => setDocumentTitle(e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-600 font-medium text-sm text-slate-700 transition-all"
+                                        type="date"
+                                        value={expiryDate}
+                                        onChange={(e) => setExpiryDate(e.target.value)}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 shadow-2xs"
                                     />
                                 </div>
+                            </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                            Category
-                                        </label>
-                                        <select
-                                            value={category}
-                                            onChange={(e) => setCategory(e.target.value)}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-600 font-medium text-sm text-slate-700 transition-all"
-                                        >
-                                            {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
-                                                <option key={cat} value={cat}>{cat}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                            {showExpiryField && (
+                                <p className="-mt-1 text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                                    <i className="ti ti-info-circle text-xs text-slate-400" /> System will notify you before this document expires.
+                                </p>
+                            )}
 
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                            Expiry Date {!showExpiryField && <span className="normal-case font-medium text-slate-300">(optional)</span>}
-                                        </label>
-                                        <input
-                                            type="date"
-                                            value={expiryDate}
-                                            onChange={(e) => setExpiryDate(e.target.value)}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-600 font-medium text-sm text-slate-700 transition-all"
-                                        />
-                                    </div>
-                                </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                                    File
+                                </label>
+                                <div className="relative border border-dashed border-slate-200 rounded-md p-4 text-center hover:bg-slate-50 hover:border-slate-300 transition-colors duration-100">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        onChange={handleFileChange}
+                                        accept="image/*,application/pdf,.doc,.docx"
+                                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                                    />
 
-                                {showExpiryField && (
-                                    <p className="-mt-2 text-[11px] text-indigo-500 font-medium flex items-center gap-1">
-                                        <i className="ti ti-info-circle text-sm" /> We'll flag this document automatically as it nears expiry.
-                                    </p>
-                                )}
-
-                                <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                                File
-                                            </label>
-                                            <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50/50 hover:border-indigo-300 transition">
-                                                <input
-                                                    ref={fileInputRef}
-                                                    type="file"
-                                                    onChange={handleFileChange}
-                                                    accept="image/*,application/pdf,.doc,.docx"
-                                                    className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
-                                                />
-
-                                                {selectedFile ? (
-                                                    <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm relative z-20">
-                                                        <div className="flex items-center gap-3 overflow-hidden">
-                                                            {isImageFile(selectedFile.name) ? (
-                                                                <img
-                                                                    src={URL.createObjectURL(selectedFile)}
-                                                                    alt="Preview"
-                                                                    className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0"
-                                                                />
-                                                            ) : (
-                                                                <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                                                                    <i className="ti ti-file-text text-xl" />
-                                                                </div>
-                                                            )}
-                                                            <div className="text-left overflow-hidden">
-                                                                <p className="text-xs font-bold text-slate-700 truncate">
-                                                                    {selectedFile.name}
-                                                                </p>
-                                                                <p className="text-[10px] text-slate-400 font-medium">
-                                                                    {formatFileSize(selectedFile.size)}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedFile(null);
-                                                                if (fileInputRef.current) fileInputRef.current.value = '';
-                                                            }}
-                                                            className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg transition shrink-0"
-                                                        >
-                                                            <i className="ti ti-trash text-base" />
-                                                        </button>
-                                                    </div>
+                                    {selectedFile ? (
+                                        <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-md border border-slate-200 shadow-2xs relative z-20">
+                                            <div className="flex items-center gap-2.5 overflow-hidden">
+                                                {isImageFile(selectedFile.name) ? (
+                                                    <img
+                                                        src={URL.createObjectURL(selectedFile)}
+                                                        alt="Preview"
+                                                        className="h-8 w-8 rounded-md object-cover border border-slate-200 shrink-0"
+                                                    />
                                                 ) : (
-                                                    <div className="pointer-events-none space-y-1">
-                                                        <i className="ti ti-cloud-upload text-3xl text-indigo-500 block" />
-                                                        <p className="text-xs font-bold text-slate-600">
-                                                            Tap to take photo or choose file
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-400 font-medium">
-                                                            PDF, PNG, JPG, or DOC up to 10MB
-                                                        </p>
+                                                    <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200">
+                                                        <i className="ti ti-file-text text-base" />
                                                     </div>
                                                 )}
+                                                <div className="text-left overflow-hidden">
+                                                    <p className="text-xs font-medium text-slate-800 truncate">
+                                                        {selectedFile.name}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400 font-mono">
+                                                        {formatFileSize(selectedFile.size)}
+                                                    </p>
+                                                </div>
                                             </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedFile(null);
+                                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                                }}
+                                                className="w-7 h-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
+                                            >
+                                                <i className="ti ti-trash text-sm" />
+                                            </button>
                                         </div>
-
-                                <div className="pt-4 flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsUploadModalOpen(false)}
-                                        disabled={isUploading}
-                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition text-xs uppercase tracking-widest"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isUploading || !selectedFile}
-                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition text-xs uppercase tracking-widest flex items-center justify-center gap-2"
-                                    >
-                                        {isUploading ? (
-                                            <><i className="ti ti-loader animate-spin text-lg" /> Uploading...</>
-                                        ) : (
-                                            'Save File'
-                                        )}
-                                    </button>
+                                    ) : (
+                                        <div className="pointer-events-none space-y-0.5">
+                                            <i className="ti ti-cloud-upload text-2xl text-slate-400 block" />
+                                            <p className="text-xs font-medium text-slate-700">
+                                                Choose file or drag here
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-medium">
+                                                PDF, PNG, JPG, or DOC up to 10MB
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
-                            </form>
-                        </div>
+                            </div>
+
+                            <div className="pt-2 flex gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsUploadModalOpen(false)}
+                                    disabled={isUploading}
+                                    className="flex-1 h-9 bg-white border border-slate-200 text-slate-700 font-medium rounded-md hover:bg-slate-50 transition-colors duration-100 text-xs shadow-2xs cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUploading || !selectedFile}
+                                    className="flex-1 h-9 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    {isUploading ? (
+                                        <><i className="ti ti-loader animate-spin text-base" /> Uploading...</>
+                                    ) : (
+                                        'Save document'
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                )}
+                </div>
+            )}
             
 
         </div>

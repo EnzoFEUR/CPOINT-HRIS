@@ -121,13 +121,13 @@ export default function PayrollShow() {
 
     if (errorMessage || !payroll) {
         return (
-            <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
-                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i className="ti ti-file-alert text-3xl" />
+            <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-lg border border-slate-200 shadow-2xs text-center">
+                <div className="w-14 h-14 bg-red-50 text-red-500 rounded-lg flex items-center justify-center mx-auto mb-4 border border-red-200">
+                    <i className="ti ti-file-alert text-2xl" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
-                <p className="text-sm text-slate-500 mt-2 mb-6">{errorMessage || 'The requested payslip could not be found or has been removed.'}</p>
-                <Link to="/admin/payroll" className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-md">
+                <h3 className="text-lg font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
+                <p className="text-xs text-slate-500 mt-2 mb-6">{errorMessage || 'The requested payslip could not be found or has been removed.'}</p>
+                <Link to="/admin/payroll" className="inline-flex items-center gap-2 h-9 px-4 bg-slate-900 text-white rounded-md text-xs font-semibold hover:bg-slate-800 transition-colors duration-100 shadow-2xs">
                     <i className="ti ti-arrow-left" /> Back to Payroll
                 </Link>
             </div>
@@ -149,14 +149,14 @@ export default function PayrollShow() {
         <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
             {/* Top Actions */}
             <div className="mb-6 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 print:hidden">
-                <Link to="/admin/payroll" className="text-slate-600 hover:text-slate-900 font-semibold transition flex items-center text-xs tracking-wide">
+                <Link to="/admin/payroll" className="text-slate-600 hover:text-slate-900 font-semibold transition-colors duration-100 flex items-center text-xs tracking-wide">
                     <i className="ti ti-arrow-left mr-1.5 text-base"></i> Back to Payroll Ledger
                 </Link>
 
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => window.print()}
-                        className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        className="h-9 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                     >
                         <i className="ti ti-printer text-sm"></i> Print / Export PDF
                     </button>
@@ -164,7 +164,7 @@ export default function PayrollShow() {
                     <form onSubmit={handleDelete}>
                         <button
                             type="submit"
-                            className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold rounded-md border border-rose-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            className="h-9 px-3.5 bg-white hover:bg-rose-50 text-rose-600 text-xs font-semibold rounded-md border border-rose-200 transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                         >
                             <i className="ti ti-trash text-sm"></i> Delete
                         </button>
@@ -173,7 +173,7 @@ export default function PayrollShow() {
             </div>
 
             {/* Official Payslip Document */}
-            <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+            <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
 
                 {/* 1. Header: Corporate Letterhead */}
                 <div className="p-6 sm:p-8 bg-white border-b border-slate-200 print:bg-transparent">
@@ -425,7 +425,7 @@ export default function PayrollShow() {
                     </div>
 
                     {/* 5. Executive Net Pay Settlement Strip */}
-                    <div className="mt-6 border border-slate-900 bg-slate-900 text-white rounded-md p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs print:bg-transparent print:text-slate-900 print:border-2 print:border-slate-900">
+                    <div className="mt-6 border border-slate-900 bg-slate-900 text-white rounded-md p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-2xs print:bg-transparent print:text-slate-900 print:border-2 print:border-slate-900">
                         <div>
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block print:text-slate-600">Net Take-Home Pay</span>
                             <div className="flex items-baseline gap-2 mt-0.5">
@@ -456,10 +456,10 @@ export default function PayrollShow() {
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div
-                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+                        className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setIsDeleteModalOpen(false)}
                     />
-                    <div className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-2xl p-6 text-center border border-slate-200">
+                    <div className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl p-6 text-center border border-slate-200">
                         <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-md flex items-center justify-center mx-auto mb-4 border border-rose-100">
                             <i className="ti ti-alert-triangle text-2xl" />
                         </div>
@@ -486,14 +486,14 @@ export default function PayrollShow() {
                         <div className="flex gap-2.5">
                             <button
                                 onClick={() => setIsDeleteModalOpen(false)}
-                                className="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-md transition-colors cursor-pointer"
+                                className="flex-1 h-9 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-md transition-colors duration-100 cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={confirmDelete}
                                 disabled={deleteConfirmText !== 'DELETE'}
-                                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-md shadow-xs transition-colors cursor-pointer"
+                                className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
                             >
                                 Delete Record
                             </button>

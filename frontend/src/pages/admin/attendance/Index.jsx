@@ -63,7 +63,7 @@ const Index = () => {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
                 <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Attendance Records...</p>
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading attendance logs...</p>
             </div>
         );
     }
@@ -72,11 +72,9 @@ const Index = () => {
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'Attendance', 'Attendance Logs']}
-                title="Real-Time Attendance"
-                description="Live employee check-ins, time logs, and daily attendance."
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
-                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Scans:</span>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's clock-ins:</span>
                         <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
                     </div>
                 }
@@ -84,9 +82,9 @@ const Index = () => {
 
             <div className="space-y-4 sm:space-y-6">
                 {/* Search & Filter Bar */}
-                <div className="flex bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200">
+                <div className="flex bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200">
                     <div className="relative flex-1">
-                        <i className="ti ti-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
+                        <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
                         <input 
                             type="text" 
                             placeholder="Search by employee name, ID, or date (YYYY-MM-DD)..." 
@@ -95,12 +93,12 @@ const Index = () => {
                                 setSearchQuery(e.target.value);
                                 setCurrentPage(1);
                             }}
-                            className="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
+                            className="h-9 w-full pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium text-slate-800 transition-colors duration-100 placeholder:text-slate-400"
                         />
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+                <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
                     
                     {/* MOBILE LIST VIEW (Visible on phones only) */}
                     <div className="block md:hidden divide-y divide-slate-100">
@@ -131,7 +129,7 @@ const Index = () => {
                                 </div>
 
                                 {/* Card Timing Grid */}
-                                <div className="grid grid-cols-2 gap-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-md border border-slate-200">
                                     {/* Time In */}
                                     <div className="flex items-center justify-between gap-2">
                                         <div>
@@ -144,7 +142,7 @@ const Index = () => {
                                             <button 
                                                 onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In Proof')}
                                                 onContextMenu={(e) => e.preventDefault()}
-                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active select-none"
+                                                className="w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs shrink-0 select-none transition-colors duration-100 hover:border-slate-300"
                                             >
                                                 <img 
                                                     src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
@@ -179,7 +177,7 @@ const Index = () => {
                                             <button 
                                                 onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out Proof')}
                                                 onContextMenu={(e) => e.preventDefault()}
-                                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs shrink-0 tap-active select-none"
+                                                className="w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs shrink-0 select-none transition-colors duration-100 hover:border-slate-300"
                                             >
                                                 <img 
                                                     src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
@@ -208,7 +206,7 @@ const Index = () => {
                             </div>
                         )) : (
                             <div className="p-8 text-center text-slate-400">
-                                <p className="text-xs font-bold">No attendance records found</p>
+                                <p className="text-xs font-bold">No attendance logs found for this date</p>
                             </div>
                         )}
                     </div>
@@ -261,7 +259,7 @@ const Index = () => {
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded overflow-hidden border border-slate-200 shadow-xs hover:border-blue-500 transition-all cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-blue-600 transition-colors duration-100 cursor-zoom-in group/img select-none"
                                                     >
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
@@ -288,14 +286,14 @@ const Index = () => {
                                                     </span>
                                                 ) : (
                                                     <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
-                                                        Missed Punch
+                                                        Missed clock-out
                                                     </span>
                                                 )}
                                                 {log.time_out_photo && (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded overflow-hidden border border-slate-200 shadow-xs hover:border-blue-500 transition-all cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-blue-600 transition-colors duration-100 cursor-zoom-in group/img select-none"
                                                     >
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
@@ -326,11 +324,11 @@ const Index = () => {
                                     <tr>
                                         <td colSpan="5" className="px-6 py-20 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
-                                                <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">
-                                                    <i className="ti ti-ghost text-4xl text-slate-300" />
+                                                <div className="w-16 h-16 bg-slate-50 rounded-lg flex items-center justify-center mb-4 border border-slate-200">
+                                                    <i className="ti ti-ghost text-3xl text-slate-400" />
                                                 </div>
-                                                <p className="text-xl font-black text-slate-800 tracking-tight">No Scans Found</p>
-                                                <p className="text-sm font-medium mt-1 max-w-sm">No one has clocked in recently or your search returned no results.</p>
+                                                <p className="text-base font-bold text-slate-800 tracking-tight">No attendance logs found</p>
+                                                <p className="text-xs text-slate-500 mt-1 max-w-sm">No attendance logs found for this date.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -340,12 +338,12 @@ const Index = () => {
                     </div>
 
                     {/* PAGINATION BAR */}
-                    <div className="px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+                    <div className="px-4 sm:px-8 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
                         <div>
                             {totalItems > 0 ? (
-                                <span>Showing <span className="text-slate-800 font-black">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-black">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-black">{totalItems}</span></span>
+                                <span>Showing <span className="text-slate-800 font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-semibold">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-semibold">{totalItems}</span></span>
                             ) : (
-                                <span>Showing <span className="text-slate-800 font-black">0</span> of <span className="text-slate-800 font-black">0</span></span>
+                                <span>Showing <span className="text-slate-800 font-semibold">0</span> of <span className="text-slate-800 font-semibold">0</span></span>
                             )}
                         </div>
 
@@ -353,19 +351,19 @@ const Index = () => {
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={currentPage === 1}
-                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 <i className="ti ti-chevron-left text-sm" /> Prev
                             </button>
                             
-                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-xl text-slate-800 font-black text-xs">
+                            <span className="h-8 px-3 flex items-center justify-center bg-white border border-slate-200 rounded-md text-slate-800 font-semibold text-xs">
                                 {currentPage} / {totalPages}
                             </span>
 
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={currentPage >= totalPages}
-                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed tap-active transition-all shadow-xs flex items-center gap-1.5"
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 Next <i className="ti ti-chevron-right text-sm" />
                             </button>
@@ -379,22 +377,17 @@ const Index = () => {
                 {isModalOpen && selectedImage && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                         <div 
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+                            className="absolute inset-0 bg-slate-950/70"
                             onClick={closeImageModal}
                         />
                         <div 
-                            initial={{ scale: 0.95, y: 15, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.95, y: 15, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="relative bg-white rounded-[2px] p-5 w-full max-w-lg shadow-2xl border border-slate-200"
+                            className="relative bg-white rounded-lg p-5 w-full max-w-lg shadow-xl border border-slate-200"
                         >
                             {/* Modal Header */}
                             <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-800 tracking-wide flex items-center gap-1.5">
-                                        <i className="ti ti-camera text-blue-500 text-base" />
+                                        <i className="ti ti-camera text-blue-600 text-base" />
                                         <span>{selectedImageType} Verification Capture</span>
                                     </h3>
                                     <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[340px]">
@@ -404,16 +397,16 @@ const Index = () => {
                                 <button 
                                     onClick={closeImageModal}
                                     title="Close Preview (Esc)"
-                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-all duration-200 hover:rotate-90 shadow-sm border border-slate-200 cursor-pointer active:scale-95"
+                                    className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                                 >
-                                    <i className="ti ti-x text-lg font-bold" />
+                                    <i className="ti ti-x text-base font-semibold" />
                                 </button>
                             </div>
 
-                            {/* Image Container with subtle 2px rounding & anti-save protections */}
+                            {/* Image Container with subtle rounding & anti-save protections */}
                             <div 
                                 onContextMenu={(e) => e.preventDefault()}
-                                className="bg-slate-900/5 rounded-[2px] overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
+                                className="bg-slate-900/5 rounded-md overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
                             >
                                 <img 
                                     key={selectedImage} 
@@ -421,7 +414,7 @@ const Index = () => {
                                     onContextMenu={(e) => e.preventDefault()}
                                     draggable={false}
                                     alt="Verification" 
-                                    className="w-full h-auto object-contain max-h-[65vh] rounded-[2px] pointer-events-none select-none" 
+                                    className="w-full h-auto object-contain max-h-[65vh] rounded-md pointer-events-none select-none" 
                                 />
                             </div>
                         </div>

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
+import ActionMenu from '../../../components/ui/ActionMenu';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 
 const formatAuthorizer = (authorizer, role) => {
@@ -164,7 +165,7 @@ export default function Show() {
 
     const handleRevokeExemption = async () => {
         if (!employee) return;
-        if (!window.confirm(`Revoke Medical Grace Exemption for ${employee.first_name} ${employee.last_name}? Dual-factor biometric verification (QR + Face) will be re-enforced immediately at the kiosk.`)) return;
+        if (!window.confirm(`Remove medical exemption for ${employee.first_name} ${employee.last_name}? They will be required to use both badge and face scan when clocking in.`)) return;
         setIsSubmittingExemption(true);
         try {
             const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
@@ -595,71 +596,86 @@ export default function Show() {
                 
                 {/* Top navigation */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link to="/admin/employees" className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
+                    <Link to="/admin/employees" className="h-8 px-3 bg-white text-slate-700 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
                         <i className="ti ti-arrow-left text-sm" /> Back to Directory
                     </Link>
                     
-                    <div className="flex flex-wrap gap-2 sm:gap-2.5">
-                        {isTerminated && (
-                            <button
-                                type="button"
-                                onClick={() => setIsReinstateModalOpen(true)}
-                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer touch-manipulation"
-                                title="Reinstate employee to active operational status"
-                            >
-                                <i className="ti ti-rotate-clockwise text-base" />
-                                <span>Reinstate Employee</span>
-                            </button>
-                        )}
-
-                        {/* Document Vault link (201 documents now live here, not inline on the profile) */}
-                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5">
-                            <i className="ti ti-folders text-slate-500 text-base" /> Documents
+                    <div className="flex items-center gap-1.5">
+                        {/* Secondary Actions */}
+                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
+                            <i className="ti ti-folders text-slate-500 text-sm" />
+                            <span className="hidden sm:inline">Documents</span>
                         </Link>
 
-                        <button onClick={() => setIsPrintModalOpen(true)} className="px-3.5 py-2 bg-white text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-50 transition-colors shadow-xs border border-slate-200 flex items-center gap-1.5 cursor-pointer">
-                            <i className="ti ti-qrcode text-slate-500 text-base" /> Print Badge
+                        <button onClick={() => setIsPrintModalOpen(true)} className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
+                            <i className="ti ti-qrcode text-slate-500 text-sm" />
+                            <span className="hidden sm:inline">Print Badge</span>
                         </button>
 
-                        <Link to={`/admin/employees/${employee.id}/edit`} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg transition-colors shadow-xs flex items-center gap-1.5">
-                            <i className="ti ti-pencil text-base" /> Edit Profile
+                        {/* Primary Action CTA */}
+                        <Link to={`/admin/employees/${employee.id}/edit`} className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600">
+                            <i className="ti ti-pencil text-sm" />
+                            <span>Edit Profile</span>
                         </Link>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setRemovalMode(isTerminated ? 'purge' : 'archive');
-                                setDeleteConfirmText('');
-                                setIsDeleteModalOpen(true);
-                            }}
-                            className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-lg transition-colors border border-rose-200 flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            title={isTerminated ? "Permanently purge employee records" : "Separate personnel and transfer to statutory cold storage archive"}
-                        >
-                            <i className={`ti ${isTerminated ? 'ti-trash' : 'ti-archive'} text-base`} />
-                            <span>{isTerminated ? 'Purge Record' : 'Offboard / Archive'}</span>
-                        </button>
+                        {/* Administrative & Lifecycle Overflow Action Menu */}
+                        <ActionMenu
+                            align="right"
+                            title="More employee actions"
+                            items={[
+                                ...(isTerminated ? [
+                                    {
+                                        label: 'Reinstate Employee',
+                                        icon: 'ti-rotate-clockwise text-emerald-600',
+                                        onClick: () => setIsReinstateModalOpen(true),
+                                    },
+                                    { divider: true },
+                                    {
+                                        label: 'Purge Record',
+                                        icon: 'ti-trash',
+                                        destructive: true,
+                                        onClick: () => {
+                                            setRemovalMode('purge');
+                                            setDeleteConfirmText('');
+                                            setIsDeleteModalOpen(true);
+                                        }
+                                    }
+                                ] : [
+                                    {
+                                        label: 'Offboard / Archive',
+                                        icon: 'ti-archive',
+                                        destructive: true,
+                                        onClick: () => {
+                                            setRemovalMode('archive');
+                                            setDeleteConfirmText('');
+                                            setIsDeleteModalOpen(true);
+                                        }
+                                    }
+                                ])
+                            ]}
+                        />
                     </div>
                 </div>
 
                 {/* Profile banner */}
-                <div className="bg-slate-900 rounded-xl p-5 sm:p-7 border border-slate-800 text-white shadow-xs relative">
+                <div className="bg-slate-900 rounded-lg p-5 sm:p-6 border border-slate-800 text-white shadow-2xs relative">
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                         <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInCooldown ? 'grayscale opacity-60' : ''}`}>
                             <EmployeeAvatar
                                 employee={employee}
                                 size="h-24 w-24 sm:h-28 sm:w-28"
-                                rounded="rounded-xl"
+                                rounded="rounded-lg"
                                 border="border-2 border-slate-700"
-                                shadow="shadow-xs"
+                                shadow="shadow-2xs"
                                 theme="dark"
                                 textSize="text-3xl sm:text-4xl"
                             />
                             {isTerminated ? (
-                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
                                     <i className="ti ti-x" /> Terminated
                                 </span>
                             ) : isSuspended ? (
-                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-extrabold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-xs">
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
                                     <i className="ti ti-clock-pause" /> Suspended
                                 </span>
                             ) : null}
@@ -667,17 +683,17 @@ export default function Show() {
 
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded border border-slate-700">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-medium rounded border border-slate-700">
                                     <i className="ti ti-id text-slate-400" /> {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-EMPLOYEE')}
                                 </span>
 
                                 {/* Status badge */}
                                 {isTerminated ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-bold rounded border border-rose-500/40">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-semibold rounded border border-rose-500/40">
                                         <i className="ti ti-circle-x text-sm text-rose-400" /> Terminated / Separated
                                     </span>
                                 ) : isSuspended ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded border border-amber-500/40">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/40">
                                         <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
                                     </span>
                                 ) : (
@@ -716,7 +732,7 @@ export default function Show() {
                                 )}
                             </div>
 
-                            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">
+                            <h1 className="text-xl sm:text-2xl font-semibold text-white tracking-tight truncate">
                                 {employee.first_name} {employee.last_name}
                             </h1>
                             <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5">
@@ -739,18 +755,19 @@ export default function Show() {
 
                 {/* Temporary credentials for unregistered accounts */}
                 {isPendingRegistration && (
-                    <div className="bg-amber-500/10 border-2 border-amber-300 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                    <div className="bg-amber-500/10 border border-amber-300 rounded-lg p-4 sm:p-5 shadow-2xs space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                                    <i className="ti ti-key text-xl" />
+                                <div className="w-8 h-8 rounded-md bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                    <i className="ti ti-key text-lg" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h3 className="font-extrabold text-amber-950 text-base sm:text-lg">
+                                        <h3 className="font-semibold text-amber-950 text-base sm:text-lg">
                                             Account Pending Initial Registration
                                         </h3>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 border border-amber-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
                                             Unregistered
                                         </span>
                                     </div>
@@ -763,17 +780,17 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={copyAllCredentials}
-                                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                    className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <i className={`ti ${copiedKey === 'all' ? 'ti-check' : 'ti-copy'} text-sm`} />
-                                    <span>{copiedKey === 'all' ? 'Credentials Copied!' : 'Copy Onboarding Info'}</span>
+                                    <span>{copiedKey === 'all' ? 'Credentials Copied' : 'Copy Onboarding Info'}</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleResetTempPassword}
                                     disabled={isResettingPassword}
                                     title="Generate a fresh temporary password"
-                                    className="px-3 py-2 bg-white hover:bg-amber-50 active:scale-95 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-white hover:bg-amber-50 text-amber-900 font-medium text-xs rounded-md border border-amber-300 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 >
                                     <i className={`ti ${isResettingPassword ? 'ti-loader animate-spin' : 'ti-refresh'} text-sm text-amber-700`} />
                                     <span className="hidden sm:inline">New Temp Pass</span>
@@ -783,17 +800,17 @@ export default function Show() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                             {/* Email */}
-                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-amber-200/80 flex flex-col justify-between space-y-2">
                                 <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Login Email</p>
-                                    <p className="font-bold text-xs text-slate-800 truncate mt-0.5" title={employee.email}>
+                                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Login Email</p>
+                                    <p className="font-semibold text-xs text-slate-800 truncate mt-0.5" title={employee.email}>
                                         {employee.email}
                                     </p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(employee.email, 'email')}
-                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
                                 >
                                     <i className={`ti ${copiedKey === 'email' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
                                     <span>{copiedKey === 'email' ? 'Copied' : 'Copy Email'}</span>
@@ -801,17 +818,17 @@ export default function Show() {
                             </div>
 
                             {/* Company ID */}
-                            <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-amber-200/80 flex flex-col justify-between space-y-2">
                                 <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Company ID</p>
-                                    <p className="font-mono font-black text-sm text-slate-900 mt-0.5">
+                                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Company ID</p>
+                                    <p className="font-mono font-semibold text-sm text-slate-900 mt-0.5">
                                         {employee.company_id || employee.id}
                                     </p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(employee.company_id || employee.id, 'company_id')}
-                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 self-start cursor-pointer"
+                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
                                 >
                                     <i className={`ti ${copiedKey === 'company_id' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
                                     <span>{copiedKey === 'company_id' ? 'Copied' : 'Copy ID'}</span>
@@ -819,9 +836,9 @@ export default function Show() {
                             </div>
 
                             {/* Temporary Password */}
-                            <div className="bg-white p-3.5 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-amber-300 flex flex-col justify-between space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Temporary Password</p>
+                                    <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wider">Temporary Password</p>
                                     <button
                                         type="button"
                                         onClick={() => setShowTempPassword(!showTempPassword)}
@@ -832,13 +849,13 @@ export default function Show() {
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-mono font-black text-base text-amber-950 tracking-wider">
+                                    <span className="font-mono font-semibold text-base text-amber-950 tracking-wider">
                                         {showTempPassword ? (employee.temp_password || 'Emp-1234') : '••••••••'}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(employee.temp_password || 'Emp-1234', 'password')}
-                                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                        className="h-7 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium text-xs rounded transition-colors duration-100 flex items-center gap-1 cursor-pointer"
                                     >
                                         <i className={`ti ${copiedKey === 'password' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
                                         <span>{copiedKey === 'password' ? 'Copied' : 'Copy'}</span>
@@ -858,15 +875,15 @@ export default function Show() {
 
                 {/* Status alert banner */}
                 {isTerminated && (
-                    <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
-                                <i className="ti ti-ban text-xl" />
+                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
+                                <i className="ti ti-ban text-lg" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-bold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
-                                    <span className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded ${isInCooldown ? 'bg-amber-200/80 text-amber-900' : 'bg-rose-200/80 text-rose-900'}`}>
+                                    <h4 className="font-semibold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
+                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded ${isInCooldown ? 'bg-amber-200/80 text-amber-900' : 'bg-rose-200/80 text-rose-900'}`}>
                                         {isInCooldown ? `Cooldown · ${cooldownDaysRemaining}d Left` : 'DOLE Separated · Finalized'}
                                     </span>
                                 </div>
@@ -876,12 +893,12 @@ export default function Show() {
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-rose-700 font-medium">
                                     {employee.termination_record?.date && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900">{employee.termination_record.date}</strong>
+                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900 font-semibold">{employee.termination_record.date}</strong>
                                         </span>
                                     )}
                                     {isInCooldown && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-hourglass-low" /> <strong className="text-rose-900">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
+                                            <i className="ti ti-hourglass-low" /> <strong className="text-rose-900 font-semibold">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
@@ -897,13 +914,13 @@ export default function Show() {
                             <button
                                 type="button"
                                 onClick={() => setIsReinstateModalOpen(true)}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer touch-manipulation"
+                                className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer touch-manipulation"
                             >
                                 <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
                             </button>
                             <Link
                                 to={`/admin/documents?employee_id=${employee.id}`}
-                                className="px-3.5 py-2 bg-white hover:bg-rose-100 text-rose-800 text-xs font-bold rounded-lg border border-rose-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                                className="h-8 px-3 bg-white hover:bg-rose-100 text-rose-800 text-xs font-medium rounded-md border border-rose-300 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                             >
                                 <i className="ti ti-folders text-sm" /> Review Documents
                             </Link>
@@ -912,15 +929,15 @@ export default function Show() {
                 )}
 
                 {isSuspended && (
-                    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
-                                <i className="ti ti-alert-triangle text-xl" />
+                            <div className="w-8 h-8 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                                <i className="ti ti-alert-triangle text-lg" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-bold text-amber-900 text-sm sm:text-base">Active Disciplinary Suspension</h4>
-                                    <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-extrabold uppercase rounded">Operational Hold</span>
+                                    <h4 className="font-semibold text-amber-900 text-sm sm:text-base">Active Disciplinary Suspension</h4>
+                                    <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-semibold uppercase rounded">Operational Hold</span>
                                 </div>
                                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
                                     {employee.active_suspension?.reason || 'This employee is currently serving an active disciplinary suspension.'}
@@ -928,7 +945,7 @@ export default function Show() {
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-amber-700 font-medium">
                                     {employee.active_suspension?.date && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-amber-900">{employee.active_suspension.date}</strong>
+                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-amber-900 font-semibold">{employee.active_suspension.date}</strong>
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
@@ -943,7 +960,7 @@ export default function Show() {
                         <div className="shrink-0 self-stretch sm:self-center">
                             <Link
                                 to="/admin/disciplinary"
-                                className="px-3.5 py-2 bg-white hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                                className="h-8 px-3 bg-white hover:bg-amber-100 text-amber-900 text-xs font-medium rounded-md border border-amber-300 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                             >
                                 <i className="ti ti-gavel text-sm" /> Disciplinary Logs
                             </Link>
@@ -952,19 +969,19 @@ export default function Show() {
                 )}
 
                 {!isTerminated && !isSuspended && employee?.past_suspensions_count > 0 && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs">
+                    <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs">
                         <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                            <div className="w-7 h-7 rounded bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
                                 <i className="ti ti-history text-sm" />
                             </div>
                             <div>
-                                <span className="font-bold text-slate-800">Prior Disciplinary History:</span>{' '}
+                                <span className="font-semibold text-slate-800">Prior Disciplinary History:</span>{' '}
                                 <span className="text-slate-600">
                                     This employee has previously served <strong>{employee.past_suspensions_count}</strong> {employee.past_suspensions_count === 1 ? 'suspension' : 'suspensions'}. All terms have concluded and account is currently in <strong>Good Standing</strong>.
                                 </span>
                             </div>
                         </div>
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded shrink-0 border border-emerald-200">
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-semibold rounded shrink-0 border border-emerald-200">
                             Active / Cleared
                         </span>
                     </div>
@@ -973,48 +990,48 @@ export default function Show() {
                 {/* Personal and payroll details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
 
-                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                    <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100">
-                                <i className="ti ti-user text-xl" />
+                            <div className="h-8 w-8 bg-indigo-50 text-indigo-600 rounded-md flex items-center justify-center border border-indigo-100">
+                                <i className="ti ti-user text-lg" />
                             </div>
                             <div>
-                                <h3 className="text-base font-black text-slate-800">Personal Details</h3>
+                                <h3 className="text-sm sm:text-base font-semibold text-slate-900">Personal Details</h3>
                                 <p className="text-xs text-slate-400 font-medium">Core identity & access role</p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-xs">
                             <div>
-                                <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">First Name</p>
-                                <p className="font-extrabold text-slate-800 text-sm">{employee.first_name || 'N/A'}</p>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">First Name</p>
+                                <p className="font-semibold text-slate-800 text-sm">{employee.first_name || 'N/A'}</p>
                             </div>
                             <div>
-                                <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Last Name</p>
-                                <p className="font-extrabold text-slate-800 text-sm">{employee.last_name || 'N/A'}</p>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Last Name</p>
+                                <p className="font-semibold text-slate-800 text-sm">{employee.last_name || 'N/A'}</p>
                             </div>
                             <div className="col-span-2">
-                                <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Email Address</p>
-                                <p className="font-extrabold text-slate-800 text-sm">{employee.email}</p>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Email Address</p>
+                                <p className="font-semibold text-slate-800 text-sm">{employee.email}</p>
                             </div>
                             <div>
-                                <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Role Privilege</p>
-                                <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 font-black text-[11px] rounded-md uppercase border border-slate-200">
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Role Privilege</p>
+                                <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 font-semibold text-[11px] rounded-md uppercase border border-slate-200">
                                     {employee.role || 'employee'}
                                 </span>
                             </div>
                             <div>
-                                <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Company ID</p>
-                                <p className="font-mono font-extrabold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Company ID</p>
+                                <p className="font-mono font-semibold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
                             </div>
                             <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Account Status</p>
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Account Status</p>
                                     <p className="text-xs text-slate-500 font-medium">
                                         {isPendingRegistration ? 'Awaiting initial employee login & password setup' : 'Account active and personal password configured'}
                                     </p>
                                 </div>
-                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-black uppercase border ${
+                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase border ${
                                     isPendingRegistration 
                                         ? 'bg-amber-50 text-amber-800 border-amber-200' 
                                         : 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -1025,14 +1042,14 @@ export default function Show() {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                    <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center border ${isFactory ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${isFactory ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
                                 }`}>
-                                <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-cash-banknote'} text-xl`} />
+                                <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-cash-banknote'} text-lg`} />
                             </div>
                             <div>
-                                <h3 className="text-base font-black text-slate-800">Payroll & Job Specs</h3>
+                                <h3 className="text-sm sm:text-base font-semibold text-slate-900">Payroll & Job Specs</h3>
                                 <p className="text-xs text-slate-400 font-medium">Departmental salary scheme</p>
                             </div>
                         </div>
@@ -1040,31 +1057,31 @@ export default function Show() {
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4 text-xs">
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Department</p>
-                                    <span className={`inline-flex items-center gap-1 font-extrabold text-sm ${isFactory ? 'text-amber-700' : 'text-slate-800'}`}>
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Department</p>
+                                    <span className={`inline-flex items-center gap-1 font-semibold text-sm ${isFactory ? 'text-amber-700' : 'text-slate-800'}`}>
                                         {employee.department || 'General'}
                                     </span>
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
-                                    <p className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
+                                    <p className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
                                         {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
                                         {employee.job_title || 'N/A'}
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">
                                         {isFactory ? 'Line / Group Assignment' : 'Work Schedule'}
                                     </p>
-                                    <p className="font-mono font-extrabold text-slate-800 text-xs">
+                                    <p className="font-mono font-semibold text-slate-800 text-xs">
                                         {isFactory
                                             ? `${employee?.production_groups?.name || prodGroup}${employee?.production_groups?.target_output_pairs ? ` · ${employee.production_groups.target_output_pairs} pairs/day quota` : ' (Shoe Craft)'}`
                                             : '08:00 AM – 08:00 PM'}
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Overtime Status</p>
-                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Overtime Status</p>
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
                                         isFactory ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
                                     }`}>
                                         {isFactory ? 'No Overtime (Prohibited)' : 'Overtime Eligible'}
@@ -1072,12 +1089,12 @@ export default function Show() {
                                 </div>
                             </div>
 
-                            <div className={`p-4 rounded-xl border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
+                            <div className={`p-3.5 rounded-md border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className={`text-[11px] font-black uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
+                                    <span className={`text-[11px] font-semibold uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
                                         {isFactory ? 'Factory Compensation Model' : 'Wage Structure'}
                                     </span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         }`}>
                                         {isFactory ? 'Group Piece-Rate' : 'Daily & Hourly Wage'}
                                     </span>
@@ -1085,8 +1102,8 @@ export default function Show() {
 
                                 {isFactory ? (
                                     <div className="space-y-1.5 pt-1">
-                                        <div className="text-lg sm:text-xl font-black text-amber-900 tracking-tight flex items-center gap-1.5">
-                                            <i className="ti ti-box-multiple text-amber-600 text-xl" />
+                                        <div className="text-base sm:text-lg font-semibold text-amber-900 tracking-tight flex items-center gap-1.5">
+                                            <i className="ti ti-box-multiple text-amber-600 text-lg" />
                                             Group Production Batch Pool
                                         </div>
                                         <p className="text-xs text-amber-800 leading-relaxed font-medium">
@@ -1097,19 +1114,19 @@ export default function Show() {
                                     <div className="space-y-2 pt-1">
                                         <div className="flex items-baseline justify-between gap-4">
                                             <div>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Daily Rate</span>
-                                                <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-                                                    <span className="text-emerald-600 text-xl font-bold">₱</span>
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Daily Rate</span>
+                                                <div className="text-xl sm:text-2xl font-semibold text-slate-900 tracking-tight flex items-baseline gap-1">
+                                                    <span className="text-emerald-600 text-lg font-bold">₱</span>
                                                     {dailyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    <span className="text-xs font-bold text-slate-400 uppercase">/ day</span>
+                                                    <span className="text-xs font-medium text-slate-400 uppercase">/ day</span>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hourly Rate</span>
-                                                <div className="text-lg sm:text-xl font-black text-slate-700 tracking-tight flex items-baseline justify-end gap-1">
-                                                    <span className="text-emerald-600 text-base font-bold">₱</span>
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Hourly Rate</span>
+                                                <div className="text-base sm:text-lg font-semibold text-slate-700 tracking-tight flex items-baseline justify-end gap-1">
+                                                    <span className="text-emerald-600 text-sm font-bold">₱</span>
                                                     {hourlyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    <span className="text-xs font-bold text-slate-400 uppercase">/ hr</span>
+                                                    <span className="text-xs font-medium text-slate-400 uppercase">/ hr</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1122,12 +1139,12 @@ export default function Show() {
 
                             <div className="grid grid-cols-2 gap-4 text-[11px] pt-1">
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Date Joined</p>
-                                    <p className="font-bold text-slate-700">{formatDate(employee.created_at)}</p>
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Date Joined</p>
+                                    <p className="font-semibold text-slate-700">{formatDate(employee.created_at)}</p>
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Updated</p>
-                                    <p className="font-bold text-slate-700">{formatDateTime(employee.updated_at)}</p>
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Last Updated</p>
+                                    <p className="font-semibold text-slate-700">{formatDateTime(employee.updated_at)}</p>
                                 </div>
                             </div>
                         </div>
@@ -1135,20 +1152,20 @@ export default function Show() {
                 </div>
 
                 {/* Biometric Authentication & Medical Exemption Card */}
-                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-6">
-                        <div className="flex items-center gap-3 sm:gap-4">
-                            <div className={`h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl flex items-center justify-center border ${
+                <div className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                        <div className="flex items-center gap-3">
+                            <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${
                                 isMedicalExemptActive
                                     ? 'bg-amber-50 text-amber-700 border-amber-200/70'
                                     : employee?.has_registered_biometrics
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
                                     : 'bg-slate-50 text-slate-600 border-slate-200/70'
                             }`}>
-                                <i className={`ti ${isMedicalExemptActive ? 'ti-first-aid-kit' : 'ti-face-id'} text-xl sm:text-2xl`} />
+                                <i className={`ti ${isMedicalExemptActive ? 'ti-first-aid-kit' : 'ti-face-id'} text-lg`} />
                             </div>
                             <div>
-                                <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                                <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Biometric Authentication
                                 </h3>
                                 <p className="text-xs text-slate-500 font-medium">
@@ -1158,7 +1175,7 @@ export default function Show() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center px-3 py-1 text-xs font-bold rounded-xl border uppercase tracking-wider ${
+                            <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
                                 isMedicalExemptActive
                                     ? 'bg-amber-50 text-amber-800 border-amber-200'
                                     : employee?.has_registered_biometrics
@@ -1175,10 +1192,10 @@ export default function Show() {
                     </div>
 
                     {isMedicalExemptActive ? (
-                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 sm:p-5 text-xs text-slate-700 space-y-3">
+                        <div className="bg-amber-50/70 border border-amber-200 rounded-md p-4 text-xs text-slate-700 space-y-3">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-amber-200/60">
                                 <div>
-                                    <h4 className="font-bold text-amber-950 text-sm flex items-center gap-1.5">
+                                    <h4 className="font-semibold text-amber-950 text-sm flex items-center gap-1.5">
                                         <i className="ti ti-first-aid-kit text-amber-700 text-base" />
                                         Medical Grace Exemption Active (QR-Only Clock-In)
                                     </h4>
@@ -1187,7 +1204,7 @@ export default function Show() {
                                     </p>
                                 </div>
                                 {daysRemaining !== null && (
-                                    <span className="px-2.5 py-1 rounded-md bg-amber-200/70 text-amber-900 font-bold text-xs shrink-0 self-start sm:self-auto">
+                                    <span className="px-2 py-0.5 rounded bg-amber-200/70 text-amber-900 font-semibold text-xs shrink-0 self-start sm:self-auto">
                                         {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining
                                     </span>
                                 )}
@@ -1195,16 +1212,16 @@ export default function Show() {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
                                 <div>
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Valid Until</span>
-                                    <span className="font-bold text-slate-800">{formatDate(medicalExemption?.valid_until)}</span>
+                                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Valid Until</span>
+                                    <span className="font-semibold text-slate-800">{formatDate(medicalExemption?.valid_until)}</span>
                                 </div>
                                 <div>
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Medical Ref / Cert ID</span>
-                                    <span className="font-mono font-bold text-slate-800">{medicalExemption?.cert_ref || 'N/A'}</span>
+                                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Medical Ref / Cert ID</span>
+                                    <span className="font-mono font-semibold text-slate-800">{medicalExemption?.cert_ref || 'N/A'}</span>
                                 </div>
                                 <div>
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Authorized By</span>
-                                    <span className="font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Authorized By</span>
+                                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
                                         <i className="ti ti-user-check text-slate-500 text-sm" />
                                         {formatAuthorizer(medicalExemption?.granted_by, medicalExemption?.granted_by_role)}
                                     </span>
@@ -1218,7 +1235,7 @@ export default function Show() {
 
                             {medicalExemption?.reason && (
                                 <div className="pt-1">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Reason</span>
+                                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Reason</span>
                                     <p className="text-slate-700 italic">{medicalExemption.reason}</p>
                                 </div>
                             )}
@@ -1228,7 +1245,7 @@ export default function Show() {
                                     type="button"
                                     onClick={() => handleExtendExemption(7)}
                                     disabled={isSubmittingExemption}
-                                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 active:scale-95 text-amber-900 font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer disabled:opacity-50"
                                 >
                                     +7 Days Extension
                                 </button>
@@ -1236,7 +1253,7 @@ export default function Show() {
                                     type="button"
                                     onClick={handleRevokeExemption}
                                     disabled={isSubmittingExemption}
-                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-700 font-medium text-xs rounded-md border border-slate-200 transition-colors duration-100 cursor-pointer disabled:opacity-50"
                                 >
                                     Revoke Exemption
                                 </button>
@@ -1245,7 +1262,7 @@ export default function Show() {
                                         type="button"
                                         onClick={handleResetBiometrics}
                                         disabled={isResettingBiometrics}
-                                        className="px-3 py-1.5 bg-white hover:bg-rose-50 active:scale-95 text-rose-700 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 ml-auto"
+                                        className="h-8 px-3 bg-white hover:bg-rose-50 text-rose-700 font-medium text-xs rounded-md border border-rose-200 transition-colors duration-100 cursor-pointer disabled:opacity-50 ml-auto"
                                     >
                                         {isResettingBiometrics ? 'Resetting...' : 'Reset Biometrics'}
                                     </button>
@@ -1253,15 +1270,15 @@ export default function Show() {
                             </div>
                         </div>
                     ) : employee?.has_registered_biometrics ? (
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
-                                <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-                                    <i className="ti ti-check text-lg" />
+                                <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                                    <i className="ti ti-check text-base" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 text-sm">Facial Biometrics Registered</h4>
+                                    <h4 className="font-semibold text-slate-800 text-sm">Face scan registered</h4>
                                     <p className="text-slate-500 mt-0.5 leading-relaxed">
-                                        Dual-factor authentication (QR badge + facial recognition) is required at the gate kiosk.
+                                        Employee uses both badge and face scan when clocking in.
                                     </p>
                                 </div>
                             </div>
@@ -1270,31 +1287,31 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={() => setIsExemptionModalOpen(true)}
-                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
+                                    className="h-8 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium rounded-md border border-amber-200 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <i className="ti ti-first-aid-kit text-sm" />
-                                    <span>Grant Medical Grace</span>
+                                    <span>Grant medical exemption</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleResetBiometrics}
                                     disabled={isResettingBiometrics}
-                                    className="px-3.5 py-2 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors text-xs cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-700 font-medium rounded-md border border-slate-200 transition-colors duration-100 text-xs cursor-pointer disabled:opacity-50"
                                 >
-                                    {isResettingBiometrics ? 'Resetting...' : 'Reset Biometrics'}
+                                    {isResettingBiometrics ? 'Resetting...' : 'Reset face scan'}
                                 </button>
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
-                                <div className="w-9 h-9 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
-                                    <i className="ti ti-user-scan text-lg" />
+                                <div className="w-8 h-8 rounded-md bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
+                                    <i className="ti ti-user-scan text-base" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 text-sm">Biometric Profile Pending Enrollment</h4>
+                                    <h4 className="font-semibold text-slate-800 text-sm">Face scan not registered</h4>
                                     <p className="text-slate-500 mt-0.5 leading-relaxed">
-                                        No facial template registered yet. The employee will be enrolled during their first scan at the gate kiosk.
+                                        No face scan registered yet. The employee can register during their first scan at the kiosk.
                                     </p>
                                 </div>
                             </div>
@@ -1302,24 +1319,24 @@ export default function Show() {
                             <button
                                 type="button"
                                 onClick={() => setIsExemptionModalOpen(true)}
-                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors text-xs flex items-center gap-1.5 cursor-pointer shrink-0 self-stretch sm:self-auto justify-center"
+                                className="h-8 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium rounded-md border border-amber-200 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer shrink-0 self-stretch sm:self-auto justify-center"
                             >
                                 <i className="ti ti-first-aid-kit text-sm" />
-                                <span>Grant Medical Grace</span>
+                                <span>Grant medical exemption</span>
                             </button>
                         </div>
                     )}
                 </div>
 
                 {/* Disciplinary & Compliance Records */}
-                <div className="bg-white rounded-2xl shadow-xs sm:shadow-sm border border-slate-100 p-5 sm:p-8 relative overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-6">
-                        <div className="flex items-center gap-3 sm:gap-4">
-                            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-amber-50 text-amber-700 rounded-xl sm:rounded-2xl flex items-center justify-center border border-amber-200/70">
-                                <i className="ti ti-scale text-xl sm:text-2xl" />
+                <div className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                        <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 bg-amber-50 text-amber-700 rounded-md flex items-center justify-center border border-amber-200/70">
+                                <i className="ti ti-scale text-lg" />
                             </div>
                             <div>
-                                <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                                <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Disciplinary & Compliance Records
                                 </h3>
                                 <p className="text-xs text-slate-500 font-medium">
@@ -1329,7 +1346,7 @@ export default function Show() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center px-3 py-1 text-xs font-black rounded-xl border uppercase tracking-wider ${
+                            <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
                                 isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
                                 isSuspended ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-50 text-amber-800 border-amber-200' :
@@ -1343,7 +1360,7 @@ export default function Show() {
 
                             <Link
                                 to={`/admin/disciplinary?search=${encodeURIComponent(employeeFullName || employee.first_name || '')}`}
-                                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+                                className="h-8 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-md transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 <i className="ti ti-gavel text-sm" /> Disciplinary Hub
                             </Link>
@@ -1351,12 +1368,12 @@ export default function Show() {
                     </div>
 
                     {disciplinaryLogs.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center text-center py-10 px-4 bg-emerald-50/40 rounded-xl sm:rounded-2xl border border-dashed border-emerald-200">
-                            <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-100 shadow-xs mb-3">
-                                <i className="ti ti-shield-check text-2xl sm:text-3xl" />
+                        <div className="flex flex-col items-center justify-center text-center py-8 px-4 bg-emerald-50/40 rounded-md border border-dashed border-emerald-200">
+                            <div className="h-10 w-10 bg-white text-emerald-600 rounded-md flex items-center justify-center border border-emerald-100 shadow-2xs mb-2">
+                                <i className="ti ti-shield-check text-2xl" />
                             </div>
-                            <h4 className="text-sm sm:text-base font-black text-slate-800 mb-1">Clean Compliance Standing</h4>
-                            <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-md">
+                            <h4 className="text-sm font-semibold text-slate-900 mb-1">Clean Compliance Standing</h4>
+                            <p className="text-xs text-slate-500 font-medium max-w-md">
                                 This employee currently has zero disciplinary infractions, warnings, or sanctions on record. Account is in full compliance with company policies and DOLE standards.
                             </p>
                         </div>
@@ -1370,7 +1387,7 @@ export default function Show() {
                                 return (
                                     <div
                                         key={log.id}
-                                        className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                                        className={`p-4 rounded-md border transition-colors duration-100 ${
                                             isResolvedTermination
                                                 ? 'bg-emerald-50/30 border-emerald-200'
                                                 : log.status === 'Active'
@@ -1382,7 +1399,7 @@ export default function Show() {
                                     >
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+                                                <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 ${
                                                     isResolvedTermination
                                                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                                         : log.type === 'Termination'
@@ -1400,7 +1417,7 @@ export default function Show() {
                                                 </span>
 
                                                 {log.severity && (
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
                                                         log.severity === 'Critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
                                                         log.severity === 'High' ? 'bg-orange-50 text-orange-700 border-orange-200' :
                                                         log.severity === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
@@ -1417,16 +1434,18 @@ export default function Show() {
                                             </div>
 
                                             <div className="flex items-center gap-2">
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider border flex items-center gap-1 ${
-                                                    log.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                    log.status === 'Overturned' ? 'bg-teal-100 text-teal-800 border-teal-300' :
-                                                    log.status === 'Acknowledged' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                                    'bg-rose-100 text-rose-800 border-rose-300'
+                                                <span className={`px-2 py-0.5 rounded-md text-xs font-semibold border flex items-center gap-1.5 ${
+                                                    log.status === 'Resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    log.status === 'Overturned' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                                                    log.status === 'Acknowledged' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                    'bg-rose-50 text-rose-700 border-rose-200'
                                                 }`}>
-                                                    {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
-                                                    {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
-                                                    {log.status === 'Acknowledged' && <i className="ti ti-checks" />}
-                                                    {log.status === 'Active' && <i className="ti ti-alert-triangle" />}
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        log.status === 'Resolved' ? 'bg-emerald-500' :
+                                                        log.status === 'Overturned' ? 'bg-teal-500' :
+                                                        log.status === 'Acknowledged' ? 'bg-blue-500' :
+                                                        'bg-rose-500'
+                                                    }`} />
                                                     <span>
                                                         {log.status === 'Resolved' ? 'Resolved' :
                                                          log.status === 'Overturned' ? 'Cleared' :
@@ -1448,7 +1467,7 @@ export default function Show() {
                                             </div>
                                         )}
                                         {isReinstatedNote && (
-                                            <div className="mt-2.5 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-bold flex items-center gap-1.5">
+                                            <div className="mt-2.5 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5">
                                                 <i className="ti ti-check text-sm" />
                                                 <span>Record cleared and active standing restored.</span>
                                             </div>
@@ -1464,7 +1483,7 @@ export default function Show() {
 
             {/* Enterprise Removal & Archival Modal */}
             {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70">
                     <div 
                         className="absolute inset-0"
                         onClick={() => {
@@ -1474,23 +1493,23 @@ export default function Show() {
                             }
                         }}
                     />
-                    <div className="relative bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 z-10 text-left space-y-4 max-h-[92vh] overflow-y-auto">
+                    <div className="relative bg-white rounded-lg max-w-xl w-full p-5 sm:p-6 shadow-xl border border-slate-200 z-10 text-left space-y-4 max-h-[92vh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-start justify-between gap-4 pb-2 border-b border-slate-100">
                             <div className="flex items-center gap-3">
-                                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                                <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 border ${
                                     removalMode === 'archive' 
                                         ? 'bg-indigo-50 border-indigo-200 text-indigo-600' 
                                         : 'bg-rose-50 border-rose-200 text-rose-600'
                                 }`}>
-                                    <i className={`ti ${removalMode === 'archive' ? 'ti-archive' : 'ti-alert-triangle'} text-xl`} />
+                                    <i className={`ti ${removalMode === 'archive' ? 'ti-archive' : 'ti-alert-triangle'} text-lg`} />
                                 </div>
                                 <div>
-                                    <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                                    <h2 className="text-base font-semibold text-slate-900 leading-snug">
                                         {removalMode === 'archive' ? 'Employee Separation & Archival' : 'Forensic Record Purge'}
                                     </h2>
                                     <p className="text-xs text-slate-500 font-medium">
-                                        Personnel: <strong className="text-slate-800">{employeeFullName}</strong> <span className="font-mono text-slate-400">({employee.company_id || 'No ID'})</span>
+                                        Personnel: <strong className="text-slate-800 font-semibold">{employeeFullName}</strong> <span className="font-mono text-slate-400">({employee.company_id || 'No ID'})</span>
                                     </p>
                                 </div>
                             </div>
@@ -1501,47 +1520,47 @@ export default function Show() {
                                     setDeleteConfirmText('');
                                 }}
                                 disabled={isArchiving || isDeleting}
-                                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                                className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors duration-100 cursor-pointer"
                             >
                                 <i className="ti ti-x text-base" />
                             </button>
                         </div>
 
                         {/* Segmented Control / Tabs */}
-                        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl gap-1 border border-slate-200/80">
+                        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-md gap-1 border border-slate-200/80">
                             <button
                                 type="button"
                                 onClick={() => setRemovalMode('archive')}
-                                className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                className={`h-8 px-3 rounded font-medium text-xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer ${
                                     removalMode === 'archive'
-                                        ? 'bg-white text-indigo-700 shadow-xs'
+                                        ? 'bg-white text-indigo-700 shadow-2xs'
                                         : 'text-slate-600 hover:text-slate-900'
                                 }`}
                             >
                                 <i className="ti ti-shield-check text-sm" />
                                 <span>DOLE Archive</span>
-                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded uppercase">Standard</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-semibold rounded uppercase">Standard</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setRemovalMode('purge')}
-                                className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                className={`h-8 px-3 rounded font-medium text-xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer ${
                                     removalMode === 'purge'
-                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        ? 'bg-rose-600 text-white shadow-2xs'
                                         : 'text-rose-600 hover:text-rose-700'
                                 }`}
                             >
                                 <i className="ti ti-trash text-sm" />
                                 <span>Forensic Purge</span>
-                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-black rounded uppercase">Danger</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-semibold rounded uppercase">Danger</span>
                             </button>
                         </div>
 
                         {/* Mode 1: DOLE Archive */}
                         {removalMode === 'archive' && (
                             <div className="space-y-4">
-                                <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 text-xs text-indigo-950 space-y-1">
-                                    <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                                <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-md p-3 text-xs text-indigo-950 space-y-1">
+                                    <div className="flex items-center gap-1.5 font-semibold text-indigo-900">
                                         <i className="ti ti-shield-check text-base text-indigo-600" />
                                         <span>Statutory Compliance & Digital Revocation</span>
                                     </div>
@@ -1552,7 +1571,7 @@ export default function Show() {
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                             Separation Classification
                                         </label>
                                         <select
@@ -1564,7 +1583,7 @@ export default function Show() {
                                                     setSeparationReason(SEPARATION_DEFAULTS[newType]);
                                                 }
                                             }}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                            className="h-9 w-full px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-400"
                                         >
                                             <option value="Resignation">Voluntary Resignation</option>
                                             <option value="End of Contract">End of Contract / Fixed Term</option>
@@ -1576,20 +1595,20 @@ export default function Show() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                        <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                             Effective Separation Date
                                         </label>
                                         <input
                                             type="date"
                                             value={separationDate}
                                             onChange={(e) => setSeparationDate(e.target.value)}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                            className="h-9 w-full px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-400"
                                         />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                         Primary Reason / DOLE Statutory Ground
                                     </label>
                                     <input
@@ -1597,12 +1616,12 @@ export default function Show() {
                                         value={separationReason}
                                         onChange={(e) => setSeparationReason(e.target.value)}
                                         placeholder="e.g. Voluntary Resignation, End of Contract..."
-                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                        className="h-9 w-full px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-400"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                         Exit Clearance & Handover Remarks (Optional)
                                     </label>
                                     <textarea
@@ -1610,26 +1629,26 @@ export default function Show() {
                                         value={separationNotes}
                                         onChange={(e) => setSeparationNotes(e.target.value)}
                                         placeholder="Note company ID return, laptop handover, clearance status..."
-                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 resize-none"
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-400 resize-none"
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200/70 text-center">
+                                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200/70 text-center">
                                     <div className="space-y-0.5">
-                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Biometrics</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-600">
+                                        <span className="block text-[10px] font-semibold text-slate-400 uppercase">Face scan</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
                                             <i className="ti ti-lock text-xs" /> Revoked (0ms)
                                         </span>
                                     </div>
                                     <div className="space-y-0.5 border-x border-slate-200">
-                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Portal Auth</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-600">
+                                        <span className="block text-[10px] font-semibold text-slate-400 uppercase">Portal Auth</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
                                             <i className="ti ti-user-x text-xs" /> Signed Out
                                         </span>
                                     </div>
                                     <div className="space-y-0.5">
-                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Grace Cooldown</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-600">
+                                        <span className="block text-[10px] font-semibold text-slate-400 uppercase">Grace Cooldown</span>
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600">
                                             <i className="ti ti-hourglass-low text-xs" /> 14 Days Review
                                         </span>
                                     </div>
@@ -1640,7 +1659,7 @@ export default function Show() {
                                         type="button"
                                         onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }}
                                         disabled={isArchiving}
-                                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                        className="h-9 flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer"
                                     >
                                         Cancel
                                     </button>
@@ -1648,7 +1667,7 @@ export default function Show() {
                                         type="button"
                                         onClick={handleArchiveEmployee}
                                         disabled={isArchiving}
-                                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        className="h-9 flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md text-xs transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                                     >
                                         {isArchiving ? (
                                             <>
@@ -1658,7 +1677,7 @@ export default function Show() {
                                         ) : (
                                             <>
                                                 <i className="ti ti-archive text-sm" />
-                                                <span>Execute Separation & Archive</span>
+                                                <span>Separate & Archive Employee</span>
                                             </>
                                         )}
                                     </button>
@@ -1669,23 +1688,23 @@ export default function Show() {
                         {/* Mode 2: Purge Tab */}
                         {removalMode === 'purge' && (
                             <div className="space-y-4">
-                                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-950 space-y-1.5">
-                                    <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                                <div className="bg-rose-50 border border-rose-200 rounded-md p-3 text-xs text-rose-950 space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-semibold text-rose-900">
                                         <i className="ti ti-alert-triangle text-base text-rose-600" />
-                                        <span>Forensic Database & Biometric Shredding</span>
+                                        <span>Permanent Record & Account Deletion</span>
                                     </div>
                                     <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
-                                        This irreversibly purges this personnel from the database, cascades deletions through all attendance logs, payslips, leaves, and documents, and shreds biometric facial vector baselines (<code className="font-mono bg-rose-100/80 px-1 py-0.5 rounded text-[10px]">face-baselines/</code>) and kiosk snapshot photos from Cloud Storage. <strong>This action cannot be recovered.</strong>
+                                        This permanently deletes the employee record, along with all attendance logs, payslips, leave requests, uploaded documents, and saved face scan photos. <strong>This action cannot be undone.</strong>
                                     </p>
                                 </div>
 
                                 <div className="space-y-2">
                                     <p className="text-xs text-slate-600 font-medium">
-                                        To confirm forensic destruction, type the full employee name below:
+                                        To confirm permanent deletion, type the employee's full name below:
                                     </p>
                                     <div 
                                         onClick={() => setDeleteConfirmText(employeeFullName)}
-                                        className="p-2.5 bg-slate-100 hover:bg-slate-200 active:scale-98 rounded-xl font-mono text-center font-bold text-slate-800 text-xs border border-slate-200 select-all cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded font-mono text-center font-medium text-slate-800 text-xs border border-slate-200 select-all cursor-pointer transition-colors duration-100 flex items-center justify-center gap-1.5"
                                         title="Click to auto-fill for quick testing"
                                     >
                                         <span>{employeeFullName}</span>
@@ -1696,7 +1715,7 @@ export default function Show() {
                                         value={deleteConfirmText}
                                         onChange={(e) => setDeleteConfirmText(e.target.value)}
                                         placeholder="Type full name to confirm..."
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                                        className="h-9 w-full px-3.5 bg-white border border-slate-200 rounded-md text-center font-semibold text-xs text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
                                     />
                                 </div>
 
@@ -1705,7 +1724,7 @@ export default function Show() {
                                         type="button"
                                         onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmText(''); }}
                                         disabled={isDeleting}
-                                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                        className="h-9 flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer"
                                     >
                                         Cancel
                                     </button>
@@ -1713,17 +1732,17 @@ export default function Show() {
                                         type="button"
                                         onClick={handleDelete}
                                         disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
-                                        className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                        className="h-9 flex-1 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
                                     >
                                         {isDeleting ? (
                                             <>
                                                 <i className="ti ti-loader-2 animate-spin text-sm" />
-                                                <span>Shredding Records...</span>
+                                                <span>Deleting records...</span>
                                             </>
                                         ) : (
                                             <>
                                                 <i className="ti ti-trash text-sm" />
-                                                <span>Shred & Delete Permanently</span>
+                                                <span>Delete permanently</span>
                                             </>
                                         )}
                                     </button>
@@ -1741,53 +1760,53 @@ export default function Show() {
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                         <div 
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity no-print"
+                            className="absolute inset-0 bg-slate-950/70 transition-opacity no-print"
                             onClick={() => setIsPrintModalOpen(false)}
                         />
                         <div 
-                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            initial={{ scale: 0.98, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.98, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
                             id="qr-print-card"
-                            className="relative bg-white rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10"
+                            className="relative bg-white rounded-lg p-6 sm:p-7 text-center shadow-xl w-full max-w-md border border-slate-200 z-10"
                         >
-                            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
                                 <div className="text-left">
-                                    <h1 className="text-lg sm:text-xl font-black text-slate-900 uppercase tracking-wider">C-Point Official ID</h1>
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Biometric Gate Pass</p>
+                                    <h1 className="text-base font-semibold text-slate-900 uppercase tracking-wider">C-Point Official ID</h1>
+                                    <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest mt-0.5">Gate pass</p>
                                 </div>
-                                <span className="px-3 py-1 bg-slate-900 text-white font-mono text-xs font-black rounded-lg">
+                                <span className="h-6 px-2.5 inline-flex items-center bg-slate-900 text-white font-mono text-xs font-semibold rounded-md">
                                     {employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS')}
                                 </span>
                             </div>
 
-                            <div className="flex justify-center mb-6">
-                                <div className="p-4 bg-white border-2 border-slate-200/80 rounded-2xl flex items-center justify-center shadow-sm">
+                            <div className="flex justify-center mb-5">
+                                <div className="p-4 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-2xs">
                                     <QRCode 
                                         value={employee.company_id || (employee.id ? String(employee.id) : 'CP-EMPLOYEE')} 
-                                        size={240}
+                                        size={220}
                                         fgColor="#0f172a"
                                         bgColor="#ffffff"
                                         level="H"
                                         margin={2}
-                                        className="rounded-lg"
+                                        className="rounded-sm"
                                     />
                                 </div>
                             </div>
 
-                            <div className="mb-6">
-                                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight truncate">{employee.name}</h2>
-                                <p className="text-indigo-600 font-black uppercase text-xs sm:text-sm tracking-widest mt-1.5">{employee.job_title ?? 'STAFF'}</p>
-                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? employee.department + ' Department' : 'Operations'}</p>
+                            <div className="mb-5">
+                                <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-tight truncate">{employee.name}</h2>
+                                <p className="text-indigo-600 font-medium uppercase text-xs tracking-wider mt-1">{employee.job_title ?? 'STAFF'}</p>
+                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mt-0.5">{employee.department ? employee.department + ' Department' : 'Operations'}</p>
                             </div>
 
-                            <div className="no-print flex gap-2.5 sm:gap-3">
-                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-3 sm:py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition tap-active text-xs sm:text-sm">
+                            <div className="no-print flex gap-2">
+                                <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 h-9 px-3 bg-slate-100 text-slate-700 font-medium rounded-md hover:bg-slate-200 transition-colors duration-100 text-xs">
                                     Close
                                 </button>
-                                <button type="button" onClick={printCard} className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-3.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-indigo-600 shadow-xl shadow-slate-900/20 transition tap-active text-xs sm:text-sm">
-                                    <i className="ti ti-printer text-base sm:text-lg" /> Print Badge
+                                <button type="button" onClick={printCard} className="flex-1 h-9 px-3 flex items-center justify-center gap-2 bg-slate-900 text-white font-medium rounded-md hover:bg-indigo-600 transition-colors duration-100 text-xs">
+                                    <i className="ti ti-printer text-sm" /> Print Badge
                                 </button>
                             </div>
                         </div>
@@ -1798,37 +1817,37 @@ export default function Show() {
             {isReinstateModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => !isReinstating && setIsReinstateModalOpen(false)}
                     />
-                    <div className="relative bg-white rounded-3xl p-6 sm:p-7 text-center shadow-2xl w-full max-w-md border border-slate-200 z-10 space-y-4">
-                        <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
-                            <i className="ti ti-rotate-clockwise text-2xl" />
+                    <div className="relative bg-white rounded-lg p-6 text-center shadow-xl w-full max-w-md border border-slate-200 z-10 space-y-4">
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center mx-auto border border-emerald-200">
+                            <i className="ti ti-rotate-clockwise text-xl" />
                         </div>
 
                         <div>
-                            <h3 className="text-lg font-bold text-slate-900">Reinstate Employee</h3>
+                            <h3 className="text-base font-semibold text-slate-900">Reinstate Employee</h3>
                             <p className="text-xs text-slate-500 font-medium mt-1">
                                 Restore <strong className="text-slate-900">{employee.name || `${employee.first_name} ${employee.last_name}`}</strong> ({employee.company_id || 'N/A'}) to active operational standing.
                             </p>
                         </div>
 
-                        <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 text-left text-xs space-y-2 text-slate-600">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                <span className="font-semibold text-slate-400 uppercase text-[10px] tracking-wider">Current Standing</span>
-                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">Pending Termination</span>
+                        <div className="bg-slate-50 rounded-md p-3.5 border border-slate-200 text-left text-xs space-y-2 text-slate-600">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                <span className="font-medium text-slate-400 uppercase text-[10px] tracking-wider">Current Standing</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-medium rounded">Pending Termination</span>
                             </div>
                             <p className="text-[11px] leading-relaxed">
                                 Reinstatement will revoke the separation notice, clear the pending archive cooldown, unblock gate attendance scanner permissions, and return this record to the operational workforce directory.
                             </p>
                         </div>
 
-                        <div className="flex gap-2.5 pt-1">
+                        <div className="flex gap-2 pt-1">
                             <button
                                 type="button"
                                 onClick={() => setIsReinstateModalOpen(false)}
                                 disabled={isReinstating}
-                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                                className="flex-1 h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer"
                             >
                                 Cancel
                             </button>
@@ -1836,11 +1855,11 @@ export default function Show() {
                                 type="button"
                                 onClick={handleReinstate}
                                 disabled={isReinstating}
-                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                className="flex-1 h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                             >
                                 {isReinstating ? (
                                     <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                         <span>Reinstating...</span>
                                     </>
                                 ) : (
@@ -1859,17 +1878,17 @@ export default function Show() {
             {isExemptionModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div 
-                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => !isSubmittingExemption && setIsExemptionModalOpen(false)}
                     />
-                    <div className="relative bg-white rounded-3xl p-6 sm:p-7 shadow-2xl w-full max-w-lg border border-slate-200 z-10 space-y-5">
+                    <div className="relative bg-white rounded-lg p-6 shadow-xl w-full max-w-lg border border-slate-200 z-10 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 bg-amber-50 text-amber-700 rounded-2xl flex items-center justify-center border border-amber-200">
-                                    <i className="ti ti-first-aid-kit text-2xl" />
+                                <div className="w-9 h-9 bg-amber-50 text-amber-700 rounded-md flex items-center justify-center border border-amber-200">
+                                    <i className="ti ti-first-aid-kit text-xl" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-black text-slate-900">
+                                    <h3 className="text-base font-semibold text-slate-900">
                                         Biometric Medical Grace Exemption
                                     </h3>
                                     <p className="text-xs text-slate-500 font-medium">
@@ -1881,15 +1900,15 @@ export default function Show() {
                                 type="button"
                                 onClick={() => setIsExemptionModalOpen(false)}
                                 disabled={isSubmittingExemption}
-                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                                className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors duration-100 cursor-pointer"
                             >
                                 <i className="ti ti-x text-sm" />
                             </button>
                         </div>
 
                         <form onSubmit={handleEnableExemption} className="space-y-4 text-xs">
-                            <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 leading-relaxed font-medium">
-                                <p className="font-bold flex items-center gap-1.5 text-amber-950 mb-0.5">
+                            <div className="p-3 bg-amber-50 rounded-md border border-amber-200 text-amber-900 leading-relaxed font-medium">
+                                <p className="font-semibold flex items-center gap-1.5 text-amber-950 mb-0.5">
                                     <i className="ti ti-info-circle text-base text-amber-600" />
                                     How this protocol functions:
                                 </p>
@@ -1899,7 +1918,7 @@ export default function Show() {
                             </div>
 
                             <div>
-                                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                     Clinical Reason / Trauma Description <span className="text-rose-500">*</span>
                                 </label>
                                 <textarea
@@ -1908,13 +1927,13 @@ export default function Show() {
                                     value={exemptionForm.reason}
                                     onChange={(e) => setExemptionForm({ ...exemptionForm, reason: e.target.value })}
                                     placeholder="e.g., Facial lacerations and gauze dressing following road accident per attending physician..."
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
                                 />
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                         Medical Cert / Ref ID <span className="text-rose-500">*</span>
                                     </label>
                                     <input
@@ -1923,18 +1942,18 @@ export default function Show() {
                                         value={exemptionForm.cert_ref}
                                         onChange={(e) => setExemptionForm({ ...exemptionForm, cert_ref: e.target.value })}
                                         placeholder="e.g., MC-2026-DR-SANTOS-88"
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-mono font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                         Exemption Duration
                                     </label>
                                     <select
                                         value={exemptionForm.duration_days}
                                         onChange={(e) => setExemptionForm({ ...exemptionForm, duration_days: Number(e.target.value) })}
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
                                     >
                                         <option value={7}>7 Days (Minor injury / swelling)</option>
                                         <option value={14}>14 Days (Standard trauma / sutures)</option>
@@ -1945,7 +1964,7 @@ export default function Show() {
                             </div>
 
                             <div>
-                                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                     Document Link / Vault File URL (Optional)
                                 </label>
                                 <input
@@ -1953,27 +1972,27 @@ export default function Show() {
                                     value={exemptionForm.document_url}
                                     onChange={(e) => setExemptionForm({ ...exemptionForm, document_url: e.target.value })}
                                     placeholder="e.g., /admin/documents?employee_id=... or Medical Certificate scan"
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all outline-none"
+                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
                                 />
                             </div>
 
-                            <div className="flex gap-2.5 pt-2">
+                            <div className="flex gap-2 pt-1">
                                 <button
                                     type="button"
                                     onClick={() => setIsExemptionModalOpen(false)}
                                     disabled={isSubmittingExemption}
-                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                                    className="flex-1 h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmittingExemption}
-                                    className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    className="flex-1 h-9 px-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 >
                                     {isSubmittingExemption ? (
                                         <>
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                             <span>Activating Protocol...</span>
                                         </>
                                     ) : (

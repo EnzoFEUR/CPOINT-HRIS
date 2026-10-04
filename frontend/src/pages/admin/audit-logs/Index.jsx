@@ -148,7 +148,7 @@ export default function AuditLogsIndex() {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
                 <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
-                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading Audit Logs...</p>
+                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading audit trail...</p>
             </div>
         );
     }
@@ -157,12 +157,10 @@ export default function AuditLogsIndex() {
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader
                 breadcrumbs={['Admin', 'System', 'Audit Trail']}
-                title="System Audit Trail"
-                description="Log of user actions, administrative changes, and security events."
                 actions={
-                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-md">
                         <Activity className="w-3.5 h-3.5 text-slate-500" />
-                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Events:</span>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total actions:</span>
                         <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{logs.length}</span>
                     </div>
                 }
@@ -171,20 +169,20 @@ export default function AuditLogsIndex() {
             <div className="space-y-4 sm:space-y-6">
                 {/* FILTER BAR */}
                 <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
-                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-xl shadow-xs border border-slate-200 relative flex items-center">
+                    <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200 relative flex items-center">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input 
                             type="text" 
-                            placeholder="Search actions, records, or admin operators..." 
+                            placeholder="Search actions, records, or managers..." 
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:border-slate-500 font-medium text-slate-800 transition-colors placeholder:text-slate-400"
+                            className="h-9 w-full pl-9 pr-8 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:bg-white focus:border-slate-500 font-medium text-slate-800 transition-colors duration-100 placeholder:text-slate-400"
                         />
                         {searchQuery && (
                             <button
                                 type="button"
                                 onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
-                                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors duration-100 cursor-pointer"
                                 title="Clear search"
                             >
                                 <X className="w-3.5 h-3.5" />
@@ -192,21 +190,21 @@ export default function AuditLogsIndex() {
                         )}
                     </div>
 
-                    <div className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-xl shadow-xs border border-slate-200 w-full md:w-auto gap-2 items-center">
+                    <div className="flex flex-wrap sm:flex-nowrap bg-white p-2 rounded-lg shadow-2xs border border-slate-200 w-full md:w-auto gap-2 items-center">
                         <input 
                             type="date" 
                             value={filterDate} 
                             onChange={(e) => handleDateChange(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
                             title="Filter by event date"
                         />
                         <select 
                             value={filterUserId} 
                             onChange={(e) => handleUserChange(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
+                            className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 outline-none flex-1 sm:w-auto cursor-pointer"
                             title="Filter by operator"
                         >
-                            <option value="">All Admins / System</option>
+                            <option value="">All users and system</option>
                             {users.map(u => (
                                 <option key={u.id} value={u.id}>
                                     {u.first_name} {u.last_name}
@@ -217,7 +215,7 @@ export default function AuditLogsIndex() {
                             <button 
                                 type="button" 
                                 onClick={handleResetFilters} 
-                                className="px-3 py-2 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                className="h-9 px-3 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer"
                                 title="Reset all filters"
                             >
                                 <RotateCcw className="w-3.5 h-3.5" />
@@ -228,14 +226,14 @@ export default function AuditLogsIndex() {
                 </div>
 
                 {/* DATA TABLE */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+                <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
                     {/* DESKTOP TABLE VIEW */}
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-3.5">Timestamp</th>
-                                    <th className="px-6 py-3.5">Actor</th>
+                                    <th className="px-6 py-3.5">Date and time</th>
+                                    <th className="px-6 py-3.5">User</th>
                                     <th className="px-6 py-3.5">Action Details</th>
                                     <th className="px-6 py-3.5 text-right">Target ID</th>
                                 </tr>
@@ -310,8 +308,8 @@ export default function AuditLogsIndex() {
                                 }) : (
                                     <tr>
                                         <td colSpan="4" className="px-6 py-12 text-center text-slate-400">
-                                            <p className="text-sm font-semibold text-slate-700">No Logs Found</p>
-                                            <p className="text-xs mt-0.5">The system audit trail is empty for the specified parameters.</p>
+                                            <p className="text-sm font-semibold text-slate-700">No system activity logged</p>
+                                            <p className="text-xs mt-0.5">No system activity logged in the selected date range.</p>
                                         </td>
                                     </tr>
                                 )}
@@ -373,8 +371,8 @@ export default function AuditLogsIndex() {
                             );
                         }) : (
                             <div className="p-8 text-center text-slate-400">
-                                <p className="text-sm font-semibold text-slate-700">No Logs Found</p>
-                                <p className="text-xs mt-0.5">The system audit trail is empty.</p>
+                                <p className="text-sm font-semibold text-slate-700">No system activity logged</p>
+                                <p className="text-xs mt-0.5">No system activity logged in the selected date range.</p>
                             </div>
                         )}
                     </div>
@@ -393,19 +391,19 @@ export default function AuditLogsIndex() {
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={currentPage === 1}
-                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1 cursor-pointer"
                             >
                                 <ChevronLeft className="w-3.5 h-3.5" /> Prev
                             </button>
                             
-                            <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono font-medium text-xs tabular-nums">
+                            <span className="h-8 px-2.5 flex items-center justify-center bg-white border border-slate-200 rounded-md text-slate-900 font-mono font-medium text-xs tabular-nums">
                                 {currentPage} / {totalPages}
                             </span>
 
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={currentPage >= totalPages}
-                                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1 cursor-pointer"
                             >
                                 Next <ChevronRight className="w-3.5 h-3.5" />
                             </button>

@@ -34,15 +34,16 @@ const FactoryBatchSection = ({
     return (
         <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* Access Button for Factory Piece Modal */}
-            <div className="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
                 <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/20 shrink-0">
+                    <div className="w-9 h-9 rounded-md bg-blue-600 text-white flex items-center justify-center text-lg shrink-0">
                         <i className="ti ti-table" />
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-sm sm:text-base font-extrabold text-slate-800 truncate">Factory Production &amp; Piece-Rate Manager</h3>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${selectedGroup ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                            <h3 className="text-sm sm:text-base font-bold text-slate-800 truncate">Factory Production &amp; Piece-Rate Manager</h3>
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-blue-500' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `Group: ${selectedGroup}` : 'No Group Active'}
                             </span>
                         </div>
@@ -60,7 +61,7 @@ const FactoryBatchSection = ({
                 <button
                     type="button"
                     onClick={() => setIsFactoryPieceOpen(true)}
-                    className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                    className="w-full sm:w-auto h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0"
                 >
                     <i className="ti ti-adjustments-horizontal text-base" />
                     <span>{selectedGroup ? 'Edit Operations & Rates' : 'Select Group & Configure'}</span>
@@ -69,14 +70,14 @@ const FactoryBatchSection = ({
 
             {/* Absentee Warning & Declaration Trigger */}
             {selectedGroup && absenteeCount > 0 && (
-                <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${needsDeclaration
+                <div className={`p-4 rounded-lg border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors duration-100 ${needsDeclaration
                     ? 'bg-amber-50/80 border-amber-200'
                     : 'bg-emerald-50/80 border-emerald-200'
                     }`}>
                     <div className="flex items-start gap-3 min-w-0">
                         <i className={`ti ${needsDeclaration ? 'ti-user-exclamation text-amber-600' : 'ti-circle-check text-emerald-600'} text-xl shrink-0 mt-0.5`} />
                         <div className="min-w-0">
-                            <p className={`text-xs font-extrabold ${needsDeclaration ? 'text-amber-900' : 'text-emerald-900'}`}>
+                            <p className={`text-xs font-bold ${needsDeclaration ? 'text-amber-900' : 'text-emerald-900'}`}>
                                 {absenteeCount} worker{absenteeCount === 1 ? '' : 's'} missed days this cutoff
                                 {expectedWorkingDays > 0 && (
                                     <span className="font-semibold"> (out of {expectedWorkingDays} expected)</span>
@@ -94,7 +95,7 @@ const FactoryBatchSection = ({
                     <button
                         type="button"
                         onClick={() => setIsAbsenteeModalOpen && setIsAbsenteeModalOpen(true)}
-                        className={`w-full sm:w-auto px-5 py-2.5 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                        className={`w-full sm:w-auto h-9 px-4 font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
                             }`}
                     >
                         <i className="ti ti-clipboard-text text-base" />
@@ -106,30 +107,30 @@ const FactoryBatchSection = ({
             {/* Executive KPI Summary Ribbon */}
             {selectedGroup && activeGroupEmployees.length > 0 && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                    <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Production Group</span>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-base sm:text-lg font-black text-blue-700">{selectedGroup}</span>
-                            <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                            <span className="text-base sm:text-lg font-bold text-blue-700">{selectedGroup}</span>
+                            <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">
                                 {activeGroupEmployees.length} Workers
                             </span>
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                    <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Gross Output</span>
-                        <div className="text-base sm:text-lg font-black font-mono text-slate-900 mt-1">
+                        <div className="text-base sm:text-lg font-bold font-mono text-slate-900 mt-1">
                             ₱{batchSummaryTotals.gross.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                    <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Deductions</span>
-                        <div className="text-base sm:text-lg font-black font-mono text-red-500 mt-1">
+                        <div className="text-base sm:text-lg font-bold font-mono text-red-500 mt-1">
                             ₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-xl border border-emerald-300 shadow-xs">
+                    <div className="bg-white p-3.5 rounded-lg border border-emerald-300 shadow-2xs">
                         <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Net Distribution</span>
-                        <div className="text-base sm:text-lg font-black font-mono text-emerald-600 mt-1">
+                        <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 mt-1">
                             ₱{batchSummaryTotals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
@@ -137,13 +138,13 @@ const FactoryBatchSection = ({
             )}
 
             {/* Operation Earnings & Deductions Breakdown per Employee */}
-            <div className="bg-slate-50/80 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3.5">
+            <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-200 space-y-3.5 shadow-2xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
                     <div>
                         <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                             <span>Worker Earnings &amp; Net Payout Breakdown</span>
                             {isLoadingEmployees ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                     <svg className="animate-spin h-2.5 w-2.5 text-blue-600" viewBox="0 0 24 24" fill="none">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -162,7 +163,7 @@ const FactoryBatchSection = ({
                         <button
                             type="button"
                             onClick={() => setIsGroupModalOpen(true)}
-                            className="text-[11px] font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
+                            className="h-8 px-3 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-md transition-colors duration-100 shadow-2xs cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
                         >
                             <i className="ti ti-users text-xs" />
                             <span>Modify Group Roster</span>
@@ -180,7 +181,7 @@ const FactoryBatchSection = ({
                                 value={breakdownSearch}
                                 onChange={(e) => setBreakdownSearch(e.target.value)}
                                 placeholder="Filter worker or title..."
-                                className="w-full pl-8 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium placeholder:text-slate-400 shadow-2xs"
+                                className="w-full h-8 pl-8 pr-8 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium placeholder:text-slate-400 shadow-2xs transition-colors duration-100"
                             />
                             {breakdownSearch && (
                                 <button
@@ -194,12 +195,12 @@ const FactoryBatchSection = ({
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap justify-between sm:justify-end">
-                            <div className="flex items-center bg-slate-200/70 p-0.5 rounded-xl text-[11px] font-bold">
+                            <div className="flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-md text-[11px] font-medium">
                                 <button
                                     type="button"
                                     onClick={() => setBreakdownFilter('all')}
-                                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${breakdownFilter === 'all'
-                                        ? 'bg-white text-blue-700 shadow-2xs'
+                                    className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'all'
+                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -208,8 +209,8 @@ const FactoryBatchSection = ({
                                 <button
                                     type="button"
                                     onClick={() => setBreakdownFilter('payable')}
-                                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${breakdownFilter === 'payable'
-                                        ? 'bg-white text-emerald-700 shadow-2xs'
+                                    className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'payable'
+                                        ? 'bg-white text-emerald-700 shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -219,8 +220,8 @@ const FactoryBatchSection = ({
                                     <button
                                         type="button"
                                         onClick={() => setBreakdownFilter('unassigned')}
-                                        className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${breakdownFilter === 'unassigned'
-                                            ? 'bg-white text-amber-700 shadow-2xs'
+                                        className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'unassigned'
+                                            ? 'bg-white text-amber-700 shadow-2xs font-semibold'
                                             : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
@@ -229,13 +230,13 @@ const FactoryBatchSection = ({
                                 )}
                             </div>
 
-                            <div className="flex items-center bg-slate-200/70 p-0.5 rounded-xl">
+                            <div className="flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-md">
                                 <button
                                     type="button"
                                     onClick={() => setBreakdownViewMode('table')}
                                     title="Roster Table View"
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'table'
-                                        ? 'bg-white text-blue-700 shadow-2xs'
+                                    className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'table'
+                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -246,8 +247,8 @@ const FactoryBatchSection = ({
                                     type="button"
                                     onClick={() => setBreakdownViewMode('cards')}
                                     title="Detailed Cards View"
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'cards'
-                                        ? 'bg-white text-blue-700 shadow-2xs'
+                                    className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'cards'
+                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -264,7 +265,7 @@ const FactoryBatchSection = ({
                         {[1, 2, 3].map((n) => (
                             <div
                                 key={n}
-                                className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-3 shadow-2xs"
+                                className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-3 shadow-2xs"
                             >
                                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                                     <div className="flex items-center gap-2">
@@ -297,12 +298,12 @@ const FactoryBatchSection = ({
                         ))}
                     </div>
                 ) : !selectedGroup ? (
-                    <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-dashed border-slate-200 space-y-3">
-                        <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl shadow-xs">
+                    <div className="p-8 text-center text-slate-500 bg-white rounded-lg border border-dashed border-slate-200 space-y-3">
+                        <div className="w-10 h-10 mx-auto rounded-md bg-blue-50 text-blue-600 flex items-center justify-center text-xl shadow-2xs">
                             <i className="ti ti-users-group" />
                         </div>
                         <div className="max-w-sm mx-auto">
-                            <h5 className="font-extrabold text-slate-800 text-sm">No Factory Group Selected</h5>
+                            <h5 className="font-bold text-slate-800 text-sm">No Factory Group Selected</h5>
                             <p className="text-xs text-slate-400 mt-1">
                                 Choose a production group to configure operations, assign rates, and distribute payouts.
                             </p>
@@ -310,25 +311,25 @@ const FactoryBatchSection = ({
                         <button
                             type="button"
                             onClick={() => setIsFactoryPieceOpen(true)}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                            className="inline-flex items-center gap-2 h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors duration-100 shadow-2xs cursor-pointer"
                         >
                             <i className="ti ti-adjustments-horizontal" />
                             <span>Select Group &amp; Open Piece Log</span>
                         </button>
                     </div>
                 ) : activeGroupEmployees.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <div className="p-8 text-center text-slate-500 bg-white rounded-lg border border-dashed border-slate-200">
                         <p className="text-xs font-semibold text-slate-600">No active employees assigned to {selectedGroup}.</p>
                         <p className="text-[11px] text-slate-400 mt-1">Use "Modify Group Roster" to add workers to this group.</p>
                     </div>
                 ) : filteredGroupEmployees.length === 0 ? (
-                    <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-slate-200 space-y-1.5">
+                    <div className="p-8 text-center bg-white rounded-lg border border-dashed border-slate-200 space-y-1.5">
                         <i className="ti ti-search text-2xl text-slate-300 block" />
                         <p className="text-xs font-bold text-slate-700">No matching employees</p>
                         <p className="text-[11px] text-slate-400">No employees in {selectedGroup} matched your search or filter.</p>
                     </div>
                 ) : breakdownViewMode === 'table' ? (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+                    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-2xs">
                         <table className="w-full text-left border-collapse text-xs">
                             <thead>
                                 <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -345,7 +346,7 @@ const FactoryBatchSection = ({
                                     if (!workerData) return null;
 
                                     return (
-                                        <tr key={worker.id} className="hover:bg-blue-50/20 transition-colors">
+                                        <tr key={worker.id} className="hover:bg-slate-50 transition-colors duration-100">
                                             <td className="p-3">
                                                 <div className="flex items-center gap-2.5 min-w-0">
                                                     <EmployeeAvatar employee={worker} size="h-8 w-8" textSize="text-[10px]" />
@@ -394,7 +395,7 @@ const FactoryBatchSection = ({
                                                     SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}
                                                 </span>
                                             </td>
-                                            <td className="p-3 text-right font-mono font-black text-sm text-emerald-600">
+                                            <td className="p-3 text-right font-mono font-bold text-sm text-emerald-600">
                                                 ₱{workerData.netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                             </td>
                                         </tr>
@@ -420,16 +421,16 @@ const FactoryBatchSection = ({
             <button
                 type="submit"
                 disabled={isSubmitting || !selectedGroup || grandTotalFactoryPayout <= 0 || activeGroupEmployees.length === 0 || isInvalidDateRange || isLoadingGroupAttendance || needsDeclaration}
-                className="w-full min-h-[52px] py-4 bg-slate-900 hover:bg-blue-600 text-white font-black text-base rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
                 {isSubmitting ? (
                     <>
-                        <i className="ti ti-loader text-xl animate-spin"></i>
+                        <i className="ti ti-loader text-base animate-spin"></i>
                         <span>Distributing {selectedGroup || 'Factory'} Process Payroll...</span>
                     </>
                 ) : (
                     <>
-                        <i className={`ti ${needsDeclaration ? 'ti-lock' : 'ti-cash'} text-xl`}></i>
+                        <i className={`ti ${needsDeclaration ? 'ti-lock' : 'ti-cash'} text-base`}></i>
                         <span>
                             {needsDeclaration
                                 ? 'Declare absent workers\u2019 output to continue'

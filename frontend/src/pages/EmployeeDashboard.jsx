@@ -612,41 +612,41 @@ const EmployeeDashboard = () => {
             
             {/* Disciplinary & Separation Alert Banners */}
             {isTerminated ? (
-                <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-4 sm:p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="bg-slate-900 border border-rose-500/30 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-start sm:items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-400">
-                            <i className="ti ti-user-off text-2xl" />
+                        <div className="w-10 h-10 rounded-md bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-400">
+                            <i className="ti ti-user-off text-xl" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white">Account Separated</span>
-                                <span className="text-xs text-slate-400 font-mono">DOLE & BIR 2316 Retention Mode</span>
+                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white">Account Separated</span>
+                                <span className="text-xs text-slate-400 font-mono">DOLE &amp; BIR 2316 Retention Mode</span>
                             </div>
-                            <h3 className="font-bold text-sm sm:text-base tracking-tight text-white mt-1">Employment Records & Clearance Archive</h3>
+                            <h3 className="font-bold text-sm sm:text-base tracking-tight text-white mt-1">Employment Records &amp; Clearance Archive</h3>
                             <p className="text-slate-300 text-xs mt-0.5 leading-relaxed max-w-xl">
                                 Operational credentials have been deactivated. All statutory 201 records, government contributions, and historical payslips remain permanently accessible for tax clearance and DOLE audit verification.
                             </p>
                         </div>
                     </div>
                     <button 
-                        onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslip records on file.'); }}
-                        className="w-full md:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold rounded-xl shadow-xs transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        onClick={() => setShowInfractionsModal(true)}
+                        className="w-full md:w-auto h-9 px-4 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
-                        <i className="ti ti-receipt-2 text-sm" />
-                        <span>View Historical Payslips</span>
+                        <i className="ti ti-file-certificate text-sm" />
+                        <span>Review Separation File</span>
                     </button>
                 </div>
             ) : isSuspended ? (
-                <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 sm:p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="bg-slate-900 border border-amber-500/30 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-start sm:items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400">
-                            <i className="ti ti-lock-exclamation text-2xl" />
+                        <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400">
+                            <i className="ti ti-lock-exclamation text-xl" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-slate-950">Suspension Active</span>
+                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-slate-950">Suspension Active</span>
                                 {suspensionDays && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                    <span className="px-2 py-0.5 rounded-sm text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                         {suspensionDays} Days Duration
                                     </span>
                                 )}
@@ -660,34 +660,25 @@ const EmployeeDashboard = () => {
                             </p>
                         </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto shrink-0">
-                        {infractions.length > 0 && (
-                            <button 
-                                onClick={() => setShowInfractionsModal(true)} 
-                                className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-xl shadow-xs transition-all text-xs flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                                <i className="ti ti-file-text text-sm" />
-                                <span>Acknowledge Notice</span>
-                            </button>
-                        )}
+                    <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
                         <button 
-                            onClick={() => { if(latestPayroll) setShowPayslipModal(true); else toast.error('No payslips available.'); }}
-                            className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-semibold rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+                            onClick={() => setShowInfractionsModal(true)} 
+                            className="w-full sm:w-auto h-9 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                         >
-                            <i className="ti ti-receipt text-sm" />
-                            <span>View Payslip</span>
+                            <i className="ti ti-file-text text-sm" />
+                            <span>{infractions.length > 0 ? 'Acknowledge Notice' : 'Review Suspension Memo'}</span>
                         </button>
                     </div>
                 </div>
             ) : infractions.length > 0 ? (
-                <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 text-white shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
-                            <i className="ti ti-shield-alert text-2xl" />
+                        <div className="w-10 h-10 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
+                            <i className="ti ti-shield-alert text-xl" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-500 text-white">Action Required</span>
+                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-rose-500 text-white">Action Required</span>
                                 <h3 className="font-bold text-sm sm:text-base tracking-tight text-white">Disciplinary Notice Issued</h3>
                             </div>
                             <p className="text-slate-400 text-xs mt-0.5">
@@ -697,37 +688,37 @@ const EmployeeDashboard = () => {
                     </div>
                     <button 
                         onClick={() => setShowInfractionsModal(true)} 
-                        className="w-full sm:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold rounded-xl shadow-xs transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        className="w-full sm:w-auto h-9 px-4 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
                         <i className="ti ti-file-text text-sm" />
-                        <span>Review & Acknowledge</span>
+                        <span>Review &amp; Acknowledge</span>
                     </button>
                 </div>
             ) : null}
 
             {/* Biometrics Incomplete Callout Banner */}
             {!hasFaceBiometrics && !isTerminated && !isSuspended && (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-amber-50 border border-amber-200/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-600">
-                            <i className="ti ti-scan-eye text-2xl animate-pulse" />
+                        <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-600">
+                            <i className="ti ti-scan-eye text-xl animate-pulse" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950">Action Required</span>
-                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-slate-900">Face Biometrics Not Enrolled</h3>
+                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-slate-950">Action required</span>
+                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-slate-900">Face scan not registered</h3>
                             </div>
                             <p className="text-slate-600 text-xs mt-0.5 leading-relaxed font-medium">
-                                Your digital turnstile QR pass is currently locked. Register your facial biometrics to activate clock-in credentials.
+                                Your attendance QR pass is locked until you complete your face scan registration.
                             </p>
                         </div>
                     </div>
                     <Link 
                         to="/biometric-setup" 
-                        className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold rounded-xl shadow-xs transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        className="w-full sm:w-auto h-9 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
                         <i className="ti ti-camera text-sm" />
-                        <span>Enroll Face Biometrics</span>
+                        <span>Register face scan</span>
                     </Link>
                 </div>
             )}
@@ -746,7 +737,7 @@ const EmployeeDashboard = () => {
                                 <>
                                     <span className="font-bold text-slate-700">{user.job_title || 'Shoe Craft'}</span>
                                     {prodGroup && (
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                             {prodGroup}
                                         </span>
                                     )}
@@ -759,38 +750,38 @@ const EmployeeDashboard = () => {
                                     <span>{user.department}</span>
                                 </>
                             )}
-                            {isTerminated && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Separated</span>}
-                            {isSuspended && <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">Suspended</span>}
+                            {isTerminated && <span className="ml-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Separated</span>}
+                            {isSuspended && <span className="ml-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">Suspended</span>}
                             {isMedicalExempt && (
-                                <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                <span className="ml-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
                                     <i className="ti ti-bandage" /> Medical Grace ({daysRemaining}d)
                                 </span>
                             )}
                         </p>
                     </div>
                     
-                    {/* User Avatar & Logout Action */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                        <Link to="/employee/profile" title="View Profile" className="tap-active group">
+                    {/* User Avatar & Profile Navigation */}
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <Link to="/employee/profile" title="View My Profile" className="group">
                             <EmployeeAvatar
                                 employee={user}
                                 photoUrl={photoUrl}
                                 size="w-14 h-14 sm:w-16 sm:h-16"
-                                rounded="rounded-xl"
+                                rounded="rounded-md"
                                 border={isTerminated ? "border-2 border-rose-300" : isSuspended ? "border-2 border-orange-300" : "border-2 border-slate-200"}
                                 shadow="shadow-xs"
                                 theme="dark"
                                 textSize="text-xl sm:text-2xl"
                             />
                         </Link>
-                        <button
-                            onClick={handleLogout}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
-                            title="Sign out of HRIS"
+                        <Link
+                            to="/employee/profile"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors"
+                            title="Manage profile & statutory documents"
                         >
-                            <i className="ti ti-power text-xs" />
-                            <span>Logout</span>
-                        </button>
+                            <span>My Profile</span>
+                            <i className="ti ti-chevron-right text-[10px]" />
+                        </Link>
                     </div>
                 </div>
 
@@ -808,11 +799,11 @@ const EmployeeDashboard = () => {
                                 toast.error('No payslips on record.'); 
                             }
                         }}
-                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all rounded-2xl p-5 sm:p-6 md:p-8 cursor-pointer shadow-xl shadow-emerald-600/20 group tap-active select-none"
+                        className="relative overflow-hidden bg-emerald-600 hover:bg-emerald-700 transition-colors duration-100 rounded-lg p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xs group select-none"
                     >
                         <div className="relative z-10 flex flex-col justify-between h-full text-white">
                             <div className="flex justify-between items-start">
-                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/15 border border-white/20 rounded-xl flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/25 transition-colors">
+                                <div className="w-11 h-11 sm:w-14 sm:h-14 bg-white/15 border border-white/20 rounded-md flex items-center justify-center text-white mb-4 sm:mb-6 group-hover:bg-white/25 transition-colors">
                                     <i className="ti ti-wallet text-2xl sm:text-3xl" />
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -831,7 +822,7 @@ const EmployeeDashboard = () => {
                                             Pakyawan Pool
                                         </span>
                                     )}
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-emerald-700 transition-all shrink-0">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-white/15 border border-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-emerald-700 transition-colors shrink-0">
                                         <i className="ti ti-arrow-right text-lg sm:text-xl" />
                                     </div>
                                 </div>
@@ -864,20 +855,20 @@ const EmployeeDashboard = () => {
                             : isSuspended 
                             ? 'bg-slate-900 border border-orange-500/30' 
                             : 'bg-slate-900 border border-slate-800'
-                    } rounded-xl p-5 sm:p-6 md:p-8 shadow-sm text-white flex flex-col justify-between group select-none`}>
+                    } rounded-lg p-5 sm:p-6 md:p-8 shadow-2xs text-white flex flex-col justify-between group select-none`}>
                         <div className="relative z-10 flex justify-between items-start">
-                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center ${
+                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-md flex items-center justify-center ${
                                 isTerminated ? 'text-rose-400' : isSuspended ? 'text-orange-400' : 'text-blue-400'
                             } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
                             <div className="flex flex-col items-end gap-1">
-                                <span className={`px-3 py-1 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-wider ${
+                                <span className={`px-2.5 py-1 rounded-md font-semibold text-xs border ${
                                     isTerminated 
-                                        ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300' 
+                                        ? 'bg-rose-950/60 border-rose-800 text-rose-300' 
                                         : isSuspended 
-                                        ? 'bg-orange-500/20 border border-orange-500/40 text-orange-300' 
-                                        : 'bg-blue-500/20 border border-blue-500/30 text-blue-300'
+                                        ? 'bg-amber-950/60 border-amber-800 text-amber-300' 
+                                        : 'bg-blue-950/60 border-blue-800 text-blue-300'
                                 }`}>
                                     {isTerminated ? 'Separated' : isSuspended ? 'Suspended' : (isFactoryWorker ? (prodGroup || "Factory Line") : "Today's Schedule")}
                                 </span>
@@ -923,14 +914,14 @@ const EmployeeDashboard = () => {
                             }
                             setShowLeaveModal(true);
                         }}
-                        className={`bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border ${
+                        className={`bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${
                             isTerminated || isSuspended 
                                 ? 'opacity-65 cursor-not-allowed border-slate-200 bg-slate-50/50' 
-                                : 'border-slate-100 cursor-pointer group hover:border-blue-200 active:scale-[0.98]'
-                        } flex items-center justify-between transition-all tap-active select-none`}
+                                : 'border-slate-200 cursor-pointer group hover:border-slate-300'
+                        } flex items-center justify-between transition-colors duration-100 select-none`}
                     >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl ${
+                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-md ${
                                 isTerminated ? 'bg-rose-50 text-rose-500' : isSuspended ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-600'
                             } flex items-center justify-center text-2xl sm:text-3xl shrink-0 ${!isTerminated && !isSuspended ? 'group-hover:bg-blue-600 group-hover:text-white' : ''} transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-plane-off' : isSuspended ? 'ti-lock' : 'ti-plane-departure'}`} />
@@ -944,15 +935,15 @@ const EmployeeDashboard = () => {
                                 </p>
                             </div>
                         </div>
-                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
-                            <i className={`ti ${isTerminated || isSuspended ? 'ti-lock text-sm' : 'ti-plus text-base group-hover:text-blue-600 group-hover:bg-blue-50'} transition-colors`} />
+                        <div className="w-8 h-8 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                            <i className={`ti ${isTerminated || isSuspended ? 'ti-lock text-sm' : 'ti-plus text-base group-hover:text-blue-600'} transition-colors`} />
                         </div>
                     </div>
 
                     {/* Leave overview */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xs sm:shadow-sm border border-slate-100 flex items-center justify-between select-none">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-2xs border border-slate-200 flex items-center justify-between select-none">
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
                                 <i className="ti ti-clipboard-check" />
                             </div>
                             <div>
@@ -962,7 +953,7 @@ const EmployeeDashboard = () => {
                                 </p>
                             </div>
                         </div>
-                        <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                        <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-md text-slate-600">
                             {myLeaves.filter(l => l.status === 'Pending').length} Pending
                         </span>
                     </div>
@@ -970,10 +961,10 @@ const EmployeeDashboard = () => {
 
                 {/* Medical Grace Protocol Status Card */}
                 {isMedicalExempt && !isTerminated && (
-                    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border border-amber-200 transition-all">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-amber-200">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-amber-100">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-bandage" />
                                 </div>
                                 <div>
@@ -981,7 +972,7 @@ const EmployeeDashboard = () => {
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
                                             Biometric Medical Grace Protocol Active
                                         </h3>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                             <i className="ti ti-shield-check" />
                                             <span>QR Pass Authorized ({daysRemaining} Day{daysRemaining === 1 ? '' : 's'} Left)</span>
                                         </span>
@@ -994,7 +985,7 @@ const EmployeeDashboard = () => {
 
                             <Link 
                                 to="/employee/qr"
-                                className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-xs"
+                                className="w-full sm:w-auto h-9 px-4 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
                                 <i className="ti ti-qrcode text-sm" />
                                 <span>Open Gate Pass QR</span>
@@ -1002,7 +993,7 @@ const EmployeeDashboard = () => {
                         </div>
 
                         {/* Protocol details */}
-                        <div className="my-4 p-4 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-2">
+                        <div className="my-4 p-4 rounded-md bg-amber-50/50 border border-amber-100 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <div className="flex items-center gap-2 font-bold text-amber-950">
                                     <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
@@ -1031,8 +1022,8 @@ const EmployeeDashboard = () => {
 
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-qrcode text-sm font-bold" />
                                 </div>
                                 <div className="min-w-0">
@@ -1040,8 +1031,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-emerald-700 truncate">Authorized (QR Only)</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
                                     <i className="ti ti-camera text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1049,8 +1040,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">Evidentiary Audit Snapshot</p>
                                 </div>
                             </div>
-                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-calendar-time text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1064,11 +1055,11 @@ const EmployeeDashboard = () => {
 
                 {/* Disciplinary record card */}
                 {isTerminated ? (
-                    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border-2 border-rose-300 transition-all">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-rose-300">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-rose-100">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-user-x" />
                                 </div>
                                 <div>
@@ -1076,7 +1067,7 @@ const EmployeeDashboard = () => {
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
                                             Personnel Standing: Separated Account
                                         </h3>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                                             <i className="ti ti-circle-x" />
                                             <span>Employment Terminated</span>
                                         </span>
@@ -1089,7 +1080,7 @@ const EmployeeDashboard = () => {
 
                             <button 
                                 onClick={() => setShowInfractionsModal(true)}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-black active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-xs"
+                                className="w-full sm:w-auto h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
                                 <i className="ti ti-file-certificate text-sm" />
                                 <span>View Separation Records ({employeeDisciplinary.length})</span>
@@ -1097,7 +1088,7 @@ const EmployeeDashboard = () => {
                         </div>
 
                         {/* Separation details */}
-                        <div className="my-4 p-4 rounded-2xl bg-rose-50/50 border border-rose-100 space-y-2">
+                        <div className="my-4 p-4 rounded-md bg-rose-50/50 border border-rose-100 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <div className="flex items-center gap-2 font-bold text-rose-900">
                                     <i className="ti ti-info-circle text-rose-600 text-sm" />
@@ -1122,8 +1113,8 @@ const EmployeeDashboard = () => {
 
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-ban text-sm font-bold" />
                                 </div>
                                 <div className="min-w-0">
@@ -1131,8 +1122,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-rose-700 truncate">Permanently Disabled</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-history text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1140,23 +1131,23 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">{employeeDisciplinary.length} Recorded Action(s)</p>
                                 </div>
                             </div>
-                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-receipt-2 text-sm" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Clearance & Pay</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Clearance &amp; Pay</p>
                                     <p className="font-bold text-slate-800 truncate">Contact HR for COE</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                 ) : isSuspended ? (
-                    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border-2 border-orange-300 transition-all">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-orange-300">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-orange-100">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-clock-pause" />
                                 </div>
                                 <div>
@@ -1164,7 +1155,7 @@ const EmployeeDashboard = () => {
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
                                             Disciplinary Suspension Active
                                         </h3>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                             <i className="ti ti-clock-pause" />
                                             <span>Suspended · Operational Hold</span>
                                         </span>
@@ -1177,7 +1168,7 @@ const EmployeeDashboard = () => {
 
                             <button 
                                 onClick={() => setShowInfractionsModal(true)}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-sm shadow-orange-900/10"
+                                className="w-full sm:w-auto h-9 px-4 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
                                 <i className="ti ti-file-text text-sm" />
                                 <span>Review Suspension Memo</span>
@@ -1185,7 +1176,7 @@ const EmployeeDashboard = () => {
                         </div>
 
                         {/* Suspension Details */}
-                        <div className="my-4 p-4 rounded-2xl bg-orange-50/50 border border-orange-100 space-y-2">
+                        <div className="my-4 p-4 rounded-md bg-orange-50/50 border border-orange-100 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <div className="flex items-center gap-2 font-bold text-orange-900">
                                     <i className="ti ti-alert-triangle text-orange-600 text-sm" />
@@ -1208,8 +1199,8 @@ const EmployeeDashboard = () => {
 
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-qrcode-off text-sm font-bold" />
                                 </div>
                                 <div className="min-w-0">
@@ -1217,8 +1208,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-orange-700 truncate">Locked (Suspended)</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-calendar-pause text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1226,8 +1217,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">No Active Shifts</p>
                                 </div>
                             </div>
-                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-calendar-due text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1238,11 +1229,11 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
                 ) : unresolvedInfractions.length > 0 ? (
-                    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border-2 border-rose-200 transition-all">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-rose-200">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-rose-100">
                             <div className="flex items-start sm:items-center gap-3.5">
-                                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-bell-ringing" />
                                 </div>
                                 <div>
@@ -1250,7 +1241,7 @@ const EmployeeDashboard = () => {
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
                                             HR Notice Awaiting Review
                                         </h3>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                                             <i className="ti ti-alert-triangle" />
                                             <span>{unresolvedInfractions.length} Action Required</span>
                                         </span>
@@ -1263,10 +1254,10 @@ const EmployeeDashboard = () => {
 
                             <button 
                                 onClick={() => setShowInfractionsModal(true)}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-sm shadow-rose-900/10"
+                                className="w-full sm:w-auto h-9 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
                                 <i className="ti ti-file-text text-sm" />
-                                <span>Review & Acknowledge ({unresolvedInfractions.length})</span>
+                                <span>Review &amp; Acknowledge ({unresolvedInfractions.length})</span>
                             </button>
                         </div>
 
@@ -1276,10 +1267,10 @@ const EmployeeDashboard = () => {
                                 <div 
                                     key={infraction.id} 
                                     onClick={() => setShowInfractionsModal(true)}
-                                    className="group p-4 sm:p-5 rounded-2xl border border-rose-100 bg-rose-50/30 hover:bg-rose-50/70 hover:border-rose-300 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                                    className="group p-4 sm:p-5 rounded-md border border-rose-100 bg-rose-50/30 hover:bg-rose-50/70 hover:border-rose-300 transition-colors duration-100 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                                 >
                                     <div className="flex items-start gap-3.5 min-w-0">
-                                        <div className="w-10 h-10 rounded-xl bg-white border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-xl group-hover:bg-rose-600 group-hover:text-white transition-colors shadow-2xs">
+                                        <div className="w-10 h-10 rounded-md bg-white border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 text-xl group-hover:bg-rose-600 group-hover:text-white transition-colors shadow-2xs">
                                             <i className="ti ti-file-alert" />
                                         </div>
                                         <div className="min-w-0">
@@ -1314,7 +1305,7 @@ const EmployeeDashboard = () => {
                                                 {new Date(infraction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </p>
                                         </div>
-                                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-rose-200 text-rose-700 text-xs font-bold shadow-2xs group-hover:bg-rose-600 group-hover:text-white group-hover:border-rose-600 transition-colors">
+                                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-rose-200 text-rose-700 text-xs font-medium shadow-2xs group-hover:bg-rose-600 group-hover:text-white group-hover:border-rose-600 transition-colors">
                                             <span>Open Notice</span>
                                             <i className="ti ti-arrow-right text-xs" />
                                         </div>
@@ -1332,18 +1323,18 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
                 ) : employeeDisciplinary.length > 0 ? (
-                    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border border-slate-200 transition-all hover:shadow-md">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-history" />
                                 </div>
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                                            HR Standing & Notice History
+                                            HR Standing &amp; Notice History
                                         </h3>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                                             <i className="ti ti-check text-xs" />
                                             <span>Active · {employeeDisciplinary.length} Historical Notice(s)</span>
                                         </span>
@@ -1357,7 +1348,7 @@ const EmployeeDashboard = () => {
                             <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                                 <button
                                     onClick={() => setShowInfractionsModal(true)}
-                                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-50 hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                                    className="w-full sm:w-auto h-9 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-history text-sm text-slate-500" />
                                     <span>Notice History ({employeeDisciplinary.length})</span>
@@ -1367,8 +1358,8 @@ const EmployeeDashboard = () => {
 
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-slate-100 text-xs">
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-emerald-100/60 text-emerald-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-emerald-100/60 text-emerald-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-check text-sm font-bold" />
                                 </div>
                                 <div className="min-w-0">
@@ -1376,8 +1367,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">0 Pending Holds</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-user-check text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1385,8 +1376,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">Active Employee</p>
                                 </div>
                             </div>
-                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
                                     <i className="ti ti-folders text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1397,18 +1388,18 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs sm:shadow-sm border border-slate-100 transition-all hover:shadow-md">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 text-2xl shadow-xs">
+                                <div className="w-10 h-10 rounded-md bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 text-xl shadow-2xs">
                                     <i className="ti ti-shield-check" />
                                 </div>
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                                            HR Standing & Compliance
+                                            HR Standing &amp; Compliance
                                         </h3>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                             <i className="ti ti-circle-check text-xs" />
                                             <span>Good Standing</span>
                                         </span>
@@ -1422,7 +1413,7 @@ const EmployeeDashboard = () => {
                             <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                                 <button
                                     onClick={() => setShowInfractionsModal(true)}
-                                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-50 hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                                    className="w-full sm:w-auto h-9 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-certificate text-sm text-emerald-600" />
                                     <span>Compliance File</span>
@@ -1432,8 +1423,8 @@ const EmployeeDashboard = () => {
 
                         {/* Quick highlights bar */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-slate-100 text-xs">
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-emerald-100/60 text-emerald-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-emerald-100/60 text-emerald-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-check text-sm font-bold" />
                                 </div>
                                 <div className="min-w-0">
@@ -1441,8 +1432,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">0 Pending</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-scale text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1450,8 +1441,8 @@ const EmployeeDashboard = () => {
                                     <p className="font-bold text-slate-800 truncate">Fully Compliant</p>
                                 </div>
                             </div>
-                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="w-7 h-7 rounded-lg bg-purple-100/60 text-purple-600 flex items-center justify-center shrink-0">
+                            <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-slate-50 border border-slate-200">
+                                <div className="w-7 h-7 rounded-sm bg-purple-100/60 text-purple-600 flex items-center justify-center shrink-0">
                                     <i className="ti ti-user-check text-sm" />
                                 </div>
                                 <div className="min-w-0">
@@ -1468,9 +1459,9 @@ const EmployeeDashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
                     
                     {/* Recent attendance */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-xs sm:shadow-sm border border-slate-100">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex items-center gap-3 mb-5 sm:mb-8">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
                                 <i className="ti ti-clock-hour-4 text-lg sm:text-xl" />
                             </div>
                             <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Recent Clock-ins</h3>
@@ -1484,7 +1475,7 @@ const EmployeeDashboard = () => {
                                 return (
                                     <div key={log.id || log.created_at} className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                            <div className={`w-8 h-8 rounded-sm flex items-center justify-center text-xs font-bold ${
                                                 isAbsent ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
                                             }`}>
                                                 <i className={`ti ${isAbsent ? 'ti-x' : 'ti-check'}`} />
@@ -1500,12 +1491,12 @@ const EmployeeDashboard = () => {
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             {(log.verification_method === 'TIME_IN_MEDICAL_GRACE' || log.verification_type === 'MEDICAL_GRACE') && (
-                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
+                                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
                                                     <i className="ti ti-bandage text-xs" />
                                                     Medical Grace
                                                 </span>
                                             )}
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider ${
                                                 isAbsent ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
                                             }`}>
                                                 {log.status || 'Present'}
@@ -1520,9 +1511,9 @@ const EmployeeDashboard = () => {
                     </div>
 
                     {/* Leave requests */}
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-xs sm:shadow-sm border border-slate-100">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex items-center gap-3 mb-5 sm:mb-8">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
                                 <i className="ti ti-plane-departure text-lg sm:text-xl" />
                             </div>
                             <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Recent Leave Requests</h3>
@@ -1536,14 +1527,14 @@ const EmployeeDashboard = () => {
                                     'Rejected': 'bg-red-100 text-red-700'
                                 };
                                 return (
-                                    <div key={leave.id} className="p-3 sm:p-4 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+                                    <div key={leave.id} className="p-3 sm:p-4 rounded-md border border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <h4 className="font-bold text-slate-800 text-sm sm:text-base">{leave.type}</h4>
                                             <p className="text-slate-500 text-xs sm:text-sm mt-0.5 truncate">
                                                 {new Date(leave.start_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - {new Date(leave.end_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
                                             </p>
                                         </div>
-                                        <span className={`px-2.5 sm:px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
+                                        <span className={`px-2.5 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
                                             {leave.status}
                                         </span>
                                     </div>
@@ -1558,103 +1549,100 @@ const EmployeeDashboard = () => {
             </div>
 
             {/* QR modal */}
-            
-                {showQrModal && (
-                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <div 
-                            className="absolute inset-0 bg-slate-950/70"
-                            onClick={() => setShowQrModal(false)}
-                        />
-                        <div 
-                            className="relative bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-8 w-full max-w-sm text-center shadow-2xl"
-                        >
-                            <div className="w-12 sm:w-16 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:mb-8" />
-                            
-                            {isTerminated ? (
-                                <div>
-                                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-rose-100 flex items-center justify-center text-rose-600 text-2xl sm:text-3xl shadow-lg mb-3 sm:mb-4 border-4 border-white">
-                                        <i className="ti ti-user-x" />
-                                    </div>
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tight">QR Credential Revoked</h2>
-                                    <p className="text-slate-500 font-medium mt-1 text-xs">Employment account has been separated</p>
-                                    <div className="my-6 p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-700 leading-relaxed font-medium">
-                                        Attendance credentials and premise QR codes are permanently invalidated. You may access your past payslips on this portal.
-                                    </div>
+            {showQrModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-slate-950/70"
+                        onClick={() => setShowQrModal(false)}
+                    />
+                    <div 
+                        className="relative bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-xl border border-slate-200"
+                    >
+                        {isTerminated ? (
+                            <div>
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-rose-50 flex items-center justify-center text-rose-600 text-2xl sm:text-3xl mb-3 sm:mb-4 border border-rose-200">
+                                    <i className="ti ti-user-x" />
                                 </div>
-                            ) : isSuspended ? (
-                                <div>
-                                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-orange-100 flex items-center justify-center text-orange-600 text-2xl sm:text-3xl shadow-lg mb-3 sm:mb-4 border-4 border-white">
+                                <h2 className="text-xl font-bold text-slate-900 tracking-tight">QR Credential Revoked</h2>
+                                <p className="text-slate-500 font-medium mt-1 text-xs">Employment account has been separated</p>
+                                <div className="my-6 p-4 bg-rose-50 rounded-md border border-rose-200 text-xs text-rose-700 leading-relaxed font-medium">
+                                    Attendance credentials and premise QR codes are permanently invalidated. You may access your past payslips on this portal.
+                                </div>
+                            </div>
+                        ) : isSuspended ? (
+                            <div>
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-orange-50 flex items-center justify-center text-orange-600 text-2xl sm:text-3xl mb-3 sm:mb-4 border border-orange-200">
+                                    <i className="ti ti-lock" />
+                                </div>
+                                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Attendance QR Suspended</h2>
+                                <p className="text-slate-500 font-medium mt-1 text-xs">Credential disabled during disciplinary suspension</p>
+                                <div className="my-6 p-4 bg-orange-50 rounded-md border border-orange-200 text-xs text-orange-800 leading-relaxed font-medium">
+                                    Clock-in access is prohibited during your suspension {suspensionEndDate ? `until ${suspensionEndDate}` : ''}. Please acknowledge your notice.
+                                </div>
+                            </div>
+                        ) : !hasFaceBiometrics ? (
+                            <div className="py-2 text-center">
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 mb-3 sm:mb-4 relative">
+                                    <i className="ti ti-scan-eye text-3xl sm:text-4xl animate-pulse" />
+                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
                                         <i className="ti ti-lock" />
                                     </div>
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Attendance QR Suspended</h2>
-                                    <p className="text-slate-500 font-medium mt-1 text-xs">Credential disabled during disciplinary suspension</p>
-                                    <div className="my-6 p-5 bg-orange-50 rounded-2xl border border-orange-200 text-xs text-orange-800 leading-relaxed font-medium">
-                                        Clock-in access is prohibited during your suspension {suspensionEndDate ? `until ${suspensionEndDate}` : ''}. Please acknowledge your notice.
-                                    </div>
                                 </div>
-                            ) : !hasFaceBiometrics ? (
-                                <div className="py-2 text-center">
-                                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 mb-3 sm:mb-4 shadow-inner relative">
-                                        <i className="ti ti-scan-eye text-3xl sm:text-4xl animate-pulse" />
-                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
-                                            <i className="ti ti-lock" />
-                                        </div>
+                                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                    Biometrics Required
+                                </span>
+                                <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mt-2">Turnstile Pass Locked</h2>
+                                <p className="text-slate-500 font-medium mt-1 text-xs max-w-sm mx-auto leading-relaxed">
+                                    Your dynamic QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+                                </p>
+
+                                <div className="my-4 p-3.5 bg-amber-50 rounded-md border border-amber-200/80 text-xs text-amber-900 leading-relaxed font-medium">
+                                    Under company attendance policy, employee QR passes must be linked to a verified face scan.
+                                </div>
+
+                                <Link
+                                    to="/biometric-setup"
+                                    className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md text-xs sm:text-sm flex items-center justify-center gap-2 mb-3 shadow-2xs transition-colors duration-100"
+                                >
+                                    <i className="ti ti-camera text-base" />
+                                    <span>Register face scan</span>
+                                </Link>
+                            </div>
+                        ) : (
+                            <div>
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-2xl sm:text-3xl mb-3 sm:mb-4 border border-blue-700/20">
+                                    {getInitial(user.name)}
+                                </div>
+                                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{user.name}</h2>
+                                <p className="text-slate-500 font-medium mt-0.5 text-sm">{user.department}</p>
+
+                                {isMedicalExempt && (
+                                    <div className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                        <i className="ti ti-bandage text-sm" />
+                                        <span>Medical exemption on file ({daysRemaining}d left)</span>
                                     </div>
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200">
-                                        Biometrics Required
-                                    </span>
-                                    <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-2">Turnstile Pass Locked</h2>
-                                    <p className="text-slate-500 font-medium mt-1 text-xs max-w-sm mx-auto leading-relaxed">
-                                        Your dynamic QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+                                )}
+
+                                <div className="my-5 sm:my-6 bg-slate-50 p-5 sm:p-6 rounded-md border border-slate-200 inline-block">
+                                    <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
+                                </div>
+
+                                {isMedicalExempt ? (
+                                    <p className="text-amber-800 font-semibold text-xs mb-4">
+                                        Scan QR at gate · Camera will record audit snapshot
                                     </p>
+                                ) : (
+                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
+                                )}
+                            </div>
+                        )}
 
-                                    <div className="my-5 p-3.5 bg-amber-50 rounded-2xl border border-amber-200/80 text-xs text-amber-900 leading-relaxed font-medium">
-                                        Under DOLE compliance and company attendance standards, turnstile QR codes are linked directly to registered facial biometrics.
-                                    </div>
-
-                                    <Link
-                                        to="/biometric-setup"
-                                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 mb-3 shadow-md shadow-blue-600/20"
-                                    >
-                                        <i className="ti ti-camera text-base" />
-                                        <span>Enroll Facial Biometrics Now</span>
-                                    </Link>
-                                </div>
-                            ) : (
-                                <div>
-                                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl shadow-blue-500/30 mb-3 sm:mb-4 border-4 border-white">
-                                        {getInitial(user.name)}
-                                    </div>
-                                    <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{user.name}</h2>
-                                    <p className="text-slate-500 font-medium mt-0.5 text-sm">{user.department}</p>
-
-                                    {isMedicalExempt && (
-                                        <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
-                                            <i className="ti ti-bandage text-sm" />
-                                            <span>Medical Grace Active ({daysRemaining}d left)</span>
-                                        </div>
-                                    )}
-
-                                    <div className="my-5 sm:my-6 bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-100 inline-block shadow-inner">
-                                        <QRCode value={user.id || '0'} size={180} fgColor="#1e293b" />
-                                    </div>
-
-                                    {isMedicalExempt ? (
-                                        <p className="text-amber-800 font-semibold text-xs mb-4">
-                                            Scan QR at gate · Camera will record audit snapshot
-                                        </p>
-                                    ) : (
-                                        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-4 sm:mb-6">Hold near the scanner</p>
-                                    )}
-                                </div>
-                            )}
-
-                            <button onClick={() => setShowQrModal(false)} className="w-full py-3.5 sm:py-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl tap-active text-base sm:text-lg cursor-pointer">
-                                Close
-                            </button>
-                        </div>
+                        <button onClick={() => setShowQrModal(false)} className="w-full h-10 bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium rounded-md text-sm transition-colors duration-100 cursor-pointer">
+                            Close
+                        </button>
                     </div>
-                )}
+                </div>
+            )}
             
 
             {/* Historical / Official Payslip Modal */}
@@ -1697,7 +1685,7 @@ const EmployeeDashboard = () => {
                         
                         <div 
                             id="employee-payslip-modal"
-                            className="relative bg-white rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col border border-slate-200 text-left print:border-none print:shadow-none"
+                            className="relative bg-white rounded-lg w-full max-w-2xl overflow-hidden shadow-xl max-h-[92vh] flex flex-col border border-slate-200 text-left print:border-none print:shadow-none"
                         >
                             {/* 1. Header: Corporate Letterhead */}
                             <div className="p-5 sm:p-6 bg-white border-b border-slate-200 print:bg-transparent">
@@ -2013,14 +2001,14 @@ const EmployeeDashboard = () => {
                             <div className="no-print p-4 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
                                 <button 
                                     onClick={() => window.print()} 
-                                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 font-bold rounded-md text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    className="h-9 px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-printer text-sm" />
                                     <span>Print / Export PDF</span>
                                 </button>
                                 <button 
                                     onClick={() => setShowPayslipModal(false)} 
-                                    className="px-6 py-2 bg-slate-900 hover:bg-black active:bg-slate-800 text-white font-bold rounded-md text-xs transition-colors cursor-pointer"
+                                    className="h-9 px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer shadow-2xs"
                                 >
                                     Close
                                 </button>
@@ -2033,83 +2021,89 @@ const EmployeeDashboard = () => {
 
             {/* Leave request modal */}
             {showLeaveModal && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div 
                         className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowLeaveModal(false)}
                     />
                     <div 
-                        className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 sm:p-8 max-h-[90vh] overflow-y-auto touch-scroll"
+                        className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl border border-slate-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
                     >
-                            <div className="flex justify-between items-center mb-5 sm:mb-8">
-                                <div className="flex items-center gap-3 sm:gap-4">
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl sm:text-2xl">
-                                        <i className="ti ti-plane-departure" />
-                                    </div>
-                                    <h2 className="text-xl sm:text-2xl font-black text-slate-800">Time Off</h2>
+                        <div className="flex justify-between items-center mb-5 sm:mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-md bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center text-xl">
+                                    <i className="ti ti-plane-departure" />
                                 </div>
-                                <button onClick={() => setShowLeaveModal(false)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 tap-active">
-                                    <i className="ti ti-x text-lg sm:text-xl" />
-                                </button>
+                                <h2 className="text-lg sm:text-xl font-bold text-slate-800">Time Off Request</h2>
                             </div>
+                            <button 
+                                onClick={() => setShowLeaveModal(false)} 
+                                className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors duration-100"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
+                        </div>
 
-                            <form onSubmit={handleLeaveSubmit} className="space-y-4 sm:space-y-5">
+                        <form onSubmit={handleLeaveSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Leave Type</label>
+                                <select 
+                                    value={leaveForm.leave_type} 
+                                    onChange={(e) => setLeaveForm({...leaveForm, leave_type: e.target.value})}
+                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 appearance-none"
+                                >
+                                    <option>Sick Leave</option>
+                                    <option>Vacation / PTO</option>
+                                    <option>Maternity/Paternity</option>
+                                    <option>Emergency Leave</option>
+                                </select>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5 sm:mb-2">What kind of leave?</label>
-                                    <select 
-                                        value={leaveForm.leave_type} 
-                                        onChange={(e) => setLeaveForm({...leaveForm, leave_type: e.target.value})}
-                                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-700 text-sm transition-all appearance-none"
-                                    >
-                                        <option>Sick Leave</option>
-                                        <option>Vacation / PTO</option>
-                                        <option>Maternity/Paternity</option>
-                                        <option>Emergency Leave</option>
-                                    </select>
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                                    <div>
-                                        <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5 sm:mb-2">First Day</label>
-                                        <input 
-                                            type="date" required 
-                                            value={leaveForm.start_date}
-                                            onChange={(e) => setLeaveForm({...leaveForm, start_date: e.target.value})}
-                                            className="w-full px-3 sm:px-5 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-700 text-sm transition-all" 
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5 sm:mb-2">Last Day</label>
-                                        <input 
-                                            type="date" required 
-                                            value={leaveForm.end_date}
-                                            onChange={(e) => setLeaveForm({...leaveForm, end_date: e.target.value})}
-                                            className="w-full px-3 sm:px-5 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-700 text-sm transition-all" 
-                                        />
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5 sm:mb-2">Why are you taking off?</label>
-                                    <textarea 
-                                        required rows="3" 
-                                        value={leaveForm.reason}
-                                        onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})}
-                                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-700 text-sm transition-all resize-none" 
-                                        placeholder="I feel sick today..."
+                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">First Day</label>
+                                    <input 
+                                        type="date" required 
+                                        value={leaveForm.start_date}
+                                        onChange={(e) => setLeaveForm({...leaveForm, start_date: e.target.value})}
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100" 
                                     />
                                 </div>
-                                
-                                <div className="pt-2 sm:pt-4">
-                                    <button disabled={isSubmittingLeave} type="submit" className="w-full py-3.5 sm:py-4 bg-blue-600 text-white font-bold rounded-xl shadow-xl shadow-blue-600/30 tap-active text-base sm:text-lg disabled:opacity-50 flex justify-center items-center gap-2">
-                                        {isSubmittingLeave ? <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Send Request'}
-                                    </button>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Last Day</label>
+                                    <input 
+                                        type="date" required 
+                                        value={leaveForm.end_date}
+                                        onChange={(e) => setLeaveForm({...leaveForm, end_date: e.target.value})}
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100" 
+                                    />
                                 </div>
-                            </form>
-                        </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Reason for Absence</label>
+                                <textarea 
+                                    required rows="3" 
+                                    value={leaveForm.reason}
+                                    onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 resize-none" 
+                                    placeholder="State purpose of leave request..."
+                                />
+                            </div>
+                            
+                            <div className="pt-2">
+                                <button 
+                                    disabled={isSubmittingLeave} 
+                                    type="submit" 
+                                    className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md shadow-2xs text-xs sm:text-sm disabled:opacity-50 flex justify-center items-center gap-2 transition-colors duration-100 cursor-pointer"
+                                >
+                                    {isSubmittingLeave ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Submit Request'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                )}
-            
+                </div>
+            )}
 
             {/* Disciplinary Notices Modal */}
             {showInfractionsModal && (
@@ -2118,11 +2112,11 @@ const EmployeeDashboard = () => {
                         className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
                     />
-                    <div className="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">
+                    <div className="relative bg-white rounded-lg w-full max-w-xl overflow-hidden shadow-xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">
                         {/* Header */}
-                        <div className="px-5 sm:px-7 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
+                        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                                <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 border ${
                                     isTerminated 
                                         ? 'bg-rose-50 border-rose-200 text-rose-600'
                                         : isSuspended
@@ -2142,7 +2136,7 @@ const EmployeeDashboard = () => {
                                     } text-xl`} />
                                 </div>
                                 <div>
-                                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+                                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                                         {isTerminated 
                                             ? 'Separation & Disciplinary File' 
                                             : isSuspended 
@@ -2164,14 +2158,14 @@ const EmployeeDashboard = () => {
                             </div>
                             <button 
                                 onClick={() => setShowInfractionsModal(false)} 
-                                className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                                className="w-8 h-8 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors duration-100 cursor-pointer"
                             >
                                 <i className="ti ti-x text-base" />
                             </button>
                         </div>
 
                         {/* Content Body */}
-                        <div className="overflow-y-auto p-5 sm:p-7 space-y-4">
+                        <div className="overflow-y-auto p-5 sm:p-6 space-y-4">
                             {employeeDisciplinary.length > 0 ? (
                                 employeeDisciplinary.map((record) => {
                                     const isPending = record.status === 'Active';
@@ -2195,15 +2189,15 @@ const EmployeeDashboard = () => {
                                     return (
                                         <div 
                                             key={record.id} 
-                                            className={`p-4 sm:p-5 rounded-xl border transition-all ${
+                                            className={`p-4 sm:p-5 rounded-md border transition-colors duration-100 ${
                                                 isPending 
-                                                    ? 'bg-rose-50/40 border-rose-200 shadow-sm' 
+                                                    ? 'bg-rose-50/40 border-rose-200 shadow-2xs' 
                                                     : 'bg-white border-slate-200'
                                             }`}
                                         >
                                             <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-md border ${sevColors}`}>
+                                                    <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md border ${sevColors}`}>
                                                         {record.severity} Severity
                                                     </span>
                                                     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${statColors}`}>
@@ -2220,7 +2214,7 @@ const EmployeeDashboard = () => {
                                                 <span className="text-[11px] font-mono text-slate-400 font-normal">REF: DISC-{(record.id || '').slice(0, 6).toUpperCase()}</span>
                                             </h3>
 
-                                            <div className="bg-white/80 p-3 rounded-lg border border-slate-200/80 mb-3">
+                                            <div className="bg-white/80 p-3 rounded-sm border border-slate-200/80 mb-3">
                                                 <p className="text-xs text-slate-700 leading-relaxed font-medium">{record.reason}</p>
                                             </div>
 
@@ -2229,7 +2223,7 @@ const EmployeeDashboard = () => {
                                                     <button
                                                         disabled={acknowledgingId === record.id}
                                                         onClick={() => handleAcknowledgeSingle(record.id)}
-                                                        className="w-full py-2.5 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+                                                        className="w-full h-9 bg-slate-900 hover:bg-black text-white font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer"
                                                     >
                                                         {acknowledgingId === record.id ? (
                                                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -2247,14 +2241,14 @@ const EmployeeDashboard = () => {
                                             )}
 
                                             {isAcknowledged && (
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200">
+                                                <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-2 rounded-md border border-emerald-200">
                                                     <i className="ti ti-check-double text-base" />
                                                     <span>Receipt acknowledged by you. Recorded on official HR file.</span>
                                                 </div>
                                             )}
 
                                             {isResolved && (
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
+                                                <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 px-3 py-2 rounded-md border border-slate-200">
                                                     <i className="ti ti-circle-check text-base text-slate-500" />
                                                     <span>Case closed and officially resolved by HR Compliance.</span>
                                                 </div>
@@ -2264,7 +2258,7 @@ const EmployeeDashboard = () => {
                                 })
                             ) : (
                                 <div className="py-12 text-center">
-                                    <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 text-2xl border border-emerald-100">
+                                    <div className="w-12 h-12 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 text-2xl border border-emerald-100">
                                         <i className="ti ti-shield-check" />
                                     </div>
                                     <h3 className="text-base font-bold text-slate-800">Clean Personnel Record</h3>
@@ -2276,11 +2270,11 @@ const EmployeeDashboard = () => {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-5 sm:px-7 py-3 sm:py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+                        <div className="px-5 sm:px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
                             {infractions.length > 1 ? (
                                 <button 
                                     onClick={handleAcknowledgeAll}
-                                    className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                                    className="h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md shadow-2xs transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                                 >
                                     <i className="ti ti-checks text-sm" />
                                     <span>Acknowledge All ({infractions.length})</span>
@@ -2289,7 +2283,7 @@ const EmployeeDashboard = () => {
 
                             <button 
                                 onClick={() => setShowInfractionsModal(false)}
-                                className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                                className="h-9 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer"
                             >
                                 Close
                             </button>

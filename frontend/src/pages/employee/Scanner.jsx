@@ -17,7 +17,7 @@ const Scanner = () => {
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [faceLockedIn, setFaceLockedIn] = useState(false);
     const [lockProgress, setLockProgress] = useState(0); // 0 to 100
-    const [aiStatus, setAiStatus] = useState("Waiting for ID Scan..."); // Waiting, Detecting, Locking, Verifying
+    const [aiStatus, setAiStatus] = useState("Waiting for badge scan..."); // Waiting, Detecting, Locking, Verifying
 
     const html5QrCodeRef = useRef(null);
     const isProcessingRef = useRef(false);
@@ -40,7 +40,7 @@ const Scanner = () => {
         setFaceLockedIn(false);
         setLockProgress(0);
         lockFrames.current = 0;
-        setAiStatus("Waiting for ID Scan...");
+        setAiStatus("Waiting for badge scan...");
         setFeedback({ show: false, type: '', title: '', message: '' });
         
         if (canvasRef.current) {
@@ -72,14 +72,14 @@ const Scanner = () => {
         .then(data => {
             showFeedback(
                 data.status === 'success' ? 'success' : 'error', 
-                data.status === 'success' ? 'Verified!' : 'Error',
+                data.status === 'success' ? 'Clock-in recorded' : 'Scan failed',
                 data.message
             );
             
             setTimeout(() => { resetState(); }, 3000);
         })
         .catch(error => {
-            showFeedback('error', 'Failed', 'Connection Error');
+            showFeedback('error', 'Connection issue', 'Unable to reach the server. Please try again.');
             setTimeout(() => { resetState(); }, 3000);
         });
     }, [scannedData, showFeedback, resetState]);
@@ -122,14 +122,14 @@ const Scanner = () => {
                 
                 if (isCentered) {
                     lockFrames.current += 1;
-                    setAiStatus("Locking Target...");
+                    setAiStatus("Aligning face...");
                     setLockProgress(Math.min((lockFrames.current / REQUIRED_LOCK_FRAMES) * 100, 100));
 
                     if (lockFrames.current >= REQUIRED_LOCK_FRAMES) {
                         // Trigger capture when face is aligned
                         clearInterval(detectionInterval.current);
                         setFaceLockedIn(true);
-                        setAiStatus("Verifying Identity...");
+                        setAiStatus("Checking identity...");
                         
                         // Draw green box
                         ctx.strokeStyle = '#22c55e';
@@ -140,12 +140,12 @@ const Scanner = () => {
                 } else {
                     lockFrames.current = 0;
                     setLockProgress(0);
-                    setAiStatus("Center Face in Frame");
+                    setAiStatus("Center face in frame");
                 }
             } else {
                 lockFrames.current = 0;
                 setLockProgress(0);
-                setAiStatus("No Face Detected");
+                setAiStatus("No face detected");
             }
         }, 100); // 10 fps
     }, [modelsLoaded, captureAndSubmit]);
@@ -157,7 +157,7 @@ const Scanner = () => {
         // 1. QR Scanned! Start Face Detection Mode
         isProcessingRef.current = true;
         setScannedData(decodedText);
-        setAiStatus("Detecting Face...");
+        setAiStatus("Scanning face...");
         startFaceDetection();
     }, [startFaceDetection]);
 
@@ -178,7 +178,7 @@ const Scanner = () => {
 
     const startScanner = useCallback(async () => {
         setIsScanning(true);
-        setAiStatus("Waiting for ID Scan...");
+        setAiStatus("Waiting for badge scan...");
 
         try {
             html5QrCodeRef.current = new Html5Qrcode("reader");
@@ -210,7 +210,7 @@ const Scanner = () => {
             if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                 showFeedback('error', 'Camera Permission Denied', 'Please allow camera access in your browser settings to scan QR codes.');
             } else {
-                showFeedback('error', 'Camera Unavailable', 'Could not access camera device. Check device settings.');
+                showFeedback('error', 'Camera Unavailable', 'Could not open the camera. Please check your device settings.');
             }
             setIsScanning(false);
         }
@@ -250,7 +250,7 @@ const Scanner = () => {
             }
     
             #reader button { display: none !important; }
-            #reader video { object-fit: cover; border-radius: 1.5rem; width: 100%; height: 100%; }
+            #reader video { object-fit: cover; border-radius: 0.5rem; width: 100%; height: 100%; }
         `;
         document.head.appendChild(style);
         return () => document.head.removeChild(style);
@@ -272,36 +272,36 @@ const Scanner = () => {
             
             {/* Header */}
             <div className="text-center mb-10 space-y-3">
-                <div className="flex mx-auto items-center justify-center h-16 w-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-2 relative overflow-hidden">
-                    <i className="ti ti-scan text-3xl relative z-10"></i>
+                <div className="flex mx-auto items-center justify-center h-12 w-12 rounded-lg bg-blue-600 text-white mb-2 relative overflow-hidden shadow-2xs">
+                    <i className="ti ti-scan text-2xl relative z-10"></i>
                     {modelsLoaded && <div className="absolute inset-0 bg-blue-400/20 laser-line pointer-events-none"></div>}
                 </div>
-                <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Security Terminal</h2>
-                <p className="text-slate-500 font-medium text-sm flex items-center justify-center gap-2">
-                    <i className={`ti ${modelsLoaded ? 'ti-check text-emerald-500' : 'ti-loader text-amber-500 animate-spin'}`} />
-                    {modelsLoaded ? 'AI Models Loaded' : 'Loading AI Models...'}
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Attendance Scanner</h2>
+                <p className="text-slate-500 font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
+                    <i className={`ti ${modelsLoaded ? 'ti-check text-emerald-600' : 'ti-loader text-amber-500 animate-spin'}`} />
+                    {modelsLoaded ? 'Camera ready' : 'Starting camera...'}
                 </p>
             </div>
 
             {/* Scanner interface */}
-            <div className={`relative w-full bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden ${isScanning ? 'h-[500px]' : 'h-[300px]'}`}>
+            <div className={`relative w-full bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden ${isScanning ? 'h-[500px]' : 'h-[300px]'}`}>
                 
                 {/* Idle state */}
                 {!isScanning && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
-                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner">
+                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-2xl border border-blue-200">
                             <i className="ti ti-camera"></i>
                         </div>
                         <div className="space-y-1">
-                            <h3 className="text-xl font-bold text-slate-800">Scanner Ready</h3>
-                            <p className="text-slate-400 text-sm max-w-[200px] mx-auto">Activate the camera to begin checking in employees.</p>
+                            <h3 className="text-lg font-bold text-slate-900">Scanner Ready</h3>
+                            <p className="text-slate-500 text-xs max-w-[200px] mx-auto font-medium">Activate camera to clock in employees.</p>
                         </div>
                         <button 
                             onClick={startScanner} 
                             disabled={!modelsLoaded}
-                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-blue-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-md shadow-2xs disabled:opacity-50 flex items-center justify-center gap-2 transition-colors duration-100 cursor-pointer"
                         >
-                            <i className="ti ti-power text-xl"></i>
+                            <i className="ti ti-power text-lg"></i>
                             Launch Camera
                         </button>
                     </div>
@@ -312,12 +312,12 @@ const Scanner = () => {
                     
                     {/* Top overlay */}
                     <div className="w-full flex items-center justify-between z-20 text-white">
-                        <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 bg-slate-900/90 border border-slate-700 rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
                             <i className="ti ti-video text-rose-500" /> Live
                         </span>
                         <button 
                             onClick={stopScanner} 
-                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/30"
+                            className="w-8 h-8 rounded-md bg-slate-900/90 border border-slate-700 flex items-center justify-center text-white hover:bg-slate-800 transition-colors duration-100 shadow-2xs cursor-pointer"
                         >
                             <i className="ti ti-x"></i>
                         </button>
@@ -361,9 +361,9 @@ const Scanner = () => {
                     )}
 
                     {/* Status card */}
-                    <div className="w-full z-20 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex items-center justify-between text-white">
+                    <div className="w-full z-20 bg-slate-900 border border-slate-800 rounded-md p-3.5 flex items-center justify-between text-white shadow-2xs">
                         <div className="space-y-0.5">
-                            <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">AI Subsystem</p>
+                            <p className="text-xs text-slate-400 font-medium tracking-wide">Scanner status</p>
                             <p className="text-sm font-bold flex items-center gap-2">
                                 <i className={`ti ${faceLockedIn ? 'ti-face-id text-emerald-400' : 'ti-scan text-blue-400'}`} />
                                 {aiStatus}
@@ -401,7 +401,7 @@ const Scanner = () => {
                     onClick={handleLogout}
                     className="text-slate-400 hover:text-slate-600 font-semibold text-sm transition-colors"
                 >
-                    &larr; Exit Terminal Mode
+                    &larr; Exit scanner
                 </button>
             </div>
         </div>

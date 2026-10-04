@@ -17,16 +17,16 @@ const EmployeeSelectionModal = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div onClick={onClose} className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" />
-            <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10">
+            <div onClick={onClose} className="fixed inset-0 bg-slate-950/70" />
+            <div className="relative w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 border border-slate-200">
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <h3 className="text-sm font-extrabold text-slate-800">Select Regular Employee</h3>
+                    <h3 className="text-sm font-bold text-slate-800">Select Regular Employee</h3>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                     >
-                        <i className="ti ti-x"></i>
+                        <i className="ti ti-x text-base font-semibold"></i>
                     </button>
                 </div>
 
@@ -36,7 +36,7 @@ const EmployeeSelectionModal = ({
                         value={empSearch}
                         onChange={(e) => setEmpSearch(e.target.value)}
                         placeholder="Search regular employee by name or department..."
-                        className="w-full px-4 py-2.5 bg-slate-100 border border-transparent focus:border-blue-500 rounded-xl text-sm font-medium text-slate-800 outline-none"
+                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-600 rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
                     />
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                         {availableDepartments.map((dept) => (
@@ -44,7 +44,7 @@ const EmployeeSelectionModal = ({
                                 key={dept}
                                 type="button"
                                 onClick={() => setSelectedDeptFilter(dept)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${selectedDeptFilter === dept ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                className={`h-7 px-2.5 rounded-md text-xs font-semibold transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center ${selectedDeptFilter === dept ? 'bg-blue-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                             >
                                 {dept}
                             </button>
@@ -64,10 +64,10 @@ const EmployeeSelectionModal = ({
                                     onSelectEmployee(String(emp.id));
                                     onClose();
                                 }}
-                                className="w-full p-2.5 hover:bg-blue-50/60 rounded-2xl flex items-center justify-between text-left transition-colors cursor-pointer group border border-transparent hover:border-blue-100"
+                                className="w-full p-2.5 hover:bg-slate-50 rounded-md flex items-center justify-between text-left transition-colors duration-100 cursor-pointer group border border-transparent hover:border-slate-200"
                             >
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-xl" textSize="text-xs" />
+                                    <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-md" textSize="text-xs" />
                                     <div className="min-w-0">
                                         <p className="text-xs font-bold text-slate-800 group-hover:text-blue-700 transition-colors truncate">
                                             {emp.first_name} {emp.last_name}

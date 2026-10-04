@@ -653,11 +653,11 @@ export default function BiometricSetup() {
       
       {/* Header bar */}
       <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center">
-        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-sm text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
           <i className={`ti ${state.isOnline ? 'ti-wifi' : 'ti-wifi-off'} text-xs ${state.isOnline ? 'text-emerald-400' : 'text-rose-400'}`} />
           {deviceInfo.isMobile ? 'Mobile Station' : 'Workstation'}
         </div>
-        <h1 className="text-base sm:text-lg font-bold text-white">Biometric Registration</h1>
+        <h1 className="text-base sm:text-lg font-bold text-white">Face Scan Registration</h1>
         <p className="text-slate-400 text-xs truncate max-w-full">
           Employee: <span className="font-medium text-slate-200">{displayName}</span>
         </p>
@@ -671,7 +671,7 @@ export default function BiometricSetup() {
           return (
             <div key={ph.id} className="flex items-center gap-1.5">
               <div 
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all border ${
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center text-xs font-semibold transition-colors duration-100 border ${
                   isDone ? 'bg-emerald-600 border-emerald-500 text-white' :
                   isActive ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 text-slate-500 border-slate-800'
                 }`}
@@ -679,7 +679,7 @@ export default function BiometricSetup() {
                 {isDone ? <i className="ti ti-check text-xs" /> : i + 1}
               </div>
               {i < PHASE_LIST.length - 1 && (
-                <div className={`w-2 h-0.5 rounded-full ${isDone ? 'bg-emerald-500' : 'bg-slate-800'}`} />
+                <div className={`w-2 h-0.5 rounded-sm ${isDone ? 'bg-emerald-500' : 'bg-slate-800'}`} />
               )}
             </div>
           );
@@ -687,7 +687,7 @@ export default function BiometricSetup() {
       </div>
 
       {/* Camera Viewport */}
-      <div className="relative z-10 w-full max-w-[360px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-800 my-auto flex items-center justify-center">
+      <div className="relative z-10 w-full max-w-[360px] flex-1 max-h-[54dvh] sm:max-h-[58dvh] aspect-[3/4] sm:aspect-[4/5] bg-black rounded-lg overflow-hidden shadow-xl border border-slate-800 my-auto flex items-center justify-center">
         
         {/* Mirrored / Normal Video Stream */}
         <video 
@@ -706,7 +706,7 @@ export default function BiometricSetup() {
         <button
           type="button"
           onClick={toggleCameraFacing}
-          className="absolute top-3 right-3 z-30 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 shadow-md active:scale-95 transition-all flex items-center gap-1.5 text-xs font-medium tap-active"
+          className="absolute top-3 right-3 z-30 h-8 px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/50 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer"
           title="Flip Camera (Front / Rear)"
         >
           <i className="ti ti-camera-rotate text-sm text-blue-400" />
@@ -720,30 +720,30 @@ export default function BiometricSetup() {
           <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
             {state.mode === MODES.BOOT ? (
               <>
-                <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
                 <p className="font-medium text-slate-200 text-xs sm:text-sm">{state.statusText}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Loading facial recognition models...</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Loading face scanner...</p>
               </>
             ) : (
               <>
-                <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-2xl mb-3">
+                <div className="w-10 h-10 rounded-md bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl mb-3">
                   <i className="ti ti-face-id" />
                 </div>
                 <h2 className="text-base font-bold text-white mb-1">Face Registration</h2>
                 <p className="text-slate-400 text-xs mb-5 max-w-[240px] leading-relaxed">
-                  Position your face clearly in natural light to complete 5 quick verification angles.
+                  Hold your face steady in good lighting to capture 5 quick angles.
                 </p>
                 <button 
                   onClick={startEnrollment}
-                  className="w-full max-w-[200px] py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-blue-600/20"
+                  className="w-full max-w-[200px] h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-md font-semibold text-xs transition-colors duration-100 shadow-2xs cursor-pointer"
                 >
                   Start Registration
                 </button>
                 <button 
                   onClick={handleLogout} 
-                  className="mt-3 text-slate-400 hover:text-slate-200 text-xs transition-colors"
+                  className="mt-3 text-slate-400 hover:text-slate-200 text-xs transition-colors duration-100 cursor-pointer"
                 >
-                  Cancel & Sign Out
+                  Cancel &amp; Sign Out
                 </button>
               </>
             )}
@@ -757,8 +757,6 @@ export default function BiometricSetup() {
             {activePhase && state.mode === MODES.ENROLLING && (
               <div 
                 key={activePhase.id} 
-                initial={{ opacity: 0, scale: 0.9 }} 
-                animate={{ opacity: 1, scale: 1 }}
                 className="absolute z-20 pointer-events-none" 
                 style={{
                   top: activePhase.id === 3 ? '15%' : activePhase.id === 4 ? '78%' : '50%',
@@ -766,8 +764,8 @@ export default function BiometricSetup() {
                   transform: 'translate(-50%, -50%)',
                 }}
               >
-                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-bold shadow-lg">
-                  {activePhase.id === 0 ? 'Ã¢â€”â€°' : activePhase.id === 1 ? 'Ã¢â€ Â' : activePhase.id === 2 ? 'Ã¢â€ â€™' : activePhase.id === 3 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
+                <div className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center text-base font-bold shadow-2xs">
+                  {activePhase.id === 0 ? '•' : activePhase.id === 1 ? '←' : activePhase.id === 2 ? '→' : activePhase.id === 3 ? '↑' : '↓'}
                 </div>
               </div>
             )}
@@ -796,7 +794,7 @@ export default function BiometricSetup() {
 
             {/* Bottom Status Pill */}
             <div className="absolute bottom-3 inset-x-3 z-20 flex justify-center">
-              <div className="px-3.5 py-1.5 bg-slate-900/90 border border-slate-800 rounded-full text-center shadow-lg">
+              <div className="px-3 py-1 bg-slate-900/90 border border-slate-800 rounded-md text-center shadow-2xs">
                 <p className="text-xs font-medium text-white">{state.statusText}</p>
               </div>
             </div>
@@ -806,23 +804,21 @@ export default function BiometricSetup() {
         {/* Uploading State */}
         {state.mode === MODES.UPLOADING && (
           <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
-            <h3 className="text-sm font-bold text-white">Saving Profile</h3>
-            <p className="text-slate-400 text-xs mt-0.5">Uploading facial baseline to secure database...</p>
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <h3 className="text-sm font-bold text-white">Saving profile</h3>
+            <p className="text-slate-400 text-xs mt-0.5">Saving your face scan securely...</p>
           </div>
         )}
 
         {/* Success State */}
         {state.mode === MODES.SUCCESS && (
           <div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }}
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center"
           >
-            <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg mb-3">
+            <div className="w-10 h-10 rounded-md bg-emerald-600 text-white flex items-center justify-center text-lg shadow-2xs mb-3">
               <i className="ti ti-check" />
             </div>
-            <h3 className="text-base font-bold text-white">Registration Complete</h3>
+            <h3 className="text-base font-bold text-white">Face scan registered successfully</h3>
             <p className="text-slate-400 text-xs mt-0.5">Redirecting to your workspace...</p>
           </div>
         )}
@@ -830,18 +826,16 @@ export default function BiometricSetup() {
         {/* Error State */}
         {state.mode === MODES.ERROR && (
           <div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }}
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-5 text-center"
           >
-            <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-lg mb-2">
+            <div className="w-10 h-10 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center text-lg mb-2">
               <i className="ti ti-alert-triangle" />
             </div>
-            <h3 className="text-sm font-bold text-white">Registration Incomplete</h3>
-            <p className="text-slate-400 text-xs mt-0.5 max-w-[240px] leading-snug">{state.error?.message || 'Biometric scan could not be completed.'}</p>
+            <h3 className="text-sm font-bold text-white">Registration incomplete</h3>
+            <p className="text-slate-400 text-xs mt-0.5 max-w-[240px] leading-snug">{state.error?.message || 'Could not complete face scan. Please try again.'}</p>
             <button 
               onClick={handleReset}
-              className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium text-xs transition-all"
+              className="mt-4 h-9 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-md font-medium text-xs transition-colors duration-100 cursor-pointer"
             >
               Try Again
             </button>
@@ -852,7 +846,7 @@ export default function BiometricSetup() {
       {/* Bottom Footer Details */}
       <div className="w-full max-w-[360px] z-10 pb-1 text-center flex items-center justify-between px-2 text-[10px] text-slate-500">
         <span>C-Point HRIS</span>
-        <span>Biometric Gate Pass</span>
+        <span>Gate pass</span>
       </div>
 
     </div>

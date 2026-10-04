@@ -13,8 +13,18 @@ const BADGE_VARIANTS = {
     inactive: 'bg-slate-100 text-slate-700 border-slate-300',
     neutral: 'bg-slate-50 text-slate-700 border-slate-300',
     dark: 'bg-slate-900 text-slate-100 border-slate-700',
-    terminated: 'bg-rose-100 text-rose-900 border-rose-300',
-    suspended: 'bg-amber-100 text-amber-900 border-amber-300'
+    terminated: 'bg-rose-50 text-rose-700 border-rose-200',
+    suspended: 'bg-amber-50 text-amber-800 border-amber-200',
+    action_required: 'bg-rose-50 text-rose-700 border-rose-200',
+    acknowledged: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    resolved: 'bg-slate-100 text-slate-700 border-slate-200',
+    cleared: 'bg-teal-50 text-teal-700 border-teal-200',
+    overturned: 'bg-teal-50 text-teal-700 border-teal-200',
+    dismissed: 'bg-purple-50 text-purple-700 border-purple-200',
+    grace: 'bg-amber-50 text-amber-800 border-amber-200',
+    pakyawan: 'bg-blue-50 text-blue-700 border-blue-200',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    teal: 'bg-teal-50 text-teal-700 border-teal-200'
 };
 
 const DOT_COLORS = {
@@ -31,7 +41,17 @@ const DOT_COLORS = {
     neutral: 'bg-slate-500',
     dark: 'bg-slate-300',
     terminated: 'bg-rose-600',
-    suspended: 'bg-amber-600'
+    suspended: 'bg-amber-600',
+    action_required: 'bg-rose-600',
+    acknowledged: 'bg-emerald-600',
+    resolved: 'bg-slate-500',
+    cleared: 'bg-teal-600',
+    overturned: 'bg-teal-600',
+    dismissed: 'bg-purple-600',
+    grace: 'bg-amber-600',
+    pakyawan: 'bg-blue-600',
+    purple: 'bg-purple-600',
+    teal: 'bg-teal-600'
 };
 
 export const Badge = ({ 

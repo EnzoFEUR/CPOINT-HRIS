@@ -278,45 +278,45 @@ export default function Create({ errors = [], defaultValues = {} }) {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <div className="flex items-center justify-between">
-                <Link to="/admin/employees" className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-white text-slate-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-slate-50 hover:text-blue-600 transition-all shadow-xs sm:shadow-sm border border-slate-200 flex items-center gap-1.5 sm:gap-2 tap-active">
-                    <i className="ti ti-arrow-left text-base sm:text-lg" /> Back to Directory
+                <Link to="/admin/employees" className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-blue-600 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
+                    <i className="ti ti-arrow-left text-sm" /> Back to Directory
                 </Link>
             </div>
 
             {errors && errors.length > 0 && (
-                <div className="bg-red-500 text-white p-4 sm:p-6 rounded-2xl shadow-lg flex items-start gap-3 sm:gap-4">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
-                        <i className="ti ti-alert-triangle text-lg sm:text-xl" />
+                <div className="bg-rose-50 border border-rose-200 text-rose-900 p-4 rounded-lg shadow-2xs flex items-start gap-3">
+                    <div className="w-8 h-8 bg-rose-100 text-rose-600 rounded-md flex items-center justify-center shrink-0">
+                        <i className="ti ti-alert-triangle text-base" />
                     </div>
                     <div>
-                        <p className="font-black text-sm sm:text-lg tracking-tight mb-1">Please fix the following errors:</p>
-                        <ul className="list-disc ml-4 space-y-0.5 text-xs sm:text-sm font-medium">
+                        <p className="font-bold text-sm tracking-tight mb-1">Please fix the following errors:</p>
+                        <ul className="list-disc ml-4 space-y-0.5 text-xs font-medium">
                             {errors.map((error, index) => <li key={index}>{error}</li>)}
                         </ul>
                     </div>
                 </div>
             )}
 
-            <div className="bg-white p-5 sm:p-8 lg:p-10 rounded-2xl shadow-xs sm:shadow-sm border border-slate-100">
-                <div className="mb-6 sm:mb-10 text-center">
-                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-800 tracking-tight">Onboard Personnel</h2>
-                    <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">Create a new employee profile and system account.</p>
+            <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
+                <div className="mb-6 text-center">
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Onboard Personnel</h2>
+                    <p className="text-slate-500 font-medium text-xs mt-1">Create a new employee profile and system account.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+                <form onSubmit={handleSubmit} className="space-y-6">
 
                     {/* ACCOUNT DETAILS */}
-                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
-                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-mail text-lg sm:text-xl" /></span>
+                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-mail text-base" /></span>
                             Account Security
                         </h3>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
                                 <input type="email" name="email" required defaultValue={defaultValues.email || ''}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder="employee@company.com" />
                             </div>
 
@@ -326,7 +326,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         Mobile Phone <span className="text-rose-500">*</span>
                                     </label>
                                     {phone && (
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
                                             phoneValidation.isValid
                                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                 : phoneValidation.status === 'invalid_prefix'
@@ -338,7 +338,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     )}
                                 </div>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">
                                         +63
                                     </div>
                                     <input
@@ -348,12 +348,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         value={phone}
                                         onChange={(e) => setPhone(formatPhPhone(e.target.value))}
                                         placeholder="0917 123 4567"
-                                        className={`w-full pl-20 pr-3.5 sm:pr-4 py-2.5 sm:py-3 bg-white border rounded-xl focus:outline-none focus:ring-4 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400 font-mono ${
+                                        className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 font-mono shadow-2xs ${
                                             phone && phoneValidation.isValid
-                                                ? 'border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/10'
+                                                ? 'border-emerald-300 focus:border-emerald-500'
                                                 : phone && !phoneValidation.isValid
-                                                ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10'
-                                                : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500/10'
+                                                ? 'border-amber-300 focus:border-amber-500'
+                                                : 'border-slate-200 focus:border-blue-500'
                                         }`}
                                     />
                                 </div>
@@ -362,7 +362,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             <div className="md:col-span-2">
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={defaultValues.role || 'employee'}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer">
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
                                     <option value="admin">System Administrator</option>
@@ -370,8 +370,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             </div>
 
                             <div className="md:col-span-2 mt-1">
-                                <div className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl border border-blue-100 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                                    <i className="ti ti-wand text-base" />
+                                <div className="inline-flex items-center gap-2 p-2.5 bg-blue-50 text-blue-700 rounded-md border border-blue-200 text-xs font-medium">
+                                    <i className="ti ti-wand text-sm" />
                                     A secure temporary password will be auto-generated.
                                 </div>
                             </div>
@@ -379,12 +379,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     </div>
 
                     {/* EMPLOYEE INFORMATION */}
-                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
-                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs"><i className="ti ti-id text-lg sm:text-xl" /></span>
+                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-id text-base" /></span>
                             Personal Profile
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
                                 <input 
@@ -393,7 +393,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     required 
                                     value={firstName}
                                     onChange={(e) => setFirstName(e.target.value)}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder="John" 
                                 />
                             </div>
@@ -405,16 +405,16 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     required 
                                     value={lastName}
                                     onChange={(e) => setLastName(e.target.value)}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder="Doe" 
                                 />
                             </div>
 
                             {/* Real-time Enterprise Collision / Duplicate Advisory */}
                             {matchingArchivedEmployee && (
-                                <div className="md:col-span-2 p-3.5 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs flex items-start gap-3 text-amber-950 animate-in fade-in duration-150 shadow-xs">
-                                    <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5">
-                                        <i className="ti ti-archive text-lg" />
+                                <div className="md:col-span-2 p-3 bg-amber-50/90 border border-amber-200 rounded-md text-xs flex items-start gap-3 text-amber-950 shadow-2xs">
+                                    <div className="w-7 h-7 rounded-md bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5">
+                                        <i className="ti ti-archive text-base" />
                                     </div>
                                     <div className="space-y-1 min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
@@ -432,9 +432,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             )}
 
                             {!matchingArchivedEmployee && matchingActiveEmployee && (
-                                <div className="md:col-span-2 p-3.5 bg-blue-50/90 border border-blue-200/90 rounded-2xl text-xs flex items-start gap-3 text-blue-950 animate-in fade-in duration-150 shadow-xs">
-                                    <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 text-blue-700 mt-0.5">
-                                        <i className="ti ti-users text-lg" />
+                                <div className="md:col-span-2 p-3 bg-blue-50/90 border border-blue-200 rounded-md text-xs flex items-start gap-3 text-blue-950 shadow-2xs">
+                                    <div className="w-7 h-7 rounded-md bg-blue-100 flex items-center justify-center shrink-0 text-blue-700 mt-0.5">
+                                        <i className="ti ti-users text-base" />
                                     </div>
                                     <div className="space-y-1 min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
@@ -456,7 +456,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     name="department"
                                     value={department}
                                     onChange={(e) => setDepartment(e.target.value)}
-                                    className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all appearance-none cursor-pointer"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
                                 >
                                     <option value="Factory">Factory Floor (Shoe Production)</option>
                                     <option value="Retail">Retail Store</option>
@@ -471,7 +471,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
                                     <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
-                                        className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-base sm:text-sm text-slate-700 transition-all placeholder:text-slate-400"
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                         placeholder="e.g. Sales Associate, HR Officer" />
                                 </div>
                             ) : null}
@@ -497,14 +497,14 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                         type="button"
                                                         key={craft.id}
                                                         onClick={() => setSelectedCraft(craft.id)}
-                                                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 cursor-pointer ${isSelected
-                                                            ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
-                                                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                                        className={`p-3 rounded-md border text-left transition-colors duration-100 flex flex-col justify-between space-y-2 cursor-pointer ${isSelected
+                                                            ? 'bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/30 shadow-2xs'
+                                                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                                                             }`}
                                                     >
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                                                                <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs shrink-0 ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
                                                                     }`}>
                                                                     <i className={`ti ${craft.icon}`} />
                                                                 </span>
@@ -527,7 +527,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     </div>
 
                                     {/* PRODUCTION LINE ASSIGNMENT */}
-                                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80">
+                                    <div className="p-3 bg-white rounded-md border border-amber-200">
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
                                             <div>
                                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
@@ -551,7 +551,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                         setSelectedGroup(defaultLine?.name || 'Line A');
                                                     }
                                                 }}
-                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors duration-100"
                                             >
                                                 <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
                                                 <span>{isCustomLine ? 'Choose from existing lines' : '+ Create new line'}</span>
@@ -566,7 +566,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                     onChange={(e) => setSelectedGroup(e.target.value)}
                                                     placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
                                                     autoFocus
-                                                    className="w-full px-3 py-2 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                    className="w-full h-9 px-3 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
                                                 />
                                                 <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
                                                     <i className="ti ti-sparkles text-xs" />
@@ -588,7 +588,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                             if (found) setSelectedGroup(found.name);
                                                         }
                                                     }}
-                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-amber-500 transition-colors duration-100 cursor-pointer shadow-2xs"
                                                 >
                                                     {productionGroups.length > 0 ? (
                                                         productionGroups.map(group => (
@@ -611,10 +611,10 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             )}
 
                             <div className="md:col-span-2">
-                                <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${department === 'Factory' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                <div className={`p-3 rounded-md border flex items-center justify-between gap-3 ${department === 'Factory' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
                                     }`}>
                                     <div className="flex items-center gap-2.5">
-                                        <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-lg shrink-0`} />
+                                        <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-base shrink-0`} />
                                         <div>
                                             <p className="text-xs font-bold">
                                                 {department === 'Factory' ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
@@ -624,7 +624,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${department === 'Factory' ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${department === 'Factory' ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
                                         }`}>
                                         {department === 'Factory' ? 'No OT' : 'OT Eligible'}
                                     </span>
@@ -634,23 +634,23 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     </div>
 
                     {/* DYNAMIC PAYROLL DETAILS */}
-                    <div className="p-4 sm:p-6 bg-slate-50/60 rounded-2xl border border-slate-200/80">
-                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight mb-4 sm:mb-6 flex items-center gap-2.5 sm:gap-3">
-                            <span className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-slate-700 rounded-xl flex items-center justify-center border border-slate-200 shadow-xs">
-                                <i className="ti ti-cash-banknote text-lg sm:text-xl" />
+                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs">
+                                <i className="ti ti-cash-banknote text-base" />
                             </span>
                             Payroll Configuration
                         </h3>
 
                         {department === 'Factory' ? (
-                            <div className="space-y-3.5">
-                                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 text-amber-900 space-y-2">
+                            <div className="space-y-3">
+                                <div className="p-3.5 rounded-md border border-amber-200 bg-amber-50/70 text-amber-900 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-amber-900">
-                                            <i className="ti ti-box-multiple text-lg text-amber-600" />
+                                        <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                                            <i className="ti ti-box-multiple text-base text-amber-600" />
                                             Group Output Piece-Rate Model (Shoe Production Pool)
                                         </div>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
                                             Pakyawan Pool
                                         </span>
                                     </div>
@@ -677,18 +677,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         Daily Pay Rate
                                     </label>
                                     <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
                                         <input
                                             type="text"
                                             required
                                             value={displayDailyPay}
                                             onChange={handleDailyPayChange}
-                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="daily_rate" value={rawDailyPay} />
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
                                         <i className="ti ti-calendar" /> Base daily compensation rate
                                     </p>
                                 </div>
@@ -698,18 +698,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         Hourly Pay Rate
                                     </label>
                                     <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">₱</span>
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
                                         <input
                                             type="text"
                                             required
                                             value={displayHourlyPay}
                                             onChange={handleHourlyPayChange}
-                                            className="w-full pl-9 pr-4 py-2.5 sm:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 font-black text-base sm:text-lg text-slate-800 transition-all placeholder:text-slate-300"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
                                         <i className="ti ti-clock" /> Calculated per 8-hour workday standard
                                     </p>
                                 </div>
@@ -718,12 +718,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
                     </div>
 
                     {/* SUBMIT */}
-                    <div className="pt-2 sm:pt-4">
-                        <button type="submit" disabled={isSubmitting} className="w-full py-3.5 sm:py-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-black text-sm sm:text-base tracking-wide rounded-xl shadow-lg tap-active transition-all flex items-center justify-center gap-2">
+                    <div className="pt-2">
+                        <button type="submit" disabled={isSubmitting} className="w-full h-10 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-semibold text-xs tracking-wide rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer">
                             {isSubmitting ? (
-                                <><i className="ti ti-loader animate-spin text-lg sm:text-xl" /> Creating Profile...</>
+                                <><i className="ti ti-loader animate-spin text-sm" /> Creating Profile...</>
                             ) : (
-                                <><i className="ti ti-user-plus text-lg sm:text-xl" /> Create Profile & Account</>
+                                <><i className="ti ti-user-plus text-sm" /> Create Profile & Account</>
                             )}
                         </button>
                     </div>
@@ -732,14 +732,14 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
             {/* Account Created & Temporary Password Modal */}
             {showSuccessModal && createdEmployee && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-xs">
-                    <div className="bg-white rounded-2xl p-5 sm:p-7 max-w-md w-full shadow-2xl border border-slate-200 space-y-5">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-4">
                         {/* Header */}
-                        <div className="text-center space-y-2">
-                            <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center border border-emerald-200 shadow-xs">
-                                <i className="ti ti-check text-2xl font-bold" />
+                        <div className="text-center space-y-1.5">
+                            <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-md mx-auto flex items-center justify-center border border-emerald-200 shadow-2xs">
+                                <i className="ti ti-check text-xl font-bold" />
                             </div>
-                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                            <h3 className="text-lg font-bold text-slate-900 tracking-tight">
                                 Account Created Successfully!
                             </h3>
                             <p className="text-xs text-slate-500 font-medium">
@@ -748,44 +748,44 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         </div>
 
                         {/* Credentials Card */}
-                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                        <div className="bg-slate-50 rounded-md p-3.5 border border-slate-200 space-y-2.5">
 
                             {/* Name */}
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Employee</span>
-                                <span className="text-xs font-black text-slate-800">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Employee</span>
+                                <span className="text-xs font-bold text-slate-900">
                                     {createdEmployee.first_name} {createdEmployee.last_name}
                                 </span>
                             </div>
 
                             {/* Company ID */}
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Company ID</span>
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Company ID</span>
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(createdEmployee.company_id, 'Company ID')}
-                                    className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer"
+                                    className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-800 hover:text-blue-600 cursor-pointer transition-colors duration-100"
                                 >
                                     <span>{createdEmployee.company_id}</span>
-                                    <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs`} />
+                                    <i className={`ti ${copiedField === 'Company ID' ? 'ti-check text-emerald-600' : 'ti-copy text-slate-400'} text-xs`} />
                                 </button>
                             </div>
 
                             {/* Email Address */}
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Login Email</span>
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Login Email</span>
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(createdEmployee.email, 'Email')}
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 cursor-pointer max-w-[200px] truncate"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 hover:text-blue-600 cursor-pointer max-w-[200px] truncate transition-colors duration-100"
                                 >
                                     <span className="truncate">{createdEmployee.email}</span>
-                                    <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-500' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
+                                    <i className={`ti ${copiedField === 'Email' ? 'ti-check text-emerald-600' : 'ti-copy text-slate-400'} text-xs shrink-0`} />
                                 </button>
                             </div>
 
                             {/* Temporary password */}
-                            <div className="p-3 bg-slate-900 rounded-lg text-white space-y-1.5">
+                            <div className="p-3 bg-slate-900 rounded-md text-white space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
                                         <i className="ti ti-key text-xs" /> Temporary Password
@@ -793,20 +793,20 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1"
+                                        className="text-slate-400 hover:text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors duration-100"
                                     >
                                         <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'} text-xs`} />
                                         {showPassword ? 'Hide' : 'Show'}
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-mono text-base sm:text-lg font-black tracking-wider text-white">
+                                    <span className="font-mono text-base font-bold tracking-wider text-white">
                                         {showPassword ? (createdEmployee.temp_password || 'Emp-1234') : '••••••••'}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(createdEmployee.temp_password, 'Password')}
-                                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                                        className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 rounded-sm font-semibold text-xs flex items-center gap-1 transition-colors duration-100 cursor-pointer shadow-2xs"
                                     >
                                         <i className={`ti ${copiedField === 'Password' ? 'ti-check text-emerald-400' : 'ti-copy'} text-xs`} />
                                         {copiedField === 'Password' ? 'Copied' : 'Copy'}
@@ -819,13 +819,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         <button
                             type="button"
                             onClick={copyAllCredentials}
-                            className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 cursor-pointer"
+                            className="w-full h-9 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors duration-100 border border-blue-200 cursor-pointer shadow-2xs"
                         >
                             <i className={`ti ${copiedAll ? 'ti-check text-emerald-600' : 'ti-clipboard-check'} text-sm`} />
                             {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
                         </button>
 
-                        <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
+                        <p className="text-[11px] text-slate-500 text-center font-medium leading-relaxed">
                             <i className="ti ti-info-circle mr-1" />
                             The employee will be required to change this password upon their first sign-in.
                         </p>
@@ -835,13 +835,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             <button
                                 type="button"
                                 onClick={handleCreateAnother}
-                                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors text-center cursor-pointer"
+                                className="h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold text-xs transition-colors duration-100 text-center cursor-pointer shadow-2xs"
                             >
                                 + Add Another
                             </button>
                             <Link
                                 to={`/admin/employees/${createdEmployee.id}`}
-                                className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors text-center flex items-center justify-center gap-1"
+                                className="h-9 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold text-xs transition-colors duration-100 text-center flex items-center justify-center gap-1 shadow-2xs"
                             >
                                 View Profile <i className="ti ti-arrow-right text-xs" />
                             </Link>

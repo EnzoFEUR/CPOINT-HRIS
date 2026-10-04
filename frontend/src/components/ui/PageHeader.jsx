@@ -12,7 +12,7 @@ export const PageHeader = ({
     className = ''
 }) => {
     return (
-        <div className={`bg-white border border-slate-200 rounded-xl p-4 sm:p-6 mb-6 shadow-xs ${className}`}>
+        <div className={`bg-white border border-slate-200 rounded-lg p-4 sm:p-5 mb-6 shadow-2xs ${className}`}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                     {breadcrumbs.length > 0 && (

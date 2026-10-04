@@ -65,7 +65,7 @@ export default function QRCode({
           style={{ width: `${size}px`, height: `${size}px` }}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300 rounded-xl">
+        <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300 rounded-md">
           <i className="ti ti-qrcode text-3xl" />
         </div>
       )}

@@ -220,38 +220,38 @@ export default function FactoryPiece({
                     handleClose(e);
                 }
             }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 transition-opacity"
         >
             {/* Main Modal Container */}
-            <div className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10 border border-slate-200">
+            <div className="relative w-full max-w-5xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh] z-10 border border-slate-200">
                 {/* Modal Header */}
                 <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-bold shadow-md">
+                        <div className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center text-base shrink-0">
                             <i className="ti ti-building-factory" />
                         </div>
                         <div>
-                            <h2 className="text-base sm:text-lg font-black text-slate-800">Factory Production &amp; Piece-Rate Manager</h2>
+                            <h2 className="text-base font-bold text-slate-800">Factory Production &amp; Piece-Rate Manager</h2>
                             <p className="text-xs text-slate-500 font-medium">Configure production groups, output summaries, and piece-rate operations</p>
                         </div>
                     </div>
                     <button
                         type="button"
                         onClick={handleClose}
-                        className="w-9 h-9 rounded-full bg-slate-200/80 hover:bg-slate-300 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
+                        className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                         title="Close without saving"
                     >
-                        <i className="ti ti-x text-lg" />
+                        <i className="ti ti-x text-base" />
                     </button>
                 </div>
 
                 {/* Modal Body */}
                 <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
                     {/* 1. Factory Production Groups Cards */}
-                    <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-200 space-y-3 shadow-2xs">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shadow-xs shrink-0">
+                                <div className="w-7 h-7 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
                                     <i className="ti ti-users-group"></i>
                                 </div>
                                 <div className="min-w-0">
@@ -261,14 +261,15 @@ export default function FactoryPiece({
                                     </p>
                                 </div>
                             </div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${selectedGroup ? 'text-blue-700 bg-blue-100' : 'text-slate-500 bg-slate-200/60'}`}>
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-blue-500' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}
                             </span>
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-2.5">
                             {availableGroups.length === 0 ? (
-                                <div className="col-span-full p-3 bg-amber-50 text-amber-800 text-xs font-semibold rounded-xl border border-amber-200">
+                                <div className="col-span-full p-3 bg-amber-50 text-amber-800 text-xs font-semibold rounded-md border border-amber-200">
                                     No production group assigned in database.
                                 </div>
                             ) : (
@@ -288,15 +289,15 @@ export default function FactoryPiece({
                                                 }
                                                 handleGroupTabChange(groupName);
                                             }}
-                                            className={`p-2.5 rounded-xl border-2 text-left transition-all flex items-center justify-between cursor-pointer ${isSelected
-                                                ? 'bg-blue-50/90 border-blue-600 shadow-xs shadow-blue-500/10'
+                                            className={`p-2.5 rounded-md border text-left transition-colors duration-100 flex items-center justify-between cursor-pointer ${isSelected
+                                                ? 'bg-blue-50/90 border-blue-600 shadow-2xs'
                                                 : 'bg-white border-slate-200 hover:border-slate-300'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                                                <div className={`w-8 h-8 rounded-md flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
                                                     }`}>
-                                                    <i className="ti ti-users" />
+                                                <i className="ti ti-users" />
                                                 </div>
                                                 <div className="min-w-0">
                                                     <h4 className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
@@ -308,7 +309,7 @@ export default function FactoryPiece({
                                                 </div>
                                             </div>
                                             {isSelected && (
-                                                <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 ml-1">
+                                                <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0 ml-1">
                                                     <i className="ti ti-check" />
                                                 </span>
                                             )}
@@ -320,10 +321,10 @@ export default function FactoryPiece({
                     </div>
 
                     {/* 2. Factory Operation & Process Log Section */}
-                    <div className="bg-slate-50/80 p-4 sm:p-6 rounded-2xl border border-slate-200 space-y-4">
+                    <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-200 space-y-4 shadow-2xs">
                         <div className="flex items-center justify-between flex-wrap gap-3">
                             <div>
-                                <h3 className="text-sm sm:text-base font-black text-slate-800 flex items-center gap-2">
+                                <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
                                     <i className="ti ti-table text-blue-600" />
                                     <span>Factory Operation &amp; Process Piece-Rate Log</span>
                                 </h3>
@@ -334,11 +335,11 @@ export default function FactoryPiece({
 
                             <div className="flex items-center gap-2 flex-wrap">
                                 {/* HR View Switcher Mode Buttons */}
-                                <div className="flex items-center bg-slate-200/80 p-1 rounded-xl">
+                                <div className="flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-md">
                                     <button
                                         type="button"
                                         onClick={() => setViewMode('compact')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'compact' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'compact' ? 'bg-white text-blue-700 shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
                                         <i className="ti ti-list-details" />
@@ -347,7 +348,7 @@ export default function FactoryPiece({
                                     <button
                                         type="button"
                                         onClick={() => setViewMode('grid')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
                                         <i className="ti ti-layout-grid" />
@@ -358,7 +359,7 @@ export default function FactoryPiece({
                                 <button
                                     type="button"
                                     onClick={addFactoryRow}
-                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                                    className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors duration-100 flex items-center gap-1 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-plus" />
                                     <span>Add Process</span>
@@ -368,10 +369,10 @@ export default function FactoryPiece({
 
                         {/* VIEW MODE: Compact View */}
                         {viewMode === 'compact' && (
-                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-2xs">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase">
+                                        <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                             <th className="p-3">Process / Operation</th>
                                             <th className="p-3">Batch Info (Stock No &amp; Qty)</th>
                                             <th className="p-3 text-right">Rate / Unit (₱)</th>
@@ -382,14 +383,14 @@ export default function FactoryPiece({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-xs">
                                         {activeComputedRows.map((row) => (
-                                            <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <tr key={row.id} className="hover:bg-slate-50 transition-colors duration-100">
                                                 <td className="p-2.5 font-bold text-slate-800">
                                                     <input
                                                         type="text"
                                                         value={row.operation}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
                                                         placeholder="e.g. Cutter"
-                                                        className="w-full p-1.5 border border-slate-200 rounded-lg font-bold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                        className="w-full h-8 px-2.5 border border-slate-200 rounded-md font-bold text-slate-800 bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-xs transition-colors duration-100"
                                                     />
                                                 </td>
                                                 <td className="p-2.5">
@@ -399,7 +400,7 @@ export default function FactoryPiece({
                                                             value={row.stock_no}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
                                                             placeholder="Stock No"
-                                                            className="w-24 p-1 border border-slate-200 rounded font-medium text-slate-700 text-xs"
+                                                            className="w-24 h-8 px-2 border border-slate-200 rounded-md font-medium text-slate-700 text-xs outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                         />
                                                         <span className="text-slate-400">×</span>
                                                         <input
@@ -407,7 +408,7 @@ export default function FactoryPiece({
                                                             value={row.quantity_in}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
                                                             placeholder="Qty"
-                                                            className="w-20 p-1 border border-slate-200 rounded font-mono font-bold text-slate-800 text-xs text-right"
+                                                            className="w-20 h-8 px-2 border border-slate-200 rounded-md font-mono font-bold text-slate-800 text-xs text-right outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                         />
                                                     </div>
                                                 </td>
@@ -418,17 +419,17 @@ export default function FactoryPiece({
                                                         value={row.amount}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'amount', e.target.value)}
                                                         placeholder="0.00"
-                                                        className="w-24 p-1.5 border border-slate-200 rounded-lg font-mono font-bold text-right text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                                                        className="w-24 h-8 px-2.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                     />
                                                 </td>
-                                                <td className="p-2.5 text-right font-mono font-black text-slate-900 bg-slate-50/50">
+                                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
                                                     ₱{row.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                 </td>
                                                 <td className="p-2.5 text-center">
                                                     <button
                                                         type="button"
                                                         onClick={() => openOpWorkerModal(row.id)}
-                                                        className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg border border-blue-200 transition-colors inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                                        className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-md border border-blue-200 transition-colors duration-100 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                                                     >
                                                         <i className="ti ti-users" />
                                                         <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -439,9 +440,9 @@ export default function FactoryPiece({
                                                         type="button"
                                                         onClick={() => removeFactoryRow(row.id)}
                                                         disabled={localRows.length <= 1}
-                                                        className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-30 cursor-pointer"
+                                                        className="w-7 h-7 mx-auto rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
                                                     >
-                                                        <i className="ti ti-trash text-base" />
+                                                        <i className="ti ti-trash text-sm" />
                                                     </button>
                                                 </td>
                                             </tr>
@@ -457,19 +458,19 @@ export default function FactoryPiece({
                                 {activeComputedRows.map((row, idx) => (
                                     <div
                                         key={row.id}
-                                        className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 relative"
+                                        className="bg-white rounded-lg border border-slate-200 p-4 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col justify-between space-y-3 relative"
                                     >
                                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                                            <span className="text-[10px] font-extrabold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                            <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
                                                 Process #{idx + 1}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => removeFactoryRow(row.id)}
                                                 disabled={localRows.length <= 1}
-                                                className="text-slate-400 hover:text-red-500 disabled:opacity-30 transition-colors cursor-pointer"
+                                                className="w-7 h-7 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
                                             >
-                                                <i className="ti ti-trash text-base" />
+                                                <i className="ti ti-trash text-sm" />
                                             </button>
                                         </div>
 
@@ -481,7 +482,7 @@ export default function FactoryPiece({
                                                     value={row.operation}
                                                     onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
                                                     placeholder="e.g. Cutter"
-                                                    className="w-full mt-0.5 p-2 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-bold text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                 />
                                             </div>
 
@@ -493,7 +494,7 @@ export default function FactoryPiece({
                                                         value={row.stock_no}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
                                                         placeholder="Stock No."
-                                                        className="w-full mt-0.5 p-1.5 border border-slate-200 rounded-lg font-medium text-slate-700 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-medium text-slate-700 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                     />
                                                 </div>
                                                 <div>
@@ -504,7 +505,7 @@ export default function FactoryPiece({
                                                         value={row.quantity_in}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
                                                         placeholder="0"
-                                                        className="w-full mt-0.5 p-1.5 border border-slate-200 rounded-lg font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                     />
                                                 </div>
                                             </div>
@@ -518,22 +519,22 @@ export default function FactoryPiece({
                                                     value={row.amount}
                                                     onChange={(e) => handleFactoryRowChange(row.id, 'amount', e.target.value)}
                                                     placeholder="0.00"
-                                                    className="w-full mt-0.5 p-2 border border-slate-200 rounded-xl font-mono font-bold text-right text-slate-800 text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-slate-50/80 -mx-4 -mb-4 p-3 rounded-b-2xl">
+                                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-slate-50/80 -mx-4 -mb-4 p-3 rounded-b-lg">
                                             <div>
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Output</span>
-                                                <span className="text-sm font-mono font-black text-emerald-600">
+                                                <span className="text-sm font-mono font-bold text-emerald-600">
                                                     ₱{row.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                 </span>
                                             </div>
                                             <button
                                                 type="button"
                                                 onClick={() => openOpWorkerModal(row.id)}
-                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
                                             >
                                                 <i className="ti ti-users" />
                                                 <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -546,16 +547,16 @@ export default function FactoryPiece({
                     </div>
 
                     {/* 3. Total Operation Output Summary Banner */}
-                    <div className="p-5 bg-slate-900 border border-slate-800 text-white rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                    <div className="p-4 bg-slate-900 border border-slate-800 text-white rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                         <div>
                             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
                                 {selectedGroup ? `${selectedGroup} Total Operation Output` : 'Overall Operation Output'}
                             </span>
-                            <p className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 mt-0.5">
+                            <p className="text-2xl font-bold font-mono text-emerald-400 mt-0.5">
                                 ₱{displayTotalPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
-                        <div className="bg-slate-800 border border-slate-700 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-3">
+                        <div className="bg-slate-800 border border-slate-700 px-3.5 py-2 rounded-md text-xs font-medium flex items-center gap-3">
                             <div>
                                 <span className="text-[10px] text-slate-300 uppercase font-bold block">{selectedGroup ? `${selectedGroup} Active Workers` : 'Active Workers'}</span>
                                 <span className="text-base font-mono font-bold text-white">{selectedGroup ? activeGroupEmployees.length : 0} Workers</span>
@@ -573,14 +574,14 @@ export default function FactoryPiece({
                     <button
                         type="button"
                         onClick={handleClose}
-                        className="px-5 py-2.5 bg-white hover:bg-slate-100 active:scale-95 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                        className="h-9 px-4 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-md border border-slate-200 shadow-2xs transition-colors duration-100 cursor-pointer"
                     >
                         Cancel
                     </button>
                     <button
                         type="button"
                         onClick={handleSaveAndClose}
-                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                        className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer"
                     >
                         <i className="ti ti-device-floppy text-base" />
                         <span>Save &amp; Close Log</span>
@@ -596,12 +597,12 @@ export default function FactoryPiece({
                             setIsOpAssignModalOpen(false);
                         }
                     }}
-                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/60 backdrop-blur-xs"
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70"
                 >
-                    <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10">
+                    <div className="relative w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 border border-slate-200">
                         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div>
-                                <h3 className="text-sm font-extrabold text-slate-800">
+                                <h3 className="text-sm font-bold text-slate-800">
                                     Assign Workers to: <span className="text-blue-600">{activeOpRow.operation || 'Process'}</span>
                                 </h3>
                                 <p className="text-[11px] text-slate-400 font-semibold">
@@ -611,9 +612,9 @@ export default function FactoryPiece({
                             <button
                                 type="button"
                                 onClick={() => setIsOpAssignModalOpen(false)}
-                                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                                className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                             >
-                                <i className="ti ti-x"></i>
+                                <i className="ti ti-x text-sm"></i>
                             </button>
                         </div>
 
@@ -623,7 +624,7 @@ export default function FactoryPiece({
                                 value={opWorkerSearch}
                                 onChange={(e) => setOpWorkerSearch(e.target.value)}
                                 placeholder="Search worker for this process..."
-                                className="w-full px-4 py-2.5 bg-slate-100 border border-transparent focus:border-blue-500 rounded-xl text-sm font-medium text-slate-800 outline-none"
+                                className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100 shadow-2xs"
                             />
                             <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-bold text-slate-500">
@@ -633,14 +634,14 @@ export default function FactoryPiece({
                                     <button
                                         type="button"
                                         onClick={selectAllOpWorkers}
-                                        className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                        className="h-7 px-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-sm text-xs font-medium transition-colors duration-100 cursor-pointer"
                                     >
                                         Assign All
                                     </button>
                                     <button
                                         type="button"
                                         onClick={clearAllOpWorkers}
-                                        className="px-2.5 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                        className="h-7 px-2.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-sm text-xs font-medium transition-colors duration-100 cursor-pointer"
                                     >
                                         Clear
                                     </button>
@@ -659,7 +660,7 @@ export default function FactoryPiece({
                                         <div
                                             key={emp.id}
                                             onClick={() => toggleOpWorker(emp.id)}
-                                            className={`w-full p-2.5 rounded-2xl flex items-center justify-between text-left cursor-pointer transition-colors ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                            className={`w-full p-2 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
                                         >
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <input
@@ -696,7 +697,7 @@ export default function FactoryPiece({
                             <button
                                 type="button"
                                 onClick={() => setIsOpAssignModalOpen(false)}
-                                className="w-full py-3 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                                className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer flex items-center justify-center"
                             >
                                 Confirm Process Workers ({activeOpRow.effectiveAssignedIds.length} Assigned)
                             </button>

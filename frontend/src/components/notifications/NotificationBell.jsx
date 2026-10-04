@@ -141,7 +141,7 @@ export const NotificationBell = ({ user }) => {
                 toast.dismiss(t.id);
                 handleNotificationClick(notif);
               }}
-              className="max-w-md w-full bg-slate-900 shadow-2xl rounded-2xl pointer-events-auto flex ring-1 ring-white/10 p-4 gap-3.5 cursor-pointer hover:bg-slate-800 border border-slate-700/50"
+              className="max-w-md w-full bg-slate-900 shadow-xl rounded-lg pointer-events-auto flex ring-1 ring-white/10 p-3.5 gap-3 cursor-pointer hover:bg-slate-800 border border-slate-700/50 transition-colors duration-100"
             >
               <NotificationAvatar
                 avatarSrc={avatar.avatarSrc}
@@ -154,7 +154,7 @@ export const NotificationBell = ({ user }) => {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700">
                     {visuals.label}
                   </span>
                   <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
@@ -222,12 +222,12 @@ export const NotificationBell = ({ user }) => {
       {/* Notifications Bell */}
       <button
         onClick={() => setShowNotifications(!showNotifications)}
-        className={`relative p-2 transition-all rounded-xl tap-active shadow-xs border border-slate-200/50 h-9 w-9 flex items-center justify-center cursor-pointer ${
+        className={`relative transition-colors duration-100 rounded-md border border-slate-200 h-9 w-9 flex items-center justify-center cursor-pointer shadow-2xs ${
           showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'
         }`}
         aria-label="View Notifications"
       >
-        <i className="ti ti-bell text-lg"></i>
+        <i className="ti ti-bell text-base"></i>
         {unreadCount > 0 && (
           <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border-2 border-white shadow-xs"></span>
         )}
@@ -235,12 +235,12 @@ export const NotificationBell = ({ user }) => {
 
       {/* Notification panel */}
       {showNotifications && (
-        <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-3 sm:w-96 bg-white border border-slate-200/80 rounded-2xl shadow-2xl overflow-hidden z-50">
+        <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden z-50">
           <div className="p-3.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-blue-500 text-white">
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-blue-500 text-white">
                   {unreadCount} new
                 </span>
               )}
@@ -262,7 +262,7 @@ export const NotificationBell = ({ user }) => {
                   <div
                     key={notif.id}
                     onClick={() => handleNotificationClick(notif)}
-                    className={`p-3.5 hover:bg-slate-50/80 transition-colors flex items-start gap-3 cursor-pointer ${
+                    className={`p-3.5 hover:bg-slate-50 transition-colors duration-100 flex items-start gap-3 cursor-pointer ${
                       !notif.read ? 'bg-blue-50/30' : ''
                     }`}
                   >
@@ -308,7 +308,7 @@ export const NotificationBell = ({ user }) => {
           {/* Native Phone Lock-Screen Push Notifications Banner */}
           <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="h-7 w-7 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                 <i className="ti ti-device-mobile-message text-sm"></i>
               </div>
               <div className="min-w-0">
@@ -322,7 +322,7 @@ export const NotificationBell = ({ user }) => {
                 onClick={async () => {
                   await sendTestPush(user?.id);
                 }}
-                className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
                 title="Send a test notification to your phone"
               >
                 <i className="ti ti-bell-ringing text-blue-600"></i>
@@ -334,7 +334,7 @@ export const NotificationBell = ({ user }) => {
                   const res = await subscribeUserToPush(user?.id);
                   if (res.success) setPushStatus('granted');
                 }}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg shadow-sm shadow-blue-600/30 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 <i className="ti ti-bell-plus"></i>
                 Enable

@@ -22,19 +22,19 @@ const GroupSelectionModal = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div onClick={onClose} className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" />
-            <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10">
+            <div onClick={onClose} className="fixed inset-0 bg-slate-950/70" />
+            <div className="relative w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 border border-slate-200">
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                     <div>
-                        <h3 className="text-sm font-extrabold text-slate-800">Select {selectedGroup} Members</h3>
+                        <h3 className="text-sm font-bold text-slate-800">Select {selectedGroup} Members</h3>
                         <p className="text-[11px] text-slate-400 font-semibold">Choose active members under {selectedGroup}</p>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                     >
-                        <i className="ti ti-x"></i>
+                        <i className="ti ti-x text-base font-semibold"></i>
                     </button>
                 </div>
 
@@ -44,24 +44,24 @@ const GroupSelectionModal = ({
                         value={groupSearch}
                         onChange={(e) => setGroupSearch(e.target.value)}
                         placeholder={`Search ${selectedGroup} worker...`}
-                        className="w-full px-4 py-2.5 bg-slate-100 border border-transparent focus:border-blue-500 rounded-xl text-sm font-medium text-slate-800 outline-none"
+                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-600 rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
                     />
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-slate-500">
+                        <span className="text-xs font-semibold text-slate-500">
                             {selectedGroupMemberIds.length} of {employeesInSelectedGroup.length} Selected
                         </span>
                         <div className="flex items-center gap-1.5">
                             <button
                                 type="button"
                                 onClick={selectAllGroupMembers}
-                                className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                className="h-7 px-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center"
                             >
                                 Select All
                             </button>
                             <button
                                 type="button"
                                 onClick={clearAllGroupMembers}
-                                className="px-2.5 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                className="h-7 px-2.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center"
                             >
                                 Clear
                             </button>
@@ -77,7 +77,7 @@ const GroupSelectionModal = ({
                             <div
                                 key={emp.id}
                                 onClick={() => toggleGroupMember(emp.id)}
-                                className={`w-full p-2.5 rounded-2xl flex items-center justify-between text-left cursor-pointer transition-colors ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                className={`w-full p-2.5 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
                                     <input
@@ -86,7 +86,7 @@ const GroupSelectionModal = ({
                                         onChange={() => { }}
                                         className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
                                     />
-                                    <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-xl" textSize="text-xs" />
+                                    <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-md" textSize="text-xs" />
                                     <div className="min-w-0">
                                         <p className="text-xs font-bold text-slate-800 truncate">{emp.first_name} {emp.last_name}</p>
                                         <p className="text-[10px] text-slate-500 uppercase">{emp.job_title || emp.group} &middot; {getEmployeeDept(emp)}</p>
@@ -106,7 +106,7 @@ const GroupSelectionModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="w-full py-3 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                        className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
                     >
                         Confirm Selection ({selectedGroupMemberIds.length} Members)
                     </button>

@@ -38,7 +38,7 @@ export const NotificationAvatar = ({
 
   return (
     <div className={`relative ${size} shrink-0`}>
-      <div className={`w-full h-full rounded-xl flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
+      <div className={`w-full h-full rounded-md flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
         {initials}
       </div>
       {avatarSrc && !isFailed && (
@@ -47,9 +47,9 @@ export const NotificationAvatar = ({
           onLoad={handleLoad}
           onError={handleError}
           alt=""
-          className={`absolute inset-0 w-full h-full object-cover rounded-xl ${
+          className={`absolute inset-0 w-full h-full object-cover rounded-md ${
             isLoaded ? 'opacity-100' : 'opacity-0'
-          } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
+          } ${isLoaded ? '' : 'transition-opacity duration-100'}`}
         />
       )}
       <span className={`absolute ${badgeClass} rounded-full flex items-center justify-center text-white shadow-sm ${ringClass} ${visuals.badge}`}>

@@ -85,10 +85,10 @@ export const GlobalSearch = ({ user }) => {
       {/* Mobile Quick Search Button */}
       <button
         onClick={() => setShowSearch(!showSearch)}
-        className="md:hidden p-2 text-slate-500 hover:text-blue-600 tap-active bg-slate-100/80 rounded-xl h-9 w-9 flex items-center justify-center cursor-pointer"
+        className="md:hidden text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-md h-9 w-9 flex items-center justify-center cursor-pointer shadow-2xs transition-colors duration-100"
         aria-label="Search"
       >
-        <i className="ti ti-search text-lg"></i>
+        <i className="ti ti-search text-base"></i>
       </button>
 
       {/* Desktop Search Bar */}
@@ -103,7 +103,7 @@ export const GlobalSearch = ({ user }) => {
           }}
           onFocus={() => setShowSearch(true)}
           placeholder="Search everywhere... (Ctrl+K)"
-          className="pl-8 pr-8 py-1.5 bg-slate-100/90 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 w-60 transition-all focus:w-72 font-medium text-slate-700 outline-none"
+          className="h-9 pl-8 pr-8 bg-white border border-slate-200 rounded-md text-xs focus:border-blue-600 focus:ring-1 focus:ring-blue-600 w-60 focus:w-72 font-medium text-slate-700 outline-none shadow-2xs transition-all duration-100"
         />
         {searchQuery && (
           <button
@@ -122,15 +122,15 @@ export const GlobalSearch = ({ user }) => {
 
       {/* Search dropdown (Desktop & Mobile Modal) */}
       {showSearch && (
-        <div className="fixed inset-x-4 top-16 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50">
+        <div className="fixed inset-x-4 top-16 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-80 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden z-50">
           <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Quick Navigation</p>
             <button
               onClick={() => {
                 setShowSearch(false);
                 setSearchQuery('');
               }}
-              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              className="w-7 h-7 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100 flex items-center justify-center cursor-pointer transition-colors duration-100"
               title="Close Search (Esc)"
             >
               <i className="ti ti-x text-base"></i>
@@ -143,7 +143,7 @@ export const GlobalSearch = ({ user }) => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Type a page or tool..."
-              className="w-full px-3 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-800 outline-none"
+              className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 shadow-2xs transition-colors duration-100"
             />
           </div>
           <div className="max-h-64 overflow-y-auto">
@@ -156,12 +156,12 @@ export const GlobalSearch = ({ user }) => {
                     setShowSearch(false);
                     setSearchQuery('');
                   }}
-                  className="flex items-center gap-3 p-2.5 hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                  className="flex items-center gap-3 p-2.5 hover:bg-slate-50 transition-colors duration-100 cursor-pointer group"
                 >
-                  <div className="h-7 w-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <div className="h-7 w-7 bg-slate-100 text-slate-600 rounded-md flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors duration-100">
                     <i className={`ti ${item.icon} text-sm`}></i>
                   </div>
-                  <span className="text-xs font-bold text-slate-700">{item.label}</span>
+                  <span className="text-xs font-semibold text-slate-700">{item.label}</span>
                 </Link>
               ))
             ) : (
