@@ -938,13 +938,10 @@ export default function Login() {
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-xs text-slate-900">Google Authenticator (TOTP)</p>
-                                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-sm border border-emerald-200">
-                                                Zero Latency
-                                            </span>
+                                            <p className="font-semibold text-xs text-slate-900">Google Authenticator</p>
                                         </div>
                                         <p className="text-[11px] text-slate-500 truncate">
-                                            Instant 6-digit code from your phone app (Offline)
+                                            Instant 6-digit code from your phone app
                                         </p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
