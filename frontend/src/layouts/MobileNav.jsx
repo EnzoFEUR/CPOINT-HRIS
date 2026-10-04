@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
+import logoIcon from '../assets/logo-icon.png';
 
 export const MobileNav = ({
   user,
@@ -65,7 +66,7 @@ export const MobileNav = ({
                 title="More Apps"
               >
                 {sidebarOpen && (
-                  <div className="absolute inset-0 bg-purple-600 rounded-md shadow-2xs" />
+                  <div className="absolute inset-0 bg-blue-600 rounded-md shadow-2xs" />
                 )}
                 <i className={`ti ti-grid-dots text-lg relative z-10`} />
                 <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-medium">
@@ -178,14 +179,16 @@ export const MobileNav = ({
             </div>
 
             {/* PWA Install Banner */}
-            {isAdmin(user) && !isStandalone && (
+            {!isStandalone && (
               <div className="mb-4 p-3.5 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                    CP
-                  </div>
+                  <img 
+                    src={logoIcon} 
+                    alt="C-Point" 
+                    className="w-8 h-8 rounded-md object-contain bg-slate-800 p-1 shrink-0" 
+                  />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-white truncate">Install C-Point App</p>
+                    <p className="text-xs font-bold text-white truncate">Install C-Point HRIS</p>
                     <p className="text-[9px] text-blue-200 truncate">Add shortcut to home screen</p>
                   </div>
                 </div>
@@ -234,7 +237,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-slate-700/40 text-slate-300 flex items-center justify-center shrink-0">
                       <i className="ti ti-history text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -292,7 +295,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
                       <i className="ti ti-user-circle text-lg" />
                     </div>
                     <div className="min-w-0">

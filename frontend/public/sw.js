@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v2.8.0';
+const CACHE_VERSION = 'v2.9.0';
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
 
 // Pre-cached static assets
@@ -6,7 +6,13 @@ const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.png',
   '/favicon.svg',
+  '/logo.png',
+  '/logo-crop.png',
+  '/logo-icon.png',
+  '/logo-dark.png',
+  '/logo-icon-dark.png',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
   '/pwa-maskable.png',
@@ -142,7 +148,7 @@ self.addEventListener('push', (event) => {
     title: 'C-Point HRIS',
     body: 'You have a new update in your HR portal.',
     icon: '/pwa-192x192.png',
-    badge: '/favicon.svg',
+    badge: '/logo-icon.png',
     url: '/employee/dashboard',
     tag: 'cpoint-notification'
   };
@@ -158,7 +164,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body,
     icon: data.icon || '/pwa-192x192.png',
-    badge: data.badge || '/favicon.svg',
+    badge: data.badge || '/logo-icon.png',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/employee/dashboard',

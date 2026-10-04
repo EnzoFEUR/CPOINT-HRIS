@@ -64,18 +64,16 @@ class RootErrorBoundary extends Component {
           <div style={{
             width: '60px',
             height: '60px',
-            borderRadius: '18px',
-            background: '#2563eb',
+            borderRadius: '16px',
+            background: '#0f172a',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '22px',
-            fontWeight: '900',
             marginBottom: '20px',
-            boxShadow: '0 12px 30px rgba(37, 99, 235, 0.35)',
+            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.4)',
             border: '1px solid rgba(255, 255, 255, 0.15)'
           }}>
-            CP
+            <img src="/logo-icon.png" alt="C-Point" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>C-Point HRIS</h1>
           <p style={{ fontSize: '14px', color: '#94a3b8', maxWidth: '320px', marginBottom: '28px', lineHeight: '1.5' }}>

@@ -8,6 +8,7 @@ import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import ActionMenu from '../../../components/ui/ActionMenu';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
+import bannerCover from '../../../assets/employee-cover.jpg';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -659,7 +660,25 @@ export default function Show() {
 
                 {/* Profile banner */}
                 <div className="bg-slate-900 rounded-lg p-5 sm:p-6 border border-slate-800 text-white shadow-2xs relative">
-                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+                    {/* Cover photo. Phones: top band that fades downward. sm and up: right-side panel that fades leftward.
+                        Both resolve into the banner surface (#0f172a), so there is no seam at any width. */}
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-x-0 top-0 h-32 overflow-hidden rounded-t-[7px] sm:inset-y-0 sm:left-auto sm:right-0 sm:h-auto sm:w-2/5 sm:rounded-none sm:rounded-r-[7px] lg:w-[38%]"
+                    >
+                        <img
+                            src={bannerCover}
+                            alt=""
+                            decoding="async"
+                            draggable={false}
+                            className={`h-full w-full select-none object-cover object-[50%_16%] transition-[filter] duration-500 ${isTerminated ? 'grayscale' : 'saturate-[0.6]'}`}
+                        />
+                        <div className="absolute inset-0 bg-slate-900/50" />
+                        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(15,23,42,0)_0%,rgba(15,23,42,0.55)_60%,#0f172a_100%)] sm:hidden" />
+                        <div className="absolute inset-0 hidden bg-[linear-gradient(to_right,#0f172a_0%,rgba(15,23,42,0.92)_18%,rgba(15,23,42,0.4)_60%,rgba(15,23,42,0)_100%)] sm:block" />
+                    </div>
+
+                    <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
                         <div className={`relative h-24 w-24 sm:h-28 sm:w-28 shrink-0 transition-all duration-500 ${isInCooldown ? 'grayscale opacity-60' : ''}`}>
                             <EmployeeAvatar
                                 employee={employee}

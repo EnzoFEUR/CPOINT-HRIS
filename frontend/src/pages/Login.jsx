@@ -9,15 +9,74 @@ import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { broadcastAuthChange } from '../utils/authSession';
 import {
   Mail,
-  Lock,
   Loader2,
   ShieldCheck,
   ArrowRight,
   MessageSquare,
   ChevronRight,
   KeyRound,
-  Lightbulb
+  Lightbulb,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ShieldAlert
 } from 'lucide-react';
+import shoemakersBg from '../assets/shoemakers.jpg';
+import cpointLogo from '../assets/logo-crop.png';
+
+// Enterprise Anti-Brute-Force & Rate-Limiting Protection
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_SEC = 30;
+
+const getLockoutRemaining = () => {
+    try {
+        const raw = sessionStorage.getItem('cpoint_auth_lockout_until');
+        if (!raw) return 0;
+        const diff = Math.ceil((parseInt(raw, 10) - Date.now()) / 1000);
+        return diff > 0 ? diff : 0;
+    } catch {
+        return 0;
+    }
+};
+
+const recordFailedAttempt = () => {
+    try {
+        const attempts = parseInt(sessionStorage.getItem('cpoint_auth_failed_attempts') || '0', 10) + 1;
+        sessionStorage.setItem('cpoint_auth_failed_attempts', String(attempts));
+        if (attempts >= MAX_FAILED_ATTEMPTS) {
+            const until = Date.now() + (LOCKOUT_DURATION_SEC * 1000);
+            sessionStorage.setItem('cpoint_auth_lockout_until', String(until));
+            sessionStorage.removeItem('cpoint_auth_failed_attempts');
+            return LOCKOUT_DURATION_SEC;
+        }
+    } catch {}
+    return 0;
+};
+
+const clearFailedAttempts = () => {
+    try {
+        sessionStorage.removeItem('cpoint_auth_failed_attempts');
+        sessionStorage.removeItem('cpoint_auth_lockout_until');
+    } catch {}
+};
+
+// Sensitive Data Masking Helpers
+const maskPhone = (phone) => {
+    if (!phone) return '••••';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length <= 4) return '•••' + digits;
+    return `+63 ••• ••• •${digits.slice(-4)}`;
+};
+
+const maskEmail = (mail) => {
+    if (!mail) return '••••@••••';
+    const parts = mail.split('@');
+    if (parts.length < 2) return mail;
+    const name = parts[0];
+    const domain = parts[1];
+    if (name.length <= 2) return `${name}•••@${domain}`;
+    return `${name.slice(0, 2)}••••${name.slice(-1)}@${domain}`;
+};
 
 export default function Login() {
     // Restore any active 2FA recovery session from page reload or navigation
@@ -32,9 +91,14 @@ export default function Login() {
 
     const [email, setEmail] = useState(savedSession?.email || '');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+
+    // Security lockout countdown
+    const [lockoutTimer, setLockoutTimer] = useState(() => getLockoutRemaining());
+    const isLockedOut = lockoutTimer > 0;
 
     // Multi-step authentication: 1 = Credentials, 2 = Choose OTP, 3 = Verify OTP
     const [step, setStep] = useState(savedSession?.step || 1);
@@ -59,6 +123,59 @@ export default function Login() {
 
     const [timer, setTimer] = useState(() => getSecondsRemaining(savedSession?.expiresAt));
     const formattedTimer = `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}`;
+
+    // Dynamic document title alignment
+    useEffect(() => {
+        if (step === 1) {
+            document.title = 'Sign In | C-Point HRIS Enterprise';
+        } else if (step === 2) {
+            document.title = 'Two-Factor Authentication | C-Point HRIS Enterprise';
+        } else if (step === 3) {
+            document.title = 'Security Code Verification | C-Point HRIS Enterprise';
+        }
+    }, [step]);
+
+    // Active lockout countdown timer
+    useEffect(() => {
+        if (lockoutTimer <= 0) return;
+        const interval = setInterval(() => {
+            const rem = getLockoutRemaining();
+            setLockoutTimer(rem);
+            if (rem <= 0) clearInterval(interval);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [lockoutTimer]);
+
+    // Cross-tab real-time authentication synchronization
+    useEffect(() => {
+        const handleStorage = (e) => {
+            if (e.key === 'cpoint_auth_sync_event' && e.newValue) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    if (data.type === 'LOGIN' && data.user) {
+                        const u = data.user;
+                        if (isAdmin(u)) navigate('/');
+                        else if (isSecurity(u)) navigate('/scanner');
+                        else navigate('/employee/dashboard');
+                    }
+                } catch {}
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, [navigate]);
+
+    // Keyboard navigation (Escape key returns back cleanly)
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                if (step === 3) handleSwitchMethod();
+                else if (step === 2) handleReturnToLogin();
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [step]);
 
     // Real-time drift-free countdown across all steps and tab focus shifts
     useEffect(() => {
@@ -96,7 +213,7 @@ export default function Login() {
         let isMounted = true;
         const syncStatus = async () => {
             try {
-                const res = await fetchWithAuth(`/api/auth/otp/status?identifier=${encodeURIComponent(email)}`);
+                const res = await fetchWithAuth(`/api/auth/otp/status?identifier=${encodeURIComponent(email.trim().toLowerCase())}`);
                 const data = await res.json();
                 if (!isMounted || !res.ok || !data.success) return;
 
@@ -158,16 +275,40 @@ export default function Login() {
 
     const handleLogin = async (e) => {
         e.preventDefault();
+        if (isLockedOut) {
+            return setError(`Security backoff active. Please wait ${lockoutTimer} seconds.`);
+        }
+
+        const sanitizedEmail = email.trim().toLowerCase();
+        if (!sanitizedEmail) {
+            return setError("Please enter your corporate email.");
+        }
+        if (!password) {
+            return setError("Please enter your password.");
+        }
+
         setError(null);
         setLoading(true);
         
         try {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email: sanitizedEmail,
+                password
+            });
             
             if (authError) {
                 setLoading(false);
-                return setError(authError.message);
+                const remLockout = recordFailedAttempt();
+                if (remLockout > 0) {
+                    setLockoutTimer(remLockout);
+                    return setError(`Too many failed attempts. Security cooldown active for ${remLockout}s.`);
+                }
+                return setError("Invalid email or password. Please verify your credentials.");
             }
+
+            // Authentication succeeded: clear failed counter and zero-out password from memory
+            clearFailedAttempts();
+            setPassword('');
 
             if (authData?.user) {
                 const { data: employee, error: empError } = await supabase
@@ -222,7 +363,7 @@ export default function Login() {
 
                 try {
                     sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
-                        email,
+                        email: sanitizedEmail,
                         employeeData: empWithMeta,
                         step: 2,
                         otpMethod: hasExistingValidOtp ? (savedSession.otpMethod || '') : '',
@@ -269,11 +410,13 @@ export default function Login() {
         setLoading(true);
         setError(null);
         
+        const sanitizedEmail = email.trim().toLowerCase();
+
         try {
             const res = await fetchWithAuth('/api/auth/otp/send', {
                 method: 'POST',
                 body: JSON.stringify({
-                    email,
+                    email: sanitizedEmail,
                     phone: employeeData?.phone,
                     user_id: employeeData?.id,
                     method,
@@ -318,7 +461,7 @@ export default function Login() {
 
             try {
                 sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
-                    email,
+                    email: sanitizedEmail,
                     employeeData,
                     step: 3,
                     otpMethod: method,
@@ -334,85 +477,8 @@ export default function Login() {
         }
     };
 
-    const handleOtpChange = (index, e) => {
-        const rawValue = e.target.value;
-
-        // Support mobile SMS autofill and paste
-        if (rawValue.length > 1) {
-            const digits = rawValue.replace(/\D/g, '').slice(0, 6).split('');
-            if (digits.length > 0) {
-                const newOtp = [...otpCode];
-                digits.forEach((d, i) => {
-                    if (index + i < 6) newOtp[index + i] = d;
-                });
-                setOtpCode(newOtp);
-                const nextIndex = Math.min(index + digits.length, 5);
-                const nextElem = document.getElementById(`otp-${nextIndex}`);
-                if (nextElem) {
-                    nextElem.focus();
-                    nextElem.select();
-                }
-                return;
-            }
-        }
-
-        const char = rawValue.slice(-1);
-        if (char && !/^[0-9]$/.test(char)) return;
-
-        const newOtp = [...otpCode];
-        newOtp[index] = char;
-        setOtpCode(newOtp);
-
-        if (char && index < 5) {
-            const nextElem = document.getElementById(`otp-${index + 1}`);
-            if (nextElem) {
-                nextElem.focus();
-                nextElem.select();
-            }
-        }
-    };
-
-    const handleOtpKeyDown = (index, e) => {
-        if (e.key === 'Backspace') {
-            if (!otpCode[index] && index > 0) {
-                const newOtp = [...otpCode];
-                newOtp[index - 1] = '';
-                setOtpCode(newOtp);
-                const prevElem = document.getElementById(`otp-${index - 1}`);
-                if (prevElem) {
-                    prevElem.focus();
-                    prevElem.select();
-                }
-            }
-        } else if (e.key === 'ArrowLeft' && index > 0) {
-            document.getElementById(`otp-${index - 1}`)?.focus();
-        } else if (e.key === 'ArrowRight' && index < 5) {
-            document.getElementById(`otp-${index + 1}`)?.focus();
-        }
-    };
-
-    const handleOtpPaste = (e) => {
-        e.preventDefault();
-        const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-        if (!pastedData) return;
-
-        const digits = pastedData.split('');
-        const newOtp = ['', '', '', '', '', ''];
-        digits.forEach((d, i) => {
-            if (i < 6) newOtp[i] = d;
-        });
-        setOtpCode(newOtp);
-        const focusIdx = Math.min(digits.length - 1, 5);
-        const target = document.getElementById(`otp-${focusIdx}`);
-        if (target) {
-            target.focus();
-            target.select();
-        }
-    };
-
-    const verifyOtp = async (e) => {
-        e.preventDefault();
-        const enteredOtp = otpCode.join('');
+    const verifyOtpDirect = async (codeToVerify) => {
+        const enteredOtp = typeof codeToVerify === 'string' ? codeToVerify : otpCode.join('');
         if (enteredOtp.length < 6) {
             return setError("Please enter the complete 6-digit code.");
         }
@@ -420,13 +486,15 @@ export default function Login() {
         setLoading(true);
         setError(null);
 
+        const sanitizedEmail = email.trim().toLowerCase();
+
         try {
             const res = await fetchWithAuth('/api/auth/otp/verify', {
                 method: 'POST',
                 body: JSON.stringify({
-                    email,
+                    email: sanitizedEmail,
                     phone: employeeData?.phone,
-                    identifier: otpMethod === 'sms' ? employeeData?.phone : email,
+                    identifier: otpMethod === 'sms' ? employeeData?.phone : sanitizedEmail,
                     otp: enteredOtp,
                     purpose: 'login_2fa'
                 })
@@ -511,295 +579,484 @@ export default function Login() {
         }
     };
 
+    const verifyOtp = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        verifyOtpDirect(otpCode.join(''));
+    };
+
+    const handleOtpChange = (index, e) => {
+        const rawValue = e.target.value;
+
+        // Support mobile SMS autofill and paste
+        if (rawValue.length > 1) {
+            const digits = rawValue.replace(/\D/g, '').slice(0, 6).split('');
+            if (digits.length > 0) {
+                const newOtp = [...otpCode];
+                digits.forEach((d, i) => {
+                    if (index + i < 6) newOtp[index + i] = d;
+                });
+                setOtpCode(newOtp);
+                const nextIndex = Math.min(index + digits.length, 5);
+                const nextElem = document.getElementById(`otp-${nextIndex}`);
+                if (nextElem) {
+                    nextElem.focus();
+                    nextElem.select();
+                }
+                // Low-latency auto-submit when all 6 digits are complete
+                if (newOtp.join('').length === 6) {
+                    verifyOtpDirect(newOtp.join(''));
+                }
+                return;
+            }
+        }
+
+        const char = rawValue.slice(-1);
+        if (char && !/^[0-9]$/.test(char)) return;
+
+        const newOtp = [...otpCode];
+        newOtp[index] = char;
+        setOtpCode(newOtp);
+
+        if (char && index < 5) {
+            const nextElem = document.getElementById(`otp-${index + 1}`);
+            if (nextElem) {
+                nextElem.focus();
+                nextElem.select();
+            }
+        }
+
+        // Low-latency auto-submit upon entering final 6th digit
+        if (char && index === 5 && newOtp.join('').length === 6) {
+            verifyOtpDirect(newOtp.join(''));
+        }
+    };
+
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace') {
+            if (!otpCode[index] && index > 0) {
+                const newOtp = [...otpCode];
+                newOtp[index - 1] = '';
+                setOtpCode(newOtp);
+                const prevElem = document.getElementById(`otp-${index - 1}`);
+                if (prevElem) {
+                    prevElem.focus();
+                    prevElem.select();
+                }
+            }
+        } else if (e.key === 'ArrowLeft' && index > 0) {
+            document.getElementById(`otp-${index - 1}`)?.focus();
+        } else if (e.key === 'ArrowRight' && index < 5) {
+            document.getElementById(`otp-${index + 1}`)?.focus();
+        }
+    };
+
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!pastedData) return;
+
+        const digits = pastedData.split('');
+        const newOtp = ['', '', '', '', '', ''];
+        digits.forEach((d, i) => {
+            if (i < 6) newOtp[i] = d;
+        });
+        setOtpCode(newOtp);
+        const focusIdx = Math.min(digits.length - 1, 5);
+        const target = document.getElementById(`otp-${focusIdx}`);
+        if (target) {
+            target.focus();
+            target.select();
+        }
+        // Zero-latency auto verification on paste
+        if (newOtp.join('').length === 6) {
+            verifyOtpDirect(newOtp.join(''));
+        }
+    };
+
     return (
-        <main className="h-[100dvh] w-screen flex flex-col justify-between items-center bg-slate-50 relative overflow-hidden select-none p-4 sm:p-6">
-            {/* Top branding spacer */}
-            <div className="pt-2 sm:pt-4" />
+        <main className="min-h-[100dvh] w-full bg-slate-50 text-slate-900 flex items-center justify-center p-3 sm:p-6 lg:p-10 select-none overflow-x-hidden relative">
+            {/* Ambient luxury subtle lighting */}
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-slate-200/40 rounded-full blur-[128px] pointer-events-none" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-[128px] pointer-events-none" />
 
-            {/* Login Card */}
-            <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-lg shadow-xl p-6 sm:p-7">
-                {step === 1 && (
-                    <div>
-                        <div className="text-center mb-5 sm:mb-6">
-                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white shadow-2xs mb-2.5">
-                                <span className="font-bold text-sm tracking-tight">CP</span>
-                            </div>
-                            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Welcome to C-Point</h1>
-                            <p className="text-slate-500 text-xs mt-0.5">Sign in to your workforce account</p>
+            {/* Main Master Container (Aligned to System Corner Radius: rounded-xl) */}
+            <div className="relative z-10 w-full max-w-[920px] bg-white border border-slate-200 rounded-xl p-4 sm:p-6 lg:p-7 shadow-xl flex flex-col lg:flex-row items-stretch gap-6 lg:gap-8">
+                
+                {/* Left Hero Card with Shoemakers Background & Blue Gradient Overlay */}
+                <div 
+                    className="w-full lg:w-[45%] rounded-lg relative overflow-hidden flex flex-col justify-center items-center text-center p-8 sm:p-10 shadow-sm min-h-[260px] lg:min-h-[500px] bg-slate-950"
+                >
+                    {/* Background Workforce Image */}
+                    <img 
+                        src={shoemakersBg} 
+                        alt="C-Point Workforce" 
+                        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none"
+                    />
+
+                    {/* Blue Gradient Overlays (Multi-layered for deep, rich enterprise blue tone & contrast) */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-blue-950/75 to-blue-900/60 mix-blend-multiply pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-blue-950/50 to-slate-950/85 pointer-events-none" />
+
+                    {/* Subtle Blue Glow Highlights */}
+                    <div className="absolute -top-20 -right-20 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute top-1/2 -left-20 w-64 h-64 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+
+                    {/* Center Title and Description */}
+                    <div className="relative z-10 w-full max-w-[320px] flex flex-col items-center">
+                        <div className="mb-6 flex items-center justify-center">
+                            <img 
+                                src={cpointLogo} 
+                                alt="C-Point" 
+                                className="h-10 sm:h-12 w-auto max-w-[220px] object-contain drop-shadow-md select-none pointer-events-none"
+                            />
                         </div>
-
-                        <form onSubmit={handleLogin} className="space-y-3.5">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">Workplace Email / Employee ID</label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                        <Mail className="w-4 h-4 text-slate-400" />
-                                    </div>
-                                    <input 
-                                        type="email" 
-                                        value={email} 
-                                        onChange={e => setEmail(e.target.value)} 
-                                        required 
-                                        autoFocus
-                                        className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
-                                        placeholder="name@company.com" 
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <div className="flex items-center justify-between mb-1 ml-0.5">
-                                    <label className="block text-xs font-semibold text-slate-700">Password</label>
-                                    <Link 
-                                        to="/forgot-password" 
-                                        className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors duration-100"
-                                    >
-                                        Forgot Password?
-                                    </Link>
-                                </div>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                        <Lock className="w-4 h-4 text-slate-400" />
-                                    </div>
-                                    <input 
-                                        type="password" 
-                                        value={password} 
-                                        onChange={e => setPassword(e.target.value)} 
-                                        required 
-                                        className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
-                                        placeholder="••••••••" 
-                                    />
-                                </div>
-                                {error && <p className="text-rose-600 text-xs mt-1.5 font-medium ml-0.5">{error}</p>}
-                            </div>
-
-                            <button 
-                                type="submit" 
-                                disabled={loading}
-                                className="w-full h-10 mt-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer"
-                            >
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        <span>Authenticating...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>Login</span>
-                                    </>
-                                )}
-                            </button>
-                        </form>
+                        <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight drop-shadow-sm">
+                            Get Started with Us
+                        </h2>
+                        <p className="text-xs sm:text-sm text-blue-100/90 max-w-[260px] mx-auto mt-2.5 leading-relaxed drop-shadow-xs font-normal">
+                            Complete the steps to sign in to your workspace
+                        </p>
                     </div>
-                )}
+                </div>
 
-                {step === 2 && (
-                    <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 text-slate-800 border border-slate-200 mb-2.5">
-                            <ShieldCheck className="w-5 h-5 text-slate-800" />
-                        </div>
-                        <h2 className="text-lg font-bold text-slate-900 tracking-tight">Two-Factor Authentication</h2>
-                        <p className="text-slate-500 text-xs mt-0.5 mb-3.5 sm:mb-4">Choose where to receive your security code</p>
-
-                        {/* Direct Jump to Active Verification if code is already in transit / valid (< 5 mins) */}
-                        {timer > 0 && otpMethod && (
-                            <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs font-semibold text-slate-900 flex items-center gap-2">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-700"></span>
-                                        </span>
-                                        <span>Code active via {otpMethod === 'sms' ? 'SMS' : 'Email'}</span>
-                                    </span>
-                                    <span className="text-[11px] font-mono font-semibold text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
-                                        {formattedTimer}
-                                    </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
-                                    Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
+                {/* Right Form Container (Clean Light Mode) */}
+                <div className="w-full lg:w-[55%] flex flex-col justify-center px-2 sm:px-6 lg:px-7 py-3 sm:py-5">
+                    {step === 1 && (
+                        <div>
+                            {/* Header */}
+                            <div className="text-center mb-6">
+                                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                                    Sign In Account
+                                </h1>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Enter your corporate credentials to access your account
                                 </p>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setStep(3);
-                                        try {
-                                            const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
-                                            sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
-                                        } catch {}
-                                    }}
-                                    className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
-                                >
-                                    <span>Enter Existing Code</span>
-                                    <ArrowRight className="w-3.5 h-3.5" />
-                                </button>
                             </div>
-                        )}
 
-                        <div className="space-y-2">
-                            <button 
-                                onClick={() => sendOtp('sms')} 
-                                className={`w-full p-2.5 bg-white border rounded-md transition-colors duration-100 flex items-center text-left gap-2.5 cursor-pointer ${
-                                    otpMethod === 'sms' && timer > 0 
-                                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30' 
-                                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                                }`}
-                            >
-                                <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
-                                    <MessageSquare className="w-4 h-4 text-slate-700" />
+                            {/* Security Lockout Banner */}
+                            {isLockedOut && (
+                                <div role="alert" className="mb-4 p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center gap-2 shadow-2xs">
+                                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600" />
+                                    <span>Too many failed login attempts. Security lock active for {lockoutTimer}s.</span>
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between">
-                                        <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
-                                        {otpMethod === 'sms' && timer > 0 && (
-                                            <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
-                                                Active ({formattedTimer})
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-[11px] text-slate-500 truncate">Mobile ending in ***{employeeData?.phone ? employeeData.phone.slice(-3) : 'XX'}</p>
-                                </div>
-                                <ChevronRight className="w-4 h-4 ml-1 text-slate-400 shrink-0" />
-                            </button>
+                            )}
 
-                            <button 
-                                onClick={() => sendOtp('email')} 
-                                className={`w-full p-2.5 bg-white border rounded-md transition-colors duration-100 flex items-center text-left gap-2.5 cursor-pointer ${
-                                    otpMethod === 'email' && timer > 0 
-                                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30' 
-                                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                                }`}
-                            >
-                                <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
-                                    <Mail className="w-4 h-4 text-slate-700" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between">
-                                        <p className="font-semibold text-xs text-slate-900">Send via Email</p>
-                                        {otpMethod === 'email' && timer > 0 && (
-                                            <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
-                                                Active ({formattedTimer})
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-[11px] text-slate-500 truncate">{email}</p>
-                                </div>
-                                <ChevronRight className="w-4 h-4 ml-1 text-slate-400 shrink-0" />
-                            </button>
-                        </div>
-
-                        <button 
-                            type="button"
-                            onClick={handleReturnToLogin} 
-                            className="mt-4 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors duration-100 cursor-pointer"
-                        >
-                            Return to Login
-                        </button>
-                    </div>
-                )}
-
-                {step === 3 && (
-                    <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 text-slate-800 border border-slate-200 mb-2.5">
-                            <KeyRound className="w-5 h-5 text-slate-800" />
-                        </div>
-                        <h2 className="text-lg font-bold text-slate-900 tracking-tight">Security Code</h2>
-                        <p className="text-slate-500 text-xs mt-0.5 mb-4">Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}</p>
-
-                        <form onSubmit={verifyOtp}>
-                            <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
-                                {otpCode.map((digit, idx) => (
-                                    <input 
-                                        key={idx}
-                                        id={`otp-${idx}`}
-                                        type="text"
-                                        inputMode="numeric"
-                                        pattern="[0-9]*"
-                                        autoComplete={idx === 0 ? "one-time-code" : "off"}
-                                        value={digit}
-                                        onFocus={(e) => e.target.select()}
-                                        onChange={(e) => handleOtpChange(idx, e)}
-                                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                                        onPaste={handleOtpPaste}
-                                        className="w-9 h-11 sm:w-10 sm:h-11 text-center text-base sm:text-lg font-bold text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs font-mono"
-                                        autoFocus={idx === 0}
+                            {/* Credentials Form */}
+                            <form onSubmit={handleLogin} className="space-y-3.5">
+                                <div>
+                                    <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">
+                                        Workplace Email
+                                    </label>
+                                    <input
+                                        id="login-email"
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required
+                                        autoFocus
+                                        autoComplete="username"
+                                        placeholder="corporate.email@company.com"
+                                        className="w-full h-10 bg-white border border-slate-300 rounded-md px-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors shadow-2xs"
                                     />
-                                ))}
-                            </div>
+                                </div>
 
-                            {generatedOtp && (
-                                <div className="mb-3">
-                                    <button 
+                                <div>
+                                    <div className="flex items-center justify-between mb-1 ml-0.5">
+                                        <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700">
+                                            Password
+                                        </label>
+                                        <Link
+                                            to="/forgot-password"
+                                            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                                        >
+                                            Forgot password?
+                                        </Link>
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            id="login-password"
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            required
+                                            autoComplete="current-password"
+                                            placeholder="Enter your password"
+                                            className="w-full h-10 bg-white border border-slate-300 rounded-md pl-3 pr-10 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors shadow-2xs"
+                                        />
+                                        <button
+                                            type="button"
+                                            tabIndex={-1}
+                                            onClick={() => setShowPassword(prev => !prev)}
+                                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                    {error && (
+                                        <div role="alert" className="mt-2 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 shadow-2xs">
+                                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                            <span>{error}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading || isLockedOut}
+                                    className="w-full h-10 mt-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                            <span>Authenticating...</span>
+                                        </>
+                                    ) : isLockedOut ? (
+                                        <span>Security Locked ({lockoutTimer}s)</span>
+                                    ) : (
+                                        <span>Sign In</span>
+                                    )}
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div className="text-center">
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-800 mb-2.5 shadow-2xs">
+                                <ShieldCheck className="w-5 h-5 text-slate-800" />
+                            </div>
+                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                                Two-Factor Authentication
+                            </h2>
+                            <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
+                                Choose where to receive your 6-digit security code
+                            </p>
+
+                            {/* Active code banner */}
+                            {timer > 0 && otpMethod && (
+                                <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs font-semibold text-slate-900 flex items-center gap-2">
+                                            <span className="relative flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-700"></span>
+                                            </span>
+                                            <span>Code active via {otpMethod === 'sms' ? 'SMS' : 'Email'}</span>
+                                        </span>
+                                        <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
+                                            {formattedTimer}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
+                                        Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
+                                    </p>
+                                    <button
                                         type="button"
                                         onClick={() => {
-                                             const digits = generatedOtp.split('');
-                                             setOtpCode(digits);
-                                             document.getElementById('otp-5')?.focus();
+                                            setStep(3);
+                                            try {
+                                                const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                                                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
+                                            } catch {}
                                         }}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-md border border-amber-300 transition-colors duration-100 cursor-pointer shadow-2xs w-full justify-between"
+                                        className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                                     >
-                                        <div className="flex items-center gap-2">
-                                             <Lightbulb className="w-4 h-4 text-amber-600" />
-                                             <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
-                                        </div>
-                                        <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded-sm text-amber-900">Autofill</span>
+                                        <span>Enter Existing Code</span>
+                                        <ArrowRight className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
                             )}
 
-                            {error && <p className="text-rose-600 text-xs mb-3 font-medium">{error}</p>}
-                            
-                            <button 
-                                type="submit" 
-                                className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs cursor-pointer"
-                            >
-                                Verify & Proceed
-                            </button>
-                        </form>
-                        
-                        <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
-                            {timer > 0 ? (
-                                <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
-                            ) : (
-                                <span className="text-rose-600 font-semibold">Code expired.</span>
-                            )}
-                            <span className="mx-1 text-slate-300">•</span>
-                            <button 
-                                type="button"
-                                disabled={loading || isCooldown}
-                                onClick={() => sendOtp(otpMethod, true)} 
-                                className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                            >
-                                {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
-                            </button>
-                        </p>
+                            {/* Method Selection Cards */}
+                            <div className="space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={() => sendOtp('sms')}
+                                    className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs ${
+                                        otpMethod === 'sms' && timer > 0
+                                            ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                    }`}
+                                >
+                                    <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
+                                        <MessageSquare className="w-4 h-4 text-slate-700" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
+                                            {otpMethod === 'sms' && timer > 0 && (
+                                                <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
+                                                    Active ({formattedTimer})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 truncate">
+                                            Mobile ending in {maskPhone(employeeData?.phone)}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                </button>
 
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
-                            <button 
+                                <button
+                                    type="button"
+                                    onClick={() => sendOtp('email')}
+                                    className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs ${
+                                        otpMethod === 'email' && timer > 0
+                                            ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                    }`}
+                                >
+                                    <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
+                                        <Mail className="w-4 h-4 text-slate-700" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-xs text-slate-900">Send via Email</p>
+                                            {otpMethod === 'email' && timer > 0 && (
+                                                <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
+                                                    Active ({formattedTimer})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 truncate">{maskEmail(email)}</p>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                </button>
+                            </div>
+
+                            {error && (
+                                <div role="alert" className="mt-2.5 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            <button
                                 type="button"
-                                onClick={handleSwitchMethod} 
-                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                            >
-                                Switch Method
-                            </button>
-                            <span className="text-slate-200 text-xs">•</span>
-                            <button 
-                                type="button"
-                                onClick={handleReturnToLogin} 
-                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                onClick={handleReturnToLogin}
+                                className="mt-4 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                             >
                                 Return to Login
                             </button>
                         </div>
-                    </div>
-                )}
-            </div>
+                    )}
 
-            {/* Footer */}
-            <div className="pb-2 text-center pointer-events-none">
-                <p className="text-slate-400 text-[10px] font-semibold tracking-wider uppercase"> </p>
+                    {step === 3 && (
+                        <div className="text-center">
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-800 mb-2.5 shadow-2xs">
+                                <KeyRound className="w-5 h-5 text-slate-800" />
+                            </div>
+                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                                Security Code
+                            </h2>
+                            <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
+                                Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}
+                            </p>
+
+                            <form onSubmit={verifyOtp}>
+                                <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
+                                    {otpCode.map((digit, idx) => (
+                                        <input
+                                            key={idx}
+                                            id={`otp-${idx}`}
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            autoComplete={idx === 0 ? "one-time-code" : "off"}
+                                            value={digit}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => handleOtpChange(idx, e)}
+                                            onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                                            onPaste={handleOtpPaste}
+                                            className="w-9 h-11 sm:w-10 sm:h-11 text-center text-base sm:text-lg font-bold text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-slate-500 transition-colors shadow-2xs font-mono"
+                                            autoFocus={idx === 0}
+                                        />
+                                    ))}
+                                </div>
+
+                                {generatedOtp && (
+                                    <div className="mb-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const digits = generatedOtp.split('');
+                                                setOtpCode(digits);
+                                                document.getElementById('otp-5')?.focus();
+                                                verifyOtpDirect(generatedOtp);
+                                            }}
+                                            className="inline-flex items-center justify-between w-full px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-md border border-amber-300 transition-colors cursor-pointer shadow-2xs"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Lightbulb className="w-4 h-4 text-amber-600" />
+                                                <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
+                                            </div>
+                                            <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded-sm text-amber-900">Autofill</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {error && (
+                                    <div role="alert" className="mb-3 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                        <span>{error}</span>
+                                    </div>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                            <span>Verifying...</span>
+                                        </>
+                                    ) : (
+                                        <span>Verify & Proceed</span>
+                                    )}
+                                </button>
+                            </form>
+
+                            <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
+                                {timer > 0 ? (
+                                    <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
+                                ) : (
+                                    <span className="text-rose-600 font-semibold">Code expired.</span>
+                                )}
+                                <span className="mx-1 text-slate-300">•</span>
+                                <button
+                                    type="button"
+                                    disabled={loading || isCooldown}
+                                    onClick={() => sendOtp(otpMethod, true)}
+                                    className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                >
+                                    {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
+                                </button>
+                            </p>
+
+                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleSwitchMethod}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    Switch Method
+                                </button>
+                                <span className="text-slate-200 text-xs">•</span>
+                                <button
+                                    type="button"
+                                    onClick={handleReturnToLogin}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    Return to Login
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </main>
     );
 }
-

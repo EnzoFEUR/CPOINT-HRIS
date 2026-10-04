@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { API_BASE_URL } from '../utils/api';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import toast from 'react-hot-toast';
+import logoDark from '../assets/logo-dark.png';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -349,15 +350,19 @@ export default function ForgotPassword() {
       <div className="pt-2 sm:pt-4" />
 
       {/* Corporate Auth Card (Aligned with Login.jsx) */}
-      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-lg shadow-xl p-6 sm:p-7">
+      <div className="relative z-10 w-full max-w-[390px] bg-white border border-slate-200 rounded-xl shadow-xl p-6 sm:p-7">
         
         {/* Header */}
-        <div className="text-center mb-5 sm:mb-6">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white shadow-2xs mb-2.5">
-            <i className="ti ti-shield-lock text-lg" />
+        <div className="text-center mb-6">
+          <div className="flex items-center justify-center mb-4">
+            <img 
+              src={logoDark} 
+              alt="C-Point HRIS" 
+              className="h-10 sm:h-11 w-auto max-w-[200px] object-contain select-none" 
+            />
           </div>
           <h1 className="text-lg font-bold text-slate-900 tracking-tight">Account Recovery</h1>
-          <p className="text-slate-500 text-xs mt-0.5">Verify your identity to reset your password</p>
+          <p className="text-slate-500 text-xs mt-1">Verify your identity to reset your password</p>
         </div>
 
         {/* Global Error Banner */}
