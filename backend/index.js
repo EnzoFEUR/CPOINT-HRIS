@@ -20,6 +20,7 @@ import pushRoutes from './routes/push.js';
 import aiRoutes from './routes/ai.js';
 import employeeDocumentRoutes from './routes/employeeDocuments.js';
 import otpRoutes from './routes/otp.js';
+import totpRoutes from './routes/totp.js';
 import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
@@ -76,6 +77,7 @@ app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/ai', verifyToken, aiRoutes);
 app.use('/api/employee-documents', verifyToken, employeeDocumentRoutes);
 app.use('/api/auth/otp', otpRoutes);
+app.use('/api/auth/totp', totpRoutes);
 app.use('/api/auth/security', authSecurityRoutes);
 app.use('/api/production-groups', verifyToken, productionGroupRoutes);
 

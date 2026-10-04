@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
+import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache } from '../../utils/disciplinaryCache';
 
@@ -36,6 +37,162 @@ export default function MyProfile() {
         window.addEventListener('storage', handleSync);
         return () => window.removeEventListener('storage', handleSync);
     }, []);
+
+    // Two-Factor Authentication (TOTP) state
+    const [totpStatus, setTotpStatus] = useState(() => {
+        try {
+            const raw = localStorage.getItem('user');
+            if (raw && raw !== 'undefined') {
+                const parsed = JSON.parse(raw);
+                return {
+                    enabled: Boolean(parsed?.totp_enabled || parsed?.has_totp),
+                    loading: false,
+                    remainingCodes: parsed?.totp_backup_codes_count || 0
+                };
+            }
+        } catch {}
+        return { enabled: false, loading: false, remainingCodes: 0 };
+    });
+    const [showTotpModal, setShowTotpModal] = useState(false);
+    const [showReconfigureModal, setShowReconfigureModal] = useState(false);
+    const [showDisableModal, setShowDisableModal] = useState(false);
+    const [disableCode, setDisableCode] = useState('');
+    const [totpSetupData, setTotpSetupData] = useState(null);
+    const [totpVerifyCode, setTotpVerifyCode] = useState('');
+    const [totpSubmitting, setTotpSubmitting] = useState(false);
+    const [totpBackupCodes, setTotpBackupCodes] = useState([]);
+    const [totpStep, setTotpStep] = useState(1); // 1 = QR & Code, 2 = Backup Codes
+
+    const fetchTotpStatus = async (uid) => {
+        try {
+            const targetId = uid || storedUser?.id || storedUser?.email || '';
+            const url = targetId
+                ? `/api/auth/totp/status?identifier=${encodeURIComponent(targetId)}`
+                : '/api/auth/totp/status';
+            const res = await fetchWithAuth(url);
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setTotpStatus({
+                    enabled: Boolean(data.enabled),
+                    loading: false,
+                    remainingCodes: data.backupCodesRemaining || 0
+                });
+
+                // Synchronize to stored user for 0ms future reloads
+                try {
+                    const raw = localStorage.getItem('user');
+                    if (raw && raw !== 'undefined') {
+                        const parsed = JSON.parse(raw);
+                        parsed.totp_enabled = Boolean(data.enabled);
+                        parsed.has_totp = Boolean(data.enabled);
+                        parsed.totp_backup_codes_count = data.backupCodesRemaining || 0;
+                        localStorage.setItem('user', JSON.stringify(parsed));
+                    }
+                } catch {}
+            } else {
+                setTotpStatus((prev) => ({ ...prev, loading: false }));
+            }
+        } catch (_) {
+            setTotpStatus((prev) => ({ ...prev, loading: false }));
+        }
+    };
+
+    // Auto-fetch TOTP status on component mount and whenever user identity changes
+    useEffect(() => {
+        fetchTotpStatus(storedUser?.id || storedUser?.email);
+    }, [storedUser?.id, storedUser?.email]);
+
+    const executeTotpSetup = async () => {
+        setTotpSubmitting(true);
+        try {
+            const res = await fetchWithAuth('/api/auth/totp/setup', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to start authenticator setup.');
+            }
+            setTotpSetupData(data);
+            setTotpVerifyCode('');
+            setTotpStep(1);
+            setShowTotpModal(true);
+        } catch (err) {
+            toast.error(err.message || 'Setup error');
+        } finally {
+            setTotpSubmitting(false);
+        }
+    };
+
+    const handleStartTotpSetup = () => {
+        if (totpStatus.enabled) {
+            setShowReconfigureModal(true);
+        } else {
+            executeTotpSetup();
+        }
+    };
+
+    const handleConfirmTotp = async (e) => {
+        e?.preventDefault();
+        if (totpVerifyCode.trim().length !== 6) {
+            toast.error('Please enter the 6-digit confirmation code.');
+            return;
+        }
+        setTotpSubmitting(true);
+        try {
+            const res = await fetchWithAuth('/api/auth/totp/enable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: totpVerifyCode.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to verify confirmation code.');
+            }
+            toast.success('Google Authenticator 2FA activated!');
+            setTotpBackupCodes(data.backupCodes || []);
+            setTotpStep(2);
+            fetchTotpStatus(storedUser?.id || storedUser?.email);
+        } catch (err) {
+            toast.error(err.message || 'Invalid code.');
+        } finally {
+            setTotpSubmitting(false);
+        }
+    };
+
+    const handleConfirmDisableTotp = async (e) => {
+        e?.preventDefault();
+        setTotpSubmitting(true);
+        try {
+            const payload = disableCode.trim() ? { code: disableCode.trim() } : {};
+            const res = await fetchWithAuth('/api/auth/totp/disable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to disable 2FA.');
+            }
+            toast.success('Authenticator 2FA has been disabled.');
+            setShowDisableModal(false);
+            setDisableCode('');
+            fetchTotpStatus(storedUser?.id || storedUser?.email);
+        } catch (err) {
+            toast.error(err.message || 'Error disabling 2FA.');
+        } finally {
+            setTotpSubmitting(false);
+        }
+    };
+
+    const handleDownloadBackupCodes = () => {
+        const content = `C-POINT HRIS EMERGENCY RECOVERY BACKUP CODES\nGenerated: ${new Date().toLocaleString()}\nAccount: ${storedUser?.email || 'Admin'}\n\nEach code can only be used ONCE.\n\n${totpBackupCodes.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nKeep these codes in a secure, confidential place.`;
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `cpoint-backup-codes-${storedUser?.company_id || 'recovery'}.txt`;
+        link.click();
+        URL.revokeObjectURL(url);
+        toast.success('Backup codes downloaded.');
+    };
 
     const initialUser = useMemo(() => {
         if (!storedUser) return null;
@@ -861,6 +1018,87 @@ export default function MyProfile() {
                 )}
             </div>
 
+            {/* Two-Factor Authentication (Google Authenticator TOTP) */}
+            <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                        <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
+                            totpStatus.enabled 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                            <i className="ti ti-shield-lock text-lg" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Two-Factor Authentication (2FA)</h3>
+                            <p className="text-[11px] text-slate-500">Hardware &amp; app-based TOTP (Google Authenticator, Microsoft Authenticator, 1Password)</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
+                            totpStatus.enabled 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}>
+                            <i className={`ti ${totpStatus.enabled ? 'ti-circle-check' : 'ti-alert-circle'}`} />
+                            {totpStatus.enabled ? 'Enabled & Active' : 'Not Configured'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-md bg-slate-50 border border-slate-200 text-xs">
+                    <div>
+                        <p className="font-bold text-slate-900">
+                            {totpStatus.enabled 
+                                ? 'Your account is secured with Time-Based One-Time Passwords (TOTP).'
+                                : 'Protect your administrative and workplace access with instant, offline 2FA codes.'}
+                        </p>
+                        <p className="text-slate-500 mt-0.5 leading-relaxed">
+                            {totpStatus.enabled
+                                ? `Active protection replaces SMS delays with instant 30-second rotating cryptographic tokens. ${totpStatus.remainingCodes || 0} backup codes available.`
+                                : 'Replaces SMS verification. Eliminates telco delivery delays, network carrier fees, and SIM-swapping risks.'}
+                        </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                        {totpStatus.enabled ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReconfigureModal(true)}
+                                    disabled={totpSubmitting}
+                                    className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
+                                >
+                                    Reconfigure
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDisableCode('');
+                                        setShowDisableModal(true);
+                                    }}
+                                    disabled={totpSubmitting}
+                                    className="h-8 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
+                                >
+                                    Disable 2FA
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleStartTotpSetup}
+                                disabled={totpSubmitting}
+                                className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold text-xs shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                                <i className="ti ti-qrcode text-sm" />
+                                <span>Setup Authenticator</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             {/* Compliance & Disciplinary Standing */}
             <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -1311,6 +1549,290 @@ export default function MyProfile() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Authenticator Setup & Backup Codes Modal */}
+            {showTotpModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-9 w-9 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+                                    <i className="ti ti-shield-lock text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">
+                                        {totpStep === 1 ? 'Configure Google Authenticator' : 'Emergency Backup Codes'}
+                                    </h3>
+                                    <p className="text-[11px] text-slate-500">
+                                        {totpStep === 1 ? 'Scan QR code with your authenticator app' : 'Store these codes in a secure location'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowTotpModal(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        {totpStep === 1 && totpSetupData && (
+                            <div className="p-5 sm:p-6 space-y-4">
+                                <div className="flex justify-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <QRCode value={totpSetupData.uri} size={160} />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="block text-[11px] font-semibold text-slate-600">
+                                        Secret Key (Manual Entry)
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={totpSetupData.secret}
+                                            className="w-full h-8 px-2.5 bg-slate-100 border border-slate-200 rounded-md text-xs font-mono font-semibold text-slate-800 select-all"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(totpSetupData.secret);
+                                                toast.success('Secret key copied to clipboard');
+                                            }}
+                                            className="h-8 px-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md shadow-2xs shrink-0 cursor-pointer"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <form onSubmit={handleConfirmTotp} className="space-y-3 pt-2 border-t border-slate-100">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-800 mb-1">
+                                            Enter 6-digit confirmation code:
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            placeholder="000000"
+                                            value={totpVerifyCode}
+                                            onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                            className="w-full h-10 text-center font-mono font-bold text-lg tracking-widest bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-slate-500 shadow-2xs"
+                                            autoFocus
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowTotpModal(false)}
+                                            className="h-9 px-3.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-md text-xs font-medium cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={totpSubmitting || totpVerifyCode.length !== 6}
+                                            className="h-9 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                                        >
+                                            {totpSubmitting ? (
+                                                <>
+                                                    <i className="ti ti-loader-2 animate-spin text-sm" />
+                                                    <span>Verifying...</span>
+                                                </>
+                                            ) : (
+                                                <span>Confirm &amp; Enable</span>
+                                            )}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+
+                        {totpStep === 2 && (
+                            <div className="p-5 sm:p-6 space-y-4">
+                                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-start gap-2">
+                                    <i className="ti ti-circle-check text-emerald-600 text-base shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold text-emerald-900 block">Authenticator 2FA Activated</span>
+                                        <span className="text-[11px] text-emerald-700 leading-relaxed block mt-0.5">
+                                            Save these 8 single-use emergency backup recovery codes. If you lose access to your authenticator app, each code can be used once to regain access.
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-100 rounded-md border border-slate-200 font-mono text-xs font-bold text-slate-900">
+                                    {totpBackupCodes.map((code, idx) => (
+                                        <div key={idx} className="p-1.5 bg-white rounded border border-slate-200 text-center tracking-wider">
+                                            {code}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadBackupCodes}
+                                            className="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md shadow-2xs flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <i className="ti ti-download text-xs" />
+                                            <span>Download .txt</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(totpBackupCodes.join('\n'));
+                                                toast.success('Backup codes copied');
+                                            }}
+                                            className="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md shadow-2xs flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <i className="ti ti-copy text-xs" />
+                                            <span>Copy All</span>
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTotpModal(false)}
+                                        className="h-8 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Reconfigure Confirmation Modal */}
+            {showReconfigureModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-800 flex items-center justify-center">
+                                    <i className="ti ti-refresh text-base" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">Reconfigure 2FA</h3>
+                                    <p className="text-[11px] text-slate-500">Pair a new authenticator device</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowReconfigureModal(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-3">
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Generating a new QR code will replace your existing Google Authenticator key. Once you confirm the new setup, your old 6-digit codes will no longer work.
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                                Do you want to proceed and generate a new QR code?
+                            </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowReconfigureModal(false)}
+                                className="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-md shadow-2xs cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowReconfigureModal(false);
+                                    executeTotpSetup();
+                                }}
+                                className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>Proceed to Setup</span>
+                                <i className="ti ti-arrow-right text-xs" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Disable 2FA Confirmation Modal */}
+            {showDisableModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center">
+                                    <i className="ti ti-alert-triangle text-base" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">Disable Authenticator 2FA</h3>
+                                    <p className="text-[11px] text-slate-500">Deactivate two-factor protection</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDisableModal(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-3">
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Are you sure you want to disable Authenticator 2FA? This will remove two-factor security from your account and return you to standard password login.
+                            </p>
+                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-800 flex items-start gap-2">
+                                <i className="ti ti-info-circle text-amber-600 text-sm shrink-0 mt-0.5" />
+                                <span>If you deleted your Google Authenticator app or switched phones, you can confirm directly below to remove 2FA.</span>
+                            </div>
+                            <div className="space-y-1 pt-1">
+                                <label className="block text-[11px] font-semibold text-slate-600">
+                                    Emergency Backup Code or Current Code (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={disableCode}
+                                    onChange={(e) => setDisableCode(e.target.value)}
+                                    placeholder="e.g. CP-XXXX-XXXX or 6-digit code"
+                                    className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-mono"
+                                />
+                            </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowDisableModal(false)}
+                                disabled={totpSubmitting}
+                                className="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-md shadow-2xs cursor-pointer"
+                            >
+                                Keep 2FA
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDisableTotp}
+                                disabled={totpSubmitting}
+                                className="h-8 px-3.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
+                            >
+                                {totpSubmitting ? (
+                                    <>
+                                        <i className="ti ti-loader-2 animate-spin text-xs" />
+                                        <span>Disabling...</span>
+                                    </>
+                                ) : (
+                                    <span>Confirm &amp; Disable</span>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

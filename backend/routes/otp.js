@@ -1,26 +1,80 @@
 import express from 'express';
 import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp } from '../services/otpService.js';
+import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
 import { supabase } from '../supabaseClient.js';
 
 const router = express.Router();
 
-// GET /api/auth/otp/status - Check if an active unexpired OTP exists for identifier
-router.get('/status', (req, res) => {
-    const { identifier, email, phone, purpose = 'login_2fa' } = req.query;
-    const rawTarget = identifier || email || phone;
-    const scopedTarget = `${purpose}_${rawTarget}`.toLowerCase().trim();
-    const active = getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
-    const cooldown = checkOtpCooldown(scopedTarget);
+// GET /api/auth/otp/status - Check if an active unexpired OTP exists for identifier + check TOTP status
+router.get('/status', async (req, res) => {
+    try {
+        const { identifier, email, phone, purpose = 'login_2fa' } = req.query;
+        const rawTarget = identifier || email || phone;
+        const scopedTarget = `${purpose}_${rawTarget}`.toLowerCase().trim();
+        const active = getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
+        const cooldown = checkOtpCooldown(scopedTarget);
 
-    res.json({
-        success: true,
-        hasActiveOtp: Boolean(active),
-        method: active?.method || null,
-        remainingSeconds: active?.remainingSeconds || 0,
-        isCooldown: !cooldown.allowed,
-        cooldownRemaining: cooldown.remainingSeconds
-    });
+        let hasTotp = false;
+        if (rawTarget) {
+            const clean = rawTarget.trim().toLowerCase();
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
+
+            let authUser = null;
+            if (isUuid) {
+                const { data: authData } = await supabase.auth.admin.getUserById(clean);
+                if (authData?.user) authUser = authData.user;
+            }
+
+            if (!authUser) {
+                let empQuery = supabase
+                    .from('employees')
+                    .select('id, auth_user_id, email, company_id');
+
+                if (isUuid) {
+                    empQuery = empQuery.or(`id.eq.${clean},auth_user_id.eq.${clean}`);
+                } else {
+                    empQuery = empQuery.or(`email.ilike.${clean},company_id.ilike.${clean}`);
+                }
+
+                const { data: emp } = await empQuery.maybeSingle();
+                if (emp) {
+                    const targetId = emp.auth_user_id || emp.id;
+                    const { data: authData } = await supabase.auth.admin.getUserById(targetId);
+                    if (authData?.user) authUser = authData.user;
+                }
+            }
+
+            if (authUser) {
+                const meta = authUserDataMeta(authUser);
+                hasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+            }
+        }
+
+        res.json({
+            success: true,
+            hasActiveOtp: Boolean(active),
+            method: active?.method || null,
+            remainingSeconds: active?.remainingSeconds || 0,
+            isCooldown: !cooldown.allowed,
+            cooldownRemaining: cooldown.remainingSeconds,
+            hasTotp
+        });
+    } catch {
+        res.json({
+            success: true,
+            hasActiveOtp: false,
+            method: null,
+            remainingSeconds: 0,
+            isCooldown: false,
+            cooldownRemaining: 0,
+            hasTotp: false
+        });
+    }
 });
+
+function authUserDataMeta(user) {
+    return user?.user_metadata || {};
+}
 
 // POST /api/auth/otp/send - Generate and dispatch 6-digit OTP
 router.post('/send', async (req, res) => {
@@ -163,6 +217,44 @@ router.post('/verify', async (req, res) => {
             }
         }
 
+        // Check TOTP / Authenticator code fallback if OTP is invalid
+        if (!result.valid) {
+            try {
+                const clean = rawTarget.trim().toLowerCase();
+                const { data: emp } = await supabase
+                    .from('employees')
+                    .select('id, auth_user_id')
+                    .or(`email.ilike.${clean},company_id.ilike.${clean}`)
+                    .maybeSingle();
+
+                if (emp) {
+                    const targetId = emp.auth_user_id || emp.id;
+                    const { data: authData } = await supabase.auth.admin.getUserById(targetId);
+                    const meta = authUserDataMeta(authData?.user);
+
+                    if (meta.totp_enabled && meta.totp_secret) {
+                        // Check if backup code
+                        if (String(otp).trim().startsWith('CP-') || String(otp).trim().length > 6) {
+                            const backupResult = verifyAndConsumeBackupCode(String(otp).trim(), meta.totp_backup_codes || []);
+                            if (backupResult.valid) {
+                                result = { valid: true, via: 'BACKUP_CODE' };
+                                await supabase.auth.admin.updateUserById(targetId, {
+                                    user_metadata: { ...meta, totp_backup_codes: backupResult.remainingCodes }
+                                });
+                            }
+                        } else {
+                            const totpCheck = verifyTotpCode(meta.totp_secret, otp);
+                            if (totpCheck.valid) {
+                                result = { valid: true, via: 'TOTP' };
+                            }
+                        }
+                    }
+                }
+            } catch (totpErr) {
+                console.error('[OTP_VERIFY_TOTP_CHECK_ERR]', totpErr.message);
+            }
+        }
+
         if (!result.valid) {
             return res.status(400).json({ success: false, error: result.error });
         }
@@ -170,7 +262,8 @@ router.post('/verify', async (req, res) => {
         res.json({
             success: true,
             purpose,
-            message: 'OTP verified successfully'
+            verifiedVia: result.via || 'OTP',
+            message: 'Code verified successfully'
         });
 
     } catch (err) {

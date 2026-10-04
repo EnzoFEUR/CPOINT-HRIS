@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
 import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp } from '../services/otpService.js';
+import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
 import { createAuditLog } from './auditLogs.js';
 
 const router = express.Router();
@@ -141,10 +142,12 @@ router.post('/verify-workplace-account', async (req, res) => {
 
         // Fetch registered mobile phone from Supabase Auth identity store if present
         let userPhone = null;
+        let hasTotp = false;
         if (emp.id) {
             try {
                 const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
                 userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
+                hasTotp = Boolean(authUserData?.user?.user_metadata?.totp_enabled && authUserData?.user?.user_metadata?.totp_secret);
             } catch (_) {}
         }
 
@@ -157,7 +160,8 @@ router.post('/verify-workplace-account', async (req, res) => {
             company_id: emp.company_id,
             role: emp.role,
             hasPhone: Boolean(userPhone),
-            maskedPhone: userPhone ? maskPhone(userPhone) : null
+            maskedPhone: userPhone ? maskPhone(userPhone) : null,
+            has_totp: hasTotp
         });
     } catch (err) {
         return res.status(500).json({ exists: false, error: err.message });
@@ -348,28 +352,85 @@ router.post('/forgot-password', async (req, res) => {
  */
 router.post('/verify-reset-otp', async (req, res) => {
     try {
-        const { email, otp } = req.body;
+        const { email, otp, method = 'sms' } = req.body;
         if (!email || !otp) {
-            return res.status(400).json({ success: false, error: 'Email and 6-digit OTP code are required.' });
+            return res.status(400).json({ success: false, error: 'Email and 6-digit code are required.' });
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const otpStorageKey = `pwd_reset_${normalizedEmail}`;
-
-        const verifyResult = verifyOtpCode(otpStorageKey, otp);
-        if (!verifyResult.valid) {
-            return res.status(400).json({ success: false, error: verifyResult.error });
-        }
 
         // Fetch employee details to bind ticket
         const { data: emp } = await supabase
             .from('employees')
-            .select('id, email, role, first_name, last_name')
+            .select('id, auth_user_id, email, role, first_name, last_name')
             .eq('email', normalizedEmail)
             .maybeSingle();
 
         if (!emp) {
             return res.status(400).json({ success: false, error: 'Account could not be identified.' });
+        }
+
+        let verifiedVia = 'OTP';
+        let isValid = false;
+        let errorMessage = 'Invalid or expired verification code.';
+
+        // PATH A: Authenticator TOTP verification
+        if (method === 'totp' || method === 'authenticator') {
+            const targetUserId = emp.auth_user_id || emp.id;
+            const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
+            const meta = authUserData?.user?.user_metadata || {};
+
+            if (meta.totp_enabled && meta.totp_secret) {
+                if (String(otp).trim().startsWith('CP-') || String(otp).trim().length > 6) {
+                    const backupResult = verifyAndConsumeBackupCode(String(otp).trim(), meta.totp_backup_codes || []);
+                    if (backupResult.valid) {
+                        isValid = true;
+                        verifiedVia = 'TOTP_BACKUP_CODE';
+                        await supabase.auth.admin.updateUserById(targetUserId, {
+                            user_metadata: { ...meta, totp_backup_codes: backupResult.remainingCodes }
+                        });
+                    } else {
+                        errorMessage = 'Invalid or already consumed emergency backup code.';
+                    }
+                } else {
+                    const totpResult = verifyTotpCode(meta.totp_secret, otp);
+                    if (totpResult.valid) {
+                        isValid = true;
+                        verifiedVia = 'TOTP';
+                    } else {
+                        errorMessage = totpResult.error || 'Invalid code from Authenticator app.';
+                    }
+                }
+            } else {
+                return res.status(400).json({ success: false, error: 'Google Authenticator 2FA is not enabled for this account.' });
+            }
+        } else {
+            // PATH B: Standard SMS/Email OTP verification
+            const otpStorageKey = `pwd_reset_${normalizedEmail}`;
+            const verifyResult = verifyOtpCode(otpStorageKey, otp);
+            if (verifyResult.valid) {
+                isValid = true;
+                verifiedVia = 'SMS_OR_EMAIL_OTP';
+            } else {
+                // Seamless fallback: check if user entered active TOTP code
+                const targetUserId = emp.auth_user_id || emp.id;
+                const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
+                const meta = authUserData?.user?.user_metadata || {};
+                if (meta.totp_enabled && meta.totp_secret) {
+                    const totpResult = verifyTotpCode(meta.totp_secret, otp);
+                    if (totpResult.valid) {
+                        isValid = true;
+                        verifiedVia = 'TOTP_SEAMLESS_FALLBACK';
+                    }
+                }
+                if (!isValid) {
+                    errorMessage = verifyResult.error;
+                }
+            }
+        }
+
+        if (!isValid) {
+            return res.status(400).json({ success: false, error: errorMessage });
         }
 
         // Issue single-use cryptographic Reset Ticket
@@ -378,18 +439,20 @@ router.post('/verify-reset-otp', async (req, res) => {
             userId: emp.id,
             email: normalizedEmail,
             role: emp.role,
+            verifiedVia,
             expiresAt: Date.now() + TICKET_EXPIRATION_MS
         });
 
         await createAuditLog({
             log_name: 'security',
-            description: `Out-of-band OTP verified for ${normalizedEmail}. Reset ticket issued.`,
+            description: `Identity verified via ${verifiedVia} for ${normalizedEmail}. Reset ticket issued.`,
             subject_type: 'Security',
             subject_id: emp.id,
-            event: 'PASSWORD_RESET_OTP_VERIFIED',
+            event: 'PASSWORD_RESET_VERIFIED',
             causer_id: emp.id,
             properties: {
                 email: normalizedEmail,
+                channel: verifiedVia,
                 ip: req.ip || req.headers['x-forwarded-for'],
                 ticket_ttl_minutes: 10
             }
@@ -397,7 +460,8 @@ router.post('/verify-reset-otp', async (req, res) => {
 
         res.json({
             success: true,
-            message: 'OTP verified successfully. You may now establish your new password.',
+            message: 'Identity verified successfully. You may now establish your new password.',
+            verifiedVia,
             resetTicket
         });
 

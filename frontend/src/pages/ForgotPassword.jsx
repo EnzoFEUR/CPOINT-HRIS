@@ -9,8 +9,8 @@ import logoDark from '../assets/logo-dark.png';
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
-  const [method, setMethod] = useState('sms'); // 'sms' | 'email' | 'key'
-  const [step, setStep] = useState(1); // 1 = Request, 2 = Verify SMS OTP
+  const [method, setMethod] = useState('totp'); // 'totp' | 'email' | 'key'
+  const [step, setStep] = useState(1); // 1 = Request, 2 = Verify Code
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -67,6 +67,11 @@ export default function ForgotPassword() {
         } else {
           setAccountStatus('verified');
           setAccountInfo(data);
+          if (data.has_totp) {
+            setMethod('totp');
+          } else {
+            setMethod('email');
+          }
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
@@ -150,7 +155,28 @@ export default function ForgotPassword() {
     setSuccessMsg(null);
     setLoading(true);
 
-    // PATH 1: Emergency Master Key Recovery (100% In-Browser UI, Zero CMD)
+    // PATH 1: Google Authenticator (TOTP) - Zero dispatch delay
+    if (method === 'totp') {
+      if (accountStatus === 'not_found') {
+        const msg = 'No registered workplace account matches this email or Employee ID.';
+        setError(msg);
+        toast.error(msg);
+        setLoading(false);
+        return;
+      }
+      setStep(2);
+      try {
+        sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+          email: email.trim().toLowerCase(),
+          method: 'totp',
+          step: 2
+        }));
+      } catch {}
+      setLoading(false);
+      return;
+    }
+
+    // PATH 2: Emergency Master Key Recovery (100% In-Browser UI, Zero CMD)
     if (method === 'key') {
       try {
         const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-emergency-key`, {
@@ -320,7 +346,11 @@ export default function ForgotPassword() {
       const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-reset-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: code }),
+        body: JSON.stringify({ 
+          email: email.trim().toLowerCase(), 
+          otp: code,
+          method
+        }),
       });
 
       const data = await res.json();
@@ -511,14 +541,14 @@ export default function ForgotPassword() {
               <div className="grid grid-cols-3 p-0.5 bg-slate-100 rounded-md border border-slate-200 text-xs">
                 <button
                   type="button"
-                  onClick={() => setMethod('sms')}
+                  onClick={() => setMethod('totp')}
                   className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
-                    method === 'sms'
+                    method === 'totp'
                       ? 'bg-white text-slate-900 font-semibold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  SMS OTP
+                  Authenticator
                 </button>
                 <button
                   type="button"
@@ -579,7 +609,7 @@ export default function ForgotPassword() {
               type="submit"
               disabled={
                 loading ||
-                (cooldown > 0 && method !== 'key') ||
+                (cooldown > 0 && method !== 'key' && method !== 'totp') ||
                 accountStatus === 'checking' ||
                 accountStatus === 'not_found' ||
                 accountStatus === 'no_email' ||
@@ -620,12 +650,12 @@ export default function ForgotPassword() {
                   <i className="ti ti-lock text-sm" />
                   <span>Account Inactive</span>
                 </>
-              ) : cooldown > 0 && method !== 'key' ? (
+              ) : cooldown > 0 && method !== 'key' && method !== 'totp' ? (
                 <span>Resend in {cooldown}s</span>
               ) : method === 'key' ? (
                 <span>Verify Master Key</span>
-              ) : method === 'sms' ? (
-                <span>Dispatch SMS Code</span>
+              ) : method === 'totp' ? (
+                <span>Continue with Authenticator</span>
               ) : (
                 <span>Dispatch Email Code</span>
               )}
@@ -633,12 +663,14 @@ export default function ForgotPassword() {
           </form>
         )}
 
-        {/* STEP 2: 6-Digit SMS / Email OTP Verification */}
+        {/* STEP 2: 6-Digit Authenticator / Email OTP Verification */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="text-center">
               <p className="text-xs text-slate-600">
-                {method === 'email' ? (
+                {method === 'totp' ? (
+                  <>Enter the 6-digit code from your <span className="font-semibold text-slate-900">Google Authenticator</span> app</>
+                ) : method === 'email' ? (
                   <>Enter the 6-digit code sent to your email <span className="font-semibold text-slate-900">{maskedPhone}</span></>
                 ) : (
                   <>Enter the 6-digit code sent to <span className="font-semibold text-slate-900">{maskedPhone}</span></>
@@ -723,25 +755,32 @@ export default function ForgotPassword() {
                 &larr; Back
               </button>
 
-              <div className="flex items-center gap-1.5 text-slate-400 font-medium text-xs">
-                <span>
-                  Expires in{' '}
-                  <strong className="text-slate-700 font-mono">
-                    {expiryTimer > 0
-                      ? `${Math.floor(expiryTimer / 60)}:${String(expiryTimer % 60).padStart(2, '0')}`
-                      : '0:00'}
-                  </strong>
-                </span>
-                <span>•</span>
-                <button
-                  type="button"
-                  onClick={() => handleRequestReset(null, true)}
-                  disabled={cooldown > 0 || loading}
-                  className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
-                >
-                  {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
-                </button>
-              </div>
+              {method === 'totp' ? (
+                <div className="flex items-center gap-1.5 text-slate-500 font-medium text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Updates every 30s • Offline</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-slate-400 font-medium text-xs">
+                  <span>
+                    Expires in{' '}
+                    <strong className="text-slate-700 font-mono">
+                      {expiryTimer > 0
+                        ? `${Math.floor(expiryTimer / 60)}:${String(expiryTimer % 60).padStart(2, '0')}`
+                        : '0:00'}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestReset(null, true)}
+                    disabled={cooldown > 0 || loading}
+                    className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
+                  >
+                    {cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend code'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

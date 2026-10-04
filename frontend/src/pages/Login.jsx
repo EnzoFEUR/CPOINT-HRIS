@@ -352,13 +352,34 @@ export default function Login() {
                 const existingExpiresAt = savedSession?.expiresAt;
                 const hasExistingValidOtp = existingExpiresAt && (existingExpiresAt > Date.now());
 
+                const meta = authData.user?.user_metadata || {};
+                const hasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+
                 const empWithMeta = { 
                     ...employee, 
+                    hasTotp,
                     _auth_metadata: authData.user.user_metadata 
                 };
 
                 setEmployeeData(empWithMeta);
                 setLoading(false);
+
+                if (hasTotp) {
+                    setOtpMethod('totp');
+                    setStep(3);
+                    try {
+                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                            email: sanitizedEmail,
+                            employeeData: empWithMeta,
+                            step: 3,
+                            otpMethod: 'totp',
+                            generatedOtp: null,
+                            expiresAt: null
+                        }));
+                    } catch {}
+                    return;
+                }
+
                 setStep(2);
 
                 try {
@@ -379,6 +400,22 @@ export default function Login() {
     };
 
     const sendOtp = async (method, isResend = false) => {
+        // Authenticator TOTP requires zero dispatch wait time
+        if (method === 'totp') {
+            setOtpMethod('totp');
+            setStep(3);
+            try {
+                const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                    ...s,
+                    step: 3,
+                    otpMethod: 'totp',
+                    expiresAt: null
+                }));
+            } catch {}
+            return;
+        }
+
         // If an active unexpired code is already dispatched to this method (within 5 mins),
         // let the user proceed immediately to Step 3 without triggering duplicate dispatch or errors
         if (!isResend && step === 2 && timer > 0 && method === otpMethod) {
@@ -517,9 +554,18 @@ export default function Login() {
                 return setError("Failed to verify user profile.");
             }
 
+            const isTotpActive = Boolean(
+                employeeData?.hasTotp || 
+                employeeData?._auth_metadata?.totp_enabled ||
+                verifyData?.method === 'totp' ||
+                otpMethod === 'totp'
+            );
+
             const userData = { 
                 ...employeeData, 
                 ...dbData,
+                totp_enabled: isTotpActive,
+                has_totp: isTotpActive,
                 has_registered_biometrics: Boolean(dbData?.has_registered_biometrics || dbData?.biometric_baseline_path || employeeData._auth_metadata?.has_registered_biometrics),
                 name: `${dbData.first_name || employeeData.first_name} ${dbData.last_name || employeeData.last_name}`
             };
@@ -872,27 +918,25 @@ export default function Login() {
                             <div className="space-y-2">
                                 <button
                                     type="button"
-                                    onClick={() => sendOtp('sms')}
+                                    onClick={() => sendOtp('totp')}
                                     className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs ${
-                                        otpMethod === 'sms' && timer > 0
+                                        otpMethod === 'totp'
                                             ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
                                             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
                                     }`}
                                 >
-                                    <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
-                                        <MessageSquare className="w-4 h-4 text-slate-700" />
+                                    <div className="h-8 w-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                        <ShieldCheck className="w-4 h-4 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-xs text-slate-900">Send via SMS</p>
-                                            {otpMethod === 'sms' && timer > 0 && (
-                                                <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
-                                                    Active ({formattedTimer})
-                                                </span>
-                                            )}
+                                            <p className="font-semibold text-xs text-slate-900">Google Authenticator (TOTP)</p>
+                                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-sm border border-emerald-200">
+                                                Zero Latency
+                                            </span>
                                         </div>
                                         <p className="text-[11px] text-slate-500 truncate">
-                                            Mobile ending in {maskPhone(employeeData?.phone)}
+                                            Instant 6-digit code from your phone app (Offline)
                                         </p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
@@ -923,6 +967,36 @@ export default function Login() {
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                                 </button>
+
+                                {employeeData?.phone && (
+                                    <button
+                                        type="button"
+                                        onClick={() => sendOtp('sms')}
+                                        className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs opacity-80 hover:opacity-100 ${
+                                            otpMethod === 'sms' && timer > 0
+                                                ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
+                                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                        }`}
+                                    >
+                                        <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
+                                            <MessageSquare className="w-4 h-4 text-slate-700" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <p className="font-semibold text-xs text-slate-900">Send via SMS (Fallback)</p>
+                                                {otpMethod === 'sms' && timer > 0 && (
+                                                    <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
+                                                        Active ({formattedTimer})
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 truncate">
+                                                Mobile ending in {maskPhone(employeeData?.phone)}
+                                            </p>
+                                        </div>
+                                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                    </button>
+                                )}
                             </div>
 
                             {error && (
@@ -944,14 +1018,20 @@ export default function Login() {
 
                     {step === 3 && (
                         <div className="text-center">
-                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-800 mb-2.5 shadow-2xs">
-                                <KeyRound className="w-5 h-5 text-slate-800" />
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white mb-2.5 shadow-2xs">
+                                {otpMethod === 'totp' ? (
+                                    <ShieldCheck className="w-5 h-5 text-white" />
+                                ) : (
+                                    <KeyRound className="w-5 h-5 text-white" />
+                                )}
                             </div>
                             <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                                Security Code
+                                {otpMethod === 'totp' ? 'Authenticator 2FA' : 'Security Code'}
                             </h2>
                             <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
-                                Enter the 6-digit code sent to your {otpMethod === 'sms' ? 'phone' : 'email'}
+                                {otpMethod === 'totp'
+                                    ? 'Enter the 6-digit code from Google Authenticator or Microsoft Authenticator'
+                                    : `Enter the 6-digit code sent to your ${otpMethod === 'sms' ? 'phone' : 'email'}`}
                             </p>
 
                             <form onSubmit={verifyOtp}>
@@ -1019,31 +1099,48 @@ export default function Login() {
                                 </button>
                             </form>
 
-                            <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
-                                {timer > 0 ? (
-                                    <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
-                                ) : (
-                                    <span className="text-rose-600 font-semibold">Code expired.</span>
-                                )}
-                                <span className="mx-1 text-slate-300">•</span>
-                                <button
-                                    type="button"
-                                    disabled={loading || isCooldown}
-                                    onClick={() => sendOtp(otpMethod, true)}
-                                    className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                >
-                                    {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
-                                </button>
-                            </p>
+                            {otpMethod === 'totp' ? (
+                                <p className="mt-3.5 text-[11px] text-slate-500 flex items-center justify-center gap-1.5 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span>Code rotates every 30s • No cellular signal required</span>
+                                </p>
+                            ) : (
+                                <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
+                                    {timer > 0 ? (
+                                        <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
+                                    ) : (
+                                        <span className="text-rose-600 font-semibold">Code expired.</span>
+                                    )}
+                                    <span className="mx-1 text-slate-300">•</span>
+                                    <button
+                                        type="button"
+                                        disabled={loading || isCooldown}
+                                        onClick={() => sendOtp(otpMethod, true)}
+                                        className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                    >
+                                        {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
+                                    </button>
+                                </p>
+                            )}
 
                             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={handleSwitchMethod}
-                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                                >
-                                    Switch Method
-                                </button>
+                                {otpMethod === 'totp' ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => sendOtp('email')}
+                                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer"
+                                    >
+                                        Use Email Code Instead
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={handleSwitchMethod}
+                                        className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                    >
+                                        Switch Method
+                                    </button>
+                                )}
                                 <span className="text-slate-200 text-xs">•</span>
                                 <button
                                     type="button"
