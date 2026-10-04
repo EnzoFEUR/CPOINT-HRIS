@@ -1,8 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
-import logoIcon from '../assets/logo-icon.png';
-import logoIconWebp from '../assets/logo-icon.webp';
 
 export const MobileNav = ({
   user,
@@ -184,9 +182,9 @@ export const MobileNav = ({
               <div className="mb-4 p-3.5 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
                   <picture>
-                    <source srcSet={logoIconWebp} type="image/webp" />
+                    <source srcSet="/logo-icon.webp" type="image/webp" />
                     <img 
-                      src={logoIcon} 
+                      src="/logo-icon.png" 
                       alt="C-Point" 
                       width="32"
                       height="32"

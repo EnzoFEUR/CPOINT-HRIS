@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
-import cpointLogo from '../assets/logo-crop.png';
-import cpointLogoWebp from '../assets/logo-crop.webp';
 import sidebarCover from '../assets/sidebar-cover.jpg';
 
 export const Sidebar = ({ user, handleLogout }) => {
@@ -46,9 +44,9 @@ export const Sidebar = ({ user, handleLogout }) => {
             className="flex items-center justify-center rounded-md cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
           >
             <picture>
-              <source srcSet={cpointLogoWebp} type="image/webp" />
+              <source srcSet="/logo-crop.webp" type="image/webp" />
               <img
-                src={cpointLogo}
+                src="/logo-crop.png"
                 alt="C-Point HRIS"
                 width="200"
                 height="60"

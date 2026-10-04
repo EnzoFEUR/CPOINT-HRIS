@@ -21,10 +21,6 @@ import {
   AlertCircle,
   ShieldAlert
 } from 'lucide-react';
-import shoemakersBg from '../assets/shoemakers.jpg';
-import cpointLogo from '../assets/logo-crop.png';
-import cpointLogoWebp from '../assets/logo-crop.webp';
-
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_SEC = 30;
@@ -733,12 +729,13 @@ export default function Login() {
                 <div 
                     className="w-full lg:w-[45%] rounded-lg relative overflow-hidden flex flex-col justify-center items-center text-center p-8 sm:p-10 shadow-sm min-h-[260px] lg:min-h-[500px] bg-slate-950"
                 >
-                    {/* Background Workforce Image */}
+                    {/* Background Workforce Image (Primary LCP Element) */}
                     <img 
-                        src={shoemakersBg} 
+                        src="/shoemakers.jpg" 
                         alt="C-Point Workforce" 
                         width="720"
                         height="480"
+                        fetchPriority="high"
                         decoding="async"
                         className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none"
                     />
@@ -755,9 +752,9 @@ export default function Login() {
                     <div className="relative z-10 w-full max-w-[320px] flex flex-col items-center">
                         <div className="mb-6 flex items-center justify-center">
                             <picture>
-                                <source srcSet={cpointLogoWebp} type="image/webp" />
+                                <source srcSet="/logo-crop.webp" type="image/webp" />
                                 <img 
-                                    src={cpointLogo} 
+                                    src="/logo-crop.png" 
                                     alt="C-Point" 
                                     width="220"
                                     height="48"

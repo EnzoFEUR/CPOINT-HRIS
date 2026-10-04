@@ -4,8 +4,6 @@ import { supabase } from '../supabaseClient';
 import { API_BASE_URL } from '../utils/api';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import toast from 'react-hot-toast';
-import logoDark from '../assets/logo-dark.png';
-import logoDarkWebp from '../assets/logo-dark.webp';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -387,9 +385,9 @@ export default function ForgotPassword() {
         <div className="text-center mb-6">
           <div className="flex items-center justify-center mb-4">
             <picture>
-              <source srcSet={logoDarkWebp} type="image/webp" />
+              <source srcSet="/logo-dark.webp" type="image/webp" />
               <img 
-                src={logoDark} 
+                src="/logo-dark.png" 
                 alt="C-Point HRIS" 
                 width="200"
                 height="44"
