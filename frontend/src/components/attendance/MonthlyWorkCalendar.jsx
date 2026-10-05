@@ -566,15 +566,9 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         <i className="ti ti-calendar-time text-lg" />
                     </div>
                     <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                                Monthly Work Schedule &amp; Attendance Audit
-                            </h3>
-                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                                <span className={`h-1.5 w-1.5 rounded-full ${isFetching ? 'bg-accent animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
-                                <span>{isFetching ? 'Syncing...' : 'Live Sync'}</span>
-                            </div>
-                        </div>
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                            Monthly Work Schedule &amp; Attendance Audit
+                        </h3>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
                             Shift: <span className="font-semibold text-slate-700">{monthlyData?.employee?.shift || 'Factory Standard (08:00 AM - 05:00 PM)'}</span> · Rest Day: <span className="font-semibold text-slate-700">Sunday</span>
                         </p>
