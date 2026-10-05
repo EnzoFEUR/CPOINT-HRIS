@@ -194,7 +194,7 @@ const fetchArchivedEmployees = async () => {
               placeholder="Search archive..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-8 pr-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
+              className="w-full h-9 pl-8 pr-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:border-accent transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
             />
           </div>
 
@@ -304,7 +304,7 @@ const fetchArchivedEmployees = async () => {
                         
                         if (inCooldown) {
                         return (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="In 30-day clearance cooldown">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-warning-subtle text-warning-ink border border-warning/20" title="In 30-day clearance cooldown">
                             <i className="ti ti-clock-hour-4 text-xs animate-pulse" />
                             Cooldown ({remainingDays}d left)
                             </span>
@@ -312,8 +312,8 @@ const fetchArchivedEmployees = async () => {
                         }
 
                         return (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-danger" />
                             Archived / Locked
                         </span>
                         );
@@ -322,7 +322,7 @@ const fetchArchivedEmployees = async () => {
                       <td className="py-3 px-4 text-right">
                         <button
                           onClick={() => navigate(`/admin/archive/${emp.id}`)}
-                          className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
+                          className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md bg-accent-subtle hover:bg-accent-subtle text-accent text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
                         >
                           <i className="ti ti-eye text-xs"></i>
                           VIEW

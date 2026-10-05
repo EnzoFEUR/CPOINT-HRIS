@@ -113,7 +113,7 @@ export default function PayrollShow() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-500 font-bold tracking-widest uppercase text-xs">Loading Payslip Document...</p>
             </div>
         );
@@ -122,7 +122,7 @@ export default function PayrollShow() {
     if (errorMessage || !payroll) {
         return (
             <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-lg border border-slate-200 shadow-2xs text-center">
-                <div className="w-14 h-14 bg-red-50 text-red-500 rounded-lg flex items-center justify-center mx-auto mb-4 border border-red-200">
+                <div className="w-14 h-14 bg-danger-subtle text-danger-ink rounded-lg flex items-center justify-center mx-auto mb-4 border border-danger/20">
                     <i className="ti ti-file-alert text-2xl" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 tracking-tight">Record Unavailable</h3>
@@ -164,7 +164,7 @@ export default function PayrollShow() {
                     <form onSubmit={handleDelete}>
                         <button
                             type="submit"
-                            className="h-9 px-3.5 bg-white hover:bg-rose-50 text-rose-600 text-xs font-semibold rounded-md border border-rose-200 transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                            className="h-9 px-3.5 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-semibold rounded-md border border-danger/20 transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                         >
                             <i className="ti ti-trash text-sm"></i> Delete
                         </button>
@@ -200,7 +200,7 @@ export default function PayrollShow() {
                                 <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                     #{payroll.id ? `PAY-${String(payroll.id).slice(0, 8).toUpperCase()}` : 'RECORD'}
                                 </span>
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-surface-muted text-ink border border-line">
                                     {payroll.status || 'Released'}
                                 </span>
                             </div>
@@ -285,24 +285,24 @@ export default function PayrollShow() {
                 <div className="p-6 sm:p-7">
                     {/* Holiday Pay Callout if present */}
                     {hasHolidayPay && (
-                        <div className="mb-6 border border-amber-200 bg-amber-50/40 rounded-md p-4">
+                        <div className="mb-6 border border-warning/20 bg-warning-subtle/40 rounded-md p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                    <i className="ti ti-calendar-event text-amber-700 text-sm" />
-                                    <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">DOLE Holiday Premium Compensation Included</h4>
+                                    <i className="ti ti-calendar-event text-warning-ink text-sm" />
+                                    <h4 className="text-xs font-bold text-warning-ink uppercase tracking-wider">DOLE Holiday Premium Compensation Included</h4>
                                 </div>
-                                <span className="font-mono font-bold text-amber-800 text-xs">
+                                <span className="font-mono font-bold text-warning-ink text-xs">
                                     +₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                             </div>
-                            <div className="divide-y divide-amber-100 border-t border-amber-200/60 pt-1 text-xs">
+                            <div className="divide-y divide-warning/20 border-t border-warning/60 pt-1 text-xs">
                                 {paidHolidayItems.map((item, idx) => (
                                     <div key={item.date || idx} className="py-1.5 flex items-center justify-between text-slate-700">
                                         <span>
                                             <span className="font-semibold">{dayjs(item.date).format('MMM DD, YYYY')}</span> – {item.holidayName || HOLIDAY_LABELS[item.holidayType] || 'Holiday'}
                                             <span className="text-slate-400 ml-1">({item.worked ? `Worked • ${(Number(item.multiplier || 1) * 100).toFixed(0)}%` : 'Unworked • Paid'})</span>
                                         </span>
-                                        <span className="font-mono font-semibold text-emerald-700">
+                                        <span className="font-mono font-semibold text-success-ink">
                                             ₱{Number(item.pay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </span>
                                     </div>
@@ -342,7 +342,7 @@ export default function PayrollShow() {
                                                 <span className="font-semibold text-slate-800 block">Overtime Pay</span>
                                                 <span className="text-[11px] text-slate-400">Approved Premium Hours</span>
                                             </div>
-                                            <span className={`font-mono font-semibold text-sm ${Number(payroll.overtime_pay || 0) > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                            <span className={`font-mono font-semibold text-sm ${Number(payroll.overtime_pay || 0) > 0 ? 'text-ink' : 'text-slate-400'}`}>
                                                 {Number(payroll.overtime_pay || 0) > 0 ? '+' : ''}₱{Number(payroll.overtime_pay || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
                                         </div>
@@ -353,7 +353,7 @@ export default function PayrollShow() {
                                                     <span className="font-semibold text-slate-800 block">Holiday Premium</span>
                                                     <span className="text-[11px] text-slate-400">DOLE Statutory Premium</span>
                                                 </div>
-                                                <span className="font-mono font-semibold text-emerald-700 text-sm">
+                                                <span className="font-mono font-semibold text-ink text-sm">
                                                     +₱{holidayPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </span>
                                             </div>
@@ -387,7 +387,7 @@ export default function PayrollShow() {
                                                 if (grossEarnings > 0 && ded.amount > 0) {
                                                     const percentage = ((ded.amount / grossEarnings) * 100).toFixed(1);
                                                     percentageDisplay = (
-                                                        <span className="text-[10px] font-mono text-rose-600 bg-rose-50 px-1 py-0.2 rounded border border-rose-100 ml-1.5">
+                                                        <span className="text-[10px] font-mono text-danger-ink bg-danger-subtle px-1 py-0.2 rounded border border-danger/20 ml-1.5">
                                                             {percentage}%
                                                         </span>
                                                     );
@@ -399,7 +399,7 @@ export default function PayrollShow() {
                                                             <span className="font-semibold text-slate-800">{ded.name}</span>
                                                             {percentageDisplay}
                                                         </div>
-                                                        <span className="font-mono font-semibold text-rose-600 text-sm">
+                                                        <span className="font-mono font-semibold text-danger-ink text-sm">
                                                             ₱{ded.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </span>
                                                     </div>
@@ -414,8 +414,8 @@ export default function PayrollShow() {
                                 </div>
 
                                 <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
-                                    <span className="text-xs font-bold uppercase text-rose-700 tracking-wide">Total Deductions</span>
-                                    <span className="font-mono font-bold text-rose-600 text-base">
+                                    <span className="text-xs font-bold uppercase text-danger-ink tracking-wide">Total Deductions</span>
+                                    <span className="font-mono font-bold text-danger-ink text-base">
                                         ₱{totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -439,7 +439,7 @@ export default function PayrollShow() {
                         </div>
 
                         <div className="text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-slate-800 w-full md:w-auto">
-                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block print:text-emerald-700">Account Settlement</span>
+                            <span className="text-[10px] font-bold text-success uppercase tracking-wider block print:text-success-ink">Account Settlement</span>
                             <span className="text-xs text-slate-300 print:text-slate-700 font-medium mt-0.5 block">Official Remuneration Voucher</span>
                             <span className="text-[10px] text-slate-500 font-mono block mt-1 print:hidden">Verified by System Treasury Engine</span>
                         </div>
@@ -460,7 +460,7 @@ export default function PayrollShow() {
                         onClick={() => setIsDeleteModalOpen(false)}
                     />
                     <div className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl p-6 text-center border border-slate-200">
-                        <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-md flex items-center justify-center mx-auto mb-4 border border-rose-100">
+                        <div className="w-12 h-12 bg-danger-subtle text-danger-ink rounded-md flex items-center justify-center mx-auto mb-4 border border-danger/20">
                             <i className="ti ti-alert-triangle text-2xl" />
                         </div>
 
@@ -471,7 +471,7 @@ export default function PayrollShow() {
 
                         <div className="bg-slate-50 rounded-md p-3.5 mb-5 border border-slate-200 text-left">
                             <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                                Type <span className="text-rose-600 font-mono select-all">DELETE</span> to confirm
+                                Type <span className="text-danger-ink font-mono select-all">DELETE</span> to confirm
                             </label>
                             <input
                                 type="text"
@@ -479,7 +479,7 @@ export default function PayrollShow() {
                                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                                 placeholder="DELETE"
                                 autoCapitalize="characters"
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md outline-none focus:border-rose-500 font-mono font-bold text-slate-800 text-sm text-center"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md outline-none focus:border-danger font-mono font-bold text-slate-800 text-sm text-center"
                             />
                         </div>
 
@@ -493,7 +493,7 @@ export default function PayrollShow() {
                             <button
                                 onClick={confirmDelete}
                                 disabled={deleteConfirmText !== 'DELETE'}
-                                className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
+                                className="flex-1 h-9 bg-danger hover:bg-danger-ink disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
                             >
                                 Delete Record
                             </button>

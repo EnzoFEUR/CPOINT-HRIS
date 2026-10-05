@@ -44,7 +44,7 @@ const GroupSelectionModal = ({
                         value={groupSearch}
                         onChange={(e) => setGroupSearch(e.target.value)}
                         placeholder={`Search ${selectedGroup} worker...`}
-                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-600 rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
+                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-accent rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
                     />
                     <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-slate-500">
@@ -54,7 +54,7 @@ const GroupSelectionModal = ({
                             <button
                                 type="button"
                                 onClick={selectAllGroupMembers}
-                                className="h-7 px-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center"
+                                className="h-7 px-2.5 bg-accent-subtle text-accent hover:bg-accent-subtle rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center"
                             >
                                 Select All
                             </button>
@@ -77,14 +77,14 @@ const GroupSelectionModal = ({
                             <div
                                 key={emp.id}
                                 onClick={() => toggleGroupMember(emp.id)}
-                                className={`w-full p-2.5 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                className={`w-full p-2.5 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-accent-subtle/80 border border-accent/20' : 'hover:bg-slate-50 border border-transparent'}`}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
                                     <input
                                         type="checkbox"
                                         checked={isChecked}
                                         onChange={() => { }}
-                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                                        className="w-4 h-4 rounded text-accent focus:ring-accent cursor-pointer shrink-0"
                                     />
                                     <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-md" textSize="text-xs" />
                                     <div className="min-w-0">
@@ -93,7 +93,7 @@ const GroupSelectionModal = ({
                                     </div>
                                 </div>
                                 {isChecked && (
-                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md shrink-0">
+                                    <span className="text-[10px] font-bold text-accent bg-accent-subtle/80 px-2 py-0.5 rounded-md shrink-0">
                                         Included
                                     </span>
                                 )}

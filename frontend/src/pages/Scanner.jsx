@@ -257,13 +257,13 @@ const Scanner = () => {
   if (!isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6">
-        <div className="bg-slate-900 p-10 rounded-2xl shadow-2xl max-w-md text-center border border-rose-500/40">
+        <div className="bg-slate-900 p-10 rounded-2xl shadow-2xl max-w-md text-center border border-danger/40">
           <div className="flex justify-center mb-6">
-            <Lock className="w-16 h-16 text-red-500" />
+            <Lock className="w-16 h-16 text-danger-ink" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Access restricted</h2>
-          <p className="text-red-300 text-sm mb-8">This terminal is restricted to security staff and administrators.</p>
-          <button onClick={() => window.location.href = '/login'} className="py-3 px-6 w-full bg-red-600 hover:bg-red-500 text-white font-semibold rounded-md transition-colors text-sm">Sign in to your account</button>
+          <p className="text-danger text-sm mb-8">This terminal is restricted to security staff and administrators.</p>
+          <button onClick={() => window.location.href = '/login'} className="py-3 px-6 w-full bg-danger hover:bg-danger text-white font-semibold rounded-md transition-colors text-sm">Sign in to your account</button>
         </div>
       </div>
     );
@@ -309,14 +309,14 @@ const Scanner = () => {
   const statusMeta = useMemo(() => {
     if (state.mode === MODES.FEEDBACK) {
       return state.feedback.type === 'success'
-        ? { color: 'green', ring: '#22c55e', pill: 'bg-emerald-500/25 text-emerald-200 border-emerald-500/40' }
-        : { color: 'red', ring: '#ef4444', pill: 'bg-red-500/25 text-red-200 border-red-500/40' };
+        ? { color: 'green', ring: '#22c55e', pill: 'bg-surface-muted text-white/80 border-line' }
+        : { color: 'red', ring: '#ef4444', pill: 'bg-danger/25 text-white/80 border-danger/40' };
     }
     const isError = state.matchScore !== null && state.matchScore < 50;
     const isLocked = state.scanProgress >= 100;
-    if (isError) return { color: 'red', ring: '#ef4444', pill: 'bg-red-500/25 text-red-200 border-red-500/40' };
-    if (isLocked) return { color: 'green', ring: '#22c55e', pill: 'bg-emerald-500/25 text-emerald-200 border-emerald-500/40' };
-    return { color: 'blue', ring: '#3b82f6', pill: 'bg-blue-500/25 text-blue-200 border-blue-500/40' };
+    if (isError) return { color: 'red', ring: '#ef4444', pill: 'bg-danger/25 text-white/80 border-danger/40' };
+    if (isLocked) return { color: 'green', ring: '#22c55e', pill: 'bg-surface-muted text-white/80 border-line' };
+    return { color: 'blue', ring: '#3b82f6', pill: 'bg-accent/25 text-white/80 border-accent/40' };
   }, [state.mode, state.feedback.type, state.matchScore, state.scanProgress]);
 
   // Pure Image Loader
@@ -1284,8 +1284,8 @@ const Scanner = () => {
               className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center w-full max-w-sm p-7 text-center relative overflow-hidden"
             >
               {/* Camera Icon Badge */}
-              <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4">
-                <Camera className="w-8 h-8 text-blue-400" />
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent-on-dark mb-4">
+                <Camera className="w-8 h-8 text-accent-on-dark" />
               </div>
 
               <h2 className="text-xl font-bold text-white tracking-tight mb-1.5">
@@ -1297,7 +1297,7 @@ const Scanner = () => {
 
               <button
                 onClick={() => startQr(true)}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold tracking-wide text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                className="w-full py-3.5 bg-accent hover:bg-accent text-white rounded-xl font-bold tracking-wide text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-900/20"
               >
                 <Camera className="w-4 h-4" />
                 <span>Allow Camera</span>
@@ -1328,8 +1328,8 @@ const Scanner = () => {
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
-                    <SlidersHorizontal className="w-4 h-4 text-blue-400" />
+                  <div className="w-8 h-8 rounded-md bg-accent/10 text-accent-on-dark border border-accent/20 flex items-center justify-center">
+                    <SlidersHorizontal className="w-4 h-4 text-accent-on-dark" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Browser Camera Permissions</h3>
@@ -1349,7 +1349,7 @@ const Scanner = () => {
                 <button
                   onClick={() => setPermTab('ios')}
                   className={`h-8 text-xs font-semibold rounded-sm transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer ${
-                    permTab === 'ios' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
+                    permTab === 'ios' ? 'bg-accent text-white shadow-2xs' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Apple className="w-3.5 h-3.5" /> iPhone (iOS)
@@ -1357,7 +1357,7 @@ const Scanner = () => {
                 <button
                   onClick={() => setPermTab('android')}
                   className={`h-8 text-xs font-semibold rounded-sm transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer ${
-                    permTab === 'android' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-400 hover:text-white'
+                    permTab === 'android' ? 'bg-accent text-white shadow-2xs' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Smartphone className="w-3.5 h-3.5" /> Android
@@ -1368,19 +1368,19 @@ const Scanner = () => {
               {permTab === 'ios' && (
                 <div className="space-y-2.5 text-xs text-slate-300">
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
                     <p>Tap the <span className="font-bold text-white bg-white/10 px-1 py-0.5 rounded-sm">aA</span> icon in your Safari address bar.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
                     <p>Select <span className="font-bold text-white">Website Settings</span>.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
-                    <p>Change <span className="font-bold text-white">Camera</span> from Deny to <span className="font-bold text-emerald-400">Allow</span>.</p>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <p>Change <span className="font-bold text-white">Camera</span> from Deny to <span className="font-bold text-ink">Allow</span>.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
                     <p>Tap <span className="font-bold text-white">Done</span> and tap the button below to start.</p>
                   </div>
                 </div>
@@ -1390,19 +1390,19 @@ const Scanner = () => {
               {permTab === 'android' && (
                 <div className="space-y-2.5 text-xs text-slate-300">
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1 py-0.5 rounded-sm inline-flex items-center gap-1"><Lock className="w-3 h-3 text-blue-400 inline" /> Lock</span> icon next to the URL.</p>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <p>Tap the <span className="font-bold text-white bg-white/10 px-1 py-0.5 rounded-sm inline-flex items-center gap-1"><Lock className="w-3 h-3 text-accent-on-dark inline" /> Lock</span> icon next to the URL.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
                     <p>Tap <span className="font-bold text-white">Permissions</span> &rarr; <span className="font-bold text-white">Camera</span>.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
-                    <p>Switch setting to <span className="font-bold text-emerald-400">Allow</span>.</p>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <p>Switch setting to <span className="font-bold text-ink">Allow</span>.</p>
                   </div>
                   <div className="flex items-start gap-2.5 p-2.5 bg-white/5 rounded-md border border-white/5">
-                    <span className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
+                    <span className="w-5 h-5 rounded-md bg-accent/20 text-accent-on-dark font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
                     <p>Return to this page and tap <span className="font-bold text-white">Retry Connection</span>.</p>
                   </div>
                 </div>
@@ -1413,7 +1413,7 @@ const Scanner = () => {
                   setShowPermHelp(false);
                   startQr(true);
                 }}
-                className="mt-5 w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-md font-semibold tracking-wider uppercase text-xs transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                className="mt-5 w-full h-10 bg-accent hover:bg-accent text-white rounded-md font-semibold tracking-wider uppercase text-xs transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Retry Connection
               </button>
@@ -1448,16 +1448,16 @@ const Scanner = () => {
               </span>
 
               {state.employee?.is_medical_exempt ? (
-                <div className="w-full my-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-md text-left">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
-                    <HeartPulse className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="w-full my-3 p-3 bg-warning/15 border border-warning/40 rounded-md text-left">
+                  <div className="flex items-center gap-2 text-warning font-bold text-xs">
+                    <HeartPulse className="w-4 h-4 text-warning shrink-0" />
                     <span>Medical exemption on file</span>
                   </div>
-                  <p className="text-[11px] text-amber-200/80 mt-1 leading-tight">
+                  <p className="text-[11px] text-white/80 mt-1 leading-tight">
                     Face scan bypassed. A photo will be saved for attendance records.
                   </p>
                   {state.employee?.medical_exemption?.valid_until && (
-                    <div className="mt-1.5 text-[10px] text-amber-400/90 font-mono">
+                    <div className="mt-1.5 text-[10px] text-warning/90 font-mono">
                       Valid through: {state.employee.medical_exemption.valid_until}
                     </div>
                   )}
@@ -1470,7 +1470,7 @@ const Scanner = () => {
 
               <button
                 onClick={() => dispatch({ type: 'SET_MODE', payload: MODES.FACE })}
-                className={`w-full h-10 ${state.employee?.is_medical_exempt ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'} text-white rounded-md font-semibold text-xs tracking-wide transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer`}
+                className={`w-full h-10 ${state.employee?.is_medical_exempt ? 'bg-warning hover:bg-warning' : 'bg-accent hover:bg-accent'} text-white rounded-md font-semibold text-xs tracking-wide transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs cursor-pointer`}
               >
                 {state.employee?.is_medical_exempt ? <Camera className="w-4 h-4" /> : <Scan className="w-4 h-4" />}
                 <span>{state.employee?.is_medical_exempt ? 'Take attendance photo' : 'Start face scan'}</span>
@@ -1511,14 +1511,14 @@ const Scanner = () => {
             {state.liveness.stage === 'CHALLENGE' && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-6 sm:px-14 z-30">
                 {state.liveness.targetDirection === 'TURN_LEFT' ? (
-                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-amber-400 text-amber-300 px-4 py-3 rounded-md shadow-xl animate-pulse">
-                    <ArrowLeft className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
+                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-warning text-warning px-4 py-3 rounded-md shadow-xl animate-pulse">
+                    <ArrowLeft className="w-7 h-7 sm:w-8 sm:h-8 text-warning" />
                     <span className="text-[11px] font-bold tracking-wide">Turn left</span>
                   </div>
                 ) : <div />}
                 {state.liveness.targetDirection === 'TURN_RIGHT' ? (
-                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-amber-400 text-amber-300 px-4 py-3 rounded-md shadow-xl animate-pulse">
-                    <ArrowRight className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
+                  <div className="flex flex-col items-center gap-2 bg-slate-950 border border-warning text-warning px-4 py-3 rounded-md shadow-xl animate-pulse">
+                    <ArrowRight className="w-7 h-7 sm:w-8 sm:h-8 text-warning" />
                     <span className="text-[11px] font-bold tracking-wide">Turn right</span>
                   </div>
                 ) : <div />}
@@ -1540,43 +1540,43 @@ const Scanner = () => {
               <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide border shadow-2xs flex items-center gap-2 ${statusMeta.pill}`}>
                 {state.employee?.is_medical_exempt ? (
                   <>
-                    <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
+                    <HeartPulse className="w-3.5 h-3.5 text-warning" />
                     <span>Medical exemption: Recording photo...</span>
                   </>
                 ) : state.liveness.stage === 'ALIGN' ? (
                   <>
-                    <Scan className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+                    <Scan className="w-3.5 h-3.5 text-accent-on-dark animate-pulse" />
                     <span>Look directly at the camera</span>
                   </>
                 ) : state.liveness.stage === 'CHALLENGE' ? (
                   <>
                     {state.liveness.targetDirection === 'TURN_LEFT' ? (
-                      <ArrowLeft className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+                      <ArrowLeft className="w-3.5 h-3.5 text-warning animate-bounce" />
                     ) : (
-                      <ArrowRight className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+                      <ArrowRight className="w-3.5 h-3.5 text-warning animate-bounce" />
                     )}
-                    <span className="font-bold tracking-wider text-amber-300">
+                    <span className="font-bold tracking-wider text-warning">
                       {state.liveness.targetDirection === 'TURN_LEFT' ? 'Turn your head slightly left' : 'Turn your head slightly right'}
                     </span>
                   </>
                 ) : state.liveness.stage === 'CENTER_BLINK' ? (
                   <>
-                    <Eye className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                    <span className="font-bold text-cyan-300">Face camera and blink your eyes</span>
+                    <Eye className="w-3.5 h-3.5 text-accent-on-dark animate-pulse" />
+                    <span className="font-bold text-accent-on-dark">Face camera and blink your eyes</span>
                   </>
                 ) : state.liveness.passed && state.scanProgress < 100 ? (
                   <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-ink" />
                     <span>Face verified. Recording clock-in...</span>
                   </>
                 ) : state.scanProgress >= 100 ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-ink" />
                     <span>Recording attendance...</span>
                   </>
                 ) : state.matchScore !== null && state.matchScore < 50 ? (
                   <>
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-danger" />
                     <span>Face not recognized</span>
                   </>
                 ) : (
@@ -1591,7 +1591,7 @@ const Scanner = () => {
                   className="h-8 px-2.5 rounded-md bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-white/10 transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
                   title="Flip Camera (Front / Rear)"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                  <RefreshCw className="w-3.5 h-3.5 text-accent-on-dark" />
                   <span className="text-[11px] hidden sm:inline capitalize">
                     {cameraFacing === 'user' ? 'Front' : 'Rear'}
                   </span>
@@ -1624,13 +1624,13 @@ const Scanner = () => {
                   {state.employee ? `${state.employee.first_name} ${state.employee.last_name}` : '—'}
                 </h3>
                 {state.matchScore !== null && (
-                  <p className={`text-xs font-medium mt-0.5 ${state.matchScore >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <p className={`text-xs font-medium mt-0.5 ${state.matchScore >= 50 ? 'text-ink' : 'text-danger'}`}>
                     Confidence: {state.matchScore}%
                   </p>
                 )}
                 {state.employee?.is_medical_exempt && (
-                  <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-amber-300">
-                    <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
+                  <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] font-bold text-warning">
+                    <HeartPulse className="w-3.5 h-3.5 text-warning" />
                     <span>Medical exemption on file</span>
                   </div>
                 )}
@@ -1650,16 +1650,16 @@ const Scanner = () => {
               className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6 p-5 sm:p-6 w-full max-w-lg rounded-lg bg-slate-900 border border-slate-800 shadow-xl"
             >
               {state.feedback.image && (
-                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-emerald-500' : 'border-red-500'}`}>
+                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-md overflow-hidden border-2 shrink-0 ${state.feedback.type === 'success' ? 'border-line' : 'border-danger'}`}>
                   <img src={state.feedback.image} alt="" className="w-full h-full object-cover -scale-x-100" />
                 </div>
               )}
               <div className="text-center sm:text-left flex-1 w-full">
                 <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-xs text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-xs text-white shrink-0 ${state.feedback.type === 'success' ? 'bg-ink-subtle' : 'bg-danger'}`}>
                     {state.feedback.type === 'success' ? <Check className="w-3.5 h-3.5 text-white" /> : <X className="w-3.5 h-3.5 text-white" />}
                   </div>
-                  <h2 className={`text-lg sm:text-xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <h2 className={`text-lg sm:text-xl font-bold tracking-tight ${state.feedback.type === 'success' ? 'text-ink' : 'text-danger'}`}>
                     {state.feedback.title}
                   </h2>
                 </div>
@@ -1669,7 +1669,7 @@ const Scanner = () => {
                     {new Date().toLocaleTimeString('en-US', { hour12: false })}
                   </span>
                   {state.matchScore !== null && (
-                    <span className={`font-medium ${state.matchScore >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`font-medium ${state.matchScore >= 50 ? 'text-ink' : 'text-danger'}`}>
                       Confidence: {state.matchScore}%
                     </span>
                   )}
@@ -1685,8 +1685,8 @@ const Scanner = () => {
         {state.mode === MODES.ERROR && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
             <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-sm w-full text-center shadow-xl">
-              <div className="w-10 h-10 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto mb-3">
-                <AlertCircle className="w-5 h-5 text-rose-400" />
+              <div className="w-10 h-10 rounded-md bg-danger/10 text-danger border border-danger/20 flex items-center justify-center mx-auto mb-3">
+                <AlertCircle className="w-5 h-5 text-danger" />
               </div>
               <h2 className="text-base font-bold text-white mb-1">Scan Interrupted</h2>
               <p className="text-slate-400 text-xs mb-4">{state.error?.message || 'An unexpected error occurred.'}</p>
@@ -1739,7 +1739,7 @@ const Scanner = () => {
                   else toast.error('No employees found');
                 } catch { toast.error('Mock scan failed'); }
               }}
-              className="h-9 px-3.5 bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 rounded-md border border-blue-500/30 transition-colors duration-100 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="h-9 px-3.5 bg-accent/20 text-accent-on-dark hover:bg-accent/30 rounded-md border border-accent/30 transition-colors duration-100 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
               <Sparkles className="w-3.5 h-3.5" /> <span>Mock Badge</span>
             </button>
@@ -1759,7 +1759,7 @@ const Scanner = () => {
           <div
             className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 select-none"
           >
-            <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-accent rounded-full animate-spin mb-3" />
             <h2 className="text-xs font-bold text-white tracking-wide mb-1">
               {state.loadingMsg || 'Starting attendance kiosk...'}
             </h2>
@@ -1773,7 +1773,7 @@ const Scanner = () => {
       {/* Status indicator */}
       {state.mode !== MODES.BOOT && state.loadingMsg && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[80] px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-md shadow-lg flex items-center gap-2 text-slate-200 text-xs font-medium pointer-events-none">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-on-dark shrink-0" />
           <span className="truncate max-w-[240px] sm:max-w-none">{state.loadingMsg}</span>
         </div>
       )}
@@ -1781,7 +1781,7 @@ const Scanner = () => {
       {/* Debug panel */}
       {state.debugMode && (
         <div className="absolute top-20 left-4 z-[55] bg-black/80 border border-white/10 rounded-md p-3.5 w-64 text-[10px] font-mono text-slate-300">
-          <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Debug Info</h3>
+          <h3 className="text-xs font-bold text-accent-on-dark mb-2 uppercase">Debug Info</h3>
           <div className="space-y-1">
             <p>Mode: {state.mode}</p>
             <p>EmpID: {vault.employeeId?.slice(0, 8) || '—'}...</p>

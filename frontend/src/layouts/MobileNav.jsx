@@ -46,7 +46,7 @@ export const MobileNav = ({
                     title={tab.label}
                   >
                     {isActive && (
-                      <div className="absolute inset-0 bg-blue-600 rounded-md shadow-2xs" />
+                      <div className="absolute inset-0 bg-accent rounded-md shadow-2xs" />
                     )}
                     <i className={`ti ${tab.icon} text-lg relative z-10`} />
                     <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-medium">
@@ -65,7 +65,7 @@ export const MobileNav = ({
                 title="More Apps"
               >
                 {sidebarOpen && (
-                  <div className="absolute inset-0 bg-blue-600 rounded-md shadow-2xs" />
+                  <div className="absolute inset-0 bg-accent rounded-md shadow-2xs" />
                 )}
                 <i className={`ti ti-grid-dots text-lg relative z-10`} />
                 <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-medium">
@@ -84,7 +84,7 @@ export const MobileNav = ({
                 title="Portal Home"
               >
                 {location.pathname === '/employee/dashboard' && (
-                  <div className="absolute inset-0 bg-blue-600 rounded-md shadow-2xs" />
+                  <div className="absolute inset-0 bg-accent rounded-md shadow-2xs" />
                 )}
                 <i
                   className="ti ti-smart-home text-lg relative z-10"
@@ -104,15 +104,15 @@ export const MobileNav = ({
                   <div
                     className={`relative w-12 h-12 rounded-full flex items-center justify-center ring-4 ring-slate-900 transition-colors duration-100 ${
                       location.pathname === '/employee/qr'
-                        ? 'bg-blue-600 text-white shadow-2xs border border-white/30'
+                        ? 'bg-accent text-white shadow-2xs border border-white/30'
                         : isMedicalExempt(user)
-                        ? 'bg-amber-600 text-white shadow-2xs border border-amber-300'
+                        ? 'bg-warning text-white shadow-2xs border border-warning/20'
                         : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 shadow-2xs border border-white/10'
                     }`}
                   >
                     <i className="ti ti-qrcode text-xl" />
                     {isMedicalExempt(user) && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 border-2 border-slate-900 rounded-full flex items-center justify-center text-[7px] text-slate-950 font-black" title="Medical Grace Active">
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-warning border-2 border-slate-900 rounded-full flex items-center justify-center text-[7px] text-slate-950 font-black" title="Medical Grace Active">
                         +
                       </span>
                     )}
@@ -122,7 +122,7 @@ export const MobileNav = ({
                       location.pathname === '/employee/qr' 
                         ? 'text-white font-bold' 
                         : isMedicalExempt(user)
-                        ? 'text-amber-300 font-bold'
+                        ? 'text-warning font-bold'
                         : 'text-slate-400 group-hover:text-slate-200'
                     }`}
                   >
@@ -140,7 +140,7 @@ export const MobileNav = ({
                 title="Quick Navigation Menu"
               >
                 {sidebarOpen && (
-                  <div className="absolute inset-0 bg-blue-600 rounded-md shadow-2xs" />
+                  <div className="absolute inset-0 bg-accent rounded-md shadow-2xs" />
                 )}
                 <i className="ti ti-grid-dots text-lg relative z-10" />
                 <span className="text-[8px] sm:text-[9px] tracking-tight truncate max-w-full text-center relative z-10 leading-none mt-0.5 font-semibold">
@@ -179,7 +179,7 @@ export const MobileNav = ({
 
             {/* PWA Install Banner */}
             {!isStandalone && (
-              <div className="mb-4 p-3.5 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-between gap-3 shadow-2xs">
+              <div className="mb-4 p-3.5 bg-accent/20 border border-accent/30 rounded-lg flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
                   <picture>
                     <source srcSet="/logo-icon.webp" type="image/webp" />
@@ -194,12 +194,12 @@ export const MobileNav = ({
                   </picture>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate">Install C-Point HRIS</p>
-                    <p className="text-[9px] text-blue-200 truncate">Add shortcut to home screen</p>
+                    <p className="text-[9px] text-white/80 truncate">Add shortcut to home screen</p>
                   </div>
                 </div>
                 <button
                   onClick={handleInstallApp}
-                  className="h-8 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-2xs shrink-0 flex items-center gap-1 cursor-pointer transition-colors duration-100"
+                  className="h-8 px-3 bg-accent hover:bg-accent text-white text-xs font-semibold rounded-md shadow-2xs shrink-0 flex items-center gap-1 cursor-pointer transition-colors duration-100"
                 >
                   <i className="ti ti-download text-sm" /> Install
                 </button>
@@ -214,7 +214,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
                       <i className="ti ti-adjustments-horizontal text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -228,7 +228,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
                       <i className="ti ti-gavel text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -256,7 +256,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent/20 text-accent-on-dark flex items-center justify-center shrink-0">
                       <i className="ti ti-calendar text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -272,7 +272,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent/20 text-accent-on-dark flex items-center justify-center shrink-0">
                       <i className="ti ti-smart-home text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -286,7 +286,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
                       <i className="ti ti-qrcode text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -300,7 +300,7 @@ export const MobileNav = ({
                     onClick={() => setSidebarOpen(false)}
                     className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-md bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent/20 text-accent-on-dark flex items-center justify-center shrink-0">
                       <i className="ti ti-user-circle text-lg" />
                     </div>
                     <div className="min-w-0">
@@ -317,7 +317,7 @@ export const MobileNav = ({
                   onClick={() => setSidebarOpen(false)}
                   className="p-3 bg-white/5 hover:bg-white/10 rounded-md border border-white/5 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
                 >
-                  <div className="w-8 h-8 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
                     <i className="ti ti-scan text-lg" />
                   </div>
                   <div className="min-w-0">
@@ -338,7 +338,7 @@ export const MobileNav = ({
               </Link>
               <button
                 onClick={handleLogout}
-                className="flex-1 h-9 px-4 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/60 text-rose-300 rounded-md text-xs font-semibold text-center transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 h-9 px-4 bg-danger-ink/60 hover:bg-danger-ink/80 border border-danger/60 text-danger rounded-md text-xs font-semibold text-center transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <i className="ti ti-power" /> Sign Out
               </button>

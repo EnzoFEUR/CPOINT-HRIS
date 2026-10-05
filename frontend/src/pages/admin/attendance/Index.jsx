@@ -77,7 +77,7 @@ const Index = () => {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading attendance logs...</p>
             </div>
         );
@@ -108,7 +108,7 @@ const Index = () => {
                                 setSearchQuery(e.target.value);
                                 setCurrentPage(1);
                             }}
-                            className="h-9 w-full pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium text-slate-800 transition-colors duration-100 placeholder:text-slate-400"
+                            className="h-9 w-full pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent font-medium text-slate-800 transition-colors duration-100 placeholder:text-slate-400"
                         />
                     </div>
                 </div>
@@ -120,7 +120,7 @@ const Index = () => {
                         {paginatedLogs.length > 0 ? paginatedLogs.map((log) => (
                             <div 
                                 key={`mobile-${log.id}`} 
-                                className="p-4 space-y-3 hover:bg-cyan-50/20 transition-colors"
+                                className="p-4 space-y-3 hover:bg-accent-subtle/20 transition-colors"
                             >
                                 {/* Card Header: Employee Info + Date */}
                                 <div className="flex items-start justify-between gap-3">
@@ -149,7 +149,7 @@ const Index = () => {
                                     <div className="flex items-center justify-between gap-2">
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time In</p>
-                                            <span className="font-mono text-xs font-bold text-emerald-600">
+                                            <span className="font-mono text-xs font-bold text-ink">
                                                 {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </div>
@@ -179,11 +179,11 @@ const Index = () => {
                                                     {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider">
+                                                <span className="text-[10px] font-black text-warning-ink uppercase tracking-wider">
                                                     Active
                                                 </span>
                                             ) : (
-                                                <span className="text-[9px] font-black text-red-500 uppercase tracking-wider">
+                                                <span className="text-[9px] font-black text-danger-ink uppercase tracking-wider">
                                                     Missed
                                                 </span>
                                             )}
@@ -264,7 +264,7 @@ const Index = () => {
                                         <td className="px-6 py-3.5 text-center">
                                             <div className="flex flex-col items-center gap-1.5">
                                                 {log.time_in ? (
-                                                    <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 tabular-nums">
+                                                    <span className="font-mono text-xs font-semibold text-ink bg-surface-muted px-2.5 py-0.5 rounded border border-line tabular-nums">
                                                         {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 ) : (
@@ -274,7 +274,7 @@ const Index = () => {
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-blue-600 transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
                                                     >
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
@@ -296,11 +296,11 @@ const Index = () => {
                                                         {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                    <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                    <span className="bg-warning-subtle text-warning-ink border border-warning/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                         Active
                                                     </span>
                                                 ) : (
-                                                    <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                    <span className="bg-danger-subtle text-danger-ink border border-danger/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                         Missed clock-out
                                                     </span>
                                                 )}
@@ -308,7 +308,7 @@ const Index = () => {
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
                                                         onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-blue-600 transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
                                                     >
                                                         <img 
                                                             src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
@@ -402,7 +402,7 @@ const Index = () => {
                             <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-800 tracking-wide flex items-center gap-1.5">
-                                        <i className="ti ti-camera text-blue-600 text-base" />
+                                        <i className="ti ti-camera text-accent text-base" />
                                         <span>{selectedImageType} Verification Capture</span>
                                     </h3>
                                     <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[340px]">

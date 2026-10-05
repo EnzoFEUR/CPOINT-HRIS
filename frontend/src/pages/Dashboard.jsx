@@ -13,18 +13,18 @@ import {
 } from 'lucide-react';
 
 const GRADE_COLORS = {
-    'A+': { color: 'bg-emerald-500', textCol: 'text-emerald-700', bgCol: 'bg-emerald-50' },
-    'A': { color: 'bg-emerald-500', textCol: 'text-emerald-700', bgCol: 'bg-emerald-50' },
-    'B+': { color: 'bg-blue-500', textCol: 'text-blue-700', bgCol: 'bg-blue-50' },
-    'B': { color: 'bg-amber-500', textCol: 'text-amber-700', bgCol: 'bg-amber-50' },
-    'C+': { color: 'bg-amber-500', textCol: 'text-amber-700', bgCol: 'bg-amber-50' },
-    'C': { color: 'bg-rose-500', textCol: 'text-rose-700', bgCol: 'bg-rose-50' },
+    'A+': { color: 'bg-accent', textCol: 'text-accent', bgCol: 'bg-accent-subtle' },
+    'A': { color: 'bg-accent', textCol: 'text-accent', bgCol: 'bg-accent-subtle' },
+    'B+': { color: 'bg-accent', textCol: 'text-accent', bgCol: 'bg-accent-subtle' },
+    'B': { color: 'bg-warning', textCol: 'text-warning-ink', bgCol: 'bg-warning-subtle' },
+    'C+': { color: 'bg-warning', textCol: 'text-warning-ink', bgCol: 'bg-warning-subtle' },
+    'C': { color: 'bg-danger', textCol: 'text-danger-ink', bgCol: 'bg-danger-subtle' },
 };
 
 const RISK_STYLES = {
-    High: 'bg-red-50 text-red-700 border-red-200',
-    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
-    Low: 'bg-orange-50 text-orange-700 border-orange-200',
+    High: 'bg-danger-subtle text-danger-ink border-danger/20',
+    Medium: 'bg-warning-subtle text-warning-ink border-warning/20',
+    Low: 'bg-surface-muted text-ink border-line',
 };
 
 const formatDisplayName = (name) => {
@@ -391,8 +391,8 @@ export default function Dashboard() {
     if (isLoading || !dashboardData) {
         return (
             <div className="flex flex-col items-center justify-center h-[65vh] space-y-3">
-                <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center border border-blue-200">
-                    <i className="ti ti-chart-pie-3 text-2xl text-blue-600" />
+                <div className="w-12 h-12 rounded-lg bg-accent-subtle flex items-center justify-center border border-accent/20">
+                    <i className="ti ti-chart-pie-3 text-2xl text-accent" />
                 </div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Connecting to live updates...</p>
             </div>
@@ -416,11 +416,11 @@ export default function Dashboard() {
                 <div className="relative z-10 space-y-4 p-6 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Google Gemini Brief
+                            <span className="px-3 py-1 bg-surface-muted text-ink-subtle border border-line rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-ink-subtle" /> Google Gemini Brief
                             </span>
                             {(isManualRefreshingAI || (!briefing && isAIFetching)) && (
-                                <span className="text-[11px] text-emerald-400/80 font-semibold flex items-center gap-1.5">
+                                <span className="text-[11px] text-ink font-semibold flex items-center gap-1.5">
                                     <Loader2 className="w-3 h-3 animate-spin" /> Analyzing live signals...
                                 </span>
                             )}
@@ -430,7 +430,7 @@ export default function Dashboard() {
                             disabled={isAILoading}
                             className="self-start sm:self-center h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`w-3.5 h-3.5 text-ink-subtle ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
                             <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>
                         </button>
                     </div>
@@ -438,20 +438,15 @@ export default function Dashboard() {
                     {!briefing ? (
                         /* Enterprise Skeleton State only when absolutely zero telemetry is available */
                         <div className="space-y-4 animate-pulse pt-1">
-                            <div className="h-7 bg-slate-800 rounded-md w-4/5 border-l-4 border-emerald-500 pl-4 py-1 flex items-center">
+                            <div className="h-7 bg-slate-800 rounded-md w-4/5 border-l-4 border-line pl-4 py-1 flex items-center">
                                 <span className="text-xs text-slate-400 font-medium tracking-wide">
                                     Connecting to workforce intelligence telemetry...
                                 </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <div className="h-6 w-32 bg-slate-800 rounded-md"></div>
-                                <div className="h-6 w-28 bg-slate-800 rounded-md"></div>
-                                <div className="h-6 w-36 bg-slate-800 rounded-md"></div>
-                            </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4 space-y-2.5">
                                     <div className="flex items-center gap-2">
-                                        <Lightbulb className="w-4 h-4 text-amber-400" />
+                                        <Lightbulb className="w-4 h-4 text-warning" />
                                         <div className="h-3 w-24 bg-slate-700 rounded"></div>
                                     </div>
                                     <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
@@ -459,7 +454,7 @@ export default function Dashboard() {
                                 </div>
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4 space-y-2.5">
                                     <div className="flex items-center gap-2">
-                                        <Target className="w-4 h-4 text-blue-400" />
+                                        <Target className="w-4 h-4 text-accent-on-dark" />
                                         <div className="h-3 w-32 bg-slate-700 rounded"></div>
                                     </div>
                                     <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
@@ -470,50 +465,41 @@ export default function Dashboard() {
                     ) : (
                         /* Loaded AI Briefing */
                         <>
-                            <p className="text-base sm:text-lg font-semibold text-white leading-relaxed border-l-4 border-emerald-400 pl-4">
+                            <p className="text-base sm:text-lg font-semibold text-white leading-relaxed border-l-4 border-line pl-4">
                                 {briefing.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
                             </p>
 
-                            {/* Badges pulled straight from the AI briefing */}
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                                    Punctuality Grade: {briefing.punctuality_grade || 'N/A'}
-                                </span>
-                                {briefing.top_performing_department && (
-                                    <span className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-[11px] font-bold uppercase tracking-wider text-blue-300">
-                                        Top Dept: {briefing.top_performing_department}
+                            {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="px-2.5 py-1 bg-warning/10 border border-warning/30 rounded-md text-[11px] font-bold uppercase tracking-wider text-warning flex items-center gap-1.5">
+                                        <AlertTriangle className="w-3.5 h-3.5 text-warning" /> Needs Attention: {briefing.department_needs_attention}
                                     </span>
-                                )}
-                                {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
-                                    <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> Needs Attention: {briefing.department_needs_attention}
-                                    </span>
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             {/* AI-Generated Descriptive Analytics */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4">
-                                    <span className="text-amber-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                        <Lightbulb className="w-3.5 h-3.5 text-amber-400" /> Operational Observations
+                                    <span className="text-warning font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                        <Lightbulb className="w-3.5 h-3.5 text-ink-subtle" /> Operational Observations
                                     </span>
                                     <ul className="mt-2.5 space-y-1.5">
                                         {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough attendance data yet to generate observations.']).map((insight, i) => (
                                             <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5 leading-relaxed">
-                                                <span className="text-emerald-400 mt-0.5">&bull;</span>
+                                                <span className="text-white mt-0.5">&bull;</span>
                                                 <span>{insight}</span>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4">
-                                    <span className="text-blue-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                        <Target className="w-3.5 h-3.5 text-blue-400" /> Recommended Actions
+                                    <span className="text-accent-on-dark font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                        <Target className="w-3.5 h-3.5 text-accent-on-dark" /> Recommended Actions
                                     </span>
                                     <ul className="mt-2.5 space-y-1.5">
                                         {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No critical action items at this time.']).map((rec, i) => (
                                             <li key={i} className="text-xs text-slate-200 font-medium flex items-start gap-1.5 leading-relaxed">
-                                                <span className="text-blue-400 mt-0.5">&bull;</span>
+                                                <span className="text-accent-on-dark mt-0.5">&bull;</span>
                                                 <span>{rec}</span>
                                             </li>
                                         ))}
@@ -529,13 +515,13 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <div className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group">
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-users text-5xl text-blue-600" />
+                        <i className="ti ti-users text-5xl text-accent" />
                     </div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Workforce</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {totalStaff}
                     </h3>
-                    <span className="text-xs font-semibold text-emerald-700 mt-2 flex items-center gap-1">
+                    <span className="text-xs font-semibold text-ink mt-2 flex items-center gap-1">
                         <i className="ti ti-check" /> Active Personnel
                     </span>
                 </div>
@@ -543,33 +529,33 @@ export default function Dashboard() {
                 <button
                     type="button"
                     onClick={() => setActiveModal('present')}
-                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-emerald-300 hover:bg-slate-50/50 transition-colors duration-100"
+                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-success/20 hover:bg-slate-50/50 transition-colors duration-100"
                 >
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-user-check text-5xl text-emerald-600" />
+                        <i className="ti ti-user-check text-5xl text-ink" />
                     </div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Present Rate</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {presentPercentage}%
                     </h3>
                     <span className="text-xs font-semibold text-slate-600 mt-2 block">
-                        {presentTodayCount} of {totalStaff} on-site &middot; <span className="text-emerald-700 group-hover:underline">View list &rarr;</span>
+                        {presentTodayCount} of {totalStaff} on-site &middot; <span className="text-accent group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
 
                 <button
                     type="button"
                     onClick={() => setActiveModal('late')}
-                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-amber-300 hover:bg-slate-50/50 transition-colors duration-100"
+                    className="bg-white p-5 sm:p-6 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden group text-left cursor-pointer hover:border-warning/20 hover:bg-slate-50/50 transition-colors duration-100"
                 >
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
-                        <i className="ti ti-clock-exclamation text-5xl text-amber-600" />
+                        <i className="ti ti-clock-exclamation text-5xl text-warning-ink" />
                     </div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Late Arrivals</p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {lateTodayCount}
                     </h3>
-                    <span className="text-xs font-semibold text-amber-700 mt-2 flex items-center gap-1">
+                    <span className="text-xs font-semibold text-warning-ink mt-2 flex items-center gap-1">
                         <i className="ti ti-alert-triangle" /> Past grace period &middot; <span className="group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
@@ -582,7 +568,7 @@ export default function Dashboard() {
                     <h3 className="text-3xl sm:text-4xl font-bold text-white mt-1 tracking-tight font-mono tabular-nums">
                         {pendingLeavesCount}
                     </h3>
-                    <span className="text-xs font-semibold text-blue-400 mt-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-accent-on-dark mt-2 flex items-center justify-between">
                         <span>Action Required</span>
                         <span>&rarr;</span>
                     </span>
@@ -597,7 +583,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-trophy text-amber-600 text-lg" /> Department Punctuality Scorecard
+                                <i className="ti ti-trophy text-ink-subtle text-lg" /> Department Punctuality Scorecard
                             </h3>
                         </div>
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200">
@@ -632,10 +618,10 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-flame text-rose-600 text-lg" /> Burnout & Overtime Risk
+                                <i className="ti ti-flame text-ink-subtle text-lg" /> Burnout & Overtime Risk
                             </h3>
                         </div>
-                        <span className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase rounded-md border border-rose-200">
+                        <span className="px-2 py-0.5 bg-danger-subtle text-danger-ink text-[10px] font-bold uppercase rounded-md border border-danger/20">
                             {isAnomalyLoading ? '...' : `${riskFlags.length} active flag${riskFlags.length === 1 ? '' : 's'}`}
                         </span>
                     </div>
@@ -678,7 +664,7 @@ export default function Dashboard() {
                                                     onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
                                                     className="h-8 px-2.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-100 cursor-pointer flex items-center gap-1.5 shadow-2xs"
                                                 >
-                                                    <i className={`ti ${isAck ? 'ti-circle-check-filled text-emerald-600' : 'ti-circle text-slate-400'}`} />
+                                                    <i className={`ti ${isAck ? 'ti-circle-check-filled text-ink' : 'ti-circle text-slate-400'}`} />
                                                     {isAck ? 'Acknowledged' : 'Acknowledge'}
                                                 </button>
                                                 <Link
@@ -700,8 +686,8 @@ export default function Dashboard() {
                     </div>
 
                     {anomalyData?.report?.general_health_assessment && (
-                        <div className="p-3 bg-emerald-50 rounded-md border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
-                            <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
+                        <div className="p-3 bg-surface-muted rounded-md border border-line flex items-start gap-2.5 text-xs text-ink font-medium">
+                            <i className="ti ti-bulb text-accent text-base shrink-0 mt-0.5" />
                             <p>{anomalyData.report.general_health_assessment}</p>
                         </div>
                     )}
@@ -717,11 +703,11 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly'} Payroll Forecaster
+                                <i className="ti ti-chart-arrows-vertical text-ink-subtle text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly'} Payroll Forecaster
                             </h3>
                         </div>
                         {payrollData?.employeesWithPayrate > 0 && (
-                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-200 shrink-0">
+                            <span className="px-2.5 py-1 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line shrink-0">
                                 Day {payrollData.elapsedWorkingDays}/{payrollData.totalCutoffWorkingDays}
                             </span>
                         )}
@@ -756,8 +742,8 @@ export default function Dashboard() {
                             )}
 
                             {(payrollInsight || payrollData.insight) && (
-                                <div className="p-3 bg-emerald-50 rounded-md border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-900 font-medium">
-                                    <i className="ti ti-bulb text-emerald-600 text-base shrink-0 mt-0.5" />
+                                <div className="p-3 bg-surface-muted rounded-md border border-line flex items-start gap-2.5 text-xs text-ink font-medium">
+                                    <i className="ti ti-bulb text-accent text-base shrink-0 mt-0.5" />
                                     <p>{payrollInsight || payrollData.insight}</p>
                                 </div>
                             )}
@@ -777,10 +763,10 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Rules &amp; Labor Standards
+                                <i className="ti ti-scale text-accent text-lg" /> DOLE Rules &amp; Labor Standards
                             </h3>
                         </div>
-                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-300">
+                        <span className="px-2.5 py-1 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line">
                             {doleCompliance ? `${doleCompliance.restDay.compliancePercent}% Audit-Ready` : '—'}
                         </span>
                     </div>
@@ -799,10 +785,10 @@ export default function Dashboard() {
                                             {doleCompliance.restDay.violations.length > 0 && (
                                                 <i className={`ti ti-chevron-right text-slate-400 text-sm transition-transform ${expandedDoleCheck ? 'rotate-90' : ''}`} />
                                             )}
-                                            <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-emerald-600' : 'ti-alert-circle-filled text-amber-600'} text-base`} />
+                                            <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-ink' : 'ti-alert-circle-filled text-ink'} text-base`} />
                                             <span>{doleCompliance.restDay.label}</span>
                                         </div>
-                                        <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                        <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-ink' : 'text-ink'}`}>
                                             {doleCompliance.restDay.status}
                                         </span>
                                     </button>
@@ -824,7 +810,7 @@ export default function Dashboard() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
-                                                                className={`h-7 px-2.5 rounded-md text-[10px] font-medium border cursor-pointer transition-colors duration-100 shadow-2xs ${isAck ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                                                                className={`h-7 px-2.5 rounded-md text-[10px] font-medium border cursor-pointer transition-colors duration-100 shadow-2xs ${isAck ? 'bg-surface-muted text-ink border-line' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
                                                             >
                                                                 {isAck ? 'Acknowledged' : 'Acknowledge'}
                                                             </button>
@@ -844,10 +830,10 @@ export default function Dashboard() {
                                 </div>
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-between text-xs">
                                     <div className="flex items-center gap-2 font-semibold text-slate-700">
-                                        <i className="ti ti-circle-check-filled text-emerald-600 text-base" />
+                                        <i className="ti ti-circle-check-filled text-ink text-base" />
                                         <span>{doleCompliance.holidayMultiplier.label}</span>
                                     </div>
-                                    <span className="font-mono text-[11px] font-bold text-emerald-700">{doleCompliance.holidayMultiplier.status}</span>
+                                    <span className="font-mono text-[11px] font-bold text-ink">{doleCompliance.holidayMultiplier.status}</span>
                                 </div>
                             </>
                         ) : (
@@ -894,11 +880,11 @@ export default function Dashboard() {
                                             {trend.value}% Present
                                         </div>
                                         <div
-                                            className={`w-full max-w-[36px] rounded-t-sm transition-all duration-300 ease-out ${isToday ? 'bg-blue-600' : 'bg-slate-100 group-hover:bg-blue-100'}`}
+                                            className={`w-full max-w-[36px] rounded-t-sm transition-all duration-300 ease-out ${isToday ? 'bg-accent' : 'bg-slate-100 group-hover:bg-accent-subtle'}`}
                                             style={{ height }}
                                         />
                                     </div>
-                                    <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider text-center ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
+                                    <span className={`mt-3 text-[10px] font-bold uppercase tracking-wider text-center ${isToday ? 'text-accent' : 'text-slate-400'}`}>
                                         {trend.day}
                                     </span>
                                 </div>
@@ -911,9 +897,9 @@ export default function Dashboard() {
                 <div className="lg:col-span-5 bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <i className="ti ti-broadcast text-blue-600" /> Live Gate Feed
+                            <i className="ti ti-broadcast text-accent" /> Live Gate Feed
                         </h3>
-                        <Link to="/admin/attendance" className="text-xs font-semibold text-blue-600 hover:underline">View All &rarr;</Link>
+                        <Link to="/admin/attendance" className="text-xs font-semibold text-accent hover:underline">View All &rarr;</Link>
                     </div>
 
                     <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[300px] pr-1">
@@ -923,7 +909,7 @@ export default function Dashboard() {
                                 className="p-3 bg-slate-50 rounded-md flex items-center justify-between border border-slate-200 transition-colors duration-100"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-md bg-blue-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                                    <div className="w-8 h-8 rounded-md bg-accent text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
                                         {log.employees ? `${log.employees.first_name?.[0] || 'C'}${log.employees.last_name?.[0] || 'P'}` : 'CP'}
                                     </div>
                                     <div className="min-w-0">
@@ -936,9 +922,9 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
-                                    log.status?.toLowerCase().includes('absent') ? 'bg-rose-50 text-rose-800 border-rose-300' :
-                                    log.status?.includes('Late') ? 'bg-amber-50 text-amber-900 border-amber-300' : 
-                                    'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    log.status?.toLowerCase().includes('absent') ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                                    log.status?.includes('Late') ? 'bg-warning-subtle text-warning-ink border-warning/20' : 
+                                    'bg-slate-900 text-white border-slate-800'
                                 }`}>
                                     {log.status}
                                 </span>
@@ -1005,7 +991,7 @@ export default function Dashboard() {
                                             className="p-3 bg-slate-50 rounded-md border border-slate-200 flex items-center justify-between gap-3"
                                         >
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <div className="w-9 h-9 rounded-md bg-blue-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                                                <div className="w-9 h-9 rounded-md bg-accent text-white font-bold flex items-center justify-center text-xs shrink-0">
                                                     {formatDisplayName(person.name).split(' ').map(p => p[0]).slice(0, 2).join('')}
                                                 </div>
                                                 <div className="min-w-0">
@@ -1016,14 +1002,14 @@ export default function Dashboard() {
                                                 </div>
                                             </div>
                                             {activeModal === 'late' ? (
-                                                <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 bg-amber-50 text-amber-900 border-amber-300 font-mono">
+                                                <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 bg-warning-subtle text-warning-ink border-warning/20 font-mono">
                                                     {person.lateLabel}
                                                 </span>
                                             ) : (
                                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
                                                     person.status?.toLowerCase().includes('late')
-                                                        ? 'bg-amber-50 text-amber-900 border-amber-300'
-                                                        : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20'
+                                                        : 'bg-slate-900 text-white border-slate-800'
                                                 }`}>
                                                     {person.status || 'On time'}
                                                 </span>

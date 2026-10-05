@@ -240,7 +240,7 @@ const Kbd = ({ children, className = '' }) => (
 const Spinner = () => (
   <span
     aria-hidden="true"
-    className="size-4 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600"
+    className="size-4 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-accent"
   />
 );
 
@@ -266,7 +266,7 @@ const ResultRow = ({ item, id, selected, onHover, onSelect }) => {
       onMouseMove={onHover}
       onClick={() => onSelect(item)}
       className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-100 ${
-        selected ? 'bg-blue-50' : ''
+        selected ? 'bg-accent-subtle' : ''
       } ${item.stale ? 'pointer-events-none opacity-50' : ''}`}
     >
       {isPerson ? (
@@ -275,9 +275,9 @@ const ResultRow = ({ item, id, selected, onHover, onSelect }) => {
         <span
           className={`grid size-10 shrink-0 place-items-center rounded-lg transition-colors duration-100 ${
             isPrimary
-              ? 'bg-blue-600 text-white'
+              ? 'bg-accent text-white'
               : selected
-                ? 'bg-white text-blue-600'
+                ? 'bg-white text-accent'
                 : 'bg-slate-100 text-slate-600'
           }`}
         >
@@ -322,7 +322,7 @@ const AnswerCard = ({ data, stale, ms }) => (
     className={`${SURFACE} p-4 transition-opacity duration-150 sm:p-5 ${stale ? 'opacity-50' : ''}`}
   >
     <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500">
-      <span className="grid size-6 place-items-center rounded-md bg-blue-600 text-white">
+      <span className="grid size-6 place-items-center rounded-md bg-accent text-white">
         <i className="ti ti-sparkles text-[13px]" aria-hidden="true" />
       </span>
       {data.is_local ? 'C-Point Copilot' : 'AI answer'}
@@ -371,7 +371,7 @@ const AnswerSkeleton = () => (
 
 const EmptyState = ({ canSearchPeople }) => (
   <div className="flex flex-col items-center px-6 py-14 text-center">
-    <span className={`${SURFACE} grid size-12 place-items-center text-blue-600`}>
+    <span className={`${SURFACE} grid size-12 place-items-center text-accent`}>
       <i className="ti ti-sparkles text-[22px]" aria-hidden="true" />
     </span>
     <h2 className="mt-4 text-[17px] font-semibold tracking-tight text-slate-900">
@@ -725,9 +725,9 @@ export const GlobalSearch = ({ user }) => {
         aria-label="Open search"
         aria-haspopup="dialog"
         aria-keyshortcuts="Control+K Meta+K"
-        className="group hidden h-9 w-56 md:flex md:w-60 lg:w-72 items-center gap-2.5 rounded-md border border-slate-200 bg-slate-50/90 pl-3 pr-2 text-left text-xs text-slate-500 shadow-2xs cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-72 md:hover:w-80 lg:hover:w-96 hover:border-blue-400/70 hover:bg-white hover:shadow-xs hover:ring-2 hover:ring-blue-500/10 focus-visible:w-72 md:focus-visible:w-80 lg:focus-visible:w-96 focus-visible:border-blue-500 focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 motion-reduce:transition-none"
+        className="group hidden h-9 w-56 md:flex md:w-60 lg:w-72 items-center gap-2.5 rounded-md border border-slate-200 bg-slate-50/90 pl-3 pr-2 text-left text-xs text-slate-500 shadow-2xs cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-72 md:hover:w-80 lg:hover:w-96 hover:border-accent/70 hover:bg-white hover:shadow-xs hover:ring-2 hover:ring-accent/10 focus-visible:w-72 md:focus-visible:w-80 lg:focus-visible:w-96 focus-visible:border-accent focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 motion-reduce:transition-none"
       >
-        <span className="grid size-5 place-items-center rounded text-slate-400 transition-all duration-200 group-hover:scale-110 group-hover:text-blue-600">
+        <span className="grid size-5 place-items-center rounded text-slate-400 transition-all duration-200 group-hover:scale-110 group-hover:text-accent">
           <i className="ti ti-search text-base" aria-hidden="true" />
         </span>
         <span className="flex-1 truncate font-medium text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
@@ -745,7 +745,7 @@ export const GlobalSearch = ({ user }) => {
         onClick={() => setIsOpen(true)}
         aria-label="Open search"
         aria-haspopup="dialog"
-        className="grid size-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-2xs transition-all duration-200 hover:border-blue-400 hover:bg-slate-50 hover:text-blue-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 md:hidden"
+        className="grid size-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-2xs transition-all duration-200 hover:border-accent hover:bg-slate-50 hover:text-accent active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 md:hidden"
       >
         <i className="ti ti-search text-base" aria-hidden="true" />
       </button>
@@ -769,7 +769,7 @@ export const GlobalSearch = ({ user }) => {
             >
               {/* Search field */}
               <div className="flex items-center gap-3 p-3 pb-2 sm:p-4 sm:pb-3">
-                <div className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-white pl-4 pr-2 ring-1 ring-slate-900/[0.06] transition-shadow focus-within:ring-2 focus-within:ring-blue-600/40">
+                <div className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-white pl-4 pr-2 ring-1 ring-slate-900/[0.06] transition-shadow focus-within:ring-2 focus-within:ring-accent/40">
                   <i className="ti ti-search text-xl text-slate-400" aria-hidden="true" />
                   <input
                     ref={inputRef}
@@ -811,7 +811,7 @@ export const GlobalSearch = ({ user }) => {
                 <button
                   type="button"
                   onClick={closePalette}
-                  className="shrink-0 px-1 text-[15px] font-medium text-blue-600 sm:hidden"
+                  className="shrink-0 px-1 text-[15px] font-medium text-accent sm:hidden"
                 >
                   Cancel
                 </button>

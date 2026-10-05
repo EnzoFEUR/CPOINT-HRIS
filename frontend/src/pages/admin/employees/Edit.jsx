@@ -328,7 +328,7 @@ export default function Edit() {
     if (isLoading || !employee) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Editor...</p>
             </div>
         );
@@ -337,14 +337,14 @@ export default function Edit() {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
             <div className="flex items-center justify-between">
-                <Link to={`/admin/employees/${id}`} className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-blue-600 transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
+                <Link to={`/admin/employees/${id}`} className="h-8 px-3 bg-white text-slate-600 font-semibold text-xs rounded-md hover:bg-slate-50 hover:text-accent transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5">
                     <i className="ti ti-arrow-left text-sm" /> Cancel Edit
                 </Link>
             </div>
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
                 <div className="mb-6 flex items-center gap-3.5">
-                    <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-md flex items-center justify-center border border-blue-200 shrink-0">
+                    <div className="h-10 w-10 bg-accent-subtle text-accent rounded-md flex items-center justify-center border border-accent/20 shrink-0">
                         <i className="ti ti-pencil text-xl" />
                     </div>
                     <div>
@@ -365,16 +365,16 @@ export default function Edit() {
                             <div>
                                 <div className="flex items-center justify-between mb-1.5">
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                        Email Address <span className="text-rose-500">*</span>
+                                        Email Address <span className="text-danger-ink">*</span>
                                     </label>
                                     {emailStatus.state !== 'idle' && emailStatus.state !== 'empty' && emailStatus.state !== 'current' && (
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
                                             emailStatus.state === 'available'
-                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                ? 'bg-surface-muted text-ink border border-line'
                                                 : emailStatus.state === 'archived'
-                                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                ? 'bg-accent-subtle text-accent border border-accent/20'
                                                 : emailStatus.state === 'conflict'
-                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                ? 'bg-danger-subtle text-danger-ink border border-danger/20'
                                                 : 'bg-slate-100 text-slate-600 border border-slate-200'
                                         }`}>
                                             {emailStatus.message}
@@ -390,12 +390,12 @@ export default function Edit() {
                                     placeholder="employee@cpoint.com"
                                     className={`w-full h-9 px-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 shadow-2xs ${
                                         emailStatus.state === 'available'
-                                            ? 'border-emerald-300 focus:border-emerald-500'
+                                            ? 'border-line focus:border-line'
                                             : emailStatus.state === 'archived'
-                                            ? 'border-blue-300 focus:border-blue-500'
+                                            ? 'border-accent/20 focus:border-accent'
                                             : emailStatus.state === 'conflict'
-                                            ? 'border-rose-300 focus:border-rose-500'
-                                            : 'border-slate-200 focus:border-blue-500'
+                                            ? 'border-danger/20 focus:border-danger'
+                                            : 'border-slate-200 focus:border-accent'
                                     }`} 
                                 />
                             </div>
@@ -403,15 +403,15 @@ export default function Edit() {
                             <div>
                                 <div className="flex items-center justify-between mb-1.5">
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                        Mobile Phone <span className="text-rose-500">*</span>
+                                        Mobile Phone <span className="text-danger-ink">*</span>
                                     </label>
                                     {phone && (
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
                                             phoneValidation.isValid
-                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                ? 'bg-surface-muted text-ink border border-line'
                                                 : phoneValidation.status === 'invalid_prefix'
-                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                ? 'bg-danger-subtle text-danger-ink border border-danger/20'
+                                                : 'bg-warning-subtle text-warning-ink border border-warning/20'
                                         }`}>
                                             {phoneValidation.isValid ? (phoneValidation.carrier || 'Valid PH Mobile') : phoneValidation.message}
                                         </span>
@@ -430,10 +430,10 @@ export default function Edit() {
                                         placeholder="0917 123 4567"
                                         className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 font-mono shadow-2xs ${
                                             phone && phoneValidation.isValid
-                                                ? 'border-emerald-300 focus:border-emerald-500'
+                                                ? 'border-line focus:border-line'
                                                 : phone && !phoneValidation.isValid
-                                                ? 'border-amber-300 focus:border-amber-500'
-                                                : 'border-slate-200 focus:border-blue-500'
+                                                ? 'border-warning/20 focus:border-warning'
+                                                : 'border-slate-200 focus:border-accent'
                                         }`}
                                     />
                                 </div>
@@ -442,7 +442,7 @@ export default function Edit() {
                             <div className="md:col-span-2">
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
                                 <select name="role" defaultValue={employee.role || 'employee'}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
                                     <option value="admin">System Administrator</option>
@@ -461,12 +461,12 @@ export default function Edit() {
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
                                 <input type="text" name="first_name" required defaultValue={employee.first_name || ''}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
                                 <input type="text" name="last_name" required defaultValue={employee.last_name || ''}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
 
                             <div>
@@ -475,7 +475,7 @@ export default function Edit() {
                                     name="department"
                                     value={department}
                                     onChange={(e) => setDepartment(e.target.value)}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
                                 >
                                     <option value="Factory">Factory Floor (Shoe Production)</option>
                                     <option value="Retail">Retail Store</option>
@@ -490,7 +490,7 @@ export default function Edit() {
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
                                     <input type="text" name="job_title" required defaultValue={employee.job_title || ''}
-                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                                 </div>
                             ) : null}
 
@@ -499,7 +499,7 @@ export default function Edit() {
                                 <div className="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/80">
                                     <div>
                                         <div className="flex items-center justify-between mb-2">
-                                            <label className="block text-[10px] sm:text-xs font-bold text-amber-800 uppercase tracking-widest">
+                                            <label className="block text-[10px] sm:text-xs font-bold text-warning-ink uppercase tracking-widest">
                                                 Shoe Production Station (Select 1 of 6 Crafts)
                                             </label>
                                             <span className="text-[10px] font-bold text-slate-400">
@@ -517,14 +517,14 @@ export default function Edit() {
                                                         onClick={() => setSelectedCraft(craft.id)}
                                                         className={`p-3 rounded-md border text-left transition-colors duration-100 flex flex-col justify-between space-y-2 cursor-pointer ${
                                                             isSelected
-                                                                ? 'bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/30 shadow-2xs'
+                                                                ? 'bg-warning/10 border-warning ring-1 ring-warning/30 shadow-2xs'
                                                                 : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                                                         }`}
                                                     >
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="flex items-center gap-2">
                                                                 <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs shrink-0 ${
-                                                                    isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'
+                                                                    isSelected ? 'bg-warning text-white' : 'bg-slate-100 text-slate-600'
                                                                 }`}>
                                                                     <i className={`ti ${craft.icon}`} />
                                                                 </span>
@@ -547,7 +547,7 @@ export default function Edit() {
                                     </div>
 
                                     {/* PRODUCTION LINE ASSIGNMENT */}
-                                    <div className="p-3 bg-white rounded-md border border-amber-200">
+                                    <div className="p-3 bg-white rounded-md border border-warning/20">
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
                                             <div>
                                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
@@ -568,7 +568,7 @@ export default function Edit() {
                                                         setSelectedGroup(existingLines[0] || 'Line A');
                                                     }
                                                 }}
-                                                className="self-start sm:self-auto text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer transition-colors duration-100"
+                                                className="self-start sm:self-auto text-[11px] font-bold text-warning-ink hover:text-warning-ink flex items-center gap-1 cursor-pointer transition-colors duration-100"
                                             >
                                                 <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
                                                 <span>{isCustomLine ? 'Choose from existing' : '+ Create new line'}</span>
@@ -583,9 +583,9 @@ export default function Edit() {
                                                     onChange={(e) => setSelectedGroup(e.target.value)}
                                                     placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
                                                     autoFocus
-                                                    className="w-full h-9 px-3 bg-amber-50/50 border border-amber-300 focus:border-amber-500 rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
+                                                    className="w-full h-9 px-3 bg-warning-subtle/50 border border-warning/20 focus:border-warning rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
                                                 />
-                                                <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
+                                                <p className="text-[10px] text-warning-ink mt-1 flex items-center gap-1">
                                                     <i className="ti ti-sparkles text-xs" />
                                                     <span>This new production line will be saved and available for other workers.</span>
                                                 </p>
@@ -605,7 +605,7 @@ export default function Edit() {
                                                             if (found) setSelectedGroup(found.name);
                                                         }
                                                     }}
-                                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-amber-500 transition-colors duration-100 cursor-pointer shadow-2xs"
+                                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-warning transition-colors duration-100 cursor-pointer shadow-2xs"
                                                 >
                                                     {productionGroups.length > 0 ? (
                                                         productionGroups.map(group => (
@@ -619,7 +619,7 @@ export default function Edit() {
                                                     <option value="__NEW__">+ Create new production line...</option>
                                                 </select>
                                                 <p className="text-[10px] text-slate-400 mt-1">
-                                                    Connected to Supabase <code className="text-amber-700 font-mono">production_groups</code> table with target quota tracking.
+                                                    Connected to Supabase <code className="text-warning-ink font-mono">production_groups</code> table with target quota tracking.
                                                 </p>
                                             </div>
                                         )}
@@ -629,10 +629,10 @@ export default function Edit() {
 
                             <div className="md:col-span-2">
                                 <div className={`p-3 rounded-md border flex items-center justify-between gap-3 ${
-                                    isFactory ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                    isFactory ? 'bg-warning-subtle/70 border-warning/20 text-warning-ink' : 'bg-accent-subtle/70 border-accent/20 text-accent-strong'
                                 }`}>
                                     <div className="flex items-center gap-2.5">
-                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-amber-600' : 'ti-clock-play text-blue-600'} text-base shrink-0`} />
+                                        <i className={`ti ${isFactory ? 'ti-clock-pause text-warning-ink' : 'ti-clock-play text-accent'} text-base shrink-0`} />
                                         <div>
                                             <p className="text-xs font-bold">
                                                 {isFactory ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
@@ -643,7 +643,7 @@ export default function Edit() {
                                         </div>
                                     </div>
                                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
-                                        isFactory ? 'bg-amber-200/80 text-amber-900 border-amber-300' : 'bg-blue-200/80 text-blue-900 border-blue-300'
+                                        isFactory ? 'bg-warning-subtle/80 text-warning-ink border-warning/20' : 'bg-accent-subtle/80 text-accent-strong border-accent/20'
                                     }`}>
                                         {isFactory ? 'No OT' : 'OT Eligible'}
                                     </span>
@@ -653,38 +653,38 @@ export default function Edit() {
                     </div>
 
                     {/* PAYROLL DETAILS */}
-                    <div className={`p-4 sm:p-5 rounded-lg border ${isFactory ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-200'}`}>
-                        <h3 className={`text-sm font-bold tracking-tight mb-4 flex items-center gap-2.5 ${isFactory ? 'text-amber-900' : 'text-emerald-900'}`}>
-                            <span className={`w-7 h-7 bg-white rounded-md flex items-center justify-center shadow-2xs ${isFactory ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    <div className={`p-4 sm:p-5 rounded-lg border ${isFactory ? 'bg-warning-subtle/70 border-warning/20' : 'bg-surface-muted border-line'}`}>
+                        <h3 className={`text-sm font-bold tracking-tight mb-4 flex items-center gap-2.5 ${isFactory ? 'text-warning-ink' : 'text-ink'}`}>
+                            <span className={`w-7 h-7 bg-white rounded-md flex items-center justify-center shadow-2xs ${isFactory ? 'text-warning-ink' : 'text-ink'}`}>
                                 <i className={`ti ${isFactory ? 'ti-file-barcode' : 'ti-cash-banknote'} text-base`} />
                             </span>
-                            Payroll Configuration {isFactory && <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-semibold ml-auto"><span className="w-1.5 h-1.5 rounded-full bg-amber-600" />Pakyawan Pool Mode</span>}
+                            Payroll Configuration {isFactory && <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-md bg-warning-subtle text-warning-ink border border-warning/20 font-semibold ml-auto"><span className="w-1.5 h-1.5 rounded-full bg-warning" />Pakyawan Pool Mode</span>}
                         </h3>
 
                         {isFactory ? (
                             <div className="space-y-3">
-                                <div className="p-3.5 rounded-md border border-amber-200 bg-white text-amber-900 space-y-2">
+                                <div className="p-3.5 rounded-md border border-warning/20 bg-white text-warning-ink space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
-                                            <i className="ti ti-box-multiple text-base text-amber-600" />
+                                        <div className="flex items-center gap-2 font-bold text-xs text-warning-ink">
+                                            <i className="ti ti-box-multiple text-base text-warning-ink" />
                                             Group Output Piece-Rate Model (Shoe Production Pool)
                                         </div>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200/80 text-amber-900 border border-amber-300">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-warning-subtle/80 text-warning-ink border border-warning/20">
                                             Pakyawan Pool
                                         </span>
                                     </div>
-                                    <p className="text-xs text-amber-800 leading-relaxed">
+                                    <p className="text-xs text-warning-ink leading-relaxed">
                                         Factory workers are <strong>not paid via fixed monthly salaries</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
                                     </p>
-                                    <div className="pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-3 text-[11px] text-amber-800 font-medium">
+                                    <div className="pt-2 border-t border-warning/80 flex flex-wrap items-center gap-3 text-[11px] text-warning-ink font-medium">
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-check text-amber-600" /> No arbitrary monthly base salary
+                                            <i className="ti ti-check text-warning-ink" /> No arbitrary monthly base salary
                                         </span>
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-users text-amber-600" /> Batch piece-rate distribution
+                                            <i className="ti ti-users text-warning-ink" /> Batch piece-rate distribution
                                         </span>
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-clock-off text-amber-600" /> Strictly no overtime policy
+                                            <i className="ti ti-clock-off text-warning-ink" /> Strictly no overtime policy
                                         </span>
                                     </div>
                                 </div>
@@ -701,7 +701,7 @@ export default function Edit() {
                                             type="text"
                                             value={displayDailyPay}
                                             onChange={handleDailyPayChange}
-                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="daily_rate" value={rawDailyPay} />
@@ -721,7 +721,7 @@ export default function Edit() {
                                             type="text"
                                             value={displayHourlyPay}
                                             onChange={handleHourlyPayChange}
-                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
+                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
                                         />
                                         <input type="hidden" name="hourly_rate" value={rawHourlyPay} />

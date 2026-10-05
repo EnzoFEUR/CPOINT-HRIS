@@ -414,7 +414,7 @@ export default function OtpVerificationModal({
                 {step === 'select' && (
                     <div className="space-y-5">
                         <div className="text-center space-y-1.5 pr-6 pl-6">
-                            <div className="h-11 w-11 bg-blue-50 text-blue-600 rounded-lg mx-auto flex items-center justify-center border border-blue-200 shadow-2xs">
+                            <div className="h-11 w-11 bg-accent-subtle text-accent rounded-lg mx-auto flex items-center justify-center border border-accent/20 shadow-2xs">
                                 <i className="ti ti-shield-check text-xl" />
                             </div>
                             <h2 className="text-lg font-bold text-slate-900 tracking-tight">
@@ -427,16 +427,16 @@ export default function OtpVerificationModal({
 
                         {/* Active Code Resume Card if valid (< 5 mins) */}
                         {expiryTimer > 0 && method === 'email' && (
-                            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-md text-left shadow-2xs">
+                            <div className="p-3 bg-accent-subtle/80 border border-accent/20 rounded-md text-left shadow-2xs">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                                         <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
                                         </span>
                                         <span>Code active via Email</span>
                                     </span>
-                                    <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+                                    <span className="text-[11px] font-mono font-bold text-accent bg-accent-subtle/80 px-2 py-0.5 rounded">
                                         {Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')}
                                     </span>
                                 </div>
@@ -446,7 +446,7 @@ export default function OtpVerificationModal({
                                 <button
                                     type="button"
                                     onClick={() => setStep('verify')}
-                                    className="w-full h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                                    className="w-full h-8 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                                 >
                                     <span>Enter Existing Code</span>
                                     <i className="ti ti-arrow-right text-xs" />
@@ -469,7 +469,7 @@ export default function OtpVerificationModal({
                                 <div className="flex items-center gap-3 min-w-0 pr-2">
                                     <div className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 transition-colors duration-100 ${
                                         hasTotp
-                                            ? 'bg-slate-100 group-hover:bg-indigo-50 text-slate-700 group-hover:text-indigo-600'
+                                            ? 'bg-slate-100 group-hover:bg-accent-subtle text-slate-700 group-hover:text-accent'
                                             : 'bg-slate-200 text-slate-400'
                                     }`}>
                                         <i className="ti ti-shield-lock text-lg" />
@@ -489,7 +489,7 @@ export default function OtpVerificationModal({
                                 </div>
                                 <div className="shrink-0 flex items-center gap-1.5">
                                     {hasTotp ? (
-                                        <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded border border-emerald-200 flex items-center gap-1">
+                                        <span className="px-2 py-0.5 text-[10px] font-bold text-ink bg-surface-muted rounded border border-line flex items-center gap-1">
                                             <i className="ti ti-bolt text-[11px]" />
                                             <span>Instant (0s)</span>
                                         </span>
@@ -511,14 +511,14 @@ export default function OtpVerificationModal({
                                 className="w-full group p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md transition-colors duration-100 flex items-center justify-between text-left cursor-pointer shadow-2xs disabled:opacity-50"
                             >
                                 <div className="flex items-center gap-3 min-w-0 pr-2">
-                                    <div className="h-9 w-9 bg-slate-100 group-hover:bg-blue-50 text-slate-600 group-hover:text-blue-600 rounded-md flex items-center justify-center shrink-0 transition-colors duration-100">
+                                    <div className="h-9 w-9 bg-slate-100 group-hover:bg-accent-subtle text-slate-600 group-hover:text-accent rounded-md flex items-center justify-center shrink-0 transition-colors duration-100">
                                         <i className="ti ti-mail text-lg" />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
                                             <h4 className="text-xs font-bold text-slate-800">Send via Email</h4>
                                             {expiryTimer > 0 && (
-                                                <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                                <span className="text-[10px] font-mono font-bold text-accent bg-accent-subtle border border-accent/20 px-1.5 py-0.5 rounded">
                                                     Active ({Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')})
                                                 </span>
                                             )}
@@ -549,7 +549,7 @@ export default function OtpVerificationModal({
                         {method === 'email' && expiryTimer === 0 ? (
                             <div className="space-y-4">
                                 <div className="text-center space-y-1.5 pr-6 pl-6">
-                                    <div className="h-11 w-11 rounded-lg mx-auto flex items-center justify-center border shadow-2xs bg-blue-50 text-blue-600 border-blue-200">
+                                    <div className="h-11 w-11 rounded-lg mx-auto flex items-center justify-center border shadow-2xs bg-accent-subtle text-accent border-accent/20">
                                         <i className="ti ti-mail text-xl" />
                                     </div>
                                     <h2 className="text-lg font-bold text-slate-900 tracking-tight">
@@ -565,7 +565,7 @@ export default function OtpVerificationModal({
                                         <span className="text-xs font-semibold text-slate-700">Email</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <i className="ti ti-mail-check text-blue-600 text-base shrink-0" />
+                                        <i className="ti ti-mail-check text-accent text-base shrink-0" />
                                         <span className="font-mono text-xs font-bold text-slate-900 truncate">
                                             {maskEmail(email)}
                                         </span>
@@ -573,7 +573,7 @@ export default function OtpVerificationModal({
                                 </div>
 
                                 {errorMessage && (
-                                    <p className="text-xs text-rose-600 font-semibold flex items-center justify-center gap-1 text-center">
+                                    <p className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 text-center">
                                         <i className="ti ti-alert-circle text-sm shrink-0" />
                                         <span>{errorMessage}</span>
                                     </p>
@@ -620,8 +620,8 @@ export default function OtpVerificationModal({
                                 <div className="text-center space-y-1.5 pr-6 pl-6">
                                     <div className={`h-11 w-11 rounded-lg mx-auto flex items-center justify-center border shadow-2xs ${
                                         method === 'totp'
-                                            ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                                            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                            ? 'bg-accent-subtle text-accent border-accent/20'
+                                            : 'bg-surface-muted text-ink border-line'
                                     }`}>
                                         <i className={`text-xl ti ${method === 'totp' ? 'ti-shield-lock' : 'ti-dialpad'}`} />
                                     </div>
@@ -641,8 +641,8 @@ export default function OtpVerificationModal({
 
                                 {/* TOTP Live Rotation Badge */}
                                 {method === 'totp' && !backupMode && (
-                                    <div className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-50/70 border border-indigo-100 rounded-md text-[11px] text-indigo-900 font-medium">
-                                        <i className="ti ti-clock-check text-indigo-600 text-sm" />
+                                    <div className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-accent-subtle/70 border border-accent/20 rounded-md text-[11px] text-accent-strong font-medium">
+                                        <i className="ti ti-clock-check text-accent text-sm" />
                                         <span>Tokens rotate automatically every 30 seconds</span>
                                     </div>
                                 )}
@@ -656,10 +656,10 @@ export default function OtpVerificationModal({
                                                 setDigits(demoOtpCode.split(''));
                                                 verifyOtpCode(demoOtpCode);
                                             }}
-                                            className="h-7 px-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
+                                            className="h-7 px-2.5 bg-warning-subtle hover:bg-warning-subtle border border-warning/20 text-warning-ink rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
                                         >
-                                            <i className="ti ti-bolt text-amber-600" />
-                                            <span>Security Code: <strong className="font-mono text-xs tracking-wider font-bold text-amber-950">{demoOtpCode}</strong> (Autofill)</span>
+                                            <i className="ti ti-bolt text-warning-ink" />
+                                            <span>Security Code: <strong className="font-mono text-xs tracking-wider font-bold text-accent">{demoOtpCode}</strong> (Autofill)</span>
                                         </button>
                                     </div>
                                 )}
@@ -676,7 +676,7 @@ export default function OtpVerificationModal({
                                                     setErrorMessage('');
                                                 }}
                                                 disabled={isVerifying}
-                                                className="w-full h-11 text-center font-mono font-bold text-base tracking-widest rounded-md border border-slate-200 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-100 outline-none uppercase transition-colors"
+                                                className="w-full h-11 text-center font-mono font-bold text-base tracking-widest rounded-md border border-slate-200 bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none uppercase transition-colors"
                                             />
                                         </div>
                                     ) : (
@@ -694,10 +694,10 @@ export default function OtpVerificationModal({
                                                     disabled={isSending || isVerifying}
                                                     className={`w-full h-11 text-center font-mono font-bold text-lg rounded-md border outline-none transition-colors duration-100 ${
                                                         errorMessage
-                                                            ? 'border-rose-400 bg-rose-50/50 text-rose-900 focus:ring-1 focus:ring-rose-500/20'
+                                                            ? 'border-danger bg-danger-subtle/50 text-danger-ink focus:ring-1 focus:ring-danger/20'
                                                             : digit
-                                                            ? 'border-blue-500 bg-blue-50/20 text-blue-950'
-                                                            : 'border-slate-200 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-100'
+                                                            ? 'border-accent bg-accent-subtle/20 text-accent-strong'
+                                                            : 'border-slate-200 bg-white focus:border-accent focus:ring-1 focus:ring-accent/20'
                                                     } disabled:opacity-50`}
                                                 />
                                             ))}
@@ -705,7 +705,7 @@ export default function OtpVerificationModal({
                                     )}
 
                                     {errorMessage && (
-                                        <p className="text-xs text-rose-600 font-semibold flex items-center justify-center gap-1 pt-1 text-center">
+                                        <p className="text-xs text-danger-ink font-semibold flex items-center justify-center gap-1 pt-1 text-center">
                                             <i className="ti ti-alert-circle text-sm shrink-0" />
                                             <span>{errorMessage}</span>
                                         </p>
@@ -740,7 +740,7 @@ export default function OtpVerificationModal({
                                                 setDigits(['', '', '', '', '', '']);
                                                 setBackupCode('');
                                             }}
-                                            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors cursor-pointer"
+                                            className="text-xs text-accent hover:text-accent-strong font-semibold transition-colors cursor-pointer"
                                         >
                                             {backupMode ? 'Use 6-digit authenticator code' : 'Use emergency recovery code'}
                                         </button>
@@ -763,7 +763,7 @@ export default function OtpVerificationModal({
                                             onClick={() => handleSendEmailOtp(true)}
                                             disabled={isCooldown || isSending || isVerifying}
                                             style={{ pointerEvents: (isCooldown || isSending || isVerifying) ? 'none' : 'auto' }}
-                                            className="text-blue-600 hover:text-blue-700 font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                            className="text-accent hover:text-accent font-bold disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors"
                                         >
                                             {isSending ? 'Sending...' : isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
                                         </button>

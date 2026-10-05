@@ -424,28 +424,28 @@ export default function DisciplinaryIndex() {
         const hasWarning = warningCount > 0;
 
         let standingLabel = 'Active';
-        let badgeBg = 'bg-emerald-50';
-        let badgeText = 'text-emerald-700';
-        let badgeBorder = 'border-emerald-200';
+        let badgeBg = 'bg-surface-muted';
+        let badgeText = 'text-ink';
+        let badgeBorder = 'border-line';
         let icon = 'ti-circle-check';
 
         if (isTerminated) {
             standingLabel = 'Terminated';
-            badgeBg = 'bg-rose-50';
-            badgeText = 'text-rose-700';
-            badgeBorder = 'border-rose-200';
+            badgeBg = 'bg-danger-subtle';
+            badgeText = 'text-danger-ink';
+            badgeBorder = 'border-danger/20';
             icon = 'ti-user-x';
         } else if (isSuspended) {
             standingLabel = 'Suspended';
-            badgeBg = 'bg-amber-50';
-            badgeText = 'text-amber-700';
-            badgeBorder = 'border-amber-200';
+            badgeBg = 'bg-warning-subtle';
+            badgeText = 'text-warning-ink';
+            badgeBorder = 'border-warning/20';
             icon = 'ti-lock';
         } else if (hasWarning) {
             standingLabel = `${warningCount} ${warningCount === 1 ? 'Warning' : 'Warnings'}`;
-            badgeBg = warningCount >= 3 ? 'bg-rose-50' : 'bg-orange-50';
-            badgeText = warningCount >= 3 ? 'text-rose-700' : 'text-orange-700';
-            badgeBorder = warningCount >= 3 ? 'border-rose-200' : 'border-orange-200';
+            badgeBg = warningCount >= 3 ? 'bg-danger-subtle' : 'bg-warning-subtle';
+            badgeText = warningCount >= 3 ? 'text-danger-ink' : 'text-warning-ink';
+            badgeBorder = warningCount >= 3 ? 'border-danger/20' : 'border-warning/20';
             icon = 'ti-alert-triangle';
         }
 
@@ -892,7 +892,7 @@ export default function DisciplinaryIndex() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-10 h-10 border-3 border-slate-200 border-t-rose-600 rounded-full animate-spin" />
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-danger rounded-full animate-spin" />
                 <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading disciplinary records...</p>
             </div>
         );
@@ -907,7 +907,7 @@ export default function DisciplinaryIndex() {
                     <div className="flex items-center gap-3">
                         <button 
                             onClick={() => setShowModal(true)} 
-                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-xs sm:text-sm transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg font-semibold text-xs sm:text-sm transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
                         >
                             <i className="ti ti-plus text-base" />
                             <span>New Incident Report</span>
@@ -920,52 +920,52 @@ export default function DisciplinaryIndex() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* 1. Active Cases Requiring Action */}
                 <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 border border-rose-100">
+                    <div className="w-10 h-10 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center text-lg shrink-0 border border-danger/20">
                         <i className="ti ti-alert-triangle" />
                     </div>
                     <div>
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Action Required</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-rose-600 tabular-nums">{activeCases}</span>
+                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{activeCases}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Suspensions Enforced */}
                 <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-orange-50 text-orange-600 flex items-center justify-center text-lg shrink-0 border border-orange-100">
+                    <div className="w-10 h-10 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center text-lg shrink-0 border border-warning/20">
                         <i className="ti ti-lock" />
                     </div>
                     <div>
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Suspensions</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-orange-600 tabular-nums">{suspensionsActive}</span>
+                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{suspensionsActive}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* 3. Active Warnings */}
                 <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0 border border-amber-100">
+                    <div className="w-10 h-10 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center text-lg shrink-0 border border-warning/20">
                         <i className="ti ti-alert-circle" />
                     </div>
                     <div>
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Warnings</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-amber-600 tabular-nums">{warningsActive}</span>
+                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{warningsActive}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* 4. Cleared Records */}
                 <div className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-2xs flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-md bg-teal-50 text-teal-600 flex items-center justify-center text-lg shrink-0 border border-teal-100">
+                    <div className="w-10 h-10 rounded-md bg-success-subtle text-success-ink flex items-center justify-center text-lg shrink-0 border border-success/20">
                         <i className="ti ti-shield-check" />
                     </div>
                     <div>
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Cleared Records</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
-                            <span className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{overturnedCases}</span>
+                            <span className="text-2xl font-bold font-mono text-ink tabular-nums">{overturnedCases}</span>
                         </div>
                     </div>
                 </div>
@@ -1039,11 +1039,11 @@ export default function DisciplinaryIndex() {
                 <div className="flex items-center justify-between border-t border-slate-100 pt-3 overflow-x-auto no-scrollbar gap-2">
                     <div className="flex items-center gap-1.5 shrink-0">
                         {[
-                            { key: 'Active', label: 'Action Required', count: activeCases, badgeColor: 'bg-rose-100 text-rose-700' },
+                            { key: 'Active', label: 'Action Required', count: activeCases, badgeColor: 'bg-accent-subtle text-ink' },
                             { key: 'All', label: 'All Incidents', count: totalCases },
-                            { key: 'Acknowledged', label: 'Acknowledged', count: acknowledgedCases, badgeColor: 'bg-emerald-100 text-emerald-700' },
+                            { key: 'Acknowledged', label: 'Acknowledged', count: acknowledgedCases, badgeColor: 'bg-surface-muted text-ink' },
                             { key: 'Resolved', label: 'Resolved / Restored', count: resolvedCases, badgeColor: 'bg-slate-200 text-slate-700' },
-                            { key: 'Overturned', label: 'Cleared', count: overturnedCases, badgeColor: 'bg-teal-100 text-teal-800' }
+                            { key: 'Overturned', label: 'Cleared', count: overturnedCases, badgeColor: 'bg-accent-subtle text-ink' }
                         ].map(tab => {
                             const isSelected = filterStatus === tab.key;
                             return (
@@ -1078,7 +1078,7 @@ export default function DisciplinaryIndex() {
                                 setFilterSeverity('All');
                                 setCurrentPage(1);
                             }}
-                            className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 shrink-0 cursor-pointer"
+                            className="text-xs font-semibold text-accent hover:text-accent flex items-center gap-1 shrink-0 cursor-pointer"
                         >
                             <i className="ti ti-filter-off text-xs" />
                             <span>Reset Filters</span>
@@ -1131,10 +1131,10 @@ export default function DisciplinaryIndex() {
                                                 <div>
                                                     <button
                                                         onClick={() => handleOpenProfile(record)}
-                                                        className="text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors text-left flex items-center gap-1.5 cursor-pointer"
+                                                        className="text-sm font-semibold text-slate-900 hover:text-accent transition-colors text-left flex items-center gap-1.5 cursor-pointer"
                                                     >
                                                         <span>{record.employee_name}</span>
-                                                        <i className="ti ti-external-link text-[11px] opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                                                        <i className="ti ti-external-link text-[11px] opacity-0 group-hover:opacity-100 text-accent transition-opacity" />
                                                     </button>
                                                     <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                                                         <span className="font-semibold text-slate-600">{record.company_id || 'ID N/A'}</span>
@@ -1150,22 +1150,22 @@ export default function DisciplinaryIndex() {
                                             <div className="flex items-center gap-2">
                                                 {record.type === 'Termination' && (record.status === 'Resolved' || record.employee_is_active) ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                                                        <i className="ti ti-arrow-back-up text-xs text-emerald-600" /> Termination (Revoked / Restored)
+                                                        <i className="ti ti-arrow-back-up text-xs text-success-ink" /> Termination (Revoked / Restored)
                                                     </span>
                                                 ) : record.type === 'Suspension' && record.status === 'Resolved' ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                                                        <i className="ti ti-lock-open text-xs text-emerald-600" /> Suspension (Lifted)
+                                                        <i className="ti ti-lock-open text-xs text-success-ink" /> Suspension (Lifted)
                                                     </span>
                                                 ) : record.type === 'Suspension' ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-orange-100 text-orange-800 border border-orange-200">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-warning-subtle text-warning-ink border border-warning/20">
                                                         <i className="ti ti-lock text-xs" /> Suspension
                                                     </span>
                                                 ) : record.type === 'Termination' ? (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-100 text-rose-800 border border-rose-200">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-danger-subtle text-danger-ink border border-danger/20">
                                                         <i className="ti ti-ban text-xs" /> Termination
                                                     </span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-warning-subtle text-warning-ink border border-warning/20">
                                                         <i className="ti ti-alert-triangle text-xs" /> Warning
                                                     </span>
                                                 )}
@@ -1204,12 +1204,12 @@ export default function DisciplinaryIndex() {
                                             <div className="flex flex-col items-center gap-1">
                                                 {/* Infraction Status Badge */}
                                                 {record.status === 'Active' && (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-danger-subtle text-danger-ink border border-danger/20">
                                                         Action Required
                                                     </span>
                                                 )}
                                                 {record.status === 'Acknowledged' && (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-surface-muted text-ink border border-line">
                                                         <i className="ti ti-check text-xs" /> Acknowledged
                                                     </span>
                                                 )}
@@ -1223,12 +1223,12 @@ export default function DisciplinaryIndex() {
                                                     </span>
                                                 )}
                                                 {record.status === 'Under Review' && (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent-subtle text-accent border border-accent/20">
                                                         Under Review
                                                     </span>
                                                 )}
                                                 {record.status === 'Overturned' && (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-success-subtle text-success-ink border border-success/20">
                                                         <i className="ti ti-shield-check text-xs" /> Cleared
                                                     </span>
                                                 )}
@@ -1236,15 +1236,15 @@ export default function DisciplinaryIndex() {
                                                 {/* 1-to-1 Gate & Employee Account Standing */}
                                                 <div className="text-[10px] font-mono font-medium flex items-center gap-1 mt-0.5">
                                                     {isTerminated ? (
-                                                        <span className="text-rose-600 font-semibold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                                                        <span className="text-danger-ink font-semibold bg-danger-subtle px-1.5 py-0.5 rounded border border-danger/20">
                                                             Gate: Blocked (Archive)
                                                         </span>
                                                     ) : isSuspended ? (
-                                                        <span className="text-orange-600 font-semibold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                                                        <span className="text-warning-ink font-semibold bg-warning-subtle px-1.5 py-0.5 rounded border border-warning/20">
                                                             Gate: Blocked (Suspended)
                                                         </span>
                                                     ) : (
-                                                        <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                        <span className="text-ink bg-surface-muted px-1.5 py-0.5 rounded border border-line">
                                                             Gate: Allowed (Active)
                                                         </span>
                                                     )}
@@ -1271,7 +1271,7 @@ export default function DisciplinaryIndex() {
                                                         <span>Review &amp; Clear</span>
                                                     </button>
                                                 ) : (
-                                                    <span className="h-7 inline-flex items-center gap-1 px-2.5 text-xs text-teal-700 font-medium bg-teal-50 rounded-md border border-teal-200">
+                                                    <span className="h-7 inline-flex items-center gap-1 px-2.5 text-xs text-success-ink font-medium bg-success-subtle rounded-md border border-success/20">
                                                         <i className="ti ti-shield-check" /> Cleared
                                                     </span>
                                                 )}
@@ -1346,22 +1346,22 @@ export default function DisciplinaryIndex() {
                                         <div className="flex items-center gap-1.5">
                                             {record.type === 'Termination' && (record.status === 'Resolved' || record.employee_is_active) ? (
                                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                                                    <i className="ti ti-arrow-back-up text-xs text-emerald-600" /> Termination (Revoked)
+                                                    <i className="ti ti-arrow-back-up text-xs text-success-ink" /> Termination (Revoked)
                                                 </span>
                                             ) : record.type === 'Suspension' && record.status === 'Resolved' ? (
                                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                                                    <i className="ti ti-lock-open text-xs text-emerald-600" /> Suspension (Lifted)
+                                                    <i className="ti ti-lock-open text-xs text-success-ink" /> Suspension (Lifted)
                                                 </span>
                                             ) : record.type === 'Suspension' ? (
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-800">
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning-subtle text-warning-ink">
                                                     <i className="ti ti-lock" /> Suspension
                                                 </span>
                                             ) : record.type === 'Termination' ? (
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800">
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-subtle text-danger-ink">
                                                     <i className="ti ti-ban" /> Termination
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning-subtle text-warning-ink">
                                                     <i className="ti ti-alert-triangle" /> Warning
                                                 </span>
                                             )}
@@ -1375,12 +1375,12 @@ export default function DisciplinaryIndex() {
                                 <div className="flex items-center justify-between pt-1">
                                     <div>
                                         {record.status === 'Active' && (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-danger-subtle text-danger-ink border border-danger/20">
                                                 Action Required
                                             </span>
                                         )}
                                         {record.status === 'Acknowledged' && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-surface-muted text-ink border border-line">
                                                 <i className="ti ti-check text-[10px]" /> Acknowledged
                                             </span>
                                         )}
@@ -1394,7 +1394,7 @@ export default function DisciplinaryIndex() {
                                             </span>
                                         )}
                                         {record.status === 'Overturned' && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-success-subtle text-success-ink border border-success/20">
                                                 <i className="ti ti-shield-check text-[10px]" /> Cleared
                                             </span>
                                         )}
@@ -1418,7 +1418,7 @@ export default function DisciplinaryIndex() {
                                                 <span>Review &amp; Clear</span>
                                             </button>
                                         ) : (
-                                            <span className="h-7 inline-flex items-center gap-1 px-2.5 text-xs text-teal-700 font-medium bg-teal-50 rounded-md border border-teal-200">
+                                            <span className="h-7 inline-flex items-center gap-1 px-2.5 text-xs text-success-ink font-medium bg-success-subtle rounded-md border border-success/20">
                                                 <i className="ti ti-shield-check" /> Cleared
                                             </span>
                                         )}
@@ -1496,9 +1496,9 @@ export default function DisciplinaryIndex() {
                         <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100 shrink-0">
                             <div className="flex items-center gap-2.5">
                                 <div className={`w-9 h-9 rounded-md flex items-center justify-center text-lg ${
-                                    type === 'Suspension' ? 'bg-orange-100 text-orange-600' :
-                                    type === 'Termination' ? 'bg-rose-100 text-rose-600' :
-                                    'bg-amber-100 text-amber-600'
+                                    type === 'Suspension' ? 'bg-warning-subtle text-warning-ink' :
+                                    type === 'Termination' ? 'bg-danger-subtle text-danger-ink' :
+                                    'bg-warning-subtle text-warning-ink'
                                 }`}>
                                     <i className={type === 'Suspension' ? 'ti ti-lock' : (type === 'Termination' ? 'ti ti-ban' : 'ti ti-alert-triangle')} />
                                 </div>
@@ -1518,7 +1518,7 @@ export default function DisciplinaryIndex() {
                             {/* TARGET PERSONNEL SELECTOR WITH PROFILE PHOTO & OPERATIONAL STATUS */}
                             <div>
                                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                                    Target Personnel <span className="text-rose-500">*</span>
+                                    Target Personnel <span className="text-danger-ink">*</span>
                                 </label>
 
                                 <div className="relative">
@@ -1550,22 +1550,22 @@ export default function DisciplinaryIndex() {
                                                             ({selectedEmployeeObj.company_id || 'ID N/A'})
                                                         </span>
                                                         {selectedStanding.isTerminated ? (
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800 border border-rose-200 shrink-0 flex items-center gap-1">
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger-subtle text-danger-ink border border-danger/20 shrink-0 flex items-center gap-1">
                                                                 <i className="ti ti-user-x text-[10px]" />
                                                                 Terminated
                                                             </span>
                                                         ) : selectedStanding.isSuspended ? (
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 shrink-0 flex items-center gap-1">
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 shrink-0 flex items-center gap-1">
                                                                 <i className="ti ti-lock text-[10px]" />
                                                                 Suspended
                                                             </span>
                                                         ) : selectedStanding.hasWarning ? (
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-800 border border-orange-200 shrink-0 flex items-center gap-1">
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 shrink-0 flex items-center gap-1">
                                                                 <i className="ti ti-alert-triangle text-[10px]" />
                                                                 {selectedStanding.warningCount} {selectedStanding.warningCount === 1 ? 'Warning' : 'Warnings'}
                                                             </span>
                                                         ) : (
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-muted text-ink border border-line shrink-0 flex items-center gap-1">
                                                                 <i className="ti ti-check text-[10px]" />
                                                                 Active
                                                             </span>
@@ -1641,7 +1641,7 @@ export default function DisciplinaryIndex() {
                                                                 }}
                                                                 className={`w-full p-2.5 rounded-md flex items-center gap-2.5 text-left transition-colors duration-100 cursor-pointer ${
                                                                     isSelected 
-                                                                        ? 'bg-blue-50 border border-blue-200' 
+                                                                        ? 'bg-accent-subtle border border-accent/20' 
                                                                         : 'hover:bg-slate-50'
                                                                 }`}
                                                             >
@@ -1661,22 +1661,22 @@ export default function DisciplinaryIndex() {
                                                                             {emp.first_name} {emp.last_name}
                                                                         </p>
                                                                         {standing.isTerminated ? (
-                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-rose-100 text-rose-800 border border-rose-200 shrink-0 flex items-center gap-1">
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-danger-subtle text-danger-ink border border-danger/20 shrink-0 flex items-center gap-1">
                                                                                 <i className="ti ti-user-x text-[10px]" />
                                                                                 Terminated
                                                                             </span>
                                                                         ) : standing.isSuspended ? (
-                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-800 border border-amber-200 shrink-0 flex items-center gap-1">
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 shrink-0 flex items-center gap-1">
                                                                                 <i className="ti ti-lock text-[10px]" />
                                                                                 Suspended
                                                                             </span>
                                                                         ) : standing.hasWarning ? (
-                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-orange-100 text-orange-800 border border-orange-200 shrink-0 flex items-center gap-1">
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 shrink-0 flex items-center gap-1">
                                                                                 <i className="ti ti-alert-triangle text-[10px]" />
                                                                                 {standing.warningCount} {standing.warningCount === 1 ? 'Warning' : 'Warnings'}
                                                                             </span>
                                                                         ) : (
-                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 flex items-center gap-1">
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-surface-muted text-ink border border-line shrink-0 flex items-center gap-1">
                                                                                 <i className="ti ti-check text-[10px]" />
                                                                                 Active
                                                                             </span>
@@ -1686,7 +1686,7 @@ export default function DisciplinaryIndex() {
                                                                         <span className="font-mono font-medium">{emp.company_id || 'ID N/A'}</span> • {emp.department || 'Operations'}
                                                                     </p>
                                                                 </div>
-                                                                {isSelected && <i className="ti ti-check text-blue-600 text-xs shrink-0" />}
+                                                                {isSelected && <i className="ti ti-check text-accent text-xs shrink-0" />}
                                                             </button>
                                                         );
                                                     })
@@ -1722,22 +1722,22 @@ export default function DisciplinaryIndex() {
                                             </p>
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 {selectedStanding.isTerminated ? (
-                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-danger-subtle text-danger-ink border border-danger/20 flex items-center gap-1">
                                                         <i className="ti ti-user-x text-[11px]" />
                                                         Terminated
                                                     </span>
                                                 ) : selectedStanding.isSuspended ? (
-                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 flex items-center gap-1">
                                                         <i className="ti ti-lock text-[11px]" />
                                                         Currently Suspended
                                                     </span>
                                                 ) : selectedStanding.hasWarning ? (
-                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1">
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning-subtle text-warning-ink border border-warning/20 flex items-center gap-1">
                                                         <i className="ti ti-alert-triangle text-[11px]" />
                                                         {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''}
                                                     </span>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-surface-muted text-ink border border-line flex items-center gap-1">
                                                         <i className="ti ti-check text-[11px]" />
                                                         Clean Standing
                                                     </span>
@@ -1793,23 +1793,23 @@ export default function DisciplinaryIndex() {
 
                             {/* DOLE PROGRESSIVE DISCIPLINE WARNING ALERT */}
                             {selectedStanding.hasWarning && (
-                                <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-md text-xs space-y-1.5">
+                                <div className="p-3.5 bg-warning-subtle/90 border border-warning/20 rounded-md text-xs space-y-1.5">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-amber-900 flex items-center gap-1.5">
-                                            <i className="ti ti-alert-triangle text-amber-600 text-sm" />
+                                        <span className="font-semibold text-warning-ink flex items-center gap-1.5">
+                                            <i className="ti ti-alert-triangle text-warning-ink text-sm" />
                                             DOLE Progressive Discipline Alert: {selectedStanding.warningCount} Active Warning{selectedStanding.warningCount > 1 ? 's' : ''} on Record
                                         </span>
-                                        <span className="text-[9px] uppercase font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                                        <span className="text-[9px] uppercase font-medium text-warning-ink bg-warning-subtle px-2 py-0.5 rounded border border-warning/20">
                                             Prior Infractions
                                         </span>
                                     </div>
-                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                    <p className="text-[11px] text-warning-ink leading-relaxed">
                                         This employee has previously received <strong>{selectedStanding.warningCount} formal administrative warning(s)</strong>. Under DOLE progressive discipline guidelines, repeated misconduct warrants escalating the next action to <strong>Suspension</strong> (or Termination for severe offenses).
                                     </p>
                                     {selectedStanding.activeWarnings.length > 0 && (
                                         <div className="pt-1 flex flex-wrap gap-1.5">
                                             {selectedStanding.activeWarnings.slice(0, 3).map((w, idx) => (
-                                                <span key={w.id || idx} className="text-[10px] bg-white border border-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
+                                                <span key={w.id || idx} className="text-[10px] bg-white border border-warning/20 text-warning-ink px-2 py-0.5 rounded-md font-medium truncate max-w-[260px] shadow-2xs">
                                                     <strong>{w.date || 'Notice'}:</strong> {w.reason?.slice(0, 35) || 'Infraction'}...
                                                 </span>
                                             ))}
@@ -1820,11 +1820,11 @@ export default function DisciplinaryIndex() {
 
                             {/* ACTIVE SUSPENSION ALERT (CANNOT SUSPEND AGAIN) */}
                             {isAlreadySuspended && type === 'Suspension' && (
-                                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-md text-xs text-amber-950 flex items-start gap-2.5">
-                                    <i className="ti ti-alert-circle text-amber-600 text-base shrink-0 mt-0.5" />
+                                <div className="p-3.5 bg-warning-subtle border border-warning/20 rounded-md text-xs text-warning-ink flex items-start gap-2.5">
+                                    <i className="ti ti-alert-circle text-warning-ink text-base shrink-0 mt-0.5" />
                                     <div>
-                                        <strong className="block font-semibold text-amber-900 mb-0.5">Active Suspension In Effect</strong>
-                                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                                        <strong className="block font-semibold text-warning-ink mb-0.5">Active Suspension In Effect</strong>
+                                        <p className="text-[11px] text-warning-ink leading-relaxed">
                                             This employee is currently serving an active suspension. Under DOLE standards and enterprise policy, an employee cannot be suspended again while an active suspension is in effect. You may lift or clear their suspension from the table below, or issue an administrative Warning instead.
                                         </p>
                                     </div>
@@ -1833,11 +1833,11 @@ export default function DisciplinaryIndex() {
 
                             {/* TERMINATED / INACTIVE ALERT */}
                             {isAlreadyTerminated && type !== 'Termination' && (
-                                <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-md text-xs text-rose-950 flex items-start gap-2.5">
-                                    <i className="ti ti-ban text-rose-600 text-base shrink-0 mt-0.5" />
+                                <div className="p-3.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink flex items-start gap-2.5">
+                                    <i className="ti ti-ban text-danger-ink text-base shrink-0 mt-0.5" />
                                     <div>
-                                        <strong className="block font-semibold text-rose-900 mb-0.5">Personnel Inactive or Terminated</strong>
-                                        <p className="text-[11px] text-rose-800 leading-relaxed">
+                                        <strong className="block font-semibold text-danger-ink mb-0.5">Personnel Inactive or Terminated</strong>
+                                        <p className="text-[11px] text-danger-ink leading-relaxed">
                                             This employee is inactive or already separated. Disciplinary actions cannot be issued to separated personnel.
                                         </p>
                                     </div>
@@ -1846,13 +1846,13 @@ export default function DisciplinaryIndex() {
 
                             {/* DURATION CONFIGURATOR FOR SUSPENSION */}
                             {type === 'Suspension' && !isAlreadySuspended && (
-                                <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-md space-y-2.5">
+                                <div className="p-3.5 bg-warning-subtle border border-warning/20 rounded-md space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs font-semibold text-orange-950 flex items-center gap-1.5">
+                                        <label className="text-xs font-semibold text-warning-ink flex items-center gap-1.5">
                                             <i className="ti ti-clock-hour-4" />
                                             <span>Suspension Duration (3 Days to 1 Week)</span>
                                         </label>
-                                        <span className="text-[11px] font-mono font-medium text-orange-700">
+                                        <span className="text-[11px] font-mono font-medium text-warning-ink">
                                             {customDays ? `${customDays} Days` : `${durationDays} Days`}
                                         </span>
                                     </div>
@@ -1879,8 +1879,8 @@ export default function DisciplinaryIndex() {
                                                     }}
                                                     className={`h-8 px-2 rounded-md text-xs font-medium transition-colors duration-100 cursor-pointer ${
                                                         isSelected 
-                                                            ? 'bg-orange-600 text-white shadow-2xs' 
-                                                            : 'bg-white border border-orange-200 text-orange-900 hover:bg-orange-100/70'
+                                                            ? 'bg-warning text-white shadow-2xs' 
+                                                            : 'bg-white border border-warning/20 text-warning-ink hover:bg-warning-subtle/70'
                                                     }`}
                                                 >
                                                     {preset.label}
@@ -1891,26 +1891,26 @@ export default function DisciplinaryIndex() {
 
                                     {customDays && (
                                         <div className="pt-1 flex items-center gap-2">
-                                            <label className="text-xs text-orange-900 font-medium shrink-0">Enter Custom Days:</label>
+                                            <label className="text-xs text-warning-ink font-medium shrink-0">Enter Custom Days:</label>
                                             <input 
                                                 type="number"
                                                 min="1"
                                                 max="60"
                                                 value={customDays}
                                                 onChange={(e) => setCustomDays(e.target.value)}
-                                                className="w-24 h-8 px-2.5 bg-white border border-orange-300 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-orange-500"
+                                                className="w-24 h-8 px-2.5 bg-white border border-warning/20 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-warning"
                                             />
                                         </div>
                                     )}
 
-                                    <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between text-[11px] text-orange-900">
+                                    <div className="pt-2 border-t border-warning/60 flex items-center justify-between text-[11px] text-warning-ink">
                                         <span>Reinstatement Date:</span>
-                                        <strong className="font-mono font-semibold text-orange-800">
+                                        <strong className="font-mono font-semibold text-warning-ink">
                                             {new Date(Date.now() + (parseInt(customDays || durationDays, 10) || 3) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </strong>
                                     </div>
 
-                                    <p className="text-[10px] text-orange-700 leading-snug">
+                                    <p className="text-[10px] text-warning-ink leading-snug">
                                         * Portal login and Gate Scanner passage are deactivated for this duration. Historical payroll and biometric records are preserved.
                                     </p>
                                 </div>
@@ -1918,8 +1918,8 @@ export default function DisciplinaryIndex() {
 
                             {/* WARNING INFO CARD */}
                             {type === 'Warning' && (
-                                <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-md text-xs text-blue-900 flex items-start gap-2">
-                                    <i className="ti ti-info-circle text-blue-600 text-base shrink-0 mt-0.5" />
+                                <div className="p-3 bg-accent-subtle/70 border border-accent/20 rounded-md text-xs text-accent-strong flex items-start gap-2">
+                                    <i className="ti ti-info-circle text-accent text-base shrink-0 mt-0.5" />
                                     <p className="text-[11px] leading-relaxed">
                                         <strong>Account Remains Active:</strong> Formal written memo. The employee will receive an official notification and Brevo email memo to review in their portal.
                                     </p>
@@ -1928,12 +1928,12 @@ export default function DisciplinaryIndex() {
 
                             {/* TERMINATION WARNING CARD */}
                             {type === 'Termination' && (
-                                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-950 space-y-1.5">
-                                    <div className="flex items-center gap-1.5 font-semibold text-rose-700">
+                                <div className="p-3.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-semibold text-danger-ink">
                                         <i className="ti ti-alert-triangle text-base" />
                                         <span>1-to-1 Employee Archive Separation</span>
                                     </div>
-                                    <p className="text-[11px] text-rose-800 leading-relaxed">
+                                    <p className="text-[11px] text-danger-ink leading-relaxed">
                                         The employee is immediately deactivated and moved to the <strong>Employee Archive</strong> with complete separation details. Biometric Gate Scanner access is revoked. Historical 201 records are preserved.
                                     </p>
                                 </div>
@@ -1966,9 +1966,9 @@ export default function DisciplinaryIndex() {
                                         (type === 'Suspension' && isAlreadySuspended) || (isAlreadyTerminated && type !== 'Termination')
                                             ? 'bg-slate-400 cursor-not-allowed opacity-75'
                                             : type === 'Suspension'
-                                            ? 'bg-orange-600 hover:bg-orange-700 cursor-pointer'
+                                            ? 'bg-warning hover:bg-warning-ink cursor-pointer'
                                             : type === 'Termination'
-                                            ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                                            ? 'bg-danger hover:bg-danger-ink cursor-pointer'
                                             : 'bg-slate-900 hover:bg-black cursor-pointer'
                                     }`}
                                 >
@@ -2001,14 +2001,14 @@ export default function DisciplinaryIndex() {
             {showClearModal && selectedRecordForClear && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70">
                     <div className="relative bg-white rounded-lg w-full max-w-lg overflow-hidden shadow-xl border border-slate-200">
-                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-teal-50/50">
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-surface-muted">
                             <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-md bg-teal-100 text-teal-700 flex items-center justify-center text-lg">
+                                <div className="w-9 h-9 rounded-md bg-surface-muted text-ink flex items-center justify-center text-lg">
                                     <i className="ti ti-shield-check" />
                                 </div>
                                 <div>
                                     <h2 className="text-base font-semibold text-slate-900 leading-none">Clear Disciplinary Record</h2>
-                                    <p className="text-[11px] text-teal-700 font-medium mt-0.5">Remove False or Inaccurate Infraction</p>
+                                    <p className="text-[11px] text-ink font-medium mt-0.5">Remove False or Inaccurate Infraction</p>
                                 </div>
                             </div>
                             <button 
@@ -2058,12 +2058,12 @@ export default function DisciplinaryIndex() {
                             </div>
 
                             {/* Impact Banner */}
-                            <div className="p-3 bg-teal-50 border border-teal-200 rounded-md text-xs text-teal-950 space-y-1">
-                                <div className="flex items-center gap-1.5 font-semibold text-teal-800">
-                                    <i className="ti ti-info-circle text-base text-teal-600" />
+                            <div className="p-3 bg-surface-muted border border-line rounded-md text-xs text-ink space-y-1">
+                                <div className="flex items-center gap-1.5 font-semibold text-success-ink">
+                                    <i className="ti ti-info-circle text-base text-success-ink" />
                                     <span>Account &amp; Access Restored</span>
                                 </div>
-                                <p className="text-[11px] text-teal-900 leading-relaxed">
+                                <p className="text-[11px] text-success-ink leading-relaxed">
                                     Confirming will mark this record as <strong>Cleared</strong>, restore the employee's status to <strong>Active</strong> (if suspended or terminated), re-enable biometric gate access, and send a clearance confirmation.
                                 </p>
                             </div>
@@ -2071,7 +2071,7 @@ export default function DisciplinaryIndex() {
                             {/* Reason for Clearing */}
                             <div>
                                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                                    Reason for Clearing Record <span className="text-rose-500">*</span>
+                                    Reason for Clearing Record <span className="text-danger-ink">*</span>
                                 </label>
                                 <input 
                                     type="text"
@@ -2079,7 +2079,7 @@ export default function DisciplinaryIndex() {
                                     value={clearReason}
                                     onChange={(e) => setClearReason(e.target.value)}
                                     placeholder="e.g. Cleared of wrongdoing, mistaken identity, complaint dismissed..."
-                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-teal-500 transition-colors duration-100"
+                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-success transition-colors duration-100"
                                 />
                             </div>
 
@@ -2093,20 +2093,20 @@ export default function DisciplinaryIndex() {
                                     value={investigationNotes}
                                     onChange={(e) => setInvestigationNotes(e.target.value)}
                                     placeholder="e.g. CCTV review findings, committee inquiry conclusion, notes..."
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-teal-500 resize-none transition-colors duration-100"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-line resize-none transition-colors duration-100"
                                 />
                             </div>
 
                             {/* Confirmation Checkbox */}
                             <div className="pt-1">
                                 <label className={`flex items-center gap-2.5 p-3 rounded-md border transition-colors duration-100 cursor-pointer select-none ${
-                                    isConfirmed ? 'bg-teal-50/70 border-teal-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100/60'
+                                    isConfirmed ? 'bg-surface-muted border-line' : 'bg-slate-50 border-slate-200 hover:bg-slate-100/60'
                                 }`}>
                                     <input 
                                         type="checkbox"
                                         checked={isConfirmed}
                                         onChange={(e) => setIsConfirmed(e.target.checked)}
-                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
+                                        className="h-4 w-4 rounded border-slate-300 text-ink focus:ring-line cursor-pointer shrink-0"
                                     />
                                     <span className="text-xs font-medium text-slate-700">
                                         I have reviewed this case and confirm clearing this record.
@@ -2127,7 +2127,7 @@ export default function DisciplinaryIndex() {
                                     type="submit" 
                                     className={`h-9 px-4 font-medium rounded-md text-xs transition-colors duration-100 flex items-center gap-2 ${
                                         isConfirmed && clearReason.trim() && !isClearing
-                                            ? 'text-white bg-teal-600 hover:bg-teal-700 cursor-pointer shadow-2xs'
+                                            ? 'text-white bg-ink-subtle hover:bg-ink-subtle cursor-pointer shadow-2xs'
                                             : 'text-slate-400 bg-slate-100 border border-slate-200 cursor-not-allowed opacity-60'
                                     }`}
                                 >
@@ -2176,12 +2176,12 @@ export default function DisciplinaryIndex() {
                                             {selectedEmployeeProfile.employee.department || 'Operations'}
                                         </span>
                                         {selectedEmployeeProfile.employee.is_active ? (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-ink-subtle text-ink border border-line flex items-center gap-1">
                                                 <i className="ti ti-check text-xs" />
                                                 Gate Access Allowed
                                             </span>
                                         ) : (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-rose-950 text-rose-300 border border-rose-800 flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-danger-ink text-danger border border-danger flex items-center gap-1">
                                                 <i className="ti ti-lock text-xs" />
                                                 Gate Access Restricted
                                             </span>
@@ -2204,19 +2204,19 @@ export default function DisciplinaryIndex() {
                             <div className="grid grid-cols-4 gap-2">
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-center">
                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">Warnings</span>
-                                    <span className="text-xl font-bold font-mono text-amber-600 tabular-nums">
+                                    <span className="text-xl font-bold font-mono text-warning-ink tabular-nums">
                                         {selectedEmployeeProfile.infractionHistory.filter(r => r.type === 'Warning').length}
                                     </span>
                                 </div>
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-center">
                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">Suspensions</span>
-                                    <span className="text-xl font-bold font-mono text-orange-600 tabular-nums">
+                                    <span className="text-xl font-bold font-mono text-warning-ink tabular-nums">
                                         {selectedEmployeeProfile.infractionHistory.filter(r => r.type === 'Suspension').length}
                                     </span>
                                 </div>
                                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-center">
                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">Cleared</span>
-                                    <span className="text-xl font-bold font-mono text-teal-600 tabular-nums">
+                                    <span className="text-xl font-bold font-mono text-success-ink tabular-nums">
                                         {selectedEmployeeProfile.infractionHistory.filter(r => r.status === 'Overturned').length}
                                     </span>
                                 </div>
@@ -2241,16 +2241,16 @@ export default function DisciplinaryIndex() {
                                                 key={inf.id}
                                                 className={`p-3.5 rounded-md border flex flex-col gap-1.5 ${
                                                     inf.status === 'Resolved' ? 'bg-slate-50/60 border-slate-200 opacity-80' :
-                                                    inf.status === 'Overturned' ? 'bg-teal-50/40 border-teal-200' :
+                                                    inf.status === 'Overturned' ? 'bg-success-subtle/40 border-success/20' :
                                                     'bg-white border-slate-200 shadow-2xs'
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase ${
-                                                            inf.type === 'Termination' ? 'bg-rose-100 text-rose-700' :
-                                                            inf.type === 'Suspension' ? 'bg-orange-100 text-orange-700' :
-                                                            'bg-amber-100 text-amber-700'
+                                                            inf.type === 'Termination' ? 'bg-danger-subtle text-danger-ink' :
+                                                            inf.type === 'Suspension' ? 'bg-warning-subtle text-warning-ink' :
+                                                            'bg-warning-subtle text-warning-ink'
                                                         }`}>
                                                             {inf.type}
                                                         </span>

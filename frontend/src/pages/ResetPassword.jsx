@@ -139,7 +139,7 @@ export default function ResetPassword() {
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium leading-relaxed">
             {error}
           </div>
         )}
@@ -147,7 +147,7 @@ export default function ResetPassword() {
         {/* Success View */}
         {success ? (
           <div className="text-center py-4 space-y-3">
-            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center text-xl mx-auto border border-emerald-200">
+            <div className="w-10 h-10 bg-surface-muted text-ink rounded-md flex items-center justify-center text-xl mx-auto border border-line">
               <i className="ti ti-check" />
             </div>
             <h2 className="text-sm font-bold text-slate-900">Password Updated</h2>
@@ -204,25 +204,25 @@ export default function ResetPassword() {
             {/* Compact Requirements Checklist */}
             <div className="p-2.5 bg-slate-50 rounded-md border border-slate-200/80 space-y-1 text-[11px]">
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.length ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
+                <i className={`ti ${checks.length ? 'ti-check text-ink' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.length ? 'text-slate-800 font-medium' : 'text-slate-400'}>
                   10+ characters
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.case ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
+                <i className={`ti ${checks.case ? 'ti-check text-ink' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.case ? 'text-slate-800 font-medium' : 'text-slate-400'}>
                   Upper &amp; lowercase letters
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.number ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
+                <i className={`ti ${checks.number ? 'ti-check text-ink' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.number ? 'text-slate-800 font-medium' : 'text-slate-400'}>
                   At least one number (0&ndash;9)
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <i className={`ti ${checks.special ? 'ti-check text-emerald-600' : 'ti-point text-slate-400'} text-xs`} />
+                <i className={`ti ${checks.special ? 'ti-check text-ink' : 'ti-point text-slate-400'} text-xs`} />
                 <span className={checks.special ? 'text-slate-800 font-medium' : 'text-slate-400'}>
                   At least one special character
                 </span>
@@ -234,7 +234,7 @@ export default function ResetPassword() {
               <div className="flex items-center justify-between mb-1 ml-0.5">
                 <label className="block text-xs font-semibold text-slate-700">Confirm Password</label>
                 {confirmPassword && (
-                  <span className={`text-[10px] font-semibold ${isMatch ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`text-[10px] font-semibold ${isMatch ? 'text-ink' : 'text-danger-ink'}`}>
                     {isMatch ? 'Matches' : 'Does not match'}
                   </span>
                 )}

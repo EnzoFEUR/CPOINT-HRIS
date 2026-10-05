@@ -172,9 +172,9 @@ const Calendar = () => {
                     onClick={() => onSelectDay(dayNum)}
                     className={`h-9 w-9 sm:h-10 sm:w-10 rounded-md text-xs font-semibold relative transition-colors duration-100 flex items-center justify-center select-none ${
                         isSelected
-                            ? 'bg-blue-600 text-white shadow-2xs font-semibold'
+                            ? 'bg-accent text-white shadow-2xs font-semibold'
                             : isToday
-                            ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                            ? 'bg-accent-subtle text-accent border border-accent/20'
                             : 'text-slate-700 hover:bg-slate-100'
                     }`}
                 >
@@ -182,7 +182,7 @@ const Calendar = () => {
                     {hasData && (
                         <span 
                             className={`absolute bottom-1 h-1 w-1 rounded-full ${
-                                isSelected ? 'bg-white' : 'bg-blue-500'
+                                isSelected ? 'bg-white' : 'bg-accent'
                             }`}
                         />
                     )}
@@ -231,7 +231,7 @@ const Calendar = () => {
                     <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
                         <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
                             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                <i className="ti ti-thumb-up text-emerald-600 text-sm"></i> On Time
+                                <i className="ti ti-thumb-up text-ink text-sm"></i> On Time
                             </span>
                             <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-slate-900 tabular-nums">
                                 {onTime}
@@ -239,7 +239,7 @@ const Calendar = () => {
                         </div>
                         <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
                             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                <i className="ti ti-alert-triangle text-amber-600 text-sm"></i> Late
+                                <i className="ti ti-alert-triangle text-warning-ink text-sm"></i> Late
                             </span>
                             <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-slate-900 tabular-nums">
                                 {totalLate}
@@ -247,9 +247,9 @@ const Calendar = () => {
                         </div>
                         <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
                             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                <i className="ti ti-user-x text-rose-600 text-sm"></i> Absent
+                                <i className="ti ti-user-x text-danger-ink text-sm"></i> Absent
                             </span>
-                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-rose-600 tabular-nums">
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-danger-ink tabular-nums">
                                 {totalAbsent}
                             </span>
                         </div>
@@ -286,16 +286,16 @@ const Calendar = () => {
                     <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-lg shadow-2xs border border-slate-200 min-h-[400px] sm:min-h-[500px]">
                         <div className="flex items-center justify-between mb-5 sm:mb-6 pb-4 border-b border-slate-100">
                             <h3 className="font-bold text-slate-800 text-base sm:text-xl flex flex-wrap items-center gap-2 sm:gap-3">
-                                <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200 shrink-0">
+                                <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20 shrink-0">
                                     <i className="ti ti-clock-play text-base sm:text-lg"></i>
                                 </div>
-                                <span className="text-blue-600 text-sm sm:text-lg font-semibold">
+                                <span className="text-accent text-sm sm:text-lg font-semibold">
                                     {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                                 </span>
                             </h3>
 
                             {isFetching && !showInitialLoading && (
-                                <div className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold">
+                                <div className="flex items-center gap-1.5 text-xs text-accent font-semibold">
                                     <i className="ti ti-loader-2 animate-spin text-sm" />
                                     <span className="hidden sm:inline">Syncing...</span>
                                 </div>
@@ -305,7 +305,7 @@ const Calendar = () => {
                         {showInitialLoading ? (
                             <div className="flex flex-col items-center justify-center h-64 sm:h-80 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50 mt-4 sm:mt-6">
                                 <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white shadow-2xs border border-slate-200 rounded-lg flex items-center justify-center mb-3 sm:mb-4">
-                                    <i className="ti ti-loader-2 text-2xl sm:text-3xl text-blue-600 animate-spin"></i>
+                                    <i className="ti ti-loader-2 text-2xl sm:text-3xl text-accent animate-spin"></i>
                                 </div>
                                 <p className="text-slate-700 font-semibold text-sm sm:text-base">Loading attendance logs...</p>
                             </div>
@@ -324,7 +324,7 @@ const Calendar = () => {
                                                 className="relative group"
                                             >
                                                 <div className={`absolute -left-[25px] sm:-left-[39px] top-6 h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full border-2 border-white shadow-2xs ${
-                                                    isAbsent ? 'bg-red-500' : isLate ? 'bg-amber-500' : 'bg-emerald-500'
+                                                    isAbsent ? 'bg-danger' : isLate ? 'bg-warning' : 'bg-slate-900'
                                                 }`}></div>
                                                 
                                                 <div className="bg-white rounded-lg p-3.5 sm:p-5 border border-slate-200 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center">
@@ -337,19 +337,19 @@ const Calendar = () => {
                                                     <div className="flex-1 w-full min-w-0">
                                                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
                                                             {isAbsent ? (
-                                                                <span className="font-mono font-bold text-red-600 bg-red-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-red-200 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
-                                                                    <i className="ti ti-user-x text-red-500 text-xs sm:text-sm"></i>
+                                                                <span className="font-mono font-bold text-danger-ink bg-danger-subtle px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-danger/20 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
+                                                                    <i className="ti ti-user-x text-danger-ink text-xs sm:text-sm"></i>
                                                                     No clock-in recorded (Absent)
                                                                 </span>
                                                             ) : (
                                                                 <>
                                                                     <span className="font-mono font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
-                                                                        <i className="ti ti-login-2 text-blue-500 text-xs sm:text-sm"></i>
+                                                                        <i className="ti ti-login-2 text-accent text-xs sm:text-sm"></i>
                                                                         In: {log.time_in ? new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                                                                     </span>
                                                                     {log.time_out && (
                                                                         <span className="font-mono font-medium text-slate-500 bg-slate-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-200 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
-                                                                            <i className="ti ti-logout-2 text-rose-400 text-xs sm:text-sm"></i>
+                                                                            <i className="ti ti-logout-2 text-danger text-xs sm:text-sm"></i>
                                                                             Out: {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                                         </span>
                                                                     )}
@@ -367,15 +367,15 @@ const Calendar = () => {
 
                                                     <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
                                                         {isAbsent ? (
-                                                             <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-rose-50 text-rose-700 text-xs font-semibold uppercase tracking-wider border border-rose-200 flex items-center justify-center gap-1.5 shadow-2xs">
+                                                             <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-danger-subtle text-danger-ink text-xs font-semibold uppercase tracking-wider border border-danger/20 flex items-center justify-center gap-1.5 shadow-2xs">
                                                                 <i className="ti ti-user-x text-sm"></i> Absent
                                                             </span>
                                                         ) : isLate ? (
-                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-amber-50 text-amber-700 text-xs font-semibold uppercase tracking-wider border border-amber-200 flex items-center justify-center gap-1.5 shadow-2xs">
+                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-warning-subtle text-warning-ink text-xs font-semibold uppercase tracking-wider border border-warning/20 flex items-center justify-center gap-1.5 shadow-2xs">
                                                                 <i className="ti ti-alert-triangle text-sm"></i> Late
                                                             </span>
                                                         ) : (
-                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wider border border-emerald-200 flex items-center justify-center gap-1.5 shadow-2xs">
+                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-slate-900 text-white text-xs font-semibold uppercase tracking-wider border border-slate-800 flex items-center justify-center gap-1.5 shadow-2xs">
                                                                 <i className="ti ti-thumb-up text-sm"></i> On Time
                                                             </span>
                                                         )}

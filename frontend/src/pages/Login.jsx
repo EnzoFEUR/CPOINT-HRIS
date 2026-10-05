@@ -757,7 +757,7 @@ export default function Login() {
         <main className="min-h-[100dvh] w-full bg-slate-50 text-slate-900 flex items-center justify-center p-3 sm:p-6 lg:p-10 select-none overflow-x-hidden relative">
             {/* Ambient luxury subtle lighting */}
             <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-slate-200/40 rounded-full blur-[128px] pointer-events-none" />
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-[128px] pointer-events-none" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent-subtle/30 rounded-full blur-[128px] pointer-events-none" />
 
             {/* Main Master Container (Aligned to System Corner Radius: rounded-xl) */}
             <div className="relative z-10 w-full max-w-[920px] bg-white border border-slate-200 rounded-xl p-4 sm:p-6 lg:p-7 shadow-xl flex flex-col lg:flex-row items-stretch gap-6 lg:gap-8">
@@ -778,12 +778,12 @@ export default function Login() {
                     />
 
                     {/* Blue Gradient Overlays (Multi-layered for deep, rich enterprise blue tone & contrast) */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-blue-950/75 to-blue-900/60 mix-blend-multiply pointer-events-none" />
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-blue-950/50 to-slate-950/85 pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/75 to-slate-900/60 mix-blend-multiply pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900/40 via-slate-900/50 to-slate-950/85 pointer-events-none" />
 
                     {/* Subtle Blue Glow Highlights */}
-                    <div className="absolute -top-20 -right-20 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-                    <div className="absolute top-1/2 -left-20 w-64 h-64 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -top-20 -right-20 w-72 h-72 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute top-1/2 -left-20 w-64 h-64 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
 
                     {/* Center Title and Description */}
                     <div className="relative z-10 w-full max-w-[320px] flex flex-col items-center">
@@ -804,7 +804,7 @@ export default function Login() {
                         <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight drop-shadow-sm">
                             Get Started with Us
                         </h2>
-                        <p className="text-xs sm:text-sm text-blue-100/90 max-w-[260px] mx-auto mt-2.5 leading-relaxed drop-shadow-xs font-normal">
+                        <p className="text-xs sm:text-sm text-white/90 max-w-[260px] mx-auto mt-2.5 leading-relaxed drop-shadow-xs font-normal">
                             Complete the steps to sign in to your workspace
                         </p>
                     </div>
@@ -826,8 +826,8 @@ export default function Login() {
 
                             {/* Security Lockout Banner */}
                             {isLockedOut && (
-                                <div role="alert" className="mb-4 p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center gap-2 shadow-2xs">
-                                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600" />
+                                <div role="alert" className="mb-4 p-2.5 rounded-md bg-warning-subtle border border-warning/20 text-warning-ink text-xs font-medium flex items-center gap-2 shadow-2xs">
+                                    <ShieldAlert className="w-4 h-4 shrink-0 text-warning-ink" />
                                     <span>Too many failed login attempts. Security lock active for {lockoutTimer}s.</span>
                                 </div>
                             )}
@@ -858,7 +858,7 @@ export default function Login() {
                                         </label>
                                         <Link
                                             to="/forgot-password"
-                                            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                                            className="text-xs font-semibold text-accent hover:text-accent hover:underline transition-colors"
                                         >
                                             Forgot password?
                                         </Link>
@@ -885,8 +885,8 @@ export default function Login() {
                                         </button>
                                     </div>
                                     {error && (
-                                        <div role="alert" className="mt-2 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 shadow-2xs">
-                                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                        <div role="alert" className="mt-2 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 shadow-2xs">
+                                            <AlertCircle className="w-4 h-4 shrink-0 text-danger-ink" />
                                             <span>{error}</span>
                                         </div>
                                     )}
@@ -1037,8 +1037,8 @@ export default function Login() {
                             </div>
 
                             {error && (
-                                <div role="alert" className="mt-2.5 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
-                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                <div role="alert" className="mt-2.5 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-danger-ink" />
                                     <span>{error}</span>
                                 </div>
                             )}
@@ -1070,7 +1070,7 @@ export default function Login() {
                                     <span className="text-xs font-semibold text-slate-700"></span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Mail className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <Mail className="w-4 h-4 text-accent shrink-0" />
                                     <span className="font-mono text-xs font-bold text-slate-900 truncate">
                                         {maskEmail(email)}
                                     </span>
@@ -1078,8 +1078,8 @@ export default function Login() {
                             </div>
 
                             {error && (
-                                <div role="alert" className="mb-3 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
-                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                <div role="alert" className="mb-3 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-danger-ink" />
                                     <span>{error}</span>
                                 </div>
                             )}
@@ -1173,20 +1173,20 @@ export default function Login() {
                                                 document.getElementById('otp-5')?.focus();
                                                 verifyOtpDirect(generatedOtp);
                                             }}
-                                            className="inline-flex items-center justify-between w-full px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-md border border-amber-300 transition-colors cursor-pointer shadow-2xs"
+                                            className="inline-flex items-center justify-between w-full px-3 py-1.5 bg-warning-subtle hover:bg-warning-subtle text-warning-ink text-xs font-semibold rounded-md border border-warning/20 transition-colors cursor-pointer shadow-2xs"
                                         >
                                             <div className="flex items-center gap-2">
-                                                <Lightbulb className="w-4 h-4 text-amber-600" />
-                                                <span>Security code: <strong className="font-mono text-sm tracking-wider text-amber-950 font-bold">{generatedOtp}</strong></span>
+                                                <Lightbulb className="w-4 h-4 text-warning-ink" />
+                                                <span>Security code: <strong className="font-mono text-sm tracking-wider text-accent font-bold">{generatedOtp}</strong></span>
                                             </div>
-                                            <span className="text-[11px] font-bold bg-amber-200/80 px-2 py-0.5 rounded-sm text-amber-900">Autofill</span>
+                                            <span className="text-[11px] font-bold bg-accent-subtle px-2 py-0.5 rounded-sm text-accent">Autofill</span>
                                         </button>
                                     </div>
                                 )}
 
                                 {error && (
-                                    <div role="alert" className="mb-3 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
-                                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                    <div role="alert" className="mb-3 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-danger-ink" />
                                         <span>{error}</span>
                                     </div>
                                 )}
@@ -1216,7 +1216,7 @@ export default function Login() {
                                     {timer > 0 ? (
                                         <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
                                     ) : (
-                                        <span className="text-rose-600 font-semibold">Code expired.</span>
+                                        <span className="text-danger-ink font-semibold">Code expired.</span>
                                     )}
                                     <span className="mx-1 text-slate-300">•</span>
                                     <button
@@ -1224,7 +1224,7 @@ export default function Login() {
                                         disabled={loading || isCooldown}
                                         style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
                                         onClick={() => sendOtp(otpMethod, true)}
-                                        className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                        className="text-accent hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                                     >
                                         {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
                                     </button>

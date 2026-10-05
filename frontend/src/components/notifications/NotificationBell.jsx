@@ -245,13 +245,13 @@ export const NotificationBell = ({ user }) => {
       <button
         onClick={() => setShowNotifications(!showNotifications)}
         className={`relative transition-colors duration-100 rounded-md border border-slate-200 h-9 w-9 flex items-center justify-center cursor-pointer shadow-2xs ${
-          showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/80'
+          showNotifications ? 'bg-accent-subtle text-accent' : 'text-slate-500 hover:text-accent hover:bg-accent-subtle bg-slate-100/80'
         }`}
         aria-label="View Notifications"
       >
         <i className="ti ti-bell text-base"></i>
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border-2 border-white shadow-xs"></span>
+          <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-accent rounded-full border-2 border-white shadow-xs"></span>
         )}
       </button>
 
@@ -262,14 +262,14 @@ export const NotificationBell = ({ user }) => {
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-blue-500 text-white">
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-accent text-white">
                   {unreadCount} new
                 </span>
               )}
             </div>
             <button
               onClick={markAllRead}
-              className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider cursor-pointer"
+              className="text-[10px] font-bold text-accent hover:text-accent hover:underline uppercase tracking-wider cursor-pointer"
             >
               Mark all read
             </button>
@@ -285,7 +285,7 @@ export const NotificationBell = ({ user }) => {
                     key={notif.id}
                     onClick={() => handleNotificationClick(notif)}
                     className={`p-3.5 hover:bg-slate-50 transition-colors duration-100 flex items-start gap-3 cursor-pointer ${
-                      !notif.read ? 'bg-blue-50/30' : ''
+                      !notif.read ? 'bg-accent-subtle/30' : ''
                     }`}
                   >
                     <NotificationAvatar
@@ -309,7 +309,7 @@ export const NotificationBell = ({ user }) => {
                       </p>
                     </div>
                     {!notif.read ? (
-                      <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0 shadow-xs" />
+                      <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-accent shrink-0 shadow-xs" />
                     ) : (
                       <i className="ti ti-chevron-right text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 text-xs" />
                     )}
@@ -331,7 +331,7 @@ export const NotificationBell = ({ user }) => {
           {isMobile && (
             <div className="lg:hidden p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="h-7 w-7 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <div className="h-7 w-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
                   <i className="ti ti-device-mobile-message text-sm"></i>
                 </div>
                 <div className="min-w-0">
@@ -348,7 +348,7 @@ export const NotificationBell = ({ user }) => {
                   className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
                   title="Send a test notification to your phone"
                 >
-                  <i className="ti ti-bell-ringing text-blue-600"></i>
+                  <i className="ti ti-bell-ringing text-accent"></i>
                   Test Buzz
                 </button>
               ) : (
@@ -357,7 +357,7 @@ export const NotificationBell = ({ user }) => {
                     const res = await subscribeUserToPush(user?.id);
                     if (res.success) setPushStatus('granted');
                   }}
-                  className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
+                  className="h-7 px-2.5 bg-accent hover:bg-accent-hover text-white text-[10px] font-bold rounded-sm shadow-2xs transition-colors duration-100 flex items-center gap-1 shrink-0 cursor-pointer"
                 >
                   <i className="ti ti-bell-plus"></i>
                   Enable

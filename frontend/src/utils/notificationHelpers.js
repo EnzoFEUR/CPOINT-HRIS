@@ -4,24 +4,24 @@ export const getNotificationVisuals = (type) => {
     case 'payroll':
       return {
         icon: 'ti-cash-banknote',
-        bg: 'bg-emerald-50 text-emerald-600 border-emerald-200/80',
-        badge: 'bg-emerald-500',
+        bg: 'bg-accent-subtle text-accent border-accent/20',
+        badge: 'bg-accent',
         label: 'Payroll',
         path: '/admin/payroll'
       };
     case 'leave':
       return {
         icon: 'ti-plane-departure',
-        bg: 'bg-blue-50 text-blue-600 border-blue-200/80',
-        badge: 'bg-blue-500',
+        bg: 'bg-accent-subtle text-accent border-accent/80',
+        badge: 'bg-accent',
         label: 'Leave',
         path: '/admin/leaves'
       };
     case 'shift':
       return {
         icon: 'ti-calendar-time',
-        bg: 'bg-purple-50 text-purple-600 border-purple-200/80',
-        badge: 'bg-purple-500',
+        bg: 'bg-accent-subtle text-accent border-accent/80',
+        badge: 'bg-accent',
         label: 'Schedule',
         path: '/employee/dashboard'
       };
@@ -29,16 +29,16 @@ export const getNotificationVisuals = (type) => {
     case 'warning':
       return {
         icon: 'ti-alert-triangle',
-        bg: 'bg-amber-50 text-amber-600 border-amber-200/80',
-        badge: 'bg-amber-500',
+        bg: 'bg-warning-subtle text-warning-ink border-warning/80',
+        badge: 'bg-warning',
         label: 'Notice',
         path: '/admin/disciplinary'
       };
     case 'attendance':
       return {
         icon: 'ti-clock-check',
-        bg: 'bg-teal-50 text-teal-600 border-teal-200/80',
-        badge: 'bg-teal-500',
+        bg: 'bg-accent-subtle text-accent border-accent/20',
+        badge: 'bg-accent',
         label: 'Attendance',
         path: '/admin/attendance'
       };
@@ -46,7 +46,7 @@ export const getNotificationVisuals = (type) => {
       return {
         icon: 'ti-bell',
         bg: 'bg-slate-100 text-slate-600 border-slate-200',
-        badge: 'bg-blue-500',
+        badge: 'bg-accent',
         label: 'General',
         path: '/'
       };

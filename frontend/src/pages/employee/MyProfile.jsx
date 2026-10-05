@@ -8,7 +8,6 @@ import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache } from '../../utils/disciplinaryCache';
 import bannerCover from '../../assets/employee-cover.jpg';
-import MonthlyWorkCalendar from '../../components/attendance/MonthlyWorkCalendar';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -552,18 +551,18 @@ export default function MyProfile() {
         const ext = (fileName.split('.').pop() || '').toLowerCase();
         switch (ext) {
             case 'pdf':
-                return { icon: 'ti-file-type-pdf', color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' };
+                return { icon: 'ti-file-type-pdf', color: 'text-danger-ink', bg: 'bg-danger-subtle', border: 'border-danger/20' };
             case 'doc':
             case 'docx':
-                return { icon: 'ti-file-type-docx', color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' };
+                return { icon: 'ti-file-type-docx', color: 'text-accent', bg: 'bg-accent-subtle', border: 'border-accent/20' };
             case 'xls':
             case 'xlsx':
-                return { icon: 'ti-file-type-xls', color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' };
+                return { icon: 'ti-file-type-xls', color: 'text-ink', bg: 'bg-surface-muted', border: 'border-line' };
             case 'png':
             case 'jpg':
             case 'jpeg':
             case 'heic':
-                return { icon: 'ti-photo', color: 'text-purple-500', bg: 'bg-purple-50', border: 'border-purple-100' };
+                return { icon: 'ti-photo', color: 'text-accent', bg: 'bg-accent-subtle', border: 'border-accent/20' };
             default:
                 return { icon: 'ti-file', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-100' };
         }
@@ -584,9 +583,9 @@ export default function MyProfile() {
     };
 
     const expiryBadgeStyles = {
-        expired: 'bg-rose-50 text-rose-600 border-rose-200',
-        warning: 'bg-amber-50 text-amber-600 border-amber-200',
-        valid: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+        expired: 'bg-danger-subtle text-danger-ink border-danger/20',
+        warning: 'bg-warning-subtle text-warning-ink border-warning/20',
+        valid: 'bg-surface-muted text-ink border-line',
     };
 
     const alerts = useMemo(() => {
@@ -638,7 +637,7 @@ export default function MyProfile() {
     if (isLoading && !profile) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
-                <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-400 font-bold tracking-widest uppercase text-xs">Loading Profile...</p>
             </div>
         );
@@ -653,9 +652,9 @@ export default function MyProfile() {
             onDrop={handleDrop}
         >
             {isDraggingFile && (
-                <div className="fixed inset-0 z-[60] bg-blue-950/20 flex items-center justify-center pointer-events-none">
-                    <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-blue-500 px-10 py-8 flex flex-col items-center">
-                        <i className="ti ti-cloud-upload text-4xl text-blue-600 mb-2" />
+                <div className="fixed inset-0 z-[60] bg-slate-900/20 flex items-center justify-center pointer-events-none">
+                    <div className="bg-white rounded-lg shadow-xl border-2 border-dashed border-accent px-10 py-8 flex flex-col items-center">
+                        <i className="ti ti-cloud-upload text-4xl text-accent mb-2" />
                         <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Drop to Upload</p>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">Attach to your documents</p>
                     </div>
@@ -700,8 +699,8 @@ export default function MyProfile() {
                             {isTerminated && (
                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-md border ${
                                     isPendingArchive 
-                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
-                                        : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                        ? 'bg-warning/20 text-warning border-warning/30' 
+                                        : 'bg-danger/20 text-danger border-danger/30'
                                 }`}>
                                     <i className={`ti ${isPendingArchive ? 'ti-clock-pause' : 'ti-circle-x'}`} />
                                     {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
@@ -710,24 +709,24 @@ export default function MyProfile() {
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
                                 <i className="ti ti-id text-slate-400" /> {profile?.company_id || 'EMPLOYEE'}
                             </span>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-md border border-blue-500/30">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
                                 {profile?.department || 'Operations'}
                             </span>
                             {(profile?.department || '').toLowerCase().includes('factory') ? (
                                 <>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-md border border-amber-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded-md border border-warning/30">
                                         Factory (08:00 - 17:00 • No OT)
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-md border border-purple-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
                                         Piece-Rate Production
                                     </span>
                                 </>
                             ) : (
                                 <>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-md border border-blue-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
                                         Regular (08:00 - 20:00 • OT Eligible)
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded-md border border-emerald-500/30">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line">
                                         Salaried Monthly
                                     </span>
                                 </>
@@ -755,8 +754,8 @@ export default function MyProfile() {
 
                     <div className="flex sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
                         {alerts.length > 0 && (
-                            <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md text-xs font-semibold">
-                                <i className="ti ti-alert-triangle text-amber-400 text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
+                            <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-warning/20 text-warning border border-warning/30 rounded-md text-xs font-semibold">
+                                <i className="ti ti-alert-triangle text-warning text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
                             </div>
                         )}
                         {isTerminated ? (
@@ -766,7 +765,7 @@ export default function MyProfile() {
                         ) : (
                             <button
                                 onClick={() => openUploadModal()}
-                                className="w-full sm:w-auto h-9 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                className="w-full sm:w-auto h-9 px-3.5 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <i className="ti ti-upload text-sm" /> Upload Document
                             </button>
@@ -777,20 +776,20 @@ export default function MyProfile() {
 
             {/* Disciplinary Suspension Notification */}
             {isSuspended && !isPendingArchive && (
-                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+                <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-md shrink-0 mt-0.5">
+                        <div className="p-2.5 bg-warning-subtle text-warning-ink rounded-md shrink-0 mt-0.5">
                             <i className="ti ti-lock-exclamation text-xl" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-amber-950 text-sm">Disciplinary Suspension Active</h4>
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold rounded-md">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                <h4 className="font-bold text-warning-ink text-sm">Disciplinary Suspension Active</h4>
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                                     Operational Hold
                                 </span>
                             </div>
-                            <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                            <p className="text-xs text-warning-ink mt-1 leading-relaxed">
                                 Under DOLE policy ("No Work, No Pay"), gate access and attendance logging are temporarily on hold. You retain access to review your documents and official records.
                             </p>
                         </div>
@@ -800,20 +799,20 @@ export default function MyProfile() {
 
             {/* Pending Archive Clearance Notification */}
             {isPendingArchive && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+                <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-md shrink-0 mt-0.5">
+                        <div className="p-2.5 bg-warning-subtle text-warning-ink rounded-md shrink-0 mt-0.5">
                             <i className="ti ti-hourglass-empty text-xl animate-pulse" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-amber-950 text-sm">Account in Clearance Cooldown</h4>
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold rounded-md">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                <h4 className="font-bold text-warning-ink text-sm">Account in Clearance Cooldown</h4>
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                                     {daysUntilPermanentArchive} Days Left
                                 </span>
                             </div>
-                            <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                            <p className="text-xs text-warning-ink mt-1 leading-relaxed">
                                 Your employment profile has been queued for archival ({profile?.separation_type || 'Separated'}). 
                                 {profile?.separation_reason ? ` Reason: "${profile.separation_reason}".` : ''} 
                                 Access to biometrics and turnstiles is restricted during clearance. Historical documents remain accessible.
@@ -821,7 +820,7 @@ export default function MyProfile() {
                         </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
-                        <span className="text-[11px] font-mono font-medium text-amber-700 bg-amber-100/60 px-2.5 py-1 rounded-md border border-amber-200">
+                        <span className="text-[11px] font-mono font-medium text-warning-ink bg-warning-subtle/60 px-2.5 py-1 rounded-md border border-warning/20">
                             Clearance Cooldown: 14 Days
                         </span>
                     </div>
@@ -833,12 +832,11 @@ export default function MyProfile() {
                 {/* Personal Information */}
                 <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                        <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
                             <i className="ti ti-user text-lg" />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm">Personal Details</h3>
-                            <p className="text-[11px] text-slate-500">Government identity and contact details</p>
                         </div>
                     </div>
 
@@ -873,12 +871,11 @@ export default function MyProfile() {
                 {/* Employment & Payroll Details */}
                 <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                        <div className="h-9 w-9 rounded-md bg-surface-muted text-ink flex items-center justify-center border border-line">
                             <i className="ti ti-briefcase text-lg" />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm">Employment & Payroll</h3>
-                            <p className="text-[11px] text-slate-500">Organizational role and compensation scheme</p>
                         </div>
                     </div>
 
@@ -901,7 +898,7 @@ export default function MyProfile() {
                         </div>
                         <div className="col-span-2">
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Employment Status</p>
-                            <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold text-[11px] rounded-md border border-emerald-200">
+                            <span className="inline-flex items-center px-2.5 py-0.5 bg-surface-muted text-ink font-semibold text-[11px] rounded-md border border-line">
                                 Active Full-Time
                             </span>
                         </div>
@@ -909,41 +906,31 @@ export default function MyProfile() {
                 </div>
             </div>
 
-            {/* Monthly Work Schedule & Attendance Section */}
-            {(currentUserId || profile?.id) && (
-                <MonthlyWorkCalendar
-                    employeeId={currentUserId || profile?.id}
-                    employeeName={profile?.name || `${profile?.first_name || ''} ${profile?.last_name || ''}`}
-                    isEmployeeView={true}
-                />
-            )}
-
             {/* Biometric Authentication & Gate Access */}
             <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
                         <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
                             isMedicalExempt 
-                                ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                ? 'bg-warning-subtle text-warning-ink border-warning/20' 
                                 : profile?.has_registered_biometrics 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                ? 'bg-surface-muted text-ink border-line' 
+                                : 'bg-accent-subtle text-accent border-accent/20'
                         }`}>
                             <i className={`ti ${isMedicalExempt ? 'ti-bandage' : 'ti-fingerprint'} text-lg`} />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm sm:text-base">Gate Access &amp; Face Scan</h3>
-                            <p className="text-[11px] text-slate-500">Badge access, face scan status, and medical exemptions</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
                             isMedicalExempt 
-                                ? 'bg-amber-50 text-amber-900 border-amber-300' 
+                                ? 'bg-warning-subtle text-warning-ink border-warning/20' 
                                 : profile?.has_registered_biometrics 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                ? 'bg-surface-muted text-ink border-line' 
+                                : 'bg-accent-subtle text-accent border-accent/20'
                         }`}>
                             <i className={`ti ${
                                 isMedicalExempt ? 'ti-shield-check' :
@@ -960,10 +947,10 @@ export default function MyProfile() {
 
                 {isMedicalExempt ? (
                     <div className="space-y-3">
-                        <div className="p-4 rounded-md bg-amber-50/50 border border-amber-200 space-y-2 text-xs">
+                        <div className="p-4 rounded-md bg-warning-subtle/50 border border-warning/20 space-y-2 text-xs">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-bold text-amber-950 flex items-center gap-1.5">
-                                    <i className="ti ti-first-aid-kit text-amber-700 text-sm" />
+                                <span className="font-bold text-warning-ink flex items-center gap-1.5">
+                                    <i className="ti ti-first-aid-kit text-warning-ink text-sm" />
                                     Medical Grace Protocol Active
                                 </span>
                                 <span className="font-mono text-slate-600 font-semibold">
@@ -980,8 +967,8 @@ export default function MyProfile() {
                                     <span>Authorized by: <strong className="text-slate-700">{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
                                 </p>
                             )}
-                            <p className="text-amber-800 text-[11px] font-semibold pt-1 flex items-center gap-1.5">
-                                <i className="ti ti-info-circle text-amber-700 shrink-0" />
+                            <p className="text-warning-ink text-[11px] font-semibold pt-1 flex items-center gap-1.5">
+                                <i className="ti ti-info-circle text-warning-ink shrink-0" />
                                 <span>Turnstile Instructions: Your Digital Gate Pass QR is authorized for single-step badge access. The turnstile camera logs an evidentiary snapshot automatically. No facial matching required.</span>
                             </p>
                         </div>
@@ -990,14 +977,14 @@ export default function MyProfile() {
                             <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                 <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Turnstile Mode</p>
                                 <p className="font-bold text-slate-800 flex items-center gap-1">
-                                    <i className="ti ti-qrcode text-emerald-600" />
+                                    <i className="ti ti-qrcode text-ink" />
                                     QR-Only (Medical Grace)
                                 </p>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                 <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Audit Trail</p>
                                 <p className="font-bold text-slate-800 flex items-center gap-1">
-                                    <i className="ti ti-camera text-blue-600" />
+                                    <i className="ti ti-camera text-accent" />
                                     Camera Snapshot Logged
                                 </p>
                             </div>
@@ -1008,7 +995,7 @@ export default function MyProfile() {
                                 </div>
                                 <Link
                                     to="/employee/qr"
-                                    className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium text-xs shadow-2xs transition-colors duration-100 cursor-pointer flex items-center justify-center"
+                                    className="h-8 px-3 bg-warning hover:bg-warning-ink text-white rounded-md font-medium text-xs shadow-2xs transition-colors duration-100 cursor-pointer flex items-center justify-center"
                                 >
                                     View QR
                                 </Link>
@@ -1019,15 +1006,15 @@ export default function MyProfile() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                         <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                             <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Face Scan</p>
-                            <p className="font-bold text-emerald-700 flex items-center gap-1">
-                                <i className="ti ti-circle-check text-emerald-600" />
+                            <p className="font-bold text-ink flex items-center gap-1">
+                                <i className="ti ti-circle-check text-ink" />
                                 Verified &amp; Active
                             </p>
                         </div>
                         <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                             <p className="text-slate-400 font-bold uppercase text-[10px] mb-0.5">Clock-in Method</p>
                             <p className="font-bold text-slate-800 flex items-center gap-1">
-                                <i className="ti ti-shield-check text-blue-600" />
+                                <i className="ti ti-shield-check text-accent" />
                                 Badge + Face Scan
                             </p>
                         </div>
@@ -1045,19 +1032,19 @@ export default function MyProfile() {
                         </div>
                     </div>
                 ) : (
-                    <div className="p-4 rounded-md bg-blue-50/50 border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="p-4 rounded-md bg-accent-subtle/50 border border-accent/20 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                            <p className="font-bold text-blue-900 flex items-center gap-1.5">
-                                <i className="ti ti-scan text-blue-600 text-sm" />
+                            <p className="font-bold text-accent-strong flex items-center gap-1.5">
+                                <i className="ti ti-scan text-accent text-sm" />
                                 Face scan setup required
                             </p>
-                            <p className="text-blue-700 mt-0.5">
+                            <p className="text-accent mt-0.5">
                                 Please complete your face scan setup to enable clocking in at company kiosks.
                             </p>
                         </div>
                         <Link
                             to="/biometric-setup"
-                            className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-xs shadow-2xs text-center shrink-0 transition-colors duration-100 cursor-pointer flex items-center justify-center"
+                            className="h-8 px-4 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-xs shadow-2xs text-center shrink-0 transition-colors duration-100 cursor-pointer flex items-center justify-center"
                         >
                             Set up face scan
                         </Link>
@@ -1071,21 +1058,20 @@ export default function MyProfile() {
                     <div className="flex items-center gap-2.5">
                         <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
                             totpStatus.enabled 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                ? 'bg-surface-muted text-ink border-line' 
                                 : 'bg-slate-100 text-slate-700 border-slate-200'
                         }`}>
                             <i className="ti ti-shield-lock text-lg" />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm sm:text-base">Two-Factor Authentication (2FA)</h3>
-                            <p className="text-[11px] text-slate-500">Hardware &amp; app-based TOTP (Google Authenticator, Microsoft Authenticator, 1Password)</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
                             totpStatus.enabled 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                ? 'bg-surface-muted text-ink border-line' 
                                 : 'bg-slate-100 text-slate-700 border-slate-300'
                         }`}>
                             <i className={`ti ${totpStatus.enabled ? 'ti-circle-check' : 'ti-alert-circle'}`} />
@@ -1100,11 +1086,6 @@ export default function MyProfile() {
                             {totpStatus.enabled 
                                 ? 'Your account is secured with Time-Based One-Time Passwords (TOTP).'
                                 : 'Protect your administrative and workplace access with instant, offline 2FA codes.'}
-                        </p>
-                        <p className="text-slate-500 mt-0.5 leading-relaxed">
-                            {totpStatus.enabled
-                                ? `Active protection replaces SMS delays with instant 30-second rotating cryptographic tokens. ${totpStatus.remainingCodes || 0} backup codes available.`
-                                : 'Replaces SMS verification. Eliminates telco delivery delays, network carrier fees, and SIM-swapping risks.'}
                         </p>
                     </div>
 
@@ -1126,7 +1107,7 @@ export default function MyProfile() {
                                         setShowDisableModal(true);
                                     }}
                                     disabled={totpSubmitting}
-                                    className="h-8 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
+                                    className="h-8 px-3 bg-danger-subtle hover:bg-danger-subtle text-danger-ink border border-danger/20 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
                                 >
                                     Disable 2FA
                                 </button>
@@ -1150,21 +1131,20 @@ export default function MyProfile() {
             <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-md bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+                        <div className="h-9 w-9 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center border border-warning/20">
                             <i className="ti ti-scale text-lg" />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm sm:text-base">Policy &amp; Incident Reports</h3>
-                            <p className="text-[11px] text-slate-500">Documented workplace incidents, written notices, and current standing</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
-                            isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                            isSuspended ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                            disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                            'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            isTerminated ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                            isSuspended ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                            disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                            'bg-surface-muted text-ink border-line'
                         }`}>
                             <i className={`ti ${
                                 isTerminated ? 'ti-circle-x' :
@@ -1181,13 +1161,13 @@ export default function MyProfile() {
                 </div>
 
                 {disciplinaryLogs.length === 0 ? (
-                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-md bg-emerald-50/50 border border-emerald-200 text-xs">
-                        <div className="w-8 h-8 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center gap-3.5 p-4 rounded-md bg-surface-muted border border-line text-xs">
+                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0">
                             <i className="ti ti-shield-check text-base" />
                         </div>
                         <div className="flex-1 text-center sm:text-left">
-                            <p className="font-bold text-emerald-900">Clean Disciplinary Standing</p>
-                            <p className="text-emerald-700 mt-0.5">
+                            <p className="font-bold text-ink">Clean Disciplinary Standing</p>
+                            <p className="text-ink mt-0.5">
                                 You currently have no disciplinary infractions, warnings, or sanctions on file. Your account is in full compliance with company policies and DOLE standards.
                             </p>
                         </div>
@@ -1204,11 +1184,11 @@ export default function MyProfile() {
                                     key={log.id}
                                     className={`p-4 rounded-md border text-xs transition-colors duration-100 ${
                                         isResolvedTermination
-                                            ? 'bg-emerald-50/30 border-emerald-200'
+                                            ? 'bg-success-subtle/30 border-success/20'
                                             : log.status === 'Active'
-                                            ? 'bg-rose-50/30 border-rose-200'
+                                            ? 'bg-danger-subtle/30 border-danger/20'
                                             : log.status === 'Acknowledged'
-                                            ? 'bg-blue-50/30 border-blue-200'
+                                            ? 'bg-accent-subtle/30 border-accent/20'
                                             : 'bg-slate-50/70 border-slate-200'
                                     }`}
                                 >
@@ -1216,12 +1196,12 @@ export default function MyProfile() {
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
                                                 isResolvedTermination
-                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                    ? 'bg-success-subtle text-success-ink border-success/20'
                                                     : log.type === 'Termination'
-                                                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                                    ? 'bg-danger-subtle text-danger-ink border-danger/20'
                                                     : log.type === 'Suspension'
-                                                    ? 'bg-orange-100 text-orange-800 border-orange-300'
-                                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                                    ? 'bg-warning-subtle text-warning-ink border-warning/20'
+                                                    : 'bg-warning-subtle text-warning-ink border-warning/20'
                                             }`}>
                                                 <i className={`ti ${
                                                     isResolvedTermination ? 'ti-circle-check' :
@@ -1239,10 +1219,10 @@ export default function MyProfile() {
 
                                         <div className="flex items-center gap-1.5">
                                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
-                                                log.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                log.status === 'Overturned' ? 'bg-teal-100 text-teal-800 border-teal-300' :
-                                                log.status === 'Acknowledged' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                                'bg-rose-100 text-rose-800 border-rose-300'
+                                                log.status === 'Resolved' ? 'bg-success-subtle text-success-ink border-success/20' :
+                                                log.status === 'Overturned' ? 'bg-success-subtle text-success-ink border-success/20' :
+                                                log.status === 'Acknowledged' ? 'bg-accent-subtle text-accent-strong border-accent/20' :
+                                                'bg-danger-subtle text-danger-ink border-danger/20'
                                             }`}>
                                                 {log.status === 'Resolved' && <i className="ti ti-circle-check" />}
                                                 {log.status === 'Overturned' && <i className="ti ti-shield-check" />}
@@ -1263,13 +1243,13 @@ export default function MyProfile() {
                                     </p>
 
                                     {log.status === 'Active' && (
-                                        <div className="mt-2.5 pt-2 border-t border-rose-200/60 flex items-center justify-between gap-2 text-[11px] text-rose-700">
+                                        <div className="mt-2.5 pt-2 border-t border-danger/60 flex items-center justify-between gap-2 text-[11px] text-danger-ink">
                                             <span className="flex items-center gap-1">
                                                 <i className="ti ti-alert-circle text-sm" /> Formal acknowledgment required under DOLE due process.
                                             </span>
                                             <Link
                                                 to="/employee/dashboard"
-                                                className="h-7 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-md text-[10px] uppercase transition-colors duration-100 shrink-0 flex items-center justify-center shadow-2xs"
+                                                className="h-7 px-2.5 bg-danger hover:bg-danger-ink text-white font-semibold rounded-md text-[10px] uppercase transition-colors duration-100 shrink-0 flex items-center justify-center shadow-2xs"
                                             >
                                                 Review Notice
                                             </Link>
@@ -1277,14 +1257,14 @@ export default function MyProfile() {
                                     )}
 
                                     {log.status === 'Acknowledged' && (
-                                        <div className="mt-2 pt-2 border-t border-blue-100 text-[11px] text-blue-700 font-medium flex items-center gap-1">
+                                        <div className="mt-2 pt-2 border-t border-accent/20 text-[11px] text-accent font-medium flex items-center gap-1">
                                             <i className="ti ti-checks text-sm" />
                                             <span>Receipt formally acknowledged on employee portal.</span>
                                         </div>
                                     )}
 
                                     {isReinstatedNote && (
-                                        <div className="mt-2 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                                        <div className="mt-2 pt-2 border-t border-success/20 text-[11px] text-success-ink font-bold flex items-center gap-1">
                                             <i className="ti ti-check text-sm" />
                                             <span>Sanction revoked and operational standing restored.</span>
                                         </div>
@@ -1299,16 +1279,16 @@ export default function MyProfile() {
             {/* 201 documents */}
             <div className="space-y-4">
                 {alerts.length > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 shadow-2xs">
+                    <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 shadow-2xs">
                         <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-md flex items-center justify-center">
+                            <div className="h-8 w-8 shrink-0 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center">
                                 <i className="ti ti-alert-triangle text-base" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-bold text-amber-900">
+                                <p className="text-xs sm:text-sm font-bold text-warning-ink">
                                     {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} renewal
                                 </p>
-                                <p className="text-xs text-amber-700 font-medium mt-0.5">Please update or submit renewals before the expiry date.</p>
+                                <p className="text-xs text-warning-ink font-medium mt-0.5">Please update or submit renewals before the expiry date.</p>
                                 <div className="flex flex-wrap gap-2 mt-2.5">
                                     {alerts.map(({ doc, status }) => (
                                         <span
@@ -1328,14 +1308,14 @@ export default function MyProfile() {
                 <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                     {/* Separation notice */}
                     {isTerminated && (
-                        <div className="mb-5 p-4 rounded-md bg-rose-50 border border-rose-200 flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                        <div className="mb-5 p-4 rounded-md bg-danger-subtle border border-danger/20 flex items-start gap-3.5">
+                            <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0 border border-danger/20">
                                 <i className="ti ti-lock text-base font-bold" />
                             </div>
                             <div className="text-xs">
-                                <p className="font-bold text-rose-950 uppercase tracking-wide">Personnel Vault Locked · Read-Only Access</p>
-                                <p className="text-rose-800/90 mt-0.5 leading-relaxed font-medium">
-                                    Official employment contract has concluded. Document uploads and file modifications are disabled. Historical 201 records remain preserved below for your personal reference and clearance requirements.
+                                <p className="font-bold text-danger-ink uppercase tracking-wide">Personnel Vault Locked · Read-Only Access</p>
+                                <p className="text-danger-ink/90 mt-0.5 leading-relaxed font-medium">
+                                    Official employment contract has concluded. Document uploads and file modifications are disabled. Historical records remain preserved below for your personal reference and clearance requirements.
                                 </p>
                             </div>
                         </div>
@@ -1343,12 +1323,11 @@ export default function MyProfile() {
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-md bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+                            <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
                                 <i className="ti ti-folders text-lg" />
                             </div>
                             <div>
                                 <h3 className="font-bold text-slate-900 text-sm sm:text-base">Personnel Documents</h3>
-                                <p className="text-xs text-slate-500">Government credentials, contracts, and company clearances</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1375,7 +1354,7 @@ export default function MyProfile() {
                             <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200 space-y-2">
                                 <i className="ti ti-folder-off text-3xl text-slate-400 block" />
                                 <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents on file</p>
+                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No documents on file</p>
                                     <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
                                 </div>
                             </div>
@@ -1386,12 +1365,12 @@ export default function MyProfile() {
                             >
                                 <i className="ti ti-folder-plus text-3xl text-slate-400 block" />
                                 <div>
-                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No 201 documents uploaded yet</p>
+                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">No documents uploaded yet</p>
                                     <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
-                                    className="h-8 px-3 bg-blue-600 text-white hover:bg-blue-700 rounded-md text-xs font-medium transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                    className="h-8 px-3 bg-accent text-white hover:bg-accent-hover rounded-md text-xs font-medium transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-upload" /> Upload First Document
                                 </button>
@@ -1440,7 +1419,7 @@ export default function MyProfile() {
                                                 href={fileUrl}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="mt-2 text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                                                className="mt-2 text-[11px] font-semibold text-accent hover:underline flex items-center gap-1"
                                             >
                                                 <i className="ti ti-external-link text-xs" /> View File
                                             </a>
@@ -1459,7 +1438,7 @@ export default function MyProfile() {
                     <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 bg-blue-50 text-blue-600 rounded-md flex items-center justify-center shrink-0 border border-blue-100">
+                                <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center shrink-0 border border-accent/20">
                                     <i className="ti ti-file-upload text-base" />
                                 </div>
                                 <div>
@@ -1549,7 +1528,7 @@ export default function MyProfile() {
                                             <div className="text-left">
                                                 <p className="text-xs font-semibold text-slate-800 truncate max-w-[180px]">{uploadForm.file.name}</p>
                                                 <p className="text-[10px] text-slate-500">{formatFileSize(uploadForm.file.size)}</p>
-                                                <p className="text-[10px] text-blue-600 font-semibold mt-0.5">Tap to change file</p>
+                                                <p className="text-[10px] text-accent font-semibold mt-0.5">Tap to change file</p>
                                             </div>
                                         </div>
                                     ) : uploadForm.file ? (
@@ -1557,11 +1536,11 @@ export default function MyProfile() {
                                             <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl ${getFileMeta(uploadForm.file.name).color} mb-1 block`} />
                                             <p className="text-xs font-semibold text-slate-800 truncate max-w-[200px] mx-auto">{uploadForm.file.name}</p>
                                             <p className="text-[10px] text-slate-500 mt-0.5">{formatFileSize(uploadForm.file.size)}</p>
-                                            <p className="text-[10px] text-blue-600 font-semibold mt-0.5">Tap to change file</p>
+                                            <p className="text-[10px] text-accent font-semibold mt-0.5">Tap to change file</p>
                                         </div>
                                     ) : (
                                         <div className="z-0">
-                                            <i className="ti ti-cloud-upload text-2xl text-blue-600 mb-1 block" />
+                                            <i className="ti ti-cloud-upload text-2xl text-accent mb-1 block" />
                                             <p className="text-xs font-semibold text-slate-700">Tap here to choose file / take photo</p>
                                             <p className="text-[10px] text-slate-400 mt-0.5">PDF, Images (JPG, PNG) up to 10MB</p>
                                         </div>
@@ -1581,7 +1560,7 @@ export default function MyProfile() {
                                 <button
                                     type="submit"
                                     disabled={isUploading || !uploadForm.file}
-                                    className="h-9 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                                    className="h-9 px-4 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                                 >
                                     {isUploading ? (
                                         <>
@@ -1703,11 +1682,11 @@ export default function MyProfile() {
 
                         {totpStep === 2 && (
                             <div className="p-5 sm:p-6 space-y-4">
-                                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-start gap-2">
-                                    <i className="ti ti-circle-check text-emerald-600 text-base shrink-0 mt-0.5" />
+                                <div className="p-3 bg-surface-muted border border-line rounded-md text-xs text-ink flex items-start gap-2">
+                                    <i className="ti ti-circle-check text-ink text-base shrink-0 mt-0.5" />
                                     <div>
-                                        <span className="font-bold text-emerald-900 block">Authenticator 2FA Activated</span>
-                                        <span className="text-[11px] text-emerald-700 leading-relaxed block mt-0.5">
+                                        <span className="font-bold text-ink block">Authenticator 2FA Activated</span>
+                                        <span className="text-[11px] text-ink leading-relaxed block mt-0.5">
                                             Save these 8 single-use emergency backup recovery codes. If you lose access to your authenticator app, each code can be used once to regain access.
                                         </span>
                                     </div>
@@ -1840,7 +1819,7 @@ export default function MyProfile() {
                     <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center">
+                                <div className="h-8 w-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center">
                                     <i className="ti ti-alert-triangle text-base" />
                                 </div>
                                 <div>
@@ -1903,7 +1882,7 @@ export default function MyProfile() {
                                 type="button"
                                 onClick={handleConfirmDisableTotp}
                                 disabled={totpSubmitting}
-                                className="h-8 px-3.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
+                                className="h-8 px-3.5 bg-danger hover:bg-danger-ink disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
                             >
                                 {totpSubmitting ? (
                                     <>

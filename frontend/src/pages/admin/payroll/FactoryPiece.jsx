@@ -227,12 +227,11 @@ export default function FactoryPiece({
                 {/* Modal Header */}
                 <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center text-base shrink-0">
+                        <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-base shrink-0">
                             <i className="ti ti-building-factory" />
                         </div>
                         <div>
                             <h2 className="text-base font-bold text-slate-800">Factory Production &amp; Piece-Rate Manager</h2>
-                            <p className="text-xs text-slate-500 font-medium">Configure production groups, output summaries, and piece-rate operations</p>
                         </div>
                     </div>
                     <button
@@ -251,25 +250,22 @@ export default function FactoryPiece({
                     <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-200 space-y-3 shadow-2xs">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                                <div className="w-7 h-7 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-xs font-bold shrink-0">
                                     <i className="ti ti-users-group"></i>
                                 </div>
                                 <div className="min-w-0">
                                     <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Factory Production Groups</h3>
-                                    <p className="text-[10px] text-slate-400 font-medium leading-snug truncate">
-                                        Select a group to assign processes and calculate individual operation payout
-                                    </p>
                                 </div>
                             </div>
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-accent bg-accent-subtle border-accent/20' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-accent' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}
                             </span>
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-2.5">
                             {availableGroups.length === 0 ? (
-                                <div className="col-span-full p-3 bg-amber-50 text-amber-800 text-xs font-semibold rounded-md border border-amber-200">
+                                <div className="col-span-full p-3 bg-warning-subtle text-warning-ink text-xs font-semibold rounded-md border border-warning/20">
                                     No production group assigned in database.
                                 </div>
                             ) : (
@@ -290,17 +286,17 @@ export default function FactoryPiece({
                                                 handleGroupTabChange(groupName);
                                             }}
                                             className={`p-2.5 rounded-md border text-left transition-colors duration-100 flex items-center justify-between cursor-pointer ${isSelected
-                                                ? 'bg-blue-50/90 border-blue-600 shadow-2xs'
+                                                ? 'bg-accent-subtle/90 border-accent shadow-2xs'
                                                 : 'bg-white border-slate-200 hover:border-slate-300'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className={`w-8 h-8 rounded-md flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                                                <div className={`w-8 h-8 rounded-md flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600'
                                                     }`}>
                                                 <i className="ti ti-users" />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <h4 className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                                                    <h4 className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-accent-strong' : 'text-slate-800'}`}>
                                                         {groupName}
                                                     </h4>
                                                     <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">
@@ -309,7 +305,7 @@ export default function FactoryPiece({
                                                 </div>
                                             </div>
                                             {isSelected && (
-                                                <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0 ml-1">
+                                                <span className="w-4 h-4 rounded-full bg-accent text-white flex items-center justify-center text-[9px] font-bold shrink-0 ml-1">
                                                     <i className="ti ti-check" />
                                                 </span>
                                             )}
@@ -325,12 +321,9 @@ export default function FactoryPiece({
                         <div className="flex items-center justify-between flex-wrap gap-3">
                             <div>
                                 <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
-                                    <i className="ti ti-table text-blue-600" />
+                                    <i className="ti ti-table text-accent" />
                                     <span>Factory Operation &amp; Process Piece-Rate Log</span>
                                 </h3>
-                                <p className="text-[11px] text-slate-500 font-medium">
-                                    Each process total price is divided <strong>only</strong> among workers with matching job titles. Stock No. &amp; Quantity auto-sync across all processes.
-                                </p>
                             </div>
 
                             <div className="flex items-center gap-2 flex-wrap">
@@ -339,7 +332,7 @@ export default function FactoryPiece({
                                     <button
                                         type="button"
                                         onClick={() => setViewMode('compact')}
-                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'compact' ? 'bg-white text-blue-700 shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
+                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'compact' ? 'bg-white text-accent shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
                                         <i className="ti ti-list-details" />
@@ -348,7 +341,7 @@ export default function FactoryPiece({
                                     <button
                                         type="button"
                                         onClick={() => setViewMode('grid')}
-                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
+                                        className={`h-7 px-2.5 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${viewMode === 'grid' ? 'bg-white text-accent shadow-2xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
                                         <i className="ti ti-layout-grid" />
@@ -359,7 +352,7 @@ export default function FactoryPiece({
                                 <button
                                     type="button"
                                     onClick={addFactoryRow}
-                                    className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors duration-100 flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    className="h-8 px-3 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold transition-colors duration-100 flex items-center gap-1 cursor-pointer shadow-2xs"
                                 >
                                     <i className="ti ti-plus" />
                                     <span>Add Process</span>
@@ -390,7 +383,7 @@ export default function FactoryPiece({
                                                         value={row.operation}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
                                                         placeholder="e.g. Cutter"
-                                                        className="w-full h-8 px-2.5 border border-slate-200 rounded-md font-bold text-slate-800 bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-xs transition-colors duration-100"
+                                                        className="w-full h-8 px-2.5 border border-slate-200 rounded-md font-bold text-slate-800 bg-white outline-none focus:border-accent focus:ring-1 focus:ring-accent text-xs transition-colors duration-100"
                                                     />
                                                 </td>
                                                 <td className="p-2.5">
@@ -400,7 +393,7 @@ export default function FactoryPiece({
                                                             value={row.stock_no}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
                                                             placeholder="Stock No"
-                                                            className="w-24 h-8 px-2 border border-slate-200 rounded-md font-medium text-slate-700 text-xs outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                            className="w-24 h-8 px-2 border border-slate-200 rounded-md font-medium text-slate-700 text-xs outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                         />
                                                         <span className="text-slate-400">×</span>
                                                         <input
@@ -408,7 +401,7 @@ export default function FactoryPiece({
                                                             value={row.quantity_in}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
                                                             placeholder="Qty"
-                                                            className="w-20 h-8 px-2 border border-slate-200 rounded-md font-mono font-bold text-slate-800 text-xs text-right outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                            className="w-20 h-8 px-2 border border-slate-200 rounded-md font-mono font-bold text-slate-800 text-xs text-right outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                         />
                                                     </div>
                                                 </td>
@@ -419,7 +412,7 @@ export default function FactoryPiece({
                                                         value={row.amount}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'amount', e.target.value)}
                                                         placeholder="0.00"
-                                                        className="w-24 h-8 px-2.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                        className="w-24 h-8 px-2.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                     />
                                                 </td>
                                                 <td className="p-2.5 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
@@ -429,7 +422,7 @@ export default function FactoryPiece({
                                                     <button
                                                         type="button"
                                                         onClick={() => openOpWorkerModal(row.id)}
-                                                        className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-md border border-blue-200 transition-colors duration-100 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                                        className="h-7 px-2.5 bg-accent-subtle hover:bg-accent-subtle text-accent text-xs font-semibold rounded-md border border-accent/20 transition-colors duration-100 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                                                     >
                                                         <i className="ti ti-users" />
                                                         <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -440,7 +433,7 @@ export default function FactoryPiece({
                                                         type="button"
                                                         onClick={() => removeFactoryRow(row.id)}
                                                         disabled={localRows.length <= 1}
-                                                        className="w-7 h-7 mx-auto rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
+                                                        className="w-7 h-7 mx-auto rounded-md text-slate-400 hover:text-danger-ink hover:bg-danger-subtle flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
                                                     >
                                                         <i className="ti ti-trash text-sm" />
                                                     </button>
@@ -461,14 +454,14 @@ export default function FactoryPiece({
                                         className="bg-white rounded-lg border border-slate-200 p-4 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col justify-between space-y-3 relative"
                                     >
                                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                                            <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                            <span className="text-[10px] font-bold uppercase text-accent bg-accent-subtle px-2 py-0.5 rounded-md">
                                                 Process #{idx + 1}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => removeFactoryRow(row.id)}
                                                 disabled={localRows.length <= 1}
-                                                className="w-7 h-7 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
+                                                className="w-7 h-7 rounded-md text-slate-400 hover:text-danger-ink hover:bg-danger-subtle flex items-center justify-center transition-colors duration-100 cursor-pointer disabled:opacity-30"
                                             >
                                                 <i className="ti ti-trash text-sm" />
                                             </button>
@@ -482,7 +475,7 @@ export default function FactoryPiece({
                                                     value={row.operation}
                                                     onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
                                                     placeholder="e.g. Cutter"
-                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-bold text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-bold text-slate-800 text-xs bg-white outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                 />
                                             </div>
 
@@ -494,7 +487,7 @@ export default function FactoryPiece({
                                                         value={row.stock_no}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
                                                         placeholder="Stock No."
-                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-medium text-slate-700 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-medium text-slate-700 text-xs bg-white outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                     />
                                                 </div>
                                                 <div>
@@ -505,7 +498,7 @@ export default function FactoryPiece({
                                                         value={row.quantity_in}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
                                                         placeholder="0"
-                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                        className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                     />
                                                 </div>
                                             </div>
@@ -519,7 +512,7 @@ export default function FactoryPiece({
                                                     value={row.amount}
                                                     onChange={(e) => handleFactoryRowChange(row.id, 'amount', e.target.value)}
                                                     placeholder="0.00"
-                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100"
+                                                    className="w-full h-8 px-2.5 mt-0.5 border border-slate-200 rounded-md font-mono font-bold text-right text-slate-800 text-xs bg-white outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
                                                 />
                                             </div>
                                         </div>
@@ -527,14 +520,14 @@ export default function FactoryPiece({
                                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-slate-50/80 -mx-4 -mb-4 p-3 rounded-b-lg">
                                             <div>
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Output</span>
-                                                <span className="text-sm font-mono font-bold text-emerald-600">
+                                                <span className="text-sm font-mono font-bold text-ink">
                                                     ₱{row.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                 </span>
                                             </div>
                                             <button
                                                 type="button"
                                                 onClick={() => openOpWorkerModal(row.id)}
-                                                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                                className="h-7 px-2.5 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
                                             >
                                                 <i className="ti ti-users" />
                                                 <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -552,7 +545,7 @@ export default function FactoryPiece({
                             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
                                 {selectedGroup ? `${selectedGroup} Total Operation Output` : 'Overall Operation Output'}
                             </span>
-                            <p className="text-2xl font-bold font-mono text-emerald-400 mt-0.5">
+                            <p className="text-2xl font-bold font-mono text-ink mt-0.5">
                                 ₱{displayTotalPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
@@ -562,8 +555,8 @@ export default function FactoryPiece({
                                 <span className="text-base font-mono font-bold text-white">{selectedGroup ? activeGroupEmployees.length : 0} Workers</span>
                             </div>
                             <div className="border-l border-white/20 pl-3">
-                                <span className="text-[10px] text-amber-300 uppercase font-bold block">Division Method</span>
-                                <span className="text-xs font-bold text-amber-300">Auto-assigned via Job Title</span>
+                                <span className="text-[10px] text-warning uppercase font-bold block">Division Method</span>
+                                <span className="text-xs font-bold text-warning">Auto-assigned via Job Title</span>
                             </div>
                         </div>
                     </div>
@@ -581,7 +574,7 @@ export default function FactoryPiece({
                     <button
                         type="button"
                         onClick={handleSaveAndClose}
-                        className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer"
+                        className="h-9 px-4 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer"
                     >
                         <i className="ti ti-device-floppy text-base" />
                         <span>Save &amp; Close Log</span>
@@ -603,7 +596,7 @@ export default function FactoryPiece({
                         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div>
                                 <h3 className="text-sm font-bold text-slate-800">
-                                    Assign Workers to: <span className="text-blue-600">{activeOpRow.operation || 'Process'}</span>
+                                    Assign Workers to: <span className="text-accent">{activeOpRow.operation || 'Process'}</span>
                                 </h3>
                                 <p className="text-[11px] text-slate-400 font-semibold">
                                     Total Price: ₱{activeOpRow.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} &middot; Divided among assigned personnel
@@ -624,7 +617,7 @@ export default function FactoryPiece({
                                 value={opWorkerSearch}
                                 onChange={(e) => setOpWorkerSearch(e.target.value)}
                                 placeholder="Search worker for this process..."
-                                className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors duration-100 shadow-2xs"
+                                className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100 shadow-2xs"
                             />
                             <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-bold text-slate-500">
@@ -634,7 +627,7 @@ export default function FactoryPiece({
                                     <button
                                         type="button"
                                         onClick={selectAllOpWorkers}
-                                        className="h-7 px-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-sm text-xs font-medium transition-colors duration-100 cursor-pointer"
+                                        className="h-7 px-2.5 bg-accent-subtle text-accent hover:bg-accent-subtle rounded-sm text-xs font-medium transition-colors duration-100 cursor-pointer"
                                     >
                                         Assign All
                                     </button>
@@ -660,20 +653,20 @@ export default function FactoryPiece({
                                         <div
                                             key={emp.id}
                                             onClick={() => toggleOpWorker(emp.id)}
-                                            className={`w-full p-2 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-slate-50 border border-transparent'}`}
+                                            className={`w-full p-2 rounded-md flex items-center justify-between text-left cursor-pointer transition-colors duration-100 ${isChecked ? 'bg-accent-subtle/80 border border-accent/20' : 'hover:bg-slate-50 border border-transparent'}`}
                                         >
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <input
                                                     type="checkbox"
                                                     checked={isChecked}
                                                     onChange={() => { }}
-                                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                                                    className="w-4 h-4 rounded text-accent focus:ring-accent cursor-pointer shrink-0"
                                                 />
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-1.5">
                                                         <p className="text-xs font-bold text-slate-800 truncate">{emp.first_name} {emp.last_name}</p>
                                                         {isMatchedJob && (
-                                                            <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.2 rounded shrink-0">
+                                                            <span className="text-[9px] font-bold bg-accent-subtle text-accent px-1.5 py-0.2 rounded shrink-0">
                                                                 Job Match
                                                             </span>
                                                         )}
@@ -684,7 +677,7 @@ export default function FactoryPiece({
                                                 </div>
                                             </div>
                                             {isChecked && (
-                                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md shrink-0 font-mono">
+                                                <span className="text-[10px] font-bold text-ink bg-surface-muted border border-line px-2 py-0.5 rounded-md shrink-0 font-mono">
                                                     +₱{activeOpRow.perWorkerShare.toFixed(2)}
                                                 </span>
                                             )}

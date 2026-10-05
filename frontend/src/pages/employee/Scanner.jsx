@@ -272,13 +272,13 @@ const Scanner = () => {
             
             {/* Header */}
             <div className="text-center mb-10 space-y-3">
-                <div className="flex mx-auto items-center justify-center h-12 w-12 rounded-lg bg-blue-600 text-white mb-2 relative overflow-hidden shadow-2xs">
+                <div className="flex mx-auto items-center justify-center h-12 w-12 rounded-lg bg-accent text-white mb-2 relative overflow-hidden shadow-2xs">
                     <i className="ti ti-scan text-2xl relative z-10"></i>
-                    {modelsLoaded && <div className="absolute inset-0 bg-blue-400/20 laser-line pointer-events-none"></div>}
+                    {modelsLoaded && <div className="absolute inset-0 bg-accent/20 laser-line pointer-events-none"></div>}
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Attendance Scanner</h2>
                 <p className="text-slate-500 font-medium text-xs sm:text-sm flex items-center justify-center gap-2">
-                    <i className={`ti ${modelsLoaded ? 'ti-check text-emerald-600' : 'ti-loader text-amber-500 animate-spin'}`} />
+                    <i className={`ti ${modelsLoaded ? 'ti-check text-ink' : 'ti-loader text-warning-ink animate-spin'}`} />
                     {modelsLoaded ? 'Camera ready' : 'Starting camera...'}
                 </p>
             </div>
@@ -289,7 +289,7 @@ const Scanner = () => {
                 {/* Idle state */}
                 {!isScanning && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-6">
-                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-2xl border border-blue-200">
+                        <div className="w-16 h-16 bg-accent-subtle text-accent rounded-lg flex items-center justify-center text-2xl border border-accent/20">
                             <i className="ti ti-camera"></i>
                         </div>
                         <div className="space-y-1">
@@ -299,7 +299,7 @@ const Scanner = () => {
                         <button 
                             onClick={startScanner} 
                             disabled={!modelsLoaded}
-                            className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-md shadow-2xs disabled:opacity-50 flex items-center justify-center gap-2 transition-colors duration-100 cursor-pointer"
+                            className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium text-sm rounded-md shadow-2xs disabled:opacity-50 flex items-center justify-center gap-2 transition-colors duration-100 cursor-pointer"
                         >
                             <i className="ti ti-power text-lg"></i>
                             Launch Camera
@@ -313,7 +313,7 @@ const Scanner = () => {
                     {/* Top overlay */}
                     <div className="w-full flex items-center justify-between z-20 text-white">
                         <span className="px-2.5 py-1 bg-slate-900/90 border border-slate-700 rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
-                            <i className="ti ti-video text-rose-500" /> Live
+                            <i className="ti ti-video text-danger-ink" /> Live
                         </span>
                         <button 
                             onClick={stopScanner} 
@@ -347,7 +347,7 @@ const Scanner = () => {
                                         cx="128"
                                         cy="128"
                                         r="120"
-                                        className="stroke-current text-blue-500"
+                                        className="stroke-current text-accent"
                                         strokeWidth="8"
                                         strokeDasharray={2 * Math.PI * 120}
                                         strokeDashoffset={(2 * Math.PI * 120) * (1 - lockProgress / 100)}
@@ -355,7 +355,7 @@ const Scanner = () => {
                                         fill="transparent"
                                     />
                                 </svg>
-                                <i className={`ti ti-user text-6xl ${faceLockedIn ? 'text-green-400' : 'text-white/40'}`}></i>
+                                <i className={`ti ti-user text-6xl ${faceLockedIn ? 'text-ink' : 'text-white/40'}`}></i>
                             </div>
                         </div>
                     )}
@@ -365,12 +365,12 @@ const Scanner = () => {
                         <div className="space-y-0.5">
                             <p className="text-xs text-slate-400 font-medium tracking-wide">Scanner status</p>
                             <p className="text-sm font-bold flex items-center gap-2">
-                                <i className={`ti ${faceLockedIn ? 'ti-face-id text-emerald-400' : 'ti-scan text-blue-400'}`} />
+                                <i className={`ti ${faceLockedIn ? 'ti-face-id text-ink' : 'ti-scan text-accent-on-dark'}`} />
                                 {aiStatus}
                             </p>
                         </div>
                         {lockProgress > 0 && !faceLockedIn && (
-                            <span className="text-lg font-mono font-extrabold text-blue-400">
+                            <span className="text-lg font-mono font-extrabold text-accent-on-dark">
                                 {Math.round(lockProgress)}%
                             </span>
                         )}
@@ -382,8 +382,8 @@ const Scanner = () => {
                     <div className="absolute inset-0 z-30 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4">
                         <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl shadow-lg ${
                             feedback.type === 'success' 
-                                ? 'bg-green-100 text-green-600 shadow-green-500/20' 
-                                : 'bg-red-100 text-red-600 shadow-red-500/20'
+                                ? 'bg-surface-muted text-ink shadow-slate-900/20' 
+                                : 'bg-danger-subtle text-danger-ink shadow-slate-900/20'
                         }`}>
                             <i className={`ti ${feedback.type === 'success' ? 'ti-check' : 'ti-alert-triangle'}`}></i>
                         </div>

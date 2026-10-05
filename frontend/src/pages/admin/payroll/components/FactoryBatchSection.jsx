@@ -36,21 +36,21 @@ const FactoryBatchSection = ({
             {/* Access Button for Factory Piece Modal */}
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
                 <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-9 h-9 rounded-md bg-blue-600 text-white flex items-center justify-center text-lg shrink-0">
+                    <div className="w-9 h-9 rounded-md bg-accent text-white flex items-center justify-center text-lg shrink-0">
                         <i className="ti ti-table" />
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-sm sm:text-base font-bold text-slate-800 truncate">Factory Production &amp; Piece-Rate Manager</h3>
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-accent' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `Group: ${selectedGroup}` : 'No Group Active'}
                             </span>
                         </div>
                         <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">
                             {selectedGroup ? (
                                 <>
-                                    Output Total: <span className="font-bold font-mono text-emerald-600">₱{grandTotalFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> &middot; Active Roster: <span className="font-bold text-slate-700">{activeGroupEmployees.length} Workers</span>
+                                    Output Total: <span className="font-bold font-mono text-ink">₱{grandTotalFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> &middot; Active Roster: <span className="font-bold text-slate-700">{activeGroupEmployees.length} Workers</span>
                                 </>
                             ) : (
                                 'Click to select a production group and configure batch quantities & operation rates.'
@@ -61,7 +61,7 @@ const FactoryBatchSection = ({
                 <button
                     type="button"
                     onClick={() => setIsFactoryPieceOpen(true)}
-                    className="w-full sm:w-auto h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                    className="w-full sm:w-auto h-9 px-4 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0"
                 >
                     <i className="ti ti-adjustments-horizontal text-base" />
                     <span>{selectedGroup ? 'Edit Operations & Rates' : 'Select Group & Configure'}</span>
@@ -71,19 +71,19 @@ const FactoryBatchSection = ({
             {/* Absentee Warning & Declaration Trigger */}
             {selectedGroup && absenteeCount > 0 && (
                 <div className={`p-4 rounded-lg border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors duration-100 ${needsDeclaration
-                    ? 'bg-amber-50/80 border-amber-200'
-                    : 'bg-emerald-50/80 border-emerald-200'
+                    ? 'bg-warning-subtle/80 border-warning/20'
+                    : 'bg-surface-muted border-line'
                     }`}>
                     <div className="flex items-start gap-3 min-w-0">
-                        <i className={`ti ${needsDeclaration ? 'ti-user-exclamation text-amber-600' : 'ti-circle-check text-emerald-600'} text-xl shrink-0 mt-0.5`} />
+                        <i className={`ti ${needsDeclaration ? 'ti-user-exclamation text-warning-ink' : 'ti-circle-check text-ink'} text-xl shrink-0 mt-0.5`} />
                         <div className="min-w-0">
-                            <p className={`text-xs font-bold ${needsDeclaration ? 'text-amber-900' : 'text-emerald-900'}`}>
+                            <p className={`text-xs font-bold ${needsDeclaration ? 'text-warning-ink' : 'text-ink'}`}>
                                 {absenteeCount} worker{absenteeCount === 1 ? '' : 's'} missed days this cutoff
                                 {expectedWorkingDays > 0 && (
                                     <span className="font-semibold"> (out of {expectedWorkingDays} expected)</span>
                                 )}
                             </p>
-                            <p className={`text-[11px] font-medium mt-0.5 ${needsDeclaration ? 'text-amber-700' : 'text-emerald-700'}`}>
+                            <p className={`text-[11px] font-medium mt-0.5 ${needsDeclaration ? 'text-warning-ink' : 'text-ink'}`}>
                                 {needsDeclaration
                                     ? (absenteeValidation.missing.length > 0
                                         ? `Enter how much each one actually made before saving. ${absenteeValidation.missing.length} quantit${absenteeValidation.missing.length === 1 ? 'y is' : 'ies are'} still blank.`
@@ -95,7 +95,7 @@ const FactoryBatchSection = ({
                     <button
                         type="button"
                         onClick={() => setIsAbsenteeModalOpen && setIsAbsenteeModalOpen(true)}
-                        className={`w-full sm:w-auto h-9 px-4 font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                        className={`w-full sm:w-auto h-9 px-4 font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 text-white ${needsDeclaration ? 'bg-warning hover:bg-warning-ink' : 'bg-success hover:bg-success-ink'
                             }`}
                     >
                         <i className="ti ti-clipboard-text text-base" />
@@ -110,8 +110,8 @@ const FactoryBatchSection = ({
                     <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Production Group</span>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-base sm:text-lg font-bold text-blue-700">{selectedGroup}</span>
-                            <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">
+                            <span className="text-base sm:text-lg font-bold text-accent">{selectedGroup}</span>
+                            <span className="text-xs font-semibold bg-accent-subtle text-accent border border-accent/20 px-2 py-0.5 rounded-md">
                                 {activeGroupEmployees.length} Workers
                             </span>
                         </div>
@@ -124,13 +124,13 @@ const FactoryBatchSection = ({
                     </div>
                     <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Deductions</span>
-                        <div className="text-base sm:text-lg font-bold font-mono text-red-500 mt-1">
+                        <div className="text-base sm:text-lg font-bold font-mono text-danger-ink mt-1">
                             ₱{batchSummaryTotals.deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
-                    <div className="bg-white p-3.5 rounded-lg border border-emerald-300 shadow-2xs">
-                        <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Net Distribution</span>
-                        <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 mt-1">
+                    <div className="bg-white p-3.5 rounded-lg border border-line shadow-2xs">
+                        <span className="text-[10px] font-bold text-ink uppercase tracking-wider block">Net Distribution</span>
+                        <div className="text-base sm:text-lg font-bold font-mono text-ink mt-1">
                             ₱{batchSummaryTotals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                     </div>
@@ -144,8 +144,8 @@ const FactoryBatchSection = ({
                         <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                             <span>Worker Earnings &amp; Net Payout Breakdown</span>
                             {isLoadingEmployees ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                    <svg className="animate-spin h-2.5 w-2.5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-accent-subtle text-accent border border-accent/20">
+                                    <svg className="animate-spin h-2.5 w-2.5 text-accent" viewBox="0 0 24 24" fill="none">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                     </svg>
@@ -155,15 +155,12 @@ const FactoryBatchSection = ({
                                 <span className="text-slate-500 font-bold">({activeGroupEmployees.length})</span>
                             )}
                         </h4>
-                        <p className="text-[11px] text-slate-400 font-medium">
-                            Each worker's gross pay is derived from their assigned process shares based on job title.
-                        </p>
                     </div>
                     {!isLoadingEmployees && selectedGroup && (
                         <button
                             type="button"
                             onClick={() => setIsGroupModalOpen(true)}
-                            className="h-8 px-3 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-md transition-colors duration-100 shadow-2xs cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
+                            className="h-8 px-3 text-xs font-semibold text-accent bg-white border border-accent/20 hover:bg-accent-subtle rounded-md transition-colors duration-100 shadow-2xs cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
                         >
                             <i className="ti ti-users text-xs" />
                             <span>Modify Group Roster</span>
@@ -181,7 +178,7 @@ const FactoryBatchSection = ({
                                 value={breakdownSearch}
                                 onChange={(e) => setBreakdownSearch(e.target.value)}
                                 placeholder="Filter worker or title..."
-                                className="w-full h-8 pl-8 pr-8 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium placeholder:text-slate-400 shadow-2xs transition-colors duration-100"
+                                className="w-full h-8 pl-8 pr-8 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent font-medium placeholder:text-slate-400 shadow-2xs transition-colors duration-100"
                             />
                             {breakdownSearch && (
                                 <button
@@ -200,7 +197,7 @@ const FactoryBatchSection = ({
                                     type="button"
                                     onClick={() => setBreakdownFilter('all')}
                                     className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'all'
-                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                                        ? 'bg-white text-accent shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -210,7 +207,7 @@ const FactoryBatchSection = ({
                                     type="button"
                                     onClick={() => setBreakdownFilter('payable')}
                                     className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'payable'
-                                        ? 'bg-white text-emerald-700 shadow-2xs font-semibold'
+                                        ? 'bg-white text-ink shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -221,7 +218,7 @@ const FactoryBatchSection = ({
                                         type="button"
                                         onClick={() => setBreakdownFilter('unassigned')}
                                         className={`px-2.5 py-1 rounded-sm transition-colors duration-100 cursor-pointer ${breakdownFilter === 'unassigned'
-                                            ? 'bg-white text-amber-700 shadow-2xs font-semibold'
+                                            ? 'bg-white text-warning-ink shadow-2xs font-semibold'
                                             : 'text-slate-600 hover:text-slate-900'
                                             }`}
                                     >
@@ -236,7 +233,7 @@ const FactoryBatchSection = ({
                                     onClick={() => setBreakdownViewMode('table')}
                                     title="Roster Table View"
                                     className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'table'
-                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                                        ? 'bg-white text-accent shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -248,7 +245,7 @@ const FactoryBatchSection = ({
                                     onClick={() => setBreakdownViewMode('cards')}
                                     title="Detailed Cards View"
                                     className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${breakdownViewMode === 'cards'
-                                        ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                                        ? 'bg-white text-accent shadow-2xs font-semibold'
                                         : 'text-slate-600 hover:text-slate-900'
                                         }`}
                                 >
@@ -275,7 +272,7 @@ const FactoryBatchSection = ({
                                             <div className="h-2 w-16 bg-slate-100 rounded" />
                                         </div>
                                     </div>
-                                    <div className="h-5 w-20 bg-blue-50 rounded-md" />
+                                    <div className="h-5 w-20 bg-accent-subtle rounded-md" />
                                 </div>
 
                                 <div className="space-y-1.5 py-1">
@@ -287,11 +284,11 @@ const FactoryBatchSection = ({
                                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                                     <div className="space-y-1">
                                         <div className="h-2 w-16 bg-slate-100 rounded" />
-                                        <div className="h-3 w-12 bg-red-100/60 rounded" />
+                                        <div className="h-3 w-12 bg-danger-subtle/60 rounded" />
                                     </div>
                                     <div className="space-y-1 text-right">
                                         <div className="h-2 w-16 bg-slate-100 rounded ml-auto" />
-                                        <div className="h-4 w-16 bg-emerald-100/60 rounded ml-auto" />
+                                        <div className="h-4 w-16 bg-surface-muted rounded ml-auto" />
                                     </div>
                                 </div>
                             </div>
@@ -299,7 +296,7 @@ const FactoryBatchSection = ({
                     </div>
                 ) : !selectedGroup ? (
                     <div className="p-8 text-center text-slate-500 bg-white rounded-lg border border-dashed border-slate-200 space-y-3">
-                        <div className="w-10 h-10 mx-auto rounded-md bg-blue-50 text-blue-600 flex items-center justify-center text-xl shadow-2xs">
+                        <div className="w-10 h-10 mx-auto rounded-md bg-accent-subtle text-accent flex items-center justify-center text-xl shadow-2xs">
                             <i className="ti ti-users-group" />
                         </div>
                         <div className="max-w-sm mx-auto">
@@ -311,7 +308,7 @@ const FactoryBatchSection = ({
                         <button
                             type="button"
                             onClick={() => setIsFactoryPieceOpen(true)}
-                            className="inline-flex items-center gap-2 h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors duration-100 shadow-2xs cursor-pointer"
+                            className="inline-flex items-center gap-2 h-8 px-3 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md transition-colors duration-100 shadow-2xs cursor-pointer"
                         >
                             <i className="ti ti-adjustments-horizontal" />
                             <span>Select Group &amp; Open Piece Log</span>
@@ -370,16 +367,16 @@ const FactoryBatchSection = ({
                                                             >
                                                                 <span>{op.operation}</span>
                                                                 {holidayRateMultiplier > 1 && (
-                                                                    <span className="text-[8px] font-bold text-amber-700 bg-amber-100 px-1 rounded">
+                                                                    <span className="text-[8px] font-bold text-warning-ink bg-warning-subtle px-1 rounded">
                                                                         {holidayRateMultiplier.toFixed(1)}x
                                                                     </span>
                                                                 )}
-                                                                <span className="font-mono font-bold text-blue-600">₱{op.share.toFixed(2)}</span>
+                                                                <span className="font-mono font-bold text-accent">₱{op.share.toFixed(2)}</span>
                                                             </span>
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md inline-block">
+                                                    <span className="text-[10px] font-semibold text-warning-ink bg-warning-subtle px-2 py-0.5 rounded-md inline-block">
                                                         No matching process
                                                     </span>
                                                 )}
@@ -388,14 +385,14 @@ const FactoryBatchSection = ({
                                                 ₱{workerData.grossPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                             </td>
                                             <td className="p-3 text-right">
-                                                <span className="font-mono font-bold text-xs text-red-500 block">
+                                                <span className="font-mono font-bold text-xs text-danger-ink block">
                                                     ₱{workerData.totalDeductions.toFixed(2)}
                                                 </span>
                                                 <span className="text-[9px] text-slate-400 block" title={`SSS: ₱${workerData.sss} | PH: ₱${workerData.philHealth} | Pag-IBIG: ₱${workerData.pagIbig} | Tax: ₱${workerData.tax}`}>
                                                     SSS {workerData.sss.toFixed(0)} &middot; PH {workerData.philHealth.toFixed(0)}
                                                 </span>
                                             </td>
-                                            <td className="p-3 text-right font-mono font-bold text-sm text-emerald-600">
+                                            <td className="p-3 text-right font-mono font-bold text-sm text-ink">
                                                 ₱{workerData.netPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                             </td>
                                         </tr>

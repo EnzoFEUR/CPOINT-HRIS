@@ -9,11 +9,11 @@ import { saveAs } from 'file-saver';
 // ---------- helpers ----------
 
 const AVATAR_PALETTE = [
-  { bg: 'bg-blue-500/20', text: 'text-blue-300', ring: 'ring-blue-500/30' },
-  { bg: 'bg-violet-500/20', text: 'text-violet-300', ring: 'ring-violet-500/30' },
-  { bg: 'bg-emerald-500/20', text: 'text-emerald-300', ring: 'ring-emerald-500/30' },
-  { bg: 'bg-amber-500/20', text: 'text-amber-300', ring: 'ring-amber-500/30' },
-  { bg: 'bg-rose-500/20', text: 'text-rose-300', ring: 'ring-rose-500/30' },
+  { bg: 'bg-accent/20', text: 'text-accent-on-dark', ring: 'ring-accent/30' },
+  { bg: 'bg-accent/20', text: 'text-accent-on-dark', ring: 'ring-accent/30' },
+  { bg: 'bg-surface-muted', text: 'text-ink', ring: 'ring-line' },
+  { bg: 'bg-warning/20', text: 'text-warning', ring: 'ring-warning/30' },
+  { bg: 'bg-danger/20', text: 'text-danger', ring: 'ring-danger/30' },
 ];
 
 function getInitials(first, last) {
@@ -67,20 +67,20 @@ function pick(obj, keys, fallback = null) {
 
 function docIcon(name = '') {
   const ext = name.split('.').pop()?.toLowerCase();
-  if (['pdf'].includes(ext)) return { icon: 'ti-file-type-pdf', color: 'text-rose-500 bg-rose-50' };
-  if (['doc', 'docx'].includes(ext)) return { icon: 'ti-file-type-doc', color: 'text-blue-500 bg-blue-50' };
-  if (['xls', 'xlsx', 'csv'].includes(ext)) return { icon: 'ti-file-type-xls', color: 'text-emerald-500 bg-emerald-50' };
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return { icon: 'ti-photo', color: 'text-violet-500 bg-violet-50' };
+  if (['pdf'].includes(ext)) return { icon: 'ti-file-type-pdf', color: 'text-danger-ink bg-danger-subtle' };
+  if (['doc', 'docx'].includes(ext)) return { icon: 'ti-file-type-doc', color: 'text-accent bg-accent-subtle' };
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return { icon: 'ti-file-type-xls', color: 'text-ink bg-surface-muted' };
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return { icon: 'ti-photo', color: 'text-accent bg-accent-subtle' };
   return { icon: 'ti-file-text', color: 'text-slate-500 bg-slate-100' };
 }
 
 function StatCard({ icon, label, children, tone = 'slate' }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    blue: 'bg-blue-50 text-blue-600',
-    rose: 'bg-rose-50 text-rose-600',
+    emerald: 'bg-surface-muted text-ink',
+    amber: 'bg-warning-subtle text-warning-ink',
+    blue: 'bg-accent-subtle text-accent',
+    rose: 'bg-danger-subtle text-danger-ink',
   };
   return (
     <div className="flex items-center gap-3 p-3.5 rounded-lg bg-slate-50/70 border border-slate-200">
@@ -251,8 +251,8 @@ export default function ArchivedEmployeeProfile() {
     return (
       <div className="p-6">
         <div className="bg-white border border-slate-200 rounded-lg py-12 px-6 text-center max-w-md mx-auto shadow-2xs">
-          <div className="w-10 h-10 rounded-md bg-rose-50 flex items-center justify-center mx-auto mb-3 border border-rose-200">
-            <i className="ti ti-user-off text-xl text-rose-500"></i>
+          <div className="w-10 h-10 rounded-md bg-danger-subtle flex items-center justify-center mx-auto mb-3 border border-danger/20">
+            <i className="ti ti-user-off text-xl text-danger-ink"></i>
           </div>
           <h2 className="text-slate-900 font-bold mb-1 text-base">Archived record not found</h2>
           <p className="text-slate-500 text-xs mb-5">
@@ -260,7 +260,7 @@ export default function ArchivedEmployeeProfile() {
           </p>
           <button
             onClick={() => navigate('/admin/archive')}
-            className="h-9 inline-flex items-center gap-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
+            className="h-9 inline-flex items-center gap-1.5 px-3 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer shadow-2xs"
           >
             <i className="ti ti-arrow-left text-sm"></i> Back to Archive
           </button>
@@ -291,7 +291,7 @@ export default function ArchivedEmployeeProfile() {
           <button
             onClick={downloadAllDocuments}
             disabled={downloadingZip || documents.length === 0}
-            className="h-8 inline-flex items-center gap-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+            className="h-8 inline-flex items-center gap-1.5 px-3 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-semibold transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
           >
             <i className={`ti ${downloadingZip ? 'ti-loader-2 animate-spin' : 'ti-file-zip'} text-sm`}></i>
             {downloadingZip
@@ -352,16 +352,16 @@ export default function ArchivedEmployeeProfile() {
                 <span className="px-2 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700">
                   {getCompanyId()}
                 </span>
-                <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-danger/10 text-danger border border-danger/30 flex items-center gap-1">
                   <i className="ti ti-archive text-xs"></i> Archived Personnel
                 </span>
                 {employee.department && (
-                  <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/30">
+                  <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-accent/10 text-accent-on-dark border border-accent/30">
                     {employee.department}
                   </span>
                 )}
                 {employee.wage_structure && (
-                  <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                  <span className="px-2 py-0.5 rounded-sm text-xs font-semibold bg-surface-muted text-ink border border-line">
                     {employee.wage_structure}
                   </span>
                 )}
@@ -418,7 +418,7 @@ export default function ArchivedEmployeeProfile() {
               onClick={() => setActiveTab(tab.id)}
               className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors duration-100 cursor-pointer ${
                 active
-                  ? 'border-blue-600 text-blue-600'
+                  ? 'border-accent text-accent'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -427,7 +427,7 @@ export default function ArchivedEmployeeProfile() {
               {typeof count === 'number' && count > 0 && (
                 <span
                   className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${
-                    active ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                    active ? 'bg-accent-subtle text-accent border-accent/20' : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
                   {count}
@@ -517,15 +517,15 @@ export default function ArchivedEmployeeProfile() {
                   <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{employee.overtime_eligible ? 'Eligible' : 'Not Eligible'}</span>
                 </div>
 
-                <div className="col-span-2 p-3 bg-emerald-50/60 border border-emerald-200 rounded-md space-y-1">
-                  <span className="font-bold uppercase tracking-wider text-[10px] text-emerald-700 block">Wage Structure</span>
+                <div className="col-span-2 p-3 bg-surface-muted border border-line rounded-md space-y-1">
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-ink block">Wage Structure</span>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-lg font-bold text-emerald-800">
+                    <span className="text-lg font-bold text-ink">
                       ₱{Number(employee.daily_rate || employee.salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      <span className="text-xs font-normal text-emerald-600"> /day</span>
+                      <span className="text-xs font-normal text-ink"> /day</span>
                     </span>
                     {employee.hourly_rate && (
-                      <span className="text-xs font-bold text-emerald-700">
+                      <span className="text-xs font-bold text-ink">
                         ₱{Number(employee.hourly_rate).toFixed(2)} /hr
                       </span>
                     )}
@@ -535,17 +535,17 @@ export default function ArchivedEmployeeProfile() {
             </div>
 
             {/* Separation Records Card (Full Width) */}
-            <div className="col-span-1 md:col-span-2 border border-rose-200 rounded-lg p-5 bg-rose-50/30 space-y-4">
-              <div className="flex items-center justify-between border-b border-rose-200 pb-2.5">
+            <div className="col-span-1 md:col-span-2 border border-danger/20 rounded-lg p-5 bg-danger-subtle/30 space-y-4">
+              <div className="flex items-center justify-between border-b border-danger/20 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <i className="ti ti-door-exit text-base text-rose-500"></i>
+                  <i className="ti ti-door-exit text-base text-danger-ink"></i>
                   <h3 className="font-bold text-slate-900 text-xs">Separation &amp; Clearance File</h3>
                 </div>
                 <span
                   className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-sm border ${
                     employee.rehire_eligible !== false
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                      ? 'bg-surface-muted text-ink border-line'
+                      : 'bg-danger-subtle text-danger-ink border-danger/20'
                   }`}
                 >
                   <i className={`ti ${employee.rehire_eligible !== false ? 'ti-check' : 'ti-x'}`}></i>
@@ -598,7 +598,7 @@ export default function ArchivedEmployeeProfile() {
                           {doc.created_at && <p className="text-[11px] text-slate-400">Uploaded {formatDate(doc.created_at)}</p>}
                         </div>
                       </div>
-                      <a href={doc.file_url} target="_blank" rel="noreferrer" className="h-7 px-2.5 inline-flex items-center text-blue-600 hover:bg-blue-50 rounded-sm text-xs font-semibold transition-colors duration-100">
+                      <a href={doc.file_url} target="_blank" rel="noreferrer" className="h-7 px-2.5 inline-flex items-center text-accent hover:bg-accent-subtle rounded-sm text-xs font-semibold transition-colors duration-100">
                         View
                       </a>
                     </div>
@@ -622,7 +622,7 @@ export default function ArchivedEmployeeProfile() {
                   return (
                     <div key={p.id} className="py-2.5 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center">
                           <i className="ti ti-cash text-base"></i>
                         </div>
                         <p className="text-xs font-bold text-slate-800">{period}</p>
@@ -648,7 +648,7 @@ export default function ArchivedEmployeeProfile() {
                 {leaves.map((l) => (
                   <div key={l.id} className="py-2.5 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center">
                         <i className="ti ti-beach text-base"></i>
                       </div>
                       <div>
@@ -672,8 +672,8 @@ export default function ArchivedEmployeeProfile() {
             ) : (
               <div className="space-y-2">
                 {disciplinary.map((d) => (
-                  <div key={d.id} className="p-3 rounded-md border border-rose-100 bg-rose-50/20 flex items-start gap-2.5">
-                    <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <div key={d.id} className="p-3 rounded-md border border-danger/20 bg-danger-subtle/20 flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0">
                       <i className="ti ti-alert-triangle text-base"></i>
                     </div>
                     <div>

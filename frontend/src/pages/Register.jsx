@@ -92,7 +92,7 @@ export default function Register() {
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium leading-relaxed">
             {error}
           </div>
         )}
@@ -100,8 +100,8 @@ export default function Register() {
         {/* Global Success Banner */}
         {msg ? (
           <div className="text-center py-4 space-y-3">
-            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center text-xl mx-auto border border-emerald-200">
-              <Check className="w-5 h-5 text-emerald-600" />
+            <div className="w-10 h-10 bg-surface-muted text-ink rounded-md flex items-center justify-center text-xl mx-auto border border-line">
+              <Check className="w-5 h-5 text-ink" />
             </div>
             <h2 className="text-sm font-bold text-slate-900">Registration Complete</h2>
             <p className="text-xs text-slate-600 leading-relaxed px-2">{msg}</p>
@@ -156,15 +156,15 @@ export default function Register() {
             <div>
               <div className="flex items-center justify-between mb-1 ml-0.5">
                 <label className="block text-xs font-semibold text-slate-700">
-                  Mobile Number <span className="text-rose-500">*</span>
+                  Mobile Number <span className="text-danger-ink">*</span>
                 </label>
                 {phone && (
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm transition-colors duration-100 ${
                     phoneValidation.isValid
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      ? 'bg-surface-muted text-ink border border-line'
                       : phoneValidation.status === 'invalid_prefix'
-                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      ? 'bg-danger-subtle text-danger-ink border border-danger/20'
+                      : 'bg-warning-subtle text-warning-ink border border-warning/20'
                   }`}>
                     {phoneValidation.isValid ? (phoneValidation.carrier || 'Valid PH Mobile') : phoneValidation.message}
                   </span>
@@ -182,9 +182,9 @@ export default function Register() {
                   placeholder="0917 123 4567"
                   className={`w-full h-9 pl-11 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none font-mono transition-colors duration-100 shadow-2xs ${
                     phone && phoneValidation.isValid
-                      ? 'border-emerald-300 focus:border-emerald-600'
+                      ? 'border-line focus:border-line'
                       : phone && !phoneValidation.isValid
-                      ? 'border-amber-300 focus:border-amber-600'
+                      ? 'border-warning/20 focus:border-warning'
                       : 'border-slate-300 focus:border-slate-500'
                   }`}
                 />
@@ -211,20 +211,20 @@ export default function Register() {
               {/* Password Requirements Check */}
               {password && (
                 <div className="grid grid-cols-2 gap-1.5 pt-2 text-[10px]">
-                  <span className={`flex items-center gap-1 ${checks.length ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                    {checks.length && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  <span className={`flex items-center gap-1 ${checks.length ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                    {checks.length && <Check className="w-3 h-3 text-ink shrink-0" />}
                     10+ characters
                   </span>
-                  <span className={`flex items-center gap-1 ${checks.case ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                    {checks.case && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  <span className={`flex items-center gap-1 ${checks.case ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                    {checks.case && <Check className="w-3 h-3 text-ink shrink-0" />}
                     Upper &amp; lower
                   </span>
-                  <span className={`flex items-center gap-1 ${checks.number ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                    {checks.number && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  <span className={`flex items-center gap-1 ${checks.number ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                    {checks.number && <Check className="w-3 h-3 text-ink shrink-0" />}
                     Numeric digit
                   </span>
-                  <span className={`flex items-center gap-1 ${checks.special ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                    {checks.special && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  <span className={`flex items-center gap-1 ${checks.special ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                    {checks.special && <Check className="w-3 h-3 text-ink shrink-0" />}
                     Special character
                   </span>
                 </div>

@@ -155,7 +155,7 @@ export const MainLayout = ({ children }) => {
   }, [location.pathname, navigate, handleLogout]);
 
   return (
-    <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-blue-500 selection:text-white relative overflow-x-hidden min-h-screen">
+    <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-accent selection:text-white relative overflow-x-hidden min-h-screen">
       {/* Desktop Sidebar */}
       <Sidebar user={user} handleLogout={handleLogout} />
 
@@ -170,7 +170,7 @@ export const MainLayout = ({ children }) => {
             <Suspense
               fallback={
                 <div className="flex items-center justify-center min-h-[50vh] w-full">
-                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-accent animate-spin" />
                 </div>
               }
             >
