@@ -24,10 +24,10 @@ const EmployeeDashboard = () => {
         }
     })();
     const [user, setUser] = useState(storedUser);
-    
+
     // Initial disciplinary state from cache
     const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(storedUser?.id));
-    
+
     // Modals
     const [showQrModal, setShowQrModal] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -90,7 +90,7 @@ const EmployeeDashboard = () => {
                     return parsed;
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
         return undefined;
     };
 
@@ -107,7 +107,7 @@ const EmployeeDashboard = () => {
         if (data && user?.id && (data.attendanceData || data.payrollData)) {
             try {
                 sessionStorage.setItem(`cpoint_emp_dash_${user.id}`, JSON.stringify(data));
-            } catch (_) {}
+            } catch (_) { }
         }
     }, [data, user?.id]);
 
@@ -125,20 +125,25 @@ const EmployeeDashboard = () => {
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
             })
             .on('broadcast', { event: 'PAYROLL_CREATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
                 toast.success('Your latest payslip has been distributed!');
             })
             .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
                 toast.success('Your latest payslip has been distributed!');
             })
             .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
             })
             .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
@@ -344,14 +349,77 @@ const EmployeeDashboard = () => {
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
 
-    const rawPayroll = data?.payrollData?.data || data?.payrollData || [];
-    const allPayrolls = Array.isArray(rawPayroll) ? rawPayroll : (rawPayroll?.id ? [rawPayroll] : []);
+    // Full pay history. The dashboard endpoint may return only the latest payslip,
+    // so the complete list is fetched separately and merged below.
+    const { data: payHistoryData } = useQuery({
+        queryKey: ['employeePayHistory', user.id],
+        queryFn: async () => {
+            const res = await fetchWithAuth(`/api/payroll?employee_id=${user.id}&limit=100`);
+            if (!res.ok) throw new Error('Failed to load pay history');
+            return res.json();
+        },
+        enabled: !!user.id && user.role !== 'security',
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Merged, de-duplicated, and sorted newest first so the dashboard card shows the newest payslip
+    const allPayrolls = useMemo(() => {
+        const toList = (raw) => {
+            const v = raw?.data || raw || [];
+            return Array.isArray(v) ? v : (v?.id ? [v] : []);
+        };
+        const merged = new Map();
+        [...toList(data?.payrollData), ...toList(payHistoryData)].forEach((p) => {
+            if (!p) return;
+            const key = p.id || `${p.period_start}_${p.period_end}`;
+            merged.set(key, { ...(merged.get(key) || {}), ...p });
+        });
+        const time = (v) => {
+            const t = new Date(v || 0).getTime();
+            return Number.isNaN(t) ? 0 : t;
+        };
+        return Array.from(merged.values()).sort((a, b) =>
+            (time(b.period_end || b.period_start) - time(a.period_end || a.period_start)) ||
+            (time(b.created_at) - time(a.created_at))
+        );
+    }, [data, payHistoryData]);
     const latestPayroll = allPayrolls.length > 0 ? allPayrolls[0] : null;
-    const [selectedPayslipIndex, setSelectedPayslipIndex] = useState(0);
-    const currentPayslip = allPayrolls[selectedPayslipIndex] || latestPayroll;
-    
-    const isFactoryWorker = (user?.department || '').toLowerCase().includes('factory') || 
-                            (user?.shift || '').toLowerCase().includes('factory');
+    const [payslipView, setPayslipView] = useState('history'); // 'history' | 'detail'
+    const [selectedPayslipId, setSelectedPayslipId] = useState(null);
+    const currentPayslip = allPayrolls.find((p) => p.id === selectedPayslipId) || null;
+
+    // Pay history filter (year / month). 
+    const [filterYear, setFilterYear] = useState('all');
+    const [filterMonth, setFilterMonth] = useState('all');
+    const PAY_FILTER_MIN = 8;
+    const payDateOf = (p) => dayjs(p.period_end || p.period_start || p.created_at);
+    const payYears = useMemo(
+        () => Array.from(new Set(allPayrolls.map((p) => payDateOf(p).year()).filter((y) => !Number.isNaN(y)))).sort((a, b) => b - a),
+        [allPayrolls]
+    );
+    const payMonths = useMemo(
+        () => Array.from(new Set(
+            allPayrolls
+                .filter((p) => filterYear === 'all' || payDateOf(p).year() === Number(filterYear))
+                .map((p) => payDateOf(p).month())
+                .filter((m) => !Number.isNaN(m))
+        )).sort((a, b) => b - a),
+        [allPayrolls, filterYear]
+    );
+    const filteredPayrolls = useMemo(
+        () => allPayrolls.filter((p) => {
+            const d = payDateOf(p);
+            if (filterYear !== 'all' && d.year() !== Number(filterYear)) return false;
+            if (filterMonth !== 'all' && d.month() !== Number(filterMonth)) return false;
+            return true;
+        }),
+        [allPayrolls, filterYear, filterMonth]
+    );
+    const isPayFiltered = filterYear !== 'all' || filterMonth !== 'all';
+
+    const isFactoryWorker = (user?.department || '').toLowerCase().includes('factory') ||
+        (user?.shift || '').toLowerCase().includes('factory');
     const shoeRole = isFactoryWorker ? getShoeRoleDetails(user?.job_title) : null;
     const prodGroup = isFactoryWorker ? parseProductionGroup(user?.shift) : null;
     const workerClassification = isFactoryWorker ? (shoeRole ? shoeRole.label : (user?.job_title || 'Shoe Craft')) : 'Regular Worker';
@@ -366,7 +434,7 @@ const EmployeeDashboard = () => {
     // Sync live employee status, biometrics, separation details, and medical exemption to user state and localStorage
     useEffect(() => {
         if (liveEmployee && (
-            (liveEmployee.status && liveEmployee.status !== user?.status) || 
+            (liveEmployee.status && liveEmployee.status !== user?.status) ||
             liveEmployee.is_active !== user?.is_active ||
             liveEmployee.medical_record_url !== user?.medical_record_url ||
             liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics ||
@@ -376,9 +444,9 @@ const EmployeeDashboard = () => {
             liveEmployee.is_suspended !== user?.is_suspended ||
             liveEmployee.is_terminated !== user?.is_terminated
         )) {
-            setUser(prev => ({ 
-                ...prev, 
-                status: liveEmployee.status || prev?.status, 
+            setUser(prev => ({
+                ...prev,
+                status: liveEmployee.status || prev?.status,
                 is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
                 medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
                 has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics,
@@ -393,9 +461,9 @@ const EmployeeDashboard = () => {
             }));
             try {
                 const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ 
-                    ...stored, 
-                    status: liveEmployee.status || stored?.status, 
+                localStorage.setItem('user', JSON.stringify({
+                    ...stored,
+                    status: liveEmployee.status || stored?.status,
                     is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
                     medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
                     has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics,
@@ -408,7 +476,7 @@ const EmployeeDashboard = () => {
                     is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : stored?.is_suspended,
                     is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : stored?.is_terminated
                 }));
-            } catch (e) {}
+            } catch (e) { }
         }
     }, [liveEmployee]);
 
@@ -468,8 +536,8 @@ const EmployeeDashboard = () => {
     );
 
     const isTerminated = !isSuspended && Boolean(
-        Boolean(activeTermination) || 
-        currentStatus === 'terminated' || 
+        Boolean(activeTermination) ||
+        currentStatus === 'terminated' ||
         Boolean(disciplinaryState.isTerminated) ||
         Boolean(liveEmployee?.is_terminated) ||
         liveEmployee?.operational_status === 'Terminated' ||
@@ -578,7 +646,7 @@ const EmployeeDashboard = () => {
 
     const handleAcknowledgeAll = async () => {
         try {
-            await Promise.all(infractions.map(inf => 
+            await Promise.all(infractions.map(inf =>
                 fetchWithAuth(`/api/disciplinary/${inf.id}/acknowledge`, { method: 'PUT' })
             ));
             toast.success('All notices acknowledged.');
@@ -609,7 +677,7 @@ const EmployeeDashboard = () => {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 px-4 sm:px-6 font-sans">
-            
+
             {/* Disciplinary & Separation Alert Banners */}
             {isTerminated ? (
                 <div className="bg-slate-900 border border-danger/30 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -628,7 +696,7 @@ const EmployeeDashboard = () => {
                             </p>
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={() => setShowInfractionsModal(true)}
                         className="w-full md:w-auto h-9 px-4 bg-danger hover:bg-danger text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
@@ -661,8 +729,8 @@ const EmployeeDashboard = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
-                        <button 
-                            onClick={() => setShowInfractionsModal(true)} 
+                        <button
+                            onClick={() => setShowInfractionsModal(true)}
                             className="w-full sm:w-auto h-9 px-4 bg-warning hover:bg-warning text-slate-950 font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                         >
                             <i className="ti ti-file-text text-sm" />
@@ -686,8 +754,8 @@ const EmployeeDashboard = () => {
                             </p>
                         </div>
                     </div>
-                    <button 
-                        onClick={() => setShowInfractionsModal(true)} 
+                    <button
+                        onClick={() => setShowInfractionsModal(true)}
                         className="w-full sm:w-auto h-9 px-4 bg-danger hover:bg-danger text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
                         <i className="ti ti-file-text text-sm" />
@@ -713,8 +781,8 @@ const EmployeeDashboard = () => {
                             </p>
                         </div>
                     </div>
-                    <Link 
-                        to="/biometric-setup" 
+                    <Link
+                        to="/biometric-setup"
                         className="w-full sm:w-auto h-9 px-4 bg-warning hover:bg-warning text-slate-950 font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
                     >
                         <i className="ti ti-camera text-sm" />
@@ -724,13 +792,13 @@ const EmployeeDashboard = () => {
             )}
 
             <div className="space-y-5 sm:space-y-8">
-                
+
                 {/* Welcome header with Profile & Logout */}
                 <div className="flex items-start justify-between gap-4 pt-2 sm:pt-4">
                     <div>
                         <p className="text-accent font-bold tracking-widest uppercase text-xs sm:text-sm mb-1">{formattedToday}</p>
                         <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                            Good day,<br/><span className="text-accent">{getFirstName(user.name)}!</span>
+                            Good day,<br /><span className="text-accent">{getFirstName(user.name)}!</span>
                         </h1>
                         <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm flex flex-wrap items-center gap-1.5">
                             {isFactoryWorker ? (
@@ -759,7 +827,7 @@ const EmployeeDashboard = () => {
                             )}
                         </p>
                     </div>
-                    
+
                     {/* User Avatar & Profile Navigation */}
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <Link to="/employee/profile" title="View My Profile" className="group">
@@ -787,16 +855,20 @@ const EmployeeDashboard = () => {
 
                 {/* Primary actions */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
-                    
+
                     {/* Payroll - Always Available */}
-                    <div 
-                        onClick={() => { 
+                    <div
+                        onClick={() => {
                             if (latestPayroll) {
-                                setShowPayslipModal(true); 
+                                setPayslipView('history');
+                                setSelectedPayslipId(null);
+                                setFilterYear('all');
+                                setFilterMonth('all');
+                                setShowPayslipModal(true);
                             } else if (isFactoryWorker) {
                                 toast('Factory piece-rate pool payouts are distributed per completed production batch.');
                             } else {
-                                toast.error('No payslips on record.'); 
+                                toast.error('No payslips on record.');
                             }
                         }}
                         className="relative overflow-hidden bg-accent hover:bg-accent-hover transition-colors duration-100 rounded-lg p-5 sm:p-6 md:p-8 cursor-pointer shadow-2xs group select-none"
@@ -837,10 +909,10 @@ const EmployeeDashboard = () => {
                                 <p className="text-white/80 text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5">
                                     <i className="ti ti-file-text" />
                                     <span>
-                                        {latestPayroll 
-                                            ? `Tap to view full payslip (${allPayrolls.length} available)` 
-                                            : (isFactoryWorker 
-                                                ? 'Earnings calculated per completed shoe batch in your production line.' 
+                                        {latestPayroll
+                                            ? `Tap to view pay history (${allPayrolls.length} available)`
+                                            : (isFactoryWorker
+                                                ? 'Earnings calculated per completed shoe batch in your production line.'
                                                 : 'No payslip records generated yet.')}
                                     </span>
                                 </p>
@@ -849,27 +921,24 @@ const EmployeeDashboard = () => {
                     </div>
 
                     {/* Today's shift */}
-                    <div className={`relative overflow-hidden ${
-                        isTerminated 
-                            ? 'bg-slate-900 border border-danger/30' 
-                            : isSuspended 
-                            ? 'bg-slate-900 border border-warning/30' 
+                    <div className={`relative overflow-hidden ${isTerminated
+                        ? 'bg-slate-900 border border-danger/30'
+                        : isSuspended
+                            ? 'bg-slate-900 border border-warning/30'
                             : 'bg-slate-900 border border-slate-800'
-                    } rounded-lg p-5 sm:p-6 md:p-8 shadow-2xs text-white flex flex-col justify-between group select-none`}>
+                        } rounded-lg p-5 sm:p-6 md:p-8 shadow-2xs text-white flex flex-col justify-between group select-none`}>
                         <div className="relative z-10 flex justify-between items-start">
-                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-md flex items-center justify-center ${
-                                isTerminated ? 'text-danger' : isSuspended ? 'text-warning' : 'text-accent-on-dark'
-                            } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
+                            <div className={`w-11 h-11 sm:w-14 sm:h-14 bg-slate-800 border border-slate-700 rounded-md flex items-center justify-center ${isTerminated ? 'text-danger' : isSuspended ? 'text-warning' : 'text-accent-on-dark'
+                                } mb-4 sm:mb-6 group-hover:bg-slate-700 transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-calendar-off' : isSuspended ? 'ti-clock-pause' : (shoeRole ? shoeRole.icon : 'ti-calendar-time')} text-2xl sm:text-3xl`} />
                             </div>
                             <div className="flex flex-col items-end gap-1">
-                                <span className={`px-2.5 py-1 rounded-md font-semibold text-xs border ${
-                                    isTerminated 
-                                        ? 'bg-danger-ink/60 border-danger text-danger' 
-                                        : isSuspended 
-                                        ? 'bg-warning-ink/60 border-warning text-warning' 
+                                <span className={`px-2.5 py-1 rounded-md font-semibold text-xs border ${isTerminated
+                                    ? 'bg-danger-ink/60 border-danger text-danger'
+                                    : isSuspended
+                                        ? 'bg-warning-ink/60 border-warning text-warning'
                                         : 'bg-slate-900/60 border-accent text-accent-on-dark'
-                                }`}>
+                                    }`}>
                                     {isTerminated ? 'Separated' : isSuspended ? 'Suspended' : (isFactoryWorker ? (prodGroup || "Factory Line") : "Today's Schedule")}
                                 </span>
                             </div>
@@ -881,16 +950,15 @@ const EmployeeDashboard = () => {
                             <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
                                 {isTerminated ? 'Inactive' : isSuspended ? 'On Hold' : workerClassification}
                             </h2>
-                            <p className={`${
-                                isTerminated ? 'text-danger/80' : isSuspended ? 'text-warning/80' : 'text-accent-on-dark'
-                            } text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5`}>
+                            <p className={`${isTerminated ? 'text-danger/80' : isSuspended ? 'text-warning/80' : 'text-accent-on-dark'
+                                } text-xs sm:text-sm mt-1 font-medium flex items-center gap-1.5`}>
                                 <i className={`ti ${isTerminated ? 'ti-circle-x' : isSuspended ? 'ti-alert-circle' : 'ti-clock'} text-sm`} />
                                 <span>
-                                    {isTerminated 
-                                        ? 'Operational shifts concluded upon separation.' 
-                                        : isSuspended 
-                                        ? 'No work schedule during disciplinary suspension.' 
-                                        : `${workerSchedule} (${overtimePolicy})`}
+                                    {isTerminated
+                                        ? 'Operational shifts concluded upon separation.'
+                                        : isSuspended
+                                            ? 'No work schedule during disciplinary suspension.'
+                                            : `${workerSchedule} (${overtimePolicy})`}
                                 </span>
                             </p>
                         </div>
@@ -900,9 +968,9 @@ const EmployeeDashboard = () => {
 
                 {/* Secondary actions */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
-                    
+
                     {/* Leave request */}
-                    <div 
+                    <div
                         onClick={() => {
                             if (isTerminated) {
                                 toast.error('Leave requests are disabled for separated accounts.');
@@ -914,16 +982,14 @@ const EmployeeDashboard = () => {
                             }
                             setShowLeaveModal(true);
                         }}
-                        className={`bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${
-                            isTerminated || isSuspended 
-                                ? 'opacity-65 cursor-not-allowed border-slate-200 bg-slate-50/50' 
-                                : 'border-slate-200 cursor-pointer group hover:border-slate-300'
-                        } flex items-center justify-between transition-colors duration-100 select-none`}
+                        className={`bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${isTerminated || isSuspended
+                            ? 'opacity-65 cursor-not-allowed border-slate-200 bg-slate-50/50'
+                            : 'border-slate-200 cursor-pointer group hover:border-slate-300'
+                            } flex items-center justify-between transition-colors duration-100 select-none`}
                     >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-md ${
-                                isTerminated ? 'bg-danger-subtle text-danger-ink' : isSuspended ? 'bg-warning-subtle text-warning-ink' : 'bg-accent-subtle text-accent'
-                            } flex items-center justify-center text-2xl sm:text-3xl shrink-0 ${!isTerminated && !isSuspended ? 'group-hover:bg-accent group-hover:text-white' : ''} transition-colors`}>
+                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-md ${isTerminated ? 'bg-danger-subtle text-danger-ink' : isSuspended ? 'bg-warning-subtle text-warning-ink' : 'bg-accent-subtle text-accent'
+                                } flex items-center justify-center text-2xl sm:text-3xl shrink-0 ${!isTerminated && !isSuspended ? 'group-hover:bg-accent group-hover:text-white' : ''} transition-colors`}>
                                 <i className={`ti ${isTerminated ? 'ti-plane-off' : isSuspended ? 'ti-lock' : 'ti-plane-departure'}`} />
                             </div>
                             <div>
@@ -983,7 +1049,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
 
-                            <Link 
+                            <Link
                                 to="/employee/qr"
                                 className="w-full sm:w-auto h-9 px-4 bg-warning hover:bg-warning-ink text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
@@ -1078,7 +1144,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={() => setShowInfractionsModal(true)}
                                 className="w-full sm:w-auto h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
@@ -1166,7 +1232,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={() => setShowInfractionsModal(true)}
                                 className="w-full sm:w-auto h-9 px-4 bg-warning hover:bg-warning-ink text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
@@ -1252,7 +1318,7 @@ const EmployeeDashboard = () => {
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={() => setShowInfractionsModal(true)}
                                 className="w-full sm:w-auto h-9 px-4 bg-danger hover:bg-danger-ink text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
@@ -1264,8 +1330,8 @@ const EmployeeDashboard = () => {
                         {/* Notice Items */}
                         <div className="space-y-3 pt-4 sm:pt-5">
                             {unresolvedInfractions.map((infraction) => (
-                                <div 
-                                    key={infraction.id} 
+                                <div
+                                    key={infraction.id}
                                     onClick={() => setShowInfractionsModal(true)}
                                     className="group p-4 sm:p-5 rounded-md border border-danger/20 bg-danger-subtle/30 hover:bg-danger-subtle/70 hover:border-danger/20 transition-colors duration-100 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                                 >
@@ -1279,12 +1345,11 @@ const EmployeeDashboard = () => {
                                                     {infraction.type}
                                                 </h4>
                                                 {infraction.severity && (
-                                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                                                        infraction.severity === 'Critical' ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${infraction.severity === 'Critical' ? 'bg-danger-subtle text-danger-ink border-danger/20' :
                                                         infraction.severity === 'High' ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                                                        infraction.severity === 'Medium' ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                                                        'bg-accent-subtle text-accent border-accent/20'
-                                                    }`}>
+                                                            infraction.severity === 'Medium' ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                                                                'bg-accent-subtle text-accent border-accent/20'
+                                                        }`}>
                                                         {infraction.severity}
                                                     </span>
                                                 )}
@@ -1457,7 +1522,7 @@ const EmployeeDashboard = () => {
 
                 {/* Activity timelines */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
-                    
+
                     {/* Recent attendance */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
                         <div className="flex items-center gap-3 mb-5 sm:mb-8">
@@ -1475,9 +1540,8 @@ const EmployeeDashboard = () => {
                                 return (
                                     <div key={log.id || log.created_at} className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-sm flex items-center justify-center text-xs font-bold ${
-                                                isAbsent ? 'bg-danger-subtle text-danger-ink border border-danger/20' : 'bg-slate-900 text-white'
-                                            }`}>
+                                            <div className={`w-8 h-8 rounded-sm flex items-center justify-center text-xs font-bold ${isAbsent ? 'bg-danger-subtle text-danger-ink border border-danger/20' : 'bg-slate-900 text-white'
+                                                }`}>
                                                 <i className={`ti ${isAbsent ? 'ti-x' : 'ti-check'}`} />
                                             </div>
                                             <div>
@@ -1496,9 +1560,8 @@ const EmployeeDashboard = () => {
                                                     Medical Grace
                                                 </span>
                                             )}
-                                            <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider ${
-                                                isAbsent ? 'bg-danger-subtle text-danger-ink border border-danger/20' : 'bg-slate-900 text-white border border-slate-800'
-                                            }`}>
+                                            <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider ${isAbsent ? 'bg-danger-subtle text-danger-ink border border-danger/20' : 'bg-slate-900 text-white border border-slate-800'
+                                                }`}>
                                                 {log.status || 'Present'}
                                             </span>
                                         </div>
@@ -1531,7 +1594,7 @@ const EmployeeDashboard = () => {
                                         <div className="min-w-0">
                                             <h4 className="font-bold text-slate-800 text-sm sm:text-base">{leave.type}</h4>
                                             <p className="text-slate-500 text-xs sm:text-sm mt-0.5 truncate">
-                                                {new Date(leave.start_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - {new Date(leave.end_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
+                                                {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                             </p>
                                         </div>
                                         <span className={`px-2.5 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
@@ -1551,11 +1614,11 @@ const EmployeeDashboard = () => {
             {/* QR modal */}
             {showQrModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div 
+                    <div
                         className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowQrModal(false)}
                     />
-                    <div 
+                    <div
                         className="relative bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-xl border border-slate-200"
                     >
                         {isTerminated ? (
@@ -1643,11 +1706,128 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
             )}
-            
+
 
             {/* Historical / Official Payslip Modal */}
-            {showPayslipModal && (currentPayslip || latestPayroll) && (() => {
-                const activePayroll = currentPayslip || latestPayroll;
+            {showPayslipModal && latestPayroll && payslipView === 'history' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                        onClick={() => setShowPayslipModal(false)}
+                    />
+                    <div className="relative bg-white rounded-lg w-full max-w-lg overflow-hidden shadow-xl max-h-[92vh] flex flex-col border border-slate-200 text-left">
+                        <div className="p-5 border-b border-slate-200 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-md bg-accent text-white flex items-center justify-center">
+                                    <i className="ti ti-wallet text-lg" />
+                                </div>
+                                <div>
+                                    <h2 className="text-base font-black text-slate-900 tracking-tight leading-none">Pay History</h2>
+                                    <p className="text-[11px] text-slate-500 font-medium mt-1">
+                                        {isPayFiltered
+                                            ? `Showing ${filteredPayrolls.length} of ${allPayrolls.length} payslips`
+                                            : `${allPayrolls.length} payslip${allPayrolls.length === 1 ? '' : 's'} on file • Tap one to view it`}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowPayslipModal(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                                title="Close"
+                            >
+                                <i className="ti ti-x text-lg" />
+                            </button>
+                        </div>
+
+                        {allPayrolls.length > PAY_FILTER_MIN && (
+                            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/75 flex items-center gap-2 flex-wrap">
+                                <select
+                                    value={filterYear}
+                                    onChange={(e) => { setFilterYear(e.target.value); setFilterMonth('all'); }}
+                                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
+                                >
+                                    <option value="all">All years</option>
+                                    {payYears.map((y) => (
+                                        <option key={y} value={y}>{y}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={filterMonth}
+                                    onChange={(e) => setFilterMonth(e.target.value)}
+                                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
+                                >
+                                    <option value="all">All months</option>
+                                    {payMonths.map((m) => (
+                                        <option key={m} value={m}>{dayjs().month(m).format('MMMM')}</option>
+                                    ))}
+                                </select>
+                                {isPayFiltered && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setFilterYear('all'); setFilterMonth('all'); }}
+                                        className="px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors duration-100 cursor-pointer"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="overflow-y-auto p-3 sm:p-4 space-y-2">
+                            {filteredPayrolls.length === 0 && (
+                                <p className="text-center text-xs text-slate-500 font-medium py-8">No payslips match this filter.</p>
+                            )}
+                            {filteredPayrolls.map((p, idx) => {
+                                const net = parsePayrollFinancials(p).netPay;
+                                return (
+                                    <button
+                                        key={p.id || idx}
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedPayslipId(p.id);
+                                            setPayslipView('detail');
+                                        }}
+                                        className="w-full text-left flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-md border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-colors duration-100 cursor-pointer"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-xs sm:text-sm font-bold text-slate-900">
+                                                    {p.period_start ? dayjs(p.period_start).format('MMM DD') : 'N/A'} – {p.period_end ? dayjs(p.period_end).format('MMM DD, YYYY') : 'N/A'}
+                                                </span>
+                                                {p === latestPayroll && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-900 text-white">Latest</span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 font-medium mt-1 flex items-center gap-1.5 flex-wrap">
+                                                <span>Paid {p.created_at ? dayjs(p.created_at).format('MMM DD, YYYY') : 'N/A'}</span>
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-surface-muted text-ink border border-line">
+                                                    {p.status || 'Released'}
+                                                </span>
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className="font-mono font-black text-sm sm:text-base text-slate-900">{formatCurrency(net)}</span>
+                                            <i className="ti ti-chevron-right text-slate-400" />
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-200 flex justify-end">
+                            <button
+                                onClick={() => setShowPayslipModal(false)}
+                                className="h-9 px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer shadow-2xs"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showPayslipModal && currentPayslip && payslipView === 'detail' && (() => {
+                const activePayroll = currentPayslip;
                 const financials = parsePayrollFinancials(activePayroll);
                 const emp = activePayroll.employees || liveEmployee || user;
                 const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Employee' : 'Employee';
@@ -1677,13 +1857,13 @@ const EmployeeDashboard = () => {
                                 .no-print { display: none !important; }
                             }
                         `}</style>
-                        
-                        <div 
+
+                        <div
                             className="absolute inset-0 bg-slate-950/70 transition-opacity"
                             onClick={() => setShowPayslipModal(false)}
                         />
-                        
-                        <div 
+
+                        <div
                             id="employee-payslip-modal"
                             className="relative bg-white rounded-lg w-full max-w-2xl overflow-hidden shadow-xl max-h-[92vh] flex flex-col border border-slate-200 text-left print:border-none print:shadow-none"
                         >
@@ -1721,7 +1901,7 @@ const EmployeeDashboard = () => {
                                             </div>
                                         </div>
 
-                                        <button 
+                                        <button
                                             onClick={() => setShowPayslipModal(false)}
                                             className="no-print p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
                                             title="Close Modal"
@@ -1730,28 +1910,6 @@ const EmployeeDashboard = () => {
                                         </button>
                                     </div>
                                 </div>
-
-                                {/* Historical Period Dropdown if multiple payslips */}
-                                {allPayrolls.length > 1 && (
-                                    <div className="mt-4 pt-3 border-t border-slate-100 no-print">
-                                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                                Select Pay Period ({allPayrolls.length} on File)
-                                            </label>
-                                            <select 
-                                                value={selectedPayslipIndex} 
-                                                onChange={(e) => setSelectedPayslipIndex(parseInt(e.target.value, 10))}
-                                                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
-                                            >
-                                                {allPayrolls.map((p, idx) => (
-                                                    <option key={p.id || idx} value={idx}>
-                                                        {dayjs(p.period_start).format('MMM DD, YYYY')} – {dayjs(p.period_end).format('MMM DD, YYYY')} • {formatCurrency(p.net_pay)}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
 
                             {/* 2. Telemetry Strip */}
@@ -1860,7 +2018,7 @@ const EmployeeDashboard = () => {
                                 {/* Dual-Ledger Corporate Table */}
                                 <div className="border border-slate-200 rounded-md overflow-hidden">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                                        
+
                                         {/* LEFT: EARNINGS */}
                                         <div className="flex flex-col justify-between">
                                             <div>
@@ -1999,15 +2157,24 @@ const EmployeeDashboard = () => {
 
                             {/* 6. Footer Actions */}
                             <div className="no-print p-4 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
-                                <button 
-                                    onClick={() => window.print()} 
-                                    className="h-9 px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
-                                >
-                                    <i className="ti ti-printer text-sm" />
-                                    <span>Print / Export PDF</span>
-                                </button>
-                                <button 
-                                    onClick={() => setShowPayslipModal(false)} 
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setPayslipView('history')}
+                                        className="h-9 px-3.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
+                                    >
+                                        <i className="ti ti-arrow-left text-sm" />
+                                        <span>Pay History</span>
+                                    </button>
+                                    <button
+                                        onClick={() => window.print()}
+                                        className="h-9 px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
+                                    >
+                                        <i className="ti ti-printer text-sm" />
+                                        <span>Print / Export PDF</span>
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setShowPayslipModal(false)}
                                     className="h-9 px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer shadow-2xs"
                                 >
                                     Close
@@ -2017,16 +2184,16 @@ const EmployeeDashboard = () => {
                     </div>
                 );
             })()}
-            
+
 
             {/* Leave request modal */}
             {showLeaveModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div 
+                    <div
                         className="absolute inset-0 bg-slate-950/70"
                         onClick={() => setShowLeaveModal(false)}
                     />
-                    <div 
+                    <div
                         className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl border border-slate-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
                     >
                         <div className="flex justify-between items-center mb-5 sm:mb-6">
@@ -2036,8 +2203,8 @@ const EmployeeDashboard = () => {
                                 </div>
                                 <h2 className="text-lg sm:text-xl font-bold text-slate-800">Time Off Request</h2>
                             </div>
-                            <button 
-                                onClick={() => setShowLeaveModal(false)} 
+                            <button
+                                onClick={() => setShowLeaveModal(false)}
                                 className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors duration-100"
                             >
                                 <i className="ti ti-x text-base" />
@@ -2047,9 +2214,9 @@ const EmployeeDashboard = () => {
                         <form onSubmit={handleLeaveSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-700 mb-1.5">Leave Type</label>
-                                <select 
-                                    value={leaveForm.leave_type} 
-                                    onChange={(e) => setLeaveForm({...leaveForm, leave_type: e.target.value})}
+                                <select
+                                    value={leaveForm.leave_type}
+                                    onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
                                     className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 appearance-none"
                                 >
                                     <option>Sick Leave</option>
@@ -2058,43 +2225,43 @@ const EmployeeDashboard = () => {
                                     <option>Emergency Leave</option>
                                 </select>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-xs font-medium text-slate-700 mb-1.5">First Day</label>
-                                    <input 
-                                        type="date" required 
+                                    <input
+                                        type="date" required
                                         value={leaveForm.start_date}
-                                        onChange={(e) => setLeaveForm({...leaveForm, start_date: e.target.value})}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100" 
+                                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-slate-700 mb-1.5">Last Day</label>
-                                    <input 
-                                        type="date" required 
+                                    <input
+                                        type="date" required
                                         value={leaveForm.end_date}
-                                        onChange={(e) => setLeaveForm({...leaveForm, end_date: e.target.value})}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100" 
+                                        onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
                                     />
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <label className="block text-xs font-medium text-slate-700 mb-1.5">Reason for Absence</label>
-                                <textarea 
-                                    required rows="3" 
+                                <textarea
+                                    required rows="3"
                                     value={leaveForm.reason}
-                                    onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})}
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 resize-none" 
+                                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 resize-none"
                                     placeholder="State purpose of leave request..."
                                 />
                             </div>
-                            
+
                             <div className="pt-2">
-                                <button 
-                                    disabled={isSubmittingLeave} 
-                                    type="submit" 
+                                <button
+                                    disabled={isSubmittingLeave}
+                                    type="submit"
                                     className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium rounded-md shadow-2xs text-xs sm:text-sm disabled:opacity-50 flex justify-center items-center gap-2 transition-colors duration-100 cursor-pointer"
                                 >
                                     {isSubmittingLeave ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Submit Request'}
@@ -2108,7 +2275,7 @@ const EmployeeDashboard = () => {
             {/* Disciplinary Notices Modal */}
             {showInfractionsModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
-                    <div 
+                    <div
                         className="absolute inset-0 bg-slate-950/70 transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
                     />
@@ -2116,48 +2283,46 @@ const EmployeeDashboard = () => {
                         {/* Header */}
                         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 border ${
-                                    isTerminated 
-                                        ? 'bg-danger-subtle border-danger/20 text-danger-ink'
-                                        : isSuspended
+                                <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 border ${isTerminated
+                                    ? 'bg-danger-subtle border-danger/20 text-danger-ink'
+                                    : isSuspended
                                         ? 'bg-warning-subtle border-warning/20 text-warning-ink'
-                                        : unresolvedInfractions.length > 0 
-                                        ? 'bg-danger-subtle border-danger/20 text-danger-ink' 
-                                        : 'bg-success-subtle border-success/20 text-success-ink'
-                                }`}>
-                                    <i className={`ti ${
-                                        isTerminated 
-                                            ? 'ti-user-x' 
-                                            : isSuspended 
-                                            ? 'ti-clock-pause' 
-                                            : unresolvedInfractions.length > 0 
-                                            ? 'ti-shield-alert' 
-                                            : 'ti-shield-check'
-                                    } text-xl`} />
+                                        : unresolvedInfractions.length > 0
+                                            ? 'bg-danger-subtle border-danger/20 text-danger-ink'
+                                            : 'bg-success-subtle border-success/20 text-success-ink'
+                                    }`}>
+                                    <i className={`ti ${isTerminated
+                                        ? 'ti-user-x'
+                                        : isSuspended
+                                            ? 'ti-clock-pause'
+                                            : unresolvedInfractions.length > 0
+                                                ? 'ti-shield-alert'
+                                                : 'ti-shield-check'
+                                        } text-xl`} />
                                 </div>
                                 <div>
                                     <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                                        {isTerminated 
-                                            ? 'Separation & Disciplinary File' 
-                                            : isSuspended 
-                                            ? 'Suspension & Disciplinary Order' 
-                                            : unresolvedInfractions.length > 0 
-                                            ? 'Disciplinary & Policy Notices' 
-                                            : 'Compliance & Personnel Standing'}
+                                        {isTerminated
+                                            ? 'Separation & Disciplinary File'
+                                            : isSuspended
+                                                ? 'Suspension & Disciplinary Order'
+                                                : unresolvedInfractions.length > 0
+                                                    ? 'Disciplinary & Policy Notices'
+                                                    : 'Compliance & Personnel Standing'}
                                     </h2>
                                     <p className="text-xs text-slate-500 font-medium">
-                                        {isTerminated 
-                                            ? `Official Separation Record (${employeeDisciplinary.length} memos on file)` 
-                                            : isSuspended 
-                                            ? 'Active Suspension Order & History' 
-                                            : unresolvedInfractions.length > 0 
-                                            ? 'Action Required · Official HR Records' 
-                                            : 'Official Personnel File · In Good Standing'}
+                                        {isTerminated
+                                            ? `Official Separation Record (${employeeDisciplinary.length} memos on file)`
+                                            : isSuspended
+                                                ? 'Active Suspension Order & History'
+                                                : unresolvedInfractions.length > 0
+                                                    ? 'Action Required · Official HR Records'
+                                                    : 'Official Personnel File · In Good Standing'}
                                     </p>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => setShowInfractionsModal(false)} 
+                            <button
+                                onClick={() => setShowInfractionsModal(false)}
                                 className="w-8 h-8 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors duration-100 cursor-pointer"
                             >
                                 <i className="ti ti-x text-base" />
@@ -2171,7 +2336,7 @@ const EmployeeDashboard = () => {
                                     const isPending = record.status === 'Active';
                                     const isAcknowledged = record.status === 'Acknowledged';
                                     const isResolved = record.status === 'Resolved';
-                                    
+
                                     const sevColors = {
                                         Critical: 'bg-danger-subtle text-danger-ink border-danger/20',
                                         High: 'bg-warning-subtle text-warning-ink border-warning/20',
@@ -2187,13 +2352,12 @@ const EmployeeDashboard = () => {
                                     }[record.status] || 'bg-slate-100 text-slate-700 border-slate-200';
 
                                     return (
-                                        <div 
-                                            key={record.id} 
-                                            className={`p-4 sm:p-5 rounded-md border transition-colors duration-100 ${
-                                                isPending 
-                                                    ? 'bg-danger-subtle/40 border-danger/20 shadow-2xs' 
-                                                    : 'bg-white border-slate-200'
-                                            }`}
+                                        <div
+                                            key={record.id}
+                                            className={`p-4 sm:p-5 rounded-md border transition-colors duration-100 ${isPending
+                                                ? 'bg-danger-subtle/40 border-danger/20 shadow-2xs'
+                                                : 'bg-white border-slate-200'
+                                                }`}
                                         >
                                             <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                                                 <div className="flex items-center gap-2">
@@ -2272,7 +2436,7 @@ const EmployeeDashboard = () => {
                         {/* Modal Footer */}
                         <div className="px-5 sm:px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
                             {infractions.length > 1 ? (
-                                <button 
+                                <button
                                     onClick={handleAcknowledgeAll}
                                     className="h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md shadow-2xs transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                                 >
@@ -2281,7 +2445,7 @@ const EmployeeDashboard = () => {
                                 </button>
                             ) : <div />}
 
-                            <button 
+                            <button
                                 onClick={() => setShowInfractionsModal(false)}
                                 className="h-9 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer"
                             >
@@ -2291,7 +2455,7 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
             )}
-            
+
 
         </div>
     );
