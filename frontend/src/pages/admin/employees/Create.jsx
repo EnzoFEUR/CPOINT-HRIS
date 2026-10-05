@@ -21,6 +21,15 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
     const [firstName, setFirstName] = useState(defaultValues.first_name || '');
     const [lastName, setLastName] = useState(defaultValues.last_name || '');
+    const [gender, setGender] = useState(defaultValues.gender || '');
+    const [birthDate, setBirthDate] = useState(defaultValues.birth_date || '');
+    const [address, setAddress] = useState(defaultValues.address || '');
+
+    const maxBirthDate = useMemo(() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 15);
+        return d.toISOString().split('T')[0];
+    }, []);
 
     // Fetch real production groups from the dedicated database table
     const { data: productionGroupsData } = useQuery({
@@ -181,7 +190,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplayHourlyPay('');
         setRawHourlyPay('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
-        setPhone('');
+        setGender('');
+        setBirthDate('');
+        setAddress('');
         const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
         setSelectedGroupId(defaultLine?.id || '');
         setSelectedGroup(defaultLine?.name || 'Line A');
@@ -199,6 +210,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
             return;
         }
         data.phone = phoneCheck.cleanPhone;
+        data.gender = gender || null;
+        data.birth_date = birthDate || null;
+        data.address = (address || '').trim() || null;
 
         const isFactory = department === 'Factory';
         data.department = department;
@@ -449,6 +463,51 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     </div>
                                 </div>
                             )}
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Gender</label>
+                                <select 
+                                    name="gender" 
+                                    value={gender}
+                                    onChange={(e) => setGender(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                >
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                    <option value="Prefer not to say">Prefer not to say</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
+                                <input 
+                                    type="date" 
+                                    name="birth_date" 
+                                    max={maxBirthDate}
+                                    min="1920-01-01"
+                                    value={birthDate}
+                                    onChange={(e) => setBirthDate(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Residential Address</label>
+                                    <span className="text-[10px] text-slate-400 font-mono">{address.length} / 300</span>
+                                </div>
+                                <textarea 
+                                    name="address" 
+                                    rows={2}
+                                    maxLength={300}
+                                    value={address}
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
+                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs resize-none" 
+                                />
+                            </div>
 
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>

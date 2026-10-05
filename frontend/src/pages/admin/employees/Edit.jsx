@@ -41,6 +41,16 @@ export default function Edit() {
     const [selectedGroupId, setSelectedGroupId] = useState(cachedEmp?.production_group_id || '');
     const [isCustomLine, setIsCustomLine] = useState(false);
 
+    const [gender, setGender] = useState(cachedEmp?.gender || '');
+    const [birthDate, setBirthDate] = useState(cachedEmp?.birth_date ? String(cachedEmp.birth_date).split('T')[0] : '');
+    const [address, setAddress] = useState(cachedEmp?.address || '');
+
+    const maxBirthDate = useMemo(() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 15);
+        return d.toISOString().split('T')[0];
+    }, []);
+
     // Fetch real production groups from the dedicated database table
     const { data: productionGroupsData } = useQuery({
         queryKey: ['productionGroups'],
@@ -130,6 +140,15 @@ export default function Edit() {
                     }
                     if (emp.email) {
                         setEmailInput(emp.email);
+                    }
+                    if (emp.gender) {
+                        setGender(emp.gender);
+                    }
+                    if (emp.birth_date) {
+                        setBirthDate(String(emp.birth_date).split('T')[0]);
+                    }
+                    if (emp.address) {
+                        setAddress(emp.address);
                     }
                 } else if (!cachedEmp) {
                     toast.error('Employee not found');
@@ -278,6 +297,9 @@ export default function Edit() {
             role: data.role,
             first_name: data.first_name,
             last_name: data.last_name,
+            gender: gender || null,
+            birth_date: birthDate || null,
+            address: (address || '').trim() || null,
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
             production_group_id: isFactory ? groupId : null,
@@ -467,6 +489,51 @@ export default function Edit() {
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
                                 <input type="text" name="last_name" required defaultValue={employee.last_name || ''}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Gender</label>
+                                <select 
+                                    name="gender" 
+                                    value={gender}
+                                    onChange={(e) => setGender(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                >
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                    <option value="Prefer not to say">Prefer not to say</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
+                                <input 
+                                    type="date" 
+                                    name="birth_date" 
+                                    max={maxBirthDate}
+                                    min="1920-01-01"
+                                    value={birthDate}
+                                    onChange={(e) => setBirthDate(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Residential Address</label>
+                                    <span className="text-[10px] text-slate-400 font-mono">{address.length} / 300</span>
+                                </div>
+                                <textarea 
+                                    name="address" 
+                                    rows={2}
+                                    maxLength={300}
+                                    value={address}
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
+                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs resize-none" 
+                                />
                             </div>
 
                             <div>

@@ -29,3 +29,7 @@ docs/
 *.pdf
 *plan*.md
 *guide*.md
+
+# Supabase CLI temp files
+supabase/.temp/
+.temp/

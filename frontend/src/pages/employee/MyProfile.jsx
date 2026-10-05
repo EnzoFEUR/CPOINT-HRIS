@@ -367,6 +367,18 @@ export default function MyProfile() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${profile.id}` }, () => {
                 queryClient.invalidateQueries({ queryKey: ['myProfile'] });
             })
+            .on('broadcast', { event: 'PROFILE_UPDATED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id;
+                if (!targetId || targetId === profile.id) {
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
+            .on('broadcast', { event: 'EMPLOYEE_UPDATED' }, (payload) => {
+                const targetId = payload?.payload?.employee_id;
+                if (!targetId || targetId === profile.id) {
+                    queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                }
+            })
             .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, (payload) => {
                 const targetId = payload?.payload?.employee_id || payload?.payload?.employeeId;
                 if (!targetId || targetId === profile.id) {
@@ -450,6 +462,95 @@ export default function MyProfile() {
         const targetDate = new Date(refDate.getTime() + 14 * 24 * 60 * 60 * 1000);
         return Math.max(0, Math.ceil((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     }, [isPendingArchive, profile?.archived_at, profile?.separation_date]);
+
+    // Personal Details Edit State & Handlers
+    const [showEditPersonalModal, setShowEditPersonalModal] = useState(false);
+    const [isSavingPersonal, setIsSavingPersonal] = useState(false);
+    const [personalForm, setPersonalForm] = useState({
+        first_name: '',
+        last_name: '',
+        gender: '',
+        birth_date: '',
+        address: ''
+    });
+
+    const maxBirthDate = useMemo(() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 15);
+        return d.toISOString().split('T')[0];
+    }, []);
+
+    const openEditPersonalModal = () => {
+        if (isTerminated) {
+            toast.error('Profile modifications are disabled for separated/terminated accounts.');
+            return;
+        }
+        setPersonalForm({
+            first_name: profile?.first_name || '',
+            last_name: profile?.last_name || '',
+            gender: profile?.gender && profile.gender !== 'N/A' ? profile.gender : '',
+            birth_date: profile?.birth_date ? profile.birth_date.split('T')[0] : '',
+            address: profile?.address || ''
+        });
+        setShowEditPersonalModal(true);
+    };
+
+    const handleSavePersonalDetails = async (e) => {
+        e.preventDefault();
+        setIsSavingPersonal(true);
+        try {
+            const payload = {
+                first_name: (personalForm.first_name || '').trim(),
+                last_name: (personalForm.last_name || '').trim(),
+                gender: personalForm.gender || null,
+                birth_date: personalForm.birth_date || null,
+                address: (personalForm.address || '').trim() || null
+            };
+
+            const res = await fetchWithAuth('/api/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to update personal details.');
+            }
+
+            const updatedEmp = data.employee || data.user;
+            queryClient.setQueryData(['myProfile'], (old) => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    employee: { ...(old.employee || {}), ...updatedEmp },
+                    user: { ...(old.user || {}), ...updatedEmp }
+                };
+            });
+
+            try {
+                const rawUser = localStorage.getItem('user');
+                if (rawUser) {
+                    const parsed = JSON.parse(rawUser);
+                    parsed.first_name = updatedEmp.first_name;
+                    parsed.last_name = updatedEmp.last_name;
+                    parsed.gender = updatedEmp.gender;
+                    parsed.birth_date = updatedEmp.birth_date;
+                    parsed.address = updatedEmp.address;
+                    localStorage.setItem('user', JSON.stringify(parsed));
+                }
+                sessionStorage.removeItem(cacheStorageKey);
+            } catch (_) {}
+
+            queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+            toast.success('Personal details securely updated.');
+            setShowEditPersonalModal(false);
+        } catch (err) {
+            toast.error(err.message || 'Failed to save personal details.');
+        } finally {
+            setIsSavingPersonal(false);
+        }
+    };
 
     // Modal & Upload States
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -831,13 +932,24 @@ export default function MyProfile() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 {/* Personal Information */}
                 <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
-                    <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-                        <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
-                            <i className="ti ti-user text-lg" />
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2.5">
+                            <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
+                                <i className="ti ti-user text-lg" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-sm">Personal Details</h3>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="font-bold text-slate-900 text-sm">Personal Details</h3>
-                        </div>
+                        {!isTerminated && (
+                            <button
+                                type="button"
+                                onClick={openEditPersonalModal}
+                                className="h-7 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200 transition-colors duration-100 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            >
+                                <i className="ti ti-edit text-xs" /> Edit Details
+                            </button>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3.5 text-xs">
@@ -862,8 +974,12 @@ export default function MyProfile() {
                             <p className="font-semibold text-slate-900 truncate">{profile?.email || 'N/A'}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Home Address</p>
-                            <p className="font-semibold text-slate-900">{profile?.address || 'No address registered'}</p>
+                            <div className="mb-0.5">
+                                <p className="text-slate-500 font-semibold uppercase text-[10px]">Residential Address</p>
+                            </div>
+                            <p className="font-semibold text-slate-900">
+                                {profile?.address || 'No address registered'}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -1431,6 +1547,143 @@ export default function MyProfile() {
                     )}
                 </div>
             </div>
+
+            {/* Edit Personal Details Modal */}
+            {showEditPersonalModal && !isTerminated && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-xl border border-slate-200 space-y-4 my-auto max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
+                                    <i className="ti ti-edit text-base" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Edit Personal Details</h3>
+                                    <p className="text-[11px] text-slate-500">Update verified personal and residential details.</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !isSavingPersonal && setShowEditPersonalModal(false)}
+                                className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSavePersonalDetails} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        First Name <span className="text-danger-ink">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={personalForm.first_name}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, first_name: e.target.value })}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Last Name <span className="text-danger-ink">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={personalForm.last_name}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, last_name: e.target.value })}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Gender
+                                    </label>
+                                    <select
+                                        value={personalForm.gender}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, gender: e.target.value })}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs cursor-pointer"
+                                    >
+                                        <option value="">Select Gender</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                        Date of Birth
+                                    </label>
+                                    <input
+                                        type="date"
+                                        max={maxBirthDate}
+                                        min="1920-01-01"
+                                        value={personalForm.birth_date}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, birth_date: e.target.value })}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors shadow-2xs"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Residential Address
+                                    </label>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                        {personalForm.address?.length || 0} / 300
+                                    </span>
+                                </div>
+                                <textarea
+                                    rows={2}
+                                    maxLength={300}
+                                    value={personalForm.address}
+                                    onChange={(e) => setPersonalForm({ ...personalForm, address: e.target.value })}
+                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
+                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs resize-none"
+                                />
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
+                                    <i className="ti ti-shield-check text-accent" />
+                                    <span>Encrypted with strict XSS sanitization and enterprise access controls.</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    disabled={isSavingPersonal}
+                                    onClick={() => setShowEditPersonalModal(false)}
+                                    className="h-8 px-3.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-md border border-slate-200 transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingPersonal}
+                                    className="h-8 px-4 bg-accent hover:bg-accent-strong text-white text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+                                >
+                                    {isSavingPersonal ? (
+                                        <>
+                                            <i className="ti ti-loader animate-spin" /> Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ti ti-check" /> Save Changes
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Modal for file upload */}
             {showUploadModal && !isTerminated && (

@@ -4,6 +4,7 @@ import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
+import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
 
 const router = express.Router();
 
@@ -272,13 +273,44 @@ router.post('/', async (req, res) => {
             hourly_rate,
             monthly_salary,
             piece_rate,
-            role = 'employee'
+            role = 'employee',
+            gender,
+            birth_date,
+            address
         } = req.body;
 
         // Input validation
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
         if (!last_name || typeof last_name !== 'string' || last_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid last name' });
         if (!email || !email.includes('@')) return res.status(400).json({ success: false, error: 'Invalid email' });
+
+        // Validate and sanitize Gender
+        let sanitizedGender = null;
+        if (gender !== undefined && gender !== null && String(gender).trim()) {
+            sanitizedGender = sanitizeGender(gender);
+            if (!sanitizedGender && String(gender).trim().toUpperCase() !== 'N/A') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid gender selection. Choose from Male, Female, Other, or Prefer not to say.'
+                });
+            }
+        }
+
+        // Validate and sanitize Birth Date (Philippine DOLE Labor Compliance)
+        let validatedBirthDate = null;
+        if (birth_date !== undefined && birth_date !== null && String(birth_date).trim()) {
+            const birthCheck = validateBirthDate(birth_date);
+            if (!birthCheck.isValid) {
+                return res.status(400).json({
+                    success: false,
+                    error: birthCheck.error
+                });
+            }
+            validatedBirthDate = birthCheck.birthDate;
+        }
+
+        // Sanitize Residential Address
+        const sanitizedAddr = address ? sanitizeAddress(address) : null;
 
         // Enterprise Phone Number Validation (Philippine Standard: 09XXXXXXXXX)
         const sanitizedPhone = sanitizePhPhone(phone);
@@ -509,7 +541,10 @@ router.post('/', async (req, res) => {
                 hourly_rate: parsedHourlyRate,
                 email_hash: lookupHash,
                 status: 'active',
-                requires_password_change: true
+                requires_password_change: true,
+                gender: sanitizedGender,
+                birth_date: validatedBirthDate,
+                address: sanitizedAddr
             };
 
             let empData = null;
@@ -620,7 +655,10 @@ router.put('/:id', async (req, res) => {
             monthly_salary,
             piece_rate,
             shift,
-            production_group_id
+            production_group_id,
+            gender,
+            birth_date,
+            address
         } = req.body;
 
         let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
@@ -768,6 +806,32 @@ router.put('/:id', async (req, res) => {
         if (shift) updatePayload.shift = shift;
         if (production_group_id !== undefined) updatePayload.production_group_id = production_group_id;
 
+        if (gender !== undefined) {
+            const sanitizedGender = sanitizeGender(gender);
+            if (gender && !sanitizedGender && String(gender).trim().toUpperCase() !== 'N/A') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid gender selection. Choose from Male, Female, Other, or Prefer not to say.'
+                });
+            }
+            updatePayload.gender = sanitizedGender;
+        }
+
+        if (birth_date !== undefined) {
+            const birthCheck = validateBirthDate(birth_date);
+            if (!birthCheck.isValid) {
+                return res.status(400).json({
+                    success: false,
+                    error: birthCheck.error
+                });
+            }
+            updatePayload.birth_date = birthCheck.birthDate;
+        }
+
+        if (address !== undefined) {
+            updatePayload.address = sanitizeAddress(address);
+        }
+
         let { error } = await supabase
             .from('employees')
             .update(updatePayload)
@@ -838,6 +902,9 @@ router.put('/:id', async (req, res) => {
                 company_id: updatePayload.company_id || emp?.company_id,
                 first_name: updatePayload.first_name || emp?.first_name,
                 last_name: updatePayload.last_name || emp?.last_name,
+                gender: updatePayload.gender !== undefined ? updatePayload.gender : emp?.gender,
+                birth_date: updatePayload.birth_date !== undefined ? updatePayload.birth_date : emp?.birth_date,
+                address: updatePayload.address !== undefined ? updatePayload.address : emp?.address,
                 department: updatePayload.department || emp?.department,
                 job_title: updatePayload.job_title || emp?.job_title,
                 shift: updatePayload.shift || emp?.shift,

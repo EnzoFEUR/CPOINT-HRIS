@@ -203,9 +203,6 @@ export default function PayrollShow() {
                                     <p className="text-[11px] text-slate-500 font-medium tracking-wide mt-0.5">Manufacturing &amp; Human Capital Operations</p>
                                 </div>
                             </div>
-                            <p className="text-[11px] text-slate-400 mt-2 font-mono">
-                                DOLE DO 147-15 Standard Remuneration Statement
-                            </p>
                         </div>
 
                         <div className="sm:text-right flex flex-col sm:items-end">

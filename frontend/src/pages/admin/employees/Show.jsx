@@ -1036,6 +1036,22 @@ export default function Show() {
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Company ID</p>
                                 <p className="font-mono font-semibold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
                             </div>
+                            <div>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Gender</p>
+                                <p className="font-semibold text-slate-800 text-sm capitalize">{employee.gender || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Birth Date</p>
+                                <p className="font-mono font-semibold text-slate-800 text-sm">{formatDate(employee.birth_date)}</p>
+                            </div>
+                            <div className="col-span-2">
+                                <div className="mb-1">
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider text-[10px]">Residential Address</p>
+                                </div>
+                                <p className="font-semibold text-slate-800 text-sm">
+                                    {employee.address || 'No address registered'}
+                                </p>
+                            </div>
                             <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Account Status</p>

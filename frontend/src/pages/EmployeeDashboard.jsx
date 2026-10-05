@@ -34,6 +34,7 @@ const EmployeeDashboard = () => {
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [showPayslipModal, setShowPayslipModal] = useState(false);
     const [showInfractionsModal, setShowInfractionsModal] = useState(false);
+    const [showLatestPayMasked, setShowLatestPayMasked] = useState(false);
 
     // Leave Form State
     const [leaveForm, setLeaveForm] = useState({
@@ -1026,10 +1027,26 @@ const EmployeeDashboard = () => {
                                 <p className="text-white/80 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">
                                     {isTerminated ? 'Most Recent Net Pay' : isSuspended ? 'Latest Pay Record' : isFactoryWorker && !latestPayroll ? 'Compensation Model' : 'Latest Net Pay'}
                                 </p>
-                                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight font-mono">
-                                        {latestPayroll ? `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}` : (isFactoryWorker ? 'Batch Pool' : (isPayHistoryLoading ? '...' : '₱0.00'))}
+                                        {latestPayroll
+                                            ? (showLatestPayMasked ? '₱••••••' : `₱${parseFloat(latestPayroll.net_pay).toFixed(2)}`)
+                                            : (isFactoryWorker ? 'Batch Pool' : (isPayHistoryLoading ? '...' : '₱0.00'))}
                                     </h2>
+                                    {latestPayroll && (
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setShowLatestPayMasked((masked) => !masked);
+                                            }}
+                                            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+                                            aria-label={showLatestPayMasked ? 'Show latest pay' : 'Mask latest pay'}
+                                            title={showLatestPayMasked ? 'Show latest pay' : 'Mask latest pay'}
+                                        >
+                                            <i className={`ti ${showLatestPayMasked ? 'ti-eye' : 'ti-eye-off'} text-lg`} />
+                                        </button>
+                                    )}
                                     {latestPayroll && (
                                         <span className="text-[11px] font-mono font-medium text-white/90 bg-black/25 px-2 py-0.5 rounded border border-white/10">
                                             {latestPayroll.period_start ? dayjs(latestPayroll.period_start).format('MMM DD') : ''} – {latestPayroll.period_end ? dayjs(latestPayroll.period_end).format('MMM DD') : ''}
@@ -2244,9 +2261,6 @@ const EmployeeDashboard = () => {
                                                 <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide mt-0.5 truncate">Manufacturing &amp; Human Capital Operations</p>
                                             </div>
                                         </div>
-                                        <p className="text-[9px] sm:text-[10px] text-slate-400 mt-1 font-mono">
-                                            DOLE DO 147-15 Standard Remuneration Statement
-                                        </p>
                                     </div>
 
                                     <div className="flex items-center sm:items-end justify-between sm:justify-start gap-2 sm:gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
