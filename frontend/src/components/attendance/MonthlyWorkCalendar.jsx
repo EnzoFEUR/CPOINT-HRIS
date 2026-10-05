@@ -569,9 +569,6 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                             Monthly Work Schedule &amp; Attendance Audit
                         </h3>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            Shift: <span className="font-semibold text-slate-700">{monthlyData?.employee?.shift || 'Factory Standard (08:00 AM - 05:00 PM)'}</span> · Rest Day: <span className="font-semibold text-slate-700">Sunday</span>
-                        </p>
                     </div>
                 </div>
 
