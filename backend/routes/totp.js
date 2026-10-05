@@ -9,6 +9,7 @@ import {
     recordTotpFailure,
     clearTotpRateLimit
 } from '../services/totpService.js';
+import { verifyOtpCode } from '../services/otpService.js';
 import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
 
@@ -362,6 +363,38 @@ router.post('/verify', async (req, res) => {
         // PATH 2: Live Time-Based Token Verification
         const verifyResult = verifyTotpCode(meta.totp_secret, code);
         if (!verifyResult.valid) {
+            // Reciprocal Omnichannel Fallback: Check if user entered an active Email OTP instead
+            const candidateKeys = [
+                `modal_stepup_${user.email}`.toLowerCase().trim(),
+                `login_2fa_${user.email}`.toLowerCase().trim(),
+                `dest_email_${user.email}`.toLowerCase().trim(),
+                user.email.toLowerCase().trim()
+            ];
+            if (rawTarget && typeof rawTarget === 'string') {
+                const cleanRaw = rawTarget.toLowerCase().trim();
+                candidateKeys.push(`modal_stepup_${cleanRaw}`);
+                candidateKeys.push(`login_2fa_${cleanRaw}`);
+                candidateKeys.push(cleanRaw);
+            }
+
+            let isEmailOtpFallbackValid = false;
+            for (const key of candidateKeys) {
+                const check = verifyOtpCode(key, code);
+                if (check.valid) {
+                    isEmailOtpFallbackValid = true;
+                    break;
+                }
+            }
+
+            if (isEmailOtpFallbackValid) {
+                clearTotpRateLimit(rateLimitKey);
+                return res.json({
+                    success: true,
+                    message: 'Identity verified successfully via Email OTP fallback.',
+                    verifiedVia: 'EMAIL_OTP_SEAMLESS_FALLBACK'
+                });
+            }
+
             const failRecord = recordTotpFailure(rateLimitKey, 5, 5 * 60 * 1000);
             if (failRecord.locked) {
                 await createAuditLog({

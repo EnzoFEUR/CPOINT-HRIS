@@ -599,7 +599,6 @@ export default function Dashboard() {
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                                 <i className="ti ti-trophy text-amber-600 text-lg" /> Department Punctuality Scorecard
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Evaluated against shift start & grace periods</p>
                         </div>
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200">
                             30-Day Index
@@ -635,7 +634,6 @@ export default function Dashboard() {
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                                 <i className="ti ti-flame text-rose-600 text-lg" /> Burnout & Overtime Risk
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Overtime patterns and fatigue indicators</p>
                         </div>
                         <span className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase rounded-md border border-rose-200">
                             {isAnomalyLoading ? '...' : `${riskFlags.length} active flag${riskFlags.length === 1 ? '' : 's'}`}
@@ -721,7 +719,6 @@ export default function Dashboard() {
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                                 <i className="ti ti-chart-arrows-vertical text-emerald-600 text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly'} Payroll Forecaster
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Estimated gross payout based on approved work hours</p>
                         </div>
                         {payrollData?.employeesWithPayrate > 0 && (
                             <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-200 shrink-0">
@@ -782,7 +779,6 @@ export default function Dashboard() {
                             <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                                 <i className="ti ti-scale text-blue-600 text-lg" /> DOLE Rules &amp; Labor Standards
                             </h3>
-                            <p className="text-xs text-slate-500 font-medium">Rest day and overtime compliance under Philippine labor rules</p>
                         </div>
                         <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-md border border-emerald-300">
                             {doleCompliance ? `${doleCompliance.restDay.compliancePercent}% Audit-Ready` : '—'}
@@ -870,7 +866,6 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h3 className="text-base font-bold text-slate-900">Workforce Attendance Volume Trend</h3>
-                            <p className="text-xs text-slate-500 font-medium">{trendView === 'monthly' ? '5-Week' : '7-Day'} presence tracking</p>
                         </div>
                         <div className="bg-slate-100 rounded-md p-0.5 flex text-xs font-semibold text-slate-600 border border-slate-200">
                             <button

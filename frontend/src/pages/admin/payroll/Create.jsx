@@ -1863,9 +1863,6 @@ const PayrollCreate = () => {
                         </div>
                         <div className="min-w-0">
                             <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight truncate">Compute Payroll</h2>
-                            <p className="text-slate-400 text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-0.5 truncate">
-                                Estimated gross payout based on approved work hours
-                            </p>
                         </div>
                     </div>
 

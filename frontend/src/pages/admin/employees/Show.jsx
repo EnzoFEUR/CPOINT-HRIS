@@ -9,6 +9,7 @@ import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import ActionMenu from '../../../components/ui/ActionMenu';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import bannerCover from '../../../assets/employee-cover.jpg';
+import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -166,7 +167,7 @@ export default function Show() {
 
     const handleRevokeExemption = async () => {
         if (!employee) return;
-        if (!window.confirm(`Remove medical exemption for ${employee.first_name} ${employee.last_name}? They will be required to use both badge and face scan when clocking in.`)) return;
+        if (!window.confirm(`Remove medical exemption for ${employee.first_name} ${employee.last_name}? Standard biometric verification will be required.`)) return;
         setIsSubmittingExemption(true);
         try {
             const res = await fetchWithAuth(`/api/employees/${employee.id}/biometric-exemption`, {
@@ -1016,7 +1017,6 @@ export default function Show() {
                             </div>
                             <div>
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900">Personal Details</h3>
-                                <p className="text-xs text-slate-400 font-medium">Core identity & access role</p>
                             </div>
                         </div>
 
@@ -1069,7 +1069,6 @@ export default function Show() {
                             </div>
                             <div>
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900">Payroll & Job Specs</h3>
-                                <p className="text-xs text-slate-400 font-medium">Departmental salary scheme</p>
                             </div>
                         </div>
 
@@ -1170,6 +1169,13 @@ export default function Show() {
                     </div>
                 </div>
 
+                {/* Monthly Work Days & Attendance Audit Section */}
+                <MonthlyWorkCalendar
+                    employeeId={employee?.id || id}
+                    employeeName={employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`}
+                    isEmployeeView={false}
+                />
+
                 {/* Biometric Authentication & Medical Exemption Card */}
                 <div className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -1187,9 +1193,6 @@ export default function Show() {
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Biometric Authentication
                                 </h3>
-                                <p className="text-xs text-slate-500 font-medium">
-                                    Facial recognition verification and medical grace protocol
-                                </p>
                             </div>
                         </div>
 
@@ -1204,8 +1207,8 @@ export default function Show() {
                                 {isMedicalExemptActive
                                     ? 'Medical Exemption Active'
                                     : employee?.has_registered_biometrics
-                                    ? 'Enrolled'
-                                    : 'Not Enrolled'}
+                                    ? 'Registered'
+                                    : 'Not Registered'}
                             </span>
                         </div>
                     </div>
@@ -1296,9 +1299,6 @@ export default function Show() {
                                 </div>
                                 <div>
                                     <h4 className="font-semibold text-slate-800 text-sm">Face scan registered</h4>
-                                    <p className="text-slate-500 mt-0.5 leading-relaxed">
-                                        Employee uses both badge and face scan when clocking in.
-                                    </p>
                                 </div>
                             </div>
 
@@ -1358,9 +1358,6 @@ export default function Show() {
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Disciplinary & Compliance Records
                                 </h3>
-                                <p className="text-xs text-slate-500 font-medium">
-                                    DOLE due process logs, written warnings, suspensions, and clearances
-                                </p>
                             </div>
                         </div>
 

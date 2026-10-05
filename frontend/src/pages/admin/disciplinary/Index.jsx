@@ -927,7 +927,6 @@ export default function DisciplinaryIndex() {
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Action Required</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-2xl font-bold font-mono text-rose-600 tabular-nums">{activeCases}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">pending inquiry</span>
                         </div>
                     </div>
                 </div>
@@ -941,7 +940,6 @@ export default function DisciplinaryIndex() {
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Suspensions</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-2xl font-bold font-mono text-orange-600 tabular-nums">{suspensionsActive}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">gate locked</span>
                         </div>
                     </div>
                 </div>
@@ -955,7 +953,6 @@ export default function DisciplinaryIndex() {
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Warnings</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-2xl font-bold font-mono text-amber-600 tabular-nums">{warningsActive}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">on record</span>
                         </div>
                     </div>
                 </div>
@@ -969,7 +966,6 @@ export default function DisciplinaryIndex() {
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Cleared Records</p>
                         <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{overturnedCases}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">restored</span>
                         </div>
                     </div>
                 </div>

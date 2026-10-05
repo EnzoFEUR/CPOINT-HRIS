@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
-  const [method, setMethod] = useState('totp'); // 'totp' | 'email' | 'key'
+  const [method, setMethod] = useState('email'); // 'totp' | 'email' | 'key'
   const [step, setStep] = useState(1); // 1 = Request, 2 = Verify Code
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -19,6 +19,9 @@ export default function ForgotPassword() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [previewCode, setPreviewCode] = useState(null);
   const otpInputsRef = useRef([]);
+  const forgotSendLockRef = useRef(false);
+  const lastForgotClickRef = useRef(0);
+  const hasUserSelectedMethodRef = useRef(false);
   const navigate = useNavigate();
 
   // Enterprise persistent OTP cooldown hook (persists across page reloads/navigation)
@@ -57,7 +60,9 @@ export default function ForgotPassword() {
           setAccountStatus('not_found');
           setAccountInfo({ error: data.error || 'No registered workplace account found.' });
         } else if (!data.eligible) {
-          if (data.hasEmail === false) {
+          if (data.reason === 'pending_registration') {
+            setAccountStatus('pending_registration');
+          } else if (data.hasEmail === false) {
             setAccountStatus('no_email');
           } else {
             setAccountStatus('inactive');
@@ -66,10 +71,13 @@ export default function ForgotPassword() {
         } else {
           setAccountStatus('verified');
           setAccountInfo(data);
-          if (data.has_totp) {
-            setMethod('totp');
-          } else {
-            setMethod('email');
+          // Only auto-recommend method if user hasn't explicitly chosen a method tab and is on step 1
+          if (!hasUserSelectedMethodRef.current && step === 1) {
+            if (data.has_totp) {
+              setMethod('totp');
+            } else {
+              setMethod('email');
+            }
           }
         }
       } catch (err) {
@@ -83,7 +91,7 @@ export default function ForgotPassword() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [email]);
+  }, [email, step]);
 
   // 5-minute code expiration timer
   const [expiryTimer, setExpiryTimer] = useState(() => {
@@ -121,7 +129,10 @@ export default function ForgotPassword() {
             if (diff > 0) setExpiryTimer(diff);
           }
         }
-        if (parsed.method) setMethod(parsed.method);
+        if (parsed.method) {
+          setMethod(parsed.method);
+          hasUserSelectedMethodRef.current = true;
+        }
         if (parsed.maskedPhone) setMaskedPhone(parsed.maskedPhone);
         if (parsed.previewCode) setPreviewCode(parsed.previewCode);
         if (parsed.step === 2) setStep(2);
@@ -129,10 +140,25 @@ export default function ForgotPassword() {
     } catch {}
   }, []);
 
-  // Handle Form Submission for Step 1
-  const handleRequestReset = async (e, isResend = false) => {
+  // Handle Form Submission for Step 1 or Direct Dispatch
+  const handleRequestReset = async (e, isResend = false, targetMethodOverride = null) => {
     if (e) e.preventDefault();
-    if (!isResend && cooldown > 0 && method !== 'key') {
+
+    const activeMethod = targetMethodOverride || method;
+
+    // Double-click protection: Synchronous ref lock + 1500ms time throttle
+    const now = Date.now();
+    if (forgotSendLockRef.current || loading || (now - lastForgotClickRef.current < 1500)) {
+      return;
+    }
+    lastForgotClickRef.current = now;
+    forgotSendLockRef.current = true;
+
+    // Cooldown only applies to outbound network gateways (email/sms), never offline TOTP or local Key
+    const isOutboundGateway = activeMethod === 'email' || activeMethod === 'sms';
+
+    if (!isResend && isOutboundGateway && cooldown > 0) {
+      forgotSendLockRef.current = false;
       try {
         const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
         if (saved.email && saved.email === email.trim().toLowerCase()) {
@@ -145,7 +171,8 @@ export default function ForgotPassword() {
       return;
     }
 
-    if (isResend && cooldown > 0) {
+    if (isResend && isOutboundGateway && cooldown > 0) {
+      forgotSendLockRef.current = false;
       toast.error(`Please wait ${cooldown}s before requesting a new code.`);
       return;
     }
@@ -154,29 +181,45 @@ export default function ForgotPassword() {
     setSuccessMsg(null);
     setLoading(true);
 
-    // PATH 1: Google Authenticator (TOTP) - Zero dispatch delay
-    if (method === 'totp') {
-      if (accountStatus === 'not_found') {
-        const msg = 'No registered workplace account matches this email or Employee ID.';
-        setError(msg);
-        toast.error(msg);
-        setLoading(false);
-        return;
-      }
-      setStep(2);
+    // PATH 1: Google Authenticator (TOTP) - Zero dispatch delay, 100% offline generation
+    if (activeMethod === 'totp') {
       try {
-        sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
-          email: email.trim().toLowerCase(),
-          method: 'totp',
-          step: 2
-        }));
-      } catch {}
-      setLoading(false);
+        if (accountStatus === 'pending_registration') {
+          const msg = accountInfo?.error || 'This account has not completed initial registration or forced password change. Self-service password recovery is only available for registered accounts.';
+          setError(msg);
+          toast.error(msg);
+          return;
+        }
+        if (accountStatus === 'not_found') {
+          const msg = 'No registered workplace account matches this email or Employee ID.';
+          setError(msg);
+          toast.error(msg);
+          return;
+        }
+        if (accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
+          const msg = 'Google Authenticator 2FA is not configured for this account. Please use Email OTP.';
+          setError(msg);
+          toast.error(msg);
+          return;
+        }
+        setMethod('totp');
+        setStep(2);
+        try {
+          sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+            email: email.trim().toLowerCase(),
+            method: 'totp',
+            step: 2
+          }));
+        } catch {}
+      } finally {
+        forgotSendLockRef.current = false;
+        setLoading(false);
+      }
       return;
     }
 
     // PATH 2: Emergency Master Key Recovery (100% In-Browser UI, Zero CMD)
-    if (method === 'key') {
+    if (activeMethod === 'key') {
       try {
         const res = await fetch(`${API_BASE_URL}/api/auth/security/verify-emergency-key`, {
           method: 'POST',
@@ -200,33 +243,37 @@ export default function ForgotPassword() {
         console.error('[EMERGENCY_KEY_ERROR]', err);
         setError(err.message || 'Invalid Master Recovery Key.');
       } finally {
+        forgotSendLockRef.current = false;
         setLoading(false);
       }
       return;
     }
 
-    // PATH 2: Standard Dispatch (SMS OTP or Email Link)
+    // PATH 3: Standard Dispatch (Email OTP)
     try {
       if (!isResend) {
+        if (accountStatus === 'pending_registration') {
+          const msg = accountInfo?.error || 'This account has not completed initial registration or forced password change. Self-service recovery is only available for registered accounts. Please sign in with your temporary credentials issued by HR.';
+          setError(msg);
+          toast.error(msg);
+          return;
+        }
         if (accountStatus === 'not_found') {
           const msg = 'No registered workplace account matches this email or Employee ID. You can only reset password if you have a registered account.';
           setError(msg);
           toast.error(msg);
-          setLoading(false);
           return;
         }
         if (accountStatus === 'no_email') {
           const msg = 'This account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.';
           setError(msg);
           toast.error(msg);
-          setLoading(false);
           return;
         }
         if (accountStatus === 'inactive') {
           const msg = `This workplace account is currently ${accountInfo?.status || 'inactive'}. Password recovery is unavailable. Please contact HR.`;
           setError(msg);
           toast.error(msg);
-          setLoading(false);
           return;
         }
       }
@@ -235,7 +282,7 @@ export default function ForgotPassword() {
       const res = await fetch(`${API_BASE_URL}/api/auth/security/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetIdentifier, method }),
+        body: JSON.stringify({ email: targetIdentifier, method: 'email' }),
       });
 
       const data = await res.json();
@@ -255,20 +302,19 @@ export default function ForgotPassword() {
       } catch {}
       setExpiryTimer(activeSeconds);
 
-      const resolvedMasked = method === 'sms' 
-        ? (data.maskedPhone || 'your registered corporate phone')
-        : email.trim().toLowerCase();
+      const resolvedMasked = accountInfo?.email || email.trim().toLowerCase();
       const resolvedPreview = data.previewCode || null;
 
       setMaskedPhone(resolvedMasked);
       setPreviewCode(resolvedPreview);
+      setMethod('email');
       setStep(2);
 
       // Persist step 2 recovery session so reloading or returning doesn't reset it
       try {
         sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
           email: email.trim().toLowerCase(),
-          method,
+          method: 'email',
           maskedPhone: resolvedMasked,
           previewCode: resolvedPreview,
           step: 2
@@ -278,16 +324,73 @@ export default function ForgotPassword() {
       toast.success(
         isResend
           ? `Verification code resent to ${resolvedMasked}`
-          : (method === 'sms' 
-              ? `Verification code sent to ${resolvedMasked}`
-              : `Verification code dispatched to ${resolvedMasked}`)
+          : `Verification code dispatched to ${resolvedMasked}`
       );
     } catch (err) {
       console.error('[FORGOT_PASSWORD_ERROR]', err);
       setError(err.message || 'Unable to connect to security authentication service.');
     } finally {
+      forgotSendLockRef.current = false;
       setLoading(false);
     }
+  };
+
+  // Seamless Method Switching in Step 1
+  const handleSelectMethod = (selectedMethod) => {
+    hasUserSelectedMethodRef.current = true;
+    if (selectedMethod === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
+      toast.error('Google Authenticator 2FA is not configured for this account. Please use Email OTP.');
+      return;
+    }
+    setMethod(selectedMethod);
+    setError(null);
+  };
+
+  // Seamless Method Switching in Step 2: Switch to Email
+  const handleSwitchToEmailInStep2 = async () => {
+    if (loading) return;
+    setError(null);
+    setOtp(['', '', '', '', '', '']);
+
+    // If an Email OTP was already dispatched and is currently in cooldown or session
+    if (cooldown > 0) {
+      setMethod('email');
+      try {
+        const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+        sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+          ...saved,
+          method: 'email'
+        }));
+      } catch {}
+      toast.success(`Switched to Email OTP. Enter the code sent to ${maskedPhone || accountInfo?.email || email}.`);
+      setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
+      return;
+    }
+
+    // Cooldown elapsed or fresh session: dispatch email code now
+    await handleRequestReset(null, false, 'email');
+    setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
+  };
+
+  // Seamless Method Switching in Step 2: Switch to Authenticator
+  const handleSwitchToTotpInStep2 = () => {
+    if (loading) return;
+    if (accountStatus === 'verified' && accountInfo && !accountInfo.has_totp) {
+      toast.error('Google Authenticator 2FA is not configured for this account.');
+      return;
+    }
+    setError(null);
+    setOtp(['', '', '', '', '', '']);
+    setMethod('totp');
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+      sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+        ...saved,
+        method: 'totp'
+      }));
+    } catch {}
+    toast.success('Switched to Google Authenticator. Enter the 6-digit code from your app.');
+    setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
   };
 
   // OTP Input Handlers
@@ -422,23 +525,40 @@ export default function ForgotPassword() {
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
-                    <span>Code active via {method === 'sms' ? 'SMS' : 'Email'}</span>
+                    <span>Email code active</span>
                   </span>
                   <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
                     {cooldown}s cooldown
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-                  Your security code was dispatched to {maskedPhone} and remains valid for 5 minutes.
+                  A verification code was dispatched to {maskedPhone} and remains valid for 5 minutes.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
-                >
-                  <span>Enter Existing Code</span>
-                  <i className="ti ti-arrow-right text-xs" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMethod('email');
+                      setStep(2);
+                    }}
+                    className="flex-1 h-8 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                  >
+                    <span>Enter Email Code</span>
+                    <i className="ti ti-arrow-right text-xs" />
+                  </button>
+                  {accountInfo?.has_totp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMethod('totp');
+                        setStep(2);
+                      }}
+                      className="h-8 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1 transition-colors duration-100 cursor-pointer"
+                    >
+                      <span>Use Authenticator</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -503,6 +623,18 @@ export default function ForgotPassword() {
                 </div>
               )}
 
+              {accountStatus === 'pending_registration' && accountInfo && (
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
+                  <i className="ti ti-shield-lock text-amber-600 text-base shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-amber-950 block">{accountInfo.name} ({accountInfo.company_id})</span>
+                    <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                      This account is pending initial registration and must complete initial security setup with the temporary credentials provided by HR before self-service password recovery is enabled.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {accountStatus === 'not_found' && (
                 <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 flex items-start gap-2">
                   <i className="ti ti-alert-circle text-rose-500 text-base shrink-0 mt-0.5" />
@@ -546,18 +678,25 @@ export default function ForgotPassword() {
               <div className="grid grid-cols-3 p-0.5 bg-slate-100 rounded-md border border-slate-200 text-xs">
                 <button
                   type="button"
-                  onClick={() => setMethod('totp')}
+                  onClick={() => handleSelectMethod('totp')}
                   className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'totp'
                       ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                      : accountStatus === 'verified' && accountInfo && !accountInfo.has_totp
+                      ? 'text-slate-400 hover:text-slate-500'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
+                  title={
+                    accountStatus === 'verified' && accountInfo && !accountInfo.has_totp
+                      ? 'Google Authenticator 2FA is not configured for this account'
+                      : 'Verify with Google Authenticator'
+                  }
                 >
                   Authenticator
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMethod('email')}
+                  onClick={() => handleSelectMethod('email')}
                   className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'email'
                       ? 'bg-white text-slate-900 font-semibold shadow-2xs'
@@ -568,7 +707,7 @@ export default function ForgotPassword() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMethod('key')}
+                  onClick={() => handleSelectMethod('key')}
                   className={`h-7 font-medium rounded-sm transition-colors duration-100 cursor-pointer ${
                     method === 'key'
                       ? 'bg-white text-slate-900 font-semibold shadow-2xs'
@@ -614,16 +753,18 @@ export default function ForgotPassword() {
               type="submit"
               disabled={
                 loading ||
-                (cooldown > 0 && method !== 'key' && method !== 'totp') ||
+                (cooldown > 0 && (method === 'email' || method === 'sms')) ||
                 accountStatus === 'checking' ||
+                accountStatus === 'pending_registration' ||
                 accountStatus === 'not_found' ||
                 accountStatus === 'no_email' ||
-                accountStatus === 'inactive'
+                accountStatus === 'inactive' ||
+                (method === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp)
               }
               className={`w-full h-10 mt-2 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer ${
                 accountStatus === 'not_found'
                   ? 'bg-rose-600 hover:bg-rose-700'
-                  : accountStatus === 'no_email'
+                  : accountStatus === 'pending_registration' || accountStatus === 'no_email'
                   ? 'bg-amber-600 hover:bg-amber-700'
                   : accountStatus === 'inactive'
                   ? 'bg-slate-500 hover:bg-slate-600'
@@ -640,6 +781,11 @@ export default function ForgotPassword() {
                   <i className="ti ti-loader-2 animate-spin text-sm" />
                   <span>Checking Directory...</span>
                 </>
+              ) : accountStatus === 'pending_registration' ? (
+                <>
+                  <i className="ti ti-shield-lock text-sm" />
+                  <span>Pending Initial Registration</span>
+                </>
               ) : accountStatus === 'not_found' ? (
                 <>
                   <i className="ti ti-ban text-sm" />
@@ -655,14 +801,19 @@ export default function ForgotPassword() {
                   <i className="ti ti-lock text-sm" />
                   <span>Account Inactive</span>
                 </>
-              ) : cooldown > 0 && method !== 'key' && method !== 'totp' ? (
+              ) : method === 'totp' && accountStatus === 'verified' && accountInfo && !accountInfo.has_totp ? (
+                <>
+                  <i className="ti ti-alert-circle text-sm" />
+                  <span>Authenticator Not Configured</span>
+                </>
+              ) : cooldown > 0 && (method === 'email' || method === 'sms') ? (
                 <span>Resend in {cooldown}s</span>
               ) : method === 'key' ? (
                 <span>Verify Master Key</span>
               ) : method === 'totp' ? (
                 <span>Continue with Authenticator</span>
               ) : (
-                <span>Dispatch Email Code</span>
+                <span>Send Email Code</span>
               )}
             </button>
           </form>
@@ -675,10 +826,8 @@ export default function ForgotPassword() {
               <p className="text-xs text-slate-600">
                 {method === 'totp' ? (
                   <>Enter the 6-digit code from your <span className="font-semibold text-slate-900">Google Authenticator</span> app</>
-                ) : method === 'email' ? (
-                  <>Enter the 6-digit code sent to your email <span className="font-semibold text-slate-900">{maskedPhone}</span></>
                 ) : (
-                  <>Enter the 6-digit code sent to <span className="font-semibold text-slate-900">{maskedPhone}</span></>
+                  <>Enter the 6-digit code sent to your email <span className="font-semibold text-slate-900">{maskedPhone || accountInfo?.email || email}</span></>
                 )}
               </p>
             </div>
@@ -748,12 +897,47 @@ export default function ForgotPassword() {
               )}
             </button>
 
+            {/* In-Step 2 Real-Time Omnichannel Switcher */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col items-center justify-center">
+              {method === 'totp' ? (
+                <button
+                  type="button"
+                  onClick={handleSwitchToEmailInStep2}
+                  disabled={loading}
+                  className="text-xs text-slate-600 hover:text-slate-900 font-medium inline-flex items-center gap-1.5 transition-colors duration-100 cursor-pointer disabled:opacity-50"
+                >
+                  <i className="ti ti-mail text-slate-500" />
+                  <span>Don't have your Authenticator app? <span className="font-semibold text-slate-900 underline">Send code to email</span></span>
+                </button>
+              ) : (
+                accountInfo?.has_totp && (
+                  <button
+                    type="button"
+                    onClick={handleSwitchToTotpInStep2}
+                    disabled={loading}
+                    className="text-xs text-slate-600 hover:text-slate-900 font-medium inline-flex items-center gap-1.5 transition-colors duration-100 cursor-pointer disabled:opacity-50"
+                  >
+                    <i className="ti ti-shield-lock text-slate-500" />
+                    <span>Prefer your Authenticator app? <span className="font-semibold text-slate-900 underline">Use Authenticator</span></span>
+                  </button>
+                )
+              )}
+            </div>
+
             <div className="flex items-center justify-between text-xs pt-1">
               <button
                 type="button"
                 onClick={() => {
                   setStep(1);
                   setOtp(['', '', '', '', '', '']);
+                  setError(null);
+                  try {
+                    const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
+                    sessionStorage.setItem('cpoint_forgot_pwd_session', JSON.stringify({
+                      ...saved,
+                      step: 1
+                    }));
+                  } catch {}
                 }}
                 className="text-slate-500 hover:text-slate-800 font-medium cursor-pointer"
               >
@@ -762,7 +946,6 @@ export default function ForgotPassword() {
 
               {method === 'totp' ? (
                 <div className="flex items-center gap-1.5 text-slate-500 font-medium text-xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Updates every 30s • Offline</span>
                 </div>
               ) : (
@@ -778,7 +961,7 @@ export default function ForgotPassword() {
                   <span>•</span>
                   <button
                     type="button"
-                    onClick={() => handleRequestReset(null, true)}
+                    onClick={() => handleRequestReset(null, true, 'email')}
                     disabled={cooldown > 0 || loading}
                     className="text-slate-700 hover:text-slate-900 hover:underline font-semibold disabled:text-slate-400 disabled:no-underline cursor-pointer"
                   >

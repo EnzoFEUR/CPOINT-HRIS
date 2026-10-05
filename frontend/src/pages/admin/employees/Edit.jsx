@@ -24,6 +24,9 @@ export default function Edit() {
     const [employee, setEmployee] = useState(cachedEmp);
     const [isLoading, setIsLoading] = useState(!cachedEmp);
 
+    const [emailInput, setEmailInput] = useState(cachedEmp?.email || '');
+    const [emailStatus, setEmailStatus] = useState({ state: 'idle', message: '' });
+
     const [phone, setPhone] = useState(cachedEmp?.phone ? formatPhPhone(cachedEmp.phone) : '');
     const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
 
@@ -125,6 +128,9 @@ export default function Edit() {
                     if (emp.phone) {
                         setPhone(formatPhPhone(emp.phone));
                     }
+                    if (emp.email) {
+                        setEmailInput(emp.email);
+                    }
                 } else if (!cachedEmp) {
                     toast.error('Employee not found');
                     navigate('/admin/employees');
@@ -141,6 +147,46 @@ export default function Edit() {
             isMounted = false;
         };
     }, [id, navigate, cachedEmp]);
+
+    // Real-time low-latency email conflict and archive availability check
+    useEffect(() => {
+        const clean = String(emailInput || '').trim().toLowerCase();
+        if (!clean) {
+            setEmailStatus({ state: 'empty', message: '' });
+            return;
+        }
+        if (clean === String(employee?.email || '').trim().toLowerCase()) {
+            setEmailStatus({ state: 'current', message: '' });
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetchWithAuth(`/api/employees/check-email?email=${encodeURIComponent(clean)}&exclude_id=${id}`);
+                const data = await res.json();
+                if (data.heldByArchived) {
+                    setEmailStatus({
+                        state: 'archived',
+                        message: 'Archived record (will auto-reassign)'
+                    });
+                } else if (data.available) {
+                    setEmailStatus({
+                        state: 'available',
+                        message: 'Available'
+                    });
+                } else {
+                    setEmailStatus({
+                        state: 'conflict',
+                        message: data.message || 'Email in use by active personnel'
+                    });
+                }
+            } catch (_) {
+                setEmailStatus({ state: 'idle', message: '' });
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [emailInput, employee?.email, id]);
 
     function formatSalary(value) {
         if (value === null || value === undefined || value === '') return '';
@@ -208,6 +254,17 @@ export default function Edit() {
             }
         }
 
+        if (emailStatus.state === 'conflict') {
+            toast.error(emailStatus.message || 'This email address is already registered to another active personnel.');
+            return;
+        }
+
+        const cleanEmail = (emailInput || data.email || '').trim().toLowerCase();
+        if (!cleanEmail) {
+            toast.error('A valid email address is required.');
+            return;
+        }
+
         const phoneCheck = validatePhPhone(phone);
         if (!phoneCheck.isValid) {
             toast.error(phoneCheck.message || 'A valid 11-digit Philippine mobile phone number starting with 09 is required.');
@@ -216,7 +273,7 @@ export default function Edit() {
 
         // Form payload
         const payload = {
-            email: data.email,
+            email: cleanEmail,
             phone: phoneCheck.cleanPhone,
             role: data.role,
             first_name: data.first_name,
@@ -261,7 +318,7 @@ export default function Edit() {
                 toast.success('Profile updated successfully!');
                 navigate(`/admin/employees/${id}`);
             } else {
-                toast.error('Error: ' + (result.error || result.message || 'Update failed'));
+                toast.error(result.error || result.message || 'Update failed');
             }
         } catch (err) {
             toast.error('Network error. Failed to update account.');
@@ -306,9 +363,41 @@ export default function Edit() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
-                                <input type="email" name="email" required defaultValue={employee.email || ''}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Email Address <span className="text-rose-500">*</span>
+                                    </label>
+                                    {emailStatus.state !== 'idle' && emailStatus.state !== 'empty' && emailStatus.state !== 'current' && (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
+                                            emailStatus.state === 'available'
+                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                : emailStatus.state === 'archived'
+                                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                : emailStatus.state === 'conflict'
+                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                        }`}>
+                                            {emailStatus.message}
+                                        </span>
+                                    )}
+                                </div>
+                                <input 
+                                    type="email" 
+                                    name="email" 
+                                    required 
+                                    value={emailInput}
+                                    onChange={(e) => setEmailInput(e.target.value)}
+                                    placeholder="employee@cpoint.com"
+                                    className={`w-full h-9 px-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 shadow-2xs ${
+                                        emailStatus.state === 'available'
+                                            ? 'border-emerald-300 focus:border-emerald-500'
+                                            : emailStatus.state === 'archived'
+                                            ? 'border-blue-300 focus:border-blue-500'
+                                            : emailStatus.state === 'conflict'
+                                            ? 'border-rose-300 focus:border-rose-500'
+                                            : 'border-slate-200 focus:border-blue-500'
+                                    }`} 
+                                />
                             </div>
 
                             <div>

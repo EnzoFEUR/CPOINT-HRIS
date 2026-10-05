@@ -1522,9 +1522,6 @@ export default function PayrollIndex() {
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-emerald-600 tracking-tight">
                             ₱{metrics.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                            Processed take-home disbursement
-                        </p>
                     </div>
                 </div>
 
@@ -1541,9 +1538,6 @@ export default function PayrollIndex() {
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-slate-900 tracking-tight">
                             ₱{metrics.totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                            Total wages before deductions
-                        </p>
                     </div>
                 </div>
 
@@ -1560,12 +1554,6 @@ export default function PayrollIndex() {
                         <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-rose-500 tracking-tight">
                             ₱{metrics.totalStatutory.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        <p
-                            className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate"
-                            title={`SSS: ₱${metrics.totalSSS.toFixed(2)} | PH: ₱${metrics.totalPhilHealth.toFixed(2)} | HDMF: ₱${metrics.totalPagIbig.toFixed(2)} | Tax: ₱${metrics.totalTax.toFixed(2)}`}
-                        >
-                            Automatic deductions for SSS, PhilHealth, and Pag-IBIG
-                        </p>
                     </div>
                 </div>
 

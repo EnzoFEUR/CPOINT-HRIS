@@ -293,7 +293,7 @@ const EmployeeDashboard = () => {
                         biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
                     }));
                     queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Face Biometrics Enrolled! Turnstile QR pass activated.', { id: 'bio-dash-toast' });
+                    toast.success('Face Biometrics Registered! Turnstile QR pass activated.', { id: 'bio-dash-toast' });
                 }
             })
             .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
@@ -1593,7 +1593,7 @@ const EmployeeDashboard = () => {
                                 </span>
                                 <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mt-2">Turnstile Pass Locked</h2>
                                 <p className="text-slate-500 font-medium mt-1 text-xs max-w-sm mx-auto leading-relaxed">
-                                    Your dynamic QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+                                    Your dynamic QR turnstile credential will appear automatically once your face biometrics baseline has been registered.
                                 </p>
 
                                 <div className="my-4 p-3.5 bg-amber-50 rounded-md border border-amber-200/80 text-xs text-amber-900 leading-relaxed font-medium">

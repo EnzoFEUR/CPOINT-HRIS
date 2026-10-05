@@ -8,6 +8,7 @@ import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache } from '../../utils/disciplinaryCache';
 import bannerCover from '../../assets/employee-cover.jpg';
+import MonthlyWorkCalendar from '../../components/attendance/MonthlyWorkCalendar';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -907,6 +908,15 @@ export default function MyProfile() {
                     </div>
                 </div>
             </div>
+
+            {/* Monthly Work Schedule & Attendance Section */}
+            {(currentUserId || profile?.id) && (
+                <MonthlyWorkCalendar
+                    employeeId={currentUserId || profile?.id}
+                    employeeName={profile?.name || `${profile?.first_name || ''} ${profile?.last_name || ''}`}
+                    isEmployeeView={true}
+                />
+            )}
 
             {/* Biometric Authentication & Gate Access */}
             <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">

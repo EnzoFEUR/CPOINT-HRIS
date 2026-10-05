@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp } from '../services/otpService.js';
+import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
 import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
 import { createAuditLog } from './auditLogs.js';
 
@@ -104,7 +104,7 @@ router.post('/verify-workplace-account', async (req, res) => {
         // Query employees by email OR company_id
         const { data: emp, error } = await supabase
             .from('employees')
-            .select('id, company_id, first_name, last_name, email, role, status, is_active')
+            .select('id, company_id, first_name, last_name, email, role, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
             .or(`email.ilike.${clean},company_id.ilike.${clean}`)
             .maybeSingle();
 
@@ -140,12 +140,30 @@ router.post('/verify-workplace-account', async (req, res) => {
             });
         }
 
-        // Fetch registered mobile phone from Supabase Auth identity store if present
+        // Strict Registration & Biometrics Policy:
+        // Must either be a registered account (completed initial forced password change) OR have registered biometrics.
+        const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
+        const isRegisteredAccount = emp.requires_password_change === false || Boolean(emp.password_changed_at);
+
+        if (!hasBiometrics && !isRegisteredAccount) {
+            return res.json({
+                exists: true,
+                eligible: false,
+                reason: 'pending_registration',
+                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+                company_id: emp.company_id,
+                role: emp.role,
+                error: 'This account has not completed initial registration or forced password change. Self-service password recovery is only available for registered accounts or accounts with enrolled biometrics. Please sign in with your temporary credentials issued by HR.'
+            });
+        }
+
+        // Fetch registered mobile phone and TOTP status from Supabase Auth identity store
         let userPhone = null;
         let hasTotp = false;
-        if (emp.id) {
+        const targetUserId = emp.auth_user_id || emp.id;
+        if (targetUserId) {
             try {
-                const { data: authUserData } = await supabase.auth.admin.getUserById(emp.id);
+                const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
                 userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
                 hasTotp = Boolean(authUserData?.user?.user_metadata?.totp_enabled && authUserData?.user?.user_metadata?.totp_secret);
             } catch (_) {}
@@ -161,7 +179,9 @@ router.post('/verify-workplace-account', async (req, res) => {
             role: emp.role,
             hasPhone: Boolean(userPhone),
             maskedPhone: userPhone ? maskPhone(userPhone) : null,
-            has_totp: hasTotp
+            has_totp: hasTotp,
+            has_biometrics: hasBiometrics,
+            is_registered: isRegisteredAccount
         });
     } catch (err) {
         return res.status(500).json({ exists: false, error: err.message });
@@ -197,7 +217,7 @@ router.post('/forgot-password', async (req, res) => {
         // 2. Fetch employee details from database by email OR company_id
         const { data: emp, error: empErr } = await supabase
             .from('employees')
-            .select('id, company_id, first_name, last_name, email, role, status, is_active')
+            .select('id, company_id, first_name, last_name, email, role, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
             .or(`email.ilike.${normalizedEmail},company_id.ilike.${normalizedEmail}`)
             .maybeSingle();
 
@@ -223,6 +243,19 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
+        // 4. Strict Registration & Biometrics Policy:
+        // Recovery codes can ONLY be dispatched to accounts that have enrolled biometrics OR have completed initial account registration / force password change.
+        const hasBiometrics = Boolean(emp.has_registered_biometrics || emp.biometric_baseline_path);
+        const isRegisteredAccount = emp.requires_password_change === false || Boolean(emp.password_changed_at);
+
+        if (!hasBiometrics && !isRegisteredAccount) {
+            return res.status(403).json({
+                success: false,
+                reason: 'pending_registration',
+                error: 'This account has not completed initial registration or forced password change. Self-service password recovery is only permitted for registered accounts or accounts with enrolled biometrics. Please log in with your temporary credentials provided by HR.'
+            });
+        }
+
         const targetEmail = emp.email.trim().toLowerCase();
         const userName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague';
 
@@ -237,108 +270,127 @@ router.post('/forgot-password', async (req, res) => {
             }
         }
 
-        // 4.5. Enterprise Cooldown Check (prevent SMS/Email flood)
-        const cooldownCheck = checkOtpCooldown(targetEmail);
-        if (!cooldownCheck.allowed) {
+        // 4.5. Atomic Double-Click & Cooldown Lock Check
+        const lockKeys = [targetEmail, `pwd_reset_${targetEmail}`];
+        if (method === 'sms' && userPhone) {
+            lockKeys.push(`dest_phone_${userPhone}`);
+        } else {
+            lockKeys.push(`dest_email_${targetEmail}`);
+        }
+
+        const lock = acquireOtpLock(lockKeys);
+        if (!lock.acquired) {
+            const errorMsg = lock.reason === 'in_flight'
+                ? 'A verification dispatch is already processing for this account. Please wait a moment.'
+                : `Please wait ${lock.remainingSeconds}s before requesting another verification code.`;
             return res.status(429).json({
                 success: false,
-                error: `Please wait ${cooldownCheck.remainingSeconds}s before requesting another verification code.`,
-                retry_after: cooldownCheck.remainingSeconds
+                error: errorMsg,
+                retry_after: lock.remainingSeconds
             });
         }
 
         // 5. Method A: SMS OTP Dispatch (Demo Sandbox Code with 1-Click Autofill)
         if (method === 'sms') {
             if (!userPhone) {
+                releaseOtpLock(lockKeys, false);
                 return res.status(400).json({
                     success: false,
                     error: 'No registered corporate phone found for this account. Please select Email Verification.'
                 });
             }
 
-            const otpStorageKey = `pwd_reset_${targetEmail}`;
-            const otpInfo = getOrGenerateOtp(otpStorageKey);
-            const code = otpInfo.code;
-            storeOtp(otpStorageKey, code);
+            try {
+                const otpStorageKey = `pwd_reset_${targetEmail}`;
+                const otpInfo = getOrGenerateOtp(otpStorageKey);
+                const code = otpInfo.code;
+                storeOtp(otpStorageKey, code);
 
-            // Attempt carrier gateway dispatch; returns simulated if gateway uncredited
-            const smsResult = await sendSmsOtp(userPhone, code);
-            const isSimulated = Boolean(smsResult?.simulated) || !process.env.SEMAPHORE_API_KEY;
-            // For SMS, provide demo code so examiners and testers can 1-click autofill in the UI
-            const previewCode = code;
+                // Attempt carrier gateway dispatch; returns simulated if gateway uncredited
+                const smsResult = await sendSmsOtp(userPhone, code);
+                const isSimulated = Boolean(smsResult?.simulated) || !process.env.SEMAPHORE_API_KEY;
+                const previewCode = code;
 
-            recordOtpDispatch(targetEmail);
-            recordOtpDispatch(userPhone);
+                releaseOtpLock(lockKeys, true);
+
+                await createAuditLog({
+                    log_name: 'security',
+                    description: `Password recovery SMS OTP dispatched to ${maskPhone(userPhone)} for ${targetEmail} (${emp.role})`,
+                    subject_type: 'Security',
+                    subject_id: emp.id,
+                    event: 'PASSWORD_RESET_SMS_DISPATCHED',
+                    causer_id: emp.id,
+                    properties: {
+                        email: targetEmail,
+                        role: emp.role,
+                        method: 'sms',
+                        masked_phone: maskPhone(userPhone),
+                        ip: clientIp,
+                        user_agent: req.headers['user-agent']
+                    }
+                });
+
+                return res.json({
+                    success: true,
+                    method: 'sms',
+                    email: targetEmail,
+                    maskedPhone: maskPhone(userPhone),
+                    message: `6-digit security code sent to ${maskPhone(userPhone)}`,
+                    cooldown: 60,
+                    simulated: isSimulated,
+                    previewCode,
+                    reusedExisting: otpInfo.isExisting,
+                    expiresIn: otpInfo.remainingSeconds
+                });
+            } catch (smsErr) {
+                releaseOtpLock(lockKeys, false);
+                throw smsErr;
+            }
+        }
+
+        // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
+        try {
+            const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${targetEmail}`);
+            const emailCode = emailOtpInfo.code;
+            storeOtp(`pwd_reset_${targetEmail}`, emailCode);
+            const emailResult = await sendEmailOtp(targetEmail, emailCode, userName);
+
+            releaseOtpLock(lockKeys, true);
 
             await createAuditLog({
                 log_name: 'security',
-                description: `Password recovery SMS OTP dispatched to ${maskPhone(userPhone)} for ${targetEmail} (${emp.role})`,
+                description: `Password reset real email OTP dispatched to ${targetEmail} (${emp.role})`,
                 subject_type: 'Security',
                 subject_id: emp.id,
-                event: 'PASSWORD_RESET_SMS_DISPATCHED',
+                event: 'PASSWORD_RESET_EMAIL_DISPATCHED',
                 causer_id: emp.id,
                 properties: {
                     email: targetEmail,
                     role: emp.role,
-                    method: 'sms',
-                    masked_phone: maskPhone(userPhone),
+                    method: 'email',
                     ip: clientIp,
                     user_agent: req.headers['user-agent']
                 }
             });
-
-            return res.json({
-                success: true,
-                method: 'sms',
-                email: targetEmail,
-                maskedPhone: maskPhone(userPhone),
-                message: `6-digit security code sent to ${maskPhone(userPhone)}`,
-                cooldown: 60,
-                simulated: isSimulated,
-                previewCode,
-                reusedExisting: otpInfo.isExisting,
-                expiresIn: otpInfo.remainingSeconds
-            });
-        }
-
-        // 6. Method B: Real Email OTP Dispatch (Delivered to User Inbox via Brevo API)
-        const emailOtpInfo = getOrGenerateOtp(`pwd_reset_${targetEmail}`);
-        const emailCode = emailOtpInfo.code;
-        storeOtp(`pwd_reset_${targetEmail}`, emailCode);
-        const emailResult = await sendEmailOtp(targetEmail, emailCode, userName);
-
-        recordOtpDispatch(targetEmail);
-
-        await createAuditLog({
-            log_name: 'security',
-            description: `Password reset real email OTP dispatched to ${targetEmail} (${emp.role})`,
-            subject_type: 'Security',
-            subject_id: emp.id,
-            event: 'PASSWORD_RESET_EMAIL_DISPATCHED',
-            causer_id: emp.id,
-            properties: {
-                email: targetEmail,
-                role: emp.role,
-                method: 'email',
-                ip: clientIp,
-                user_agent: req.headers['user-agent']
-            }
-        });
 
         // Email OTP is 100% REAL delivered via Brevo.
         // We only expose previewCode if Brevo failed/fallback simulation is active.
         const isSimulated = Boolean(emailResult?.simulated);
         const previewCode = isSimulated ? emailCode : undefined;
 
-        return res.json({
-            success: true,
-            method: 'email',
-            email: targetEmail,
-            message: `6-digit security code dispatched to your email inbox: ${targetEmail}`,
-            cooldown: 60,
-            simulated: isSimulated,
-            previewCode
-        });
+            return res.json({
+                success: true,
+                method: 'email',
+                email: targetEmail,
+                message: `6-digit security code dispatched to your email inbox: ${targetEmail}`,
+                cooldown: 60,
+                simulated: isSimulated,
+                previewCode
+            });
+        } catch (emailErr) {
+            releaseOtpLock(lockKeys, false);
+            throw emailErr;
+        }
 
     } catch (err) {
         console.error('[AUTH_SECURITY_FORGOT_ERROR]', err);
@@ -402,7 +454,17 @@ router.post('/verify-reset-otp', async (req, res) => {
                     }
                 }
             } else {
-                return res.status(400).json({ success: false, error: 'Google Authenticator 2FA is not enabled for this account.' });
+                errorMessage = 'Google Authenticator 2FA is not enabled for this account.';
+            }
+
+            // Bidirectional Omnichannel Fallback: Check if user entered active Email OTP instead
+            if (!isValid) {
+                const otpStorageKey = `pwd_reset_${normalizedEmail}`;
+                const verifyResult = verifyOtpCode(otpStorageKey, otp);
+                if (verifyResult.valid) {
+                    isValid = true;
+                    verifiedVia = 'EMAIL_OTP_SEAMLESS_FALLBACK';
+                }
             }
         } else {
             // PATH B: Standard SMS/Email OTP verification

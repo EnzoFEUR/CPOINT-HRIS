@@ -38,7 +38,7 @@ export default function EmployeesIndex() {
     // UI State
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedDepartment, setSelectedDepartment] = useState('All');
-    const [filterStatus, setFilterStatus] = useState('All');
+    const [filterStatus, setFilterStatus] = useState('Active');
     const [viewMode, setViewMode] = useState('grid');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = viewMode === 'grid' ? 9 : 12;
@@ -63,6 +63,13 @@ export default function EmployeesIndex() {
 
     const handleArchiveAccessClick = (e) => {
         if (e) e.preventDefault();
+        const unlockKey = `cpoint_employee_module_unlocked_${currentUser?.id || currentUser?.email || 'admin'}`;
+        try {
+            if (sessionStorage.getItem(unlockKey) === 'true') {
+                navigate('/admin/archive');
+                return;
+            }
+        } catch {}
         setIsSecurityModalOpen(true); 
     };
 
@@ -125,7 +132,25 @@ export default function EmployeesIndex() {
     useEffect(() => {
         const handleSync = (payload) => {
             // Instant in-memory cache update for sub-millisecond perceived latency
-            if (payload?.payload?.employee_id || payload?.payload?.employeeId) {
+            if (payload?.eventType && payload?.table === 'employees') {
+                if (payload.eventType === 'UPDATE' && payload.new) {
+                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                        if (!Array.isArray(oldData)) return oldData;
+                        return oldData.map(emp => emp.id === payload.new.id ? { ...emp, ...payload.new } : emp);
+                    });
+                } else if (payload.eventType === 'INSERT' && payload.new) {
+                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                        if (!Array.isArray(oldData)) return [payload.new];
+                        if (oldData.some(emp => emp.id === payload.new.id)) return oldData;
+                        return [payload.new, ...oldData];
+                    });
+                } else if (payload.eventType === 'DELETE' && payload.old) {
+                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
+                        if (!Array.isArray(oldData)) return oldData;
+                        return oldData.filter(emp => emp.id !== payload.old.id);
+                    });
+                }
+            } else if (payload?.payload?.employee_id || payload?.payload?.employeeId) {
                 const targetEmpId = payload.payload.employee_id || payload.payload.employeeId;
                 const evt = payload.event;
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
@@ -364,7 +389,7 @@ export default function EmployeesIndex() {
         return { all, active, suspended, pendingTermination, salaried, pieceRate };
     }, [employees]);
 
-    const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'All');
+    const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'Active');
     const totalItems = filteredEmployees.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     const paginatedEmployees = filteredEmployees.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -372,7 +397,7 @@ export default function EmployeesIndex() {
     const handleClearFilters = useCallback(() => {
         setSearchQuery('');
         setSelectedDepartment('All');
-        setFilterStatus('All');
+        setFilterStatus('Active');
         setCurrentPage(1);
     }, []);
 
@@ -445,14 +470,14 @@ export default function EmployeesIndex() {
                         <div className="flex items-center gap-2 justify-between lg:justify-end overflow-x-auto">
                             <div className="h-9 flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 {[
-                                    { id: 'All', label: 'All', count: counts.all, dot: null },
-                                    { id: 'Active', label: 'Active', count: counts.active, dot: 'bg-emerald-500' },
-                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, dot: 'bg-amber-500', alert: counts.suspended > 0 },
+                                    { id: 'Active', label: 'Active', count: counts.active },
+                                    { id: 'All', label: 'All', count: counts.all },
+                                    { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
                                     ...(counts.pendingTermination > 0 ? [
-                                        { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, dot: 'bg-rose-500', alert: true }
+                                        { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
                                     ] : []),
-                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried, dot: null },
-                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate, dot: null }
+                                    { id: 'Salaried', label: 'Salaried', count: counts.salaried },
+                                    { id: 'Piece-Rate', label: 'Piece-Rate', count: counts.pieceRate }
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
@@ -622,9 +647,7 @@ export default function EmployeesIndex() {
                                                             <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
                                                                 <i className="ti ti-clock-pause" />
                                                             </span>
-                                                        ) : (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" title="Active" />
-                                                        )}
+                                                        ) : null}
                                                     </div>
                                                     
                                                     <div className="min-w-0 flex-1">
@@ -895,7 +918,7 @@ export default function EmployeesIndex() {
                                                         </span>
                                                     )}
                                                     <span className="text-[10px] font-semibold text-slate-400 block">
-                                                        {isBiometricEnrolled ? 'Biometrics Enrolled' : 'Face Pending'}
+                                                        {isBiometricEnrolled ? 'Biometrics Registered' : 'Face Pending'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1075,7 +1098,7 @@ export default function EmployeesIndex() {
                                                     <td className="px-4 py-3">
                                                         {isBiometricEnrolled ? (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-200/70 text-slate-700 rounded text-[11px] font-semibold border border-slate-300">
-                                                                <i className="ti ti-face-id text-slate-500" /> Enrolled
+                                                                <i className="ti ti-face-id text-slate-500" /> Registered
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[11px] font-semibold border border-amber-200">
@@ -1335,11 +1358,16 @@ export default function EmployeesIndex() {
                 onClose={() => setIsSecurityModalOpen(false)}
                 onSuccess={() => {
                     setIsSecurityModalOpen(false);
+                    const unlockKey = `cpoint_employee_module_unlocked_${currentUser?.id || currentUser?.email || 'admin'}`;
+                    try {
+                        sessionStorage.setItem(unlockKey, 'true');
+                    } catch {}
                     navigate('/admin/archive');
                 }}
                 email={currentUser?.email}
-                phone={currentUser?.phone}
-                initialMethod="email"
+                title="Archive Access Verification"
+                subtitle="Confirm your identity to access archived employee records."
+                description="Select a verification method to authenticate access to employee records."
             />
         </div>
     );

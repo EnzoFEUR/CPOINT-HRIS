@@ -143,6 +143,51 @@ router.get('/', cacheResponse(15), async (req, res) => {
     }
 });
 
+// Real-time email uniqueness and conflict verification endpoint
+router.get('/check-email', async (req, res) => {
+    try {
+        const rawEmail = String(req.query.email || '').trim().toLowerCase();
+        const excludeId = req.query.exclude_id ? String(req.query.exclude_id).trim() : null;
+
+        if (!rawEmail) {
+            return res.json({ available: true });
+        }
+
+        let query = supabase
+            .from('employees')
+            .select('id, first_name, last_name, company_id, status, is_active, archived_at')
+            .ilike('email', rawEmail);
+
+        if (excludeId) {
+            query = query.neq('id', excludeId);
+        }
+
+        const { data: existing, error } = await query.maybeSingle();
+        if (error) throw error;
+
+        if (!existing) {
+            return res.json({ available: true, message: 'Email is available' });
+        }
+
+        const isArchived = Boolean(existing.archived_at) || existing.is_active === false || existing.status === 'terminated';
+        if (isArchived) {
+            return res.json({
+                available: true,
+                heldByArchived: true,
+                message: `Currently attached to archived record (${existing.first_name} ${existing.last_name}). Will be automatically reassigned upon saving.`
+            });
+        }
+
+        return res.json({
+            available: false,
+            heldByArchived: false,
+            message: `Already registered to active personnel: ${existing.first_name} ${existing.last_name} (${existing.company_id || 'ID ' + existing.id})`
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Get employee details and 201 documents in a single parallel batch
 router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
@@ -263,15 +308,41 @@ router.post('/', async (req, res) => {
         // Check if an employee record already exists with this email or hash
         const { data: existingEmp } = await supabase
             .from('employees')
-            .select('id, company_id')
+            .select('id, company_id, first_name, last_name, status, is_active, archived_at, separation_notes')
             .or(`email_hash.eq.${lookupHash},email.eq.${normalizedEmail}`)
             .maybeSingle();
 
         if (existingEmp) {
-            return res.status(400).json({
-                success: false,
-                error: `This email is already registered to employee (${existingEmp.company_id || existingEmp.id}).`
-            });
+            const isArchived = Boolean(existingEmp.archived_at) || existingEmp.is_active === false || existingEmp.status === 'terminated';
+            if (isArchived) {
+                // Auto-release email from archived employee so new personnel can be onboarded
+                const [userPart, domainPart] = normalizedEmail.split('@');
+                const releasedEmail = `${userPart}+archived_${Date.now()}@${domainPart || 'cpointhris.archive'}`;
+                await supabase
+                    .from('employees')
+                    .update({
+                        email: releasedEmail,
+                        email_hash: null,
+                        separation_notes: existingEmp.separation_notes
+                            ? `${existingEmp.separation_notes} | [Email ${normalizedEmail} reassigned on ${new Date().toISOString().split('T')[0]}]`
+                            : `[Email ${normalizedEmail} reassigned on ${new Date().toISOString().split('T')[0]}]`,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingEmp.id);
+
+                try {
+                    await supabase.auth.admin.updateUserById(existingEmp.id, {
+                        email: releasedEmail,
+                        email_confirm: true
+                    });
+                } catch (_) {}
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    conflict: true,
+                    error: `This email is already registered to active personnel: ${existingEmp.first_name || ''} ${existingEmp.last_name || ''} (${existingEmp.company_id || existingEmp.id}).`
+                });
+            }
         }
 
         // Generate initial temporary password
@@ -480,7 +551,15 @@ router.post('/', async (req, res) => {
             throw dbError;
         }
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        const msg = error.message || '';
+        if (msg.includes('employees_email_key') || msg.includes('duplicate key') || error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                conflict: true,
+                error: 'An employee with this email address already exists. Please verify the email address.'
+            });
+        }
+        res.status(500).json({ success: false, error: msg });
     }
 });
 
@@ -558,9 +637,97 @@ router.put('/:id', async (req, res) => {
         };
 
         if (parsedDailyRate !== null) updatePayload.daily_rate = parsedDailyRate;
-        if (parsedHourlyRate !== null) updatePayload.hourly_rate = parsedHourlyRate;
+        if (email !== undefined && email !== null) {
+            const normalizedEmail = String(email).trim().toLowerCase();
+            if (!normalizedEmail) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'A valid email address is required.'
+                });
+            }
 
-        if (email) updatePayload.email = email;
+            // 1. Check for email uniqueness across the employee directory
+            const { data: existingEmp, error: checkError } = await supabase
+                .from('employees')
+                .select('id, first_name, last_name, company_id, status, is_active, archived_at, separation_notes')
+                .ilike('email', normalizedEmail)
+                .neq('id', req.params.id)
+                .maybeSingle();
+
+            if (checkError) {
+                console.warn('[EMAIL_CHECK_WARN]', checkError.message);
+            }
+
+            if (existingEmp) {
+                const isArchived = Boolean(existingEmp.archived_at) || existingEmp.is_active === false || existingEmp.status === 'terminated';
+                if (isArchived) {
+                    // Enterprise automatic email release: The administrator archived/removed the prior employee.
+                    // Release the email from the cold storage record so the active employee can use it without constraint collision.
+                    const [userPart, domainPart] = normalizedEmail.split('@');
+                    const releasedEmail = `${userPart}+archived_${Date.now()}@${domainPart || 'cpointhris.archive'}`;
+                    const releaseNote = `[Email ${normalizedEmail} reassigned to active personnel on ${new Date().toISOString().split('T')[0]}]`;
+
+                    await supabase
+                        .from('employees')
+                        .update({
+                            email: releasedEmail,
+                            separation_notes: existingEmp.separation_notes
+                                ? `${existingEmp.separation_notes} | ${releaseNote}`
+                                : releaseNote,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', existingEmp.id);
+
+                    // Reconcile Supabase Auth user if attached to archived employee
+                    try {
+                        await supabase.auth.admin.updateUserById(existingEmp.id, {
+                            email: releasedEmail,
+                            email_confirm: true
+                        });
+                    } catch (_) {}
+                } else {
+                    // Conflict with an active personnel record
+                    return res.status(409).json({
+                        success: false,
+                        conflict: true,
+                        error: `Email "${normalizedEmail}" is already registered to active personnel: ${existingEmp.first_name} ${existingEmp.last_name} (${existingEmp.company_id || 'ID ' + existingEmp.id}). Please verify the email or transfer it first.`
+                    });
+                }
+            }
+
+            // 2. Clear any lingering orphan auth accounts holding this email
+            try {
+                const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+                const conflictingAuth = authList?.users?.find(u => u.email?.toLowerCase() === normalizedEmail && u.id !== req.params.id);
+                if (conflictingAuth) {
+                    const { data: boundActive } = await supabase
+                        .from('employees')
+                        .select('id, is_active, archived_at')
+                        .eq('id', conflictingAuth.id)
+                        .maybeSingle();
+
+                    if (!boundActive || !boundActive.is_active || boundActive.archived_at) {
+                        const [userPart, domainPart] = normalizedEmail.split('@');
+                        const releasedEmail = `${userPart}+archived_${Date.now()}@${domainPart || 'cpointhris.archive'}`;
+                        await supabase.auth.admin.updateUserById(conflictingAuth.id, {
+                            email: releasedEmail
+                        }).catch(() => {});
+                    }
+                }
+            } catch (_) {}
+
+            updatePayload.email = normalizedEmail;
+
+            // 3. Synchronize new email to Supabase Auth for this employee
+            try {
+                await supabase.auth.admin.updateUserById(req.params.id, {
+                    email: normalizedEmail,
+                    email_confirm: true
+                });
+            } catch (authErr) {
+                console.warn('[AUTH_SYNC_EMAIL_WARN]', authErr.message);
+            }
+        }
         if (phone !== undefined && phone !== null && phone !== '') {
             const sanitizedPhone = sanitizePhPhone(phone);
             if (!sanitizedPhone) {
@@ -700,7 +867,15 @@ router.put('/:id', async (req, res) => {
 
         res.json({ success: true, message: 'Employee updated successfully.' });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        const msg = error.message || '';
+        if (msg.includes('employees_email_key') || msg.includes('duplicate key') || error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                conflict: true,
+                error: 'An employee with this email address already exists. Please verify the email address.'
+            });
+        }
+        res.status(500).json({ success: false, error: msg });
     }
 });
 

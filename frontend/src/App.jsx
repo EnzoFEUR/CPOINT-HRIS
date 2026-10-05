@@ -5,6 +5,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
 import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
+import EmployeeModuleGate from './components/security/EmployeeModuleGate';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
 
@@ -124,9 +125,11 @@ function App() {
           path="/admin/employees/:id/qr"
           element={
             <ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics>
-              <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-600 rounded-full animate-spin" /></div>}>
-                <EmployeeQrPrint />
-              </Suspense>
+              <EmployeeModuleGate>
+                <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-600 rounded-full animate-spin" /></div>}>
+                  <EmployeeQrPrint />
+                </Suspense>
+              </EmployeeModuleGate>
             </ProtectedRoute>
           }
         />
@@ -143,11 +146,15 @@ function App() {
         >
           <Route path="/" element={<RootRoute />} />
 
-          {/* Admin - Employees Directory */}
-          <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
-          <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
-          <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
-          <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
+          {/* Admin - Employees Directory & Archive (Strictly Gated by 2FA) */}
+          <Route element={<EmployeeModuleGate />}>
+            <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
+            <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
+            <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
+            <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
+            <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
+            <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
+          </Route>
 
           {/* Admin - Attendance */}
           <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
@@ -165,10 +172,8 @@ function App() {
           <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
           <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
           
-          {/* Admin - Documents & Archive */}
+          {/* Admin - Documents */}
           <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
-          <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
-          <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
 
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />

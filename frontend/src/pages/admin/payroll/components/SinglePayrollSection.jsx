@@ -99,12 +99,11 @@ const SinglePayrollSection = ({
                                 <h4 className="text-xs sm:text-sm font-bold text-emerald-950 flex items-center gap-2">
                                     <span>Leave with Pay Status</span>
                                     {isLoadingLeaves ? (
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md animate-pulse">
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md">
                                             Checking leaves...
                                         </span>
                                     ) : paidLeaves.length > 0 ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-md">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
                                             {totalPaidLeaveDays} Day{totalPaidLeaveDays > 1 ? 's' : ''} Leave with Pay
                                         </span>
                                     ) : (

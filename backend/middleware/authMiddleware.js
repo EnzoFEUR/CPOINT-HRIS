@@ -129,8 +129,13 @@ export const checkAdminOrOwnership = (req, res, next) => {
     
     // For non-admins, determine the target ID from params or query or body safely
     const targetId = req.params?.id || req.query?.employee_id || req.body?.employee_id;
+    const matchesSelf = targetId && (
+        targetId === req.user?.id || 
+        targetId === req.user?.company_id ||
+        targetId === req.user?.auth_user_id
+    );
     
-    if (!targetId || targetId !== req.user?.id) {
+    if (!targetId || !matchesSelf) {
         console.warn(`[RBAC BLOCK] User ${req.user?.id} attempted to access data for ${targetId || 'entire company'}`);
         return res.status(403).json({ error: 'UNAUTHORIZED: You can only access your own records.' });
     }

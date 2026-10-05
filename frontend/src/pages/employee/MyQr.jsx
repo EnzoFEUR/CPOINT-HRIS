@@ -193,7 +193,7 @@ const MyQr = () => {
             } catch (_) {}
             return updated;
           });
-          toast.success('Face Biometrics Enrolled! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
+          toast.success('Face Biometrics Registered! Digital turnstile QR pass is now active.', { id: 'bio-enrolled-toast', duration: 5000 });
           syncProfile();
         }
       })
@@ -554,7 +554,7 @@ const MyQr = () => {
             </h3>
 
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-sm font-medium">
-              In compliance with DOLE attendance verification standards, your optical QR turnstile credential will appear automatically once your face biometrics baseline has been enrolled.
+              In compliance with DOLE attendance verification standards, your optical QR turnstile credential will appear automatically once your face biometrics baseline has been registered.
             </p>
 
             <div className="mt-5 w-full max-w-xs space-y-2">

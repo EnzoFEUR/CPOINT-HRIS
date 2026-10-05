@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -12,14 +12,14 @@ import {
   Loader2,
   ShieldCheck,
   ArrowRight,
-  MessageSquare,
   ChevronRight,
   KeyRound,
   Lightbulb,
   Eye,
   EyeOff,
   AlertCircle,
-  ShieldAlert
+  ShieldAlert,
+  Send
 } from 'lucide-react';
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
 const MAX_FAILED_ATTEMPTS = 5;
@@ -58,21 +58,19 @@ const clearFailedAttempts = () => {
 };
 
 // Sensitive Data Masking Helpers
-const maskPhone = (phone) => {
-    if (!phone) return '••••';
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length <= 4) return '•••' + digits;
-    return `+63 ••• ••• •${digits.slice(-4)}`;
-};
-
 const maskEmail = (mail) => {
-    if (!mail) return '••••@••••';
-    const parts = mail.split('@');
-    if (parts.length < 2) return mail;
-    const name = parts[0];
-    const domain = parts[1];
-    if (name.length <= 2) return `${name}•••@${domain}`;
-    return `${name.slice(0, 2)}••••${name.slice(-1)}@${domain}`;
+    if (!mail || typeof mail !== 'string') return '******';
+    const trimmed = mail.trim().toLowerCase();
+    const parts = trimmed.split('@');
+    if (parts.length < 2) return trimmed;
+    const [name, domain] = parts;
+    if (name.length <= 2) {
+        return `${name[0]}*****@${domain}`;
+    }
+    const visiblePrefix = name.slice(0, 2);
+    const visibleSuffix = name.slice(-1);
+    const maskedLength = Math.max(3, name.length - 3);
+    return `${visiblePrefix}${'*'.repeat(maskedLength)}${visibleSuffix}@${domain}`;
 };
 
 export default function Login() {
@@ -104,6 +102,18 @@ export default function Login() {
     const [otpMethod, setOtpMethod] = useState(savedSession?.otpMethod || '');
     const [generatedOtp, setGeneratedOtp] = useState(savedSession?.generatedOtp || null);
     const [expiresAt, setExpiresAt] = useState(() => savedSession?.expiresAt || null);
+    const [hasTotp, setHasTotp] = useState(() => {
+        return Boolean(
+            savedSession?.employeeData?.hasTotp ||
+            savedSession?.employeeData?.totp_enabled ||
+            savedSession?.employeeData?.has_totp ||
+            (savedSession?.employeeData?._auth_metadata?.totp_enabled && savedSession?.employeeData?._auth_metadata?.totp_secret)
+        );
+    });
+
+    const otpSendLockRef = useRef(false);
+    const otpVerifyLockRef = useRef(false);
+    const lastOtpClickRef = useRef(0);
 
     // Persistent 60s cooldown hook across page reloads and tab navigations
     const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
@@ -235,6 +245,13 @@ export default function Login() {
                 if (data.isCooldown && data.cooldownRemaining > 0) {
                     startCooldown(data.cooldownRemaining);
                 }
+
+                if (typeof data.hasTotp === 'boolean') {
+                    setHasTotp(data.hasTotp);
+                    if (!data.hasTotp && otpMethod === 'totp') {
+                        setOtpMethod('');
+                    }
+                }
             } catch (err) {
                 // Silently fallback to client state
             }
@@ -350,18 +367,19 @@ export default function Login() {
                 const hasExistingValidOtp = existingExpiresAt && (existingExpiresAt > Date.now());
 
                 const meta = authData.user?.user_metadata || {};
-                const hasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+                const userHasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+                setHasTotp(userHasTotp);
 
                 const empWithMeta = { 
                     ...employee, 
-                    hasTotp,
+                    hasTotp: userHasTotp,
                     _auth_metadata: authData.user.user_metadata 
                 };
 
                 setEmployeeData(empWithMeta);
                 setLoading(false);
 
-                if (hasTotp) {
+                if (userHasTotp) {
                     setOtpMethod('totp');
                     setStep(3);
                     try {
@@ -397,8 +415,21 @@ export default function Login() {
     };
 
     const sendOtp = async (method, isResend = false) => {
+        // Double-click protection: Synchronous ref lock + 1500ms time throttle
+        const now = Date.now();
+        if (otpSendLockRef.current || loading || (now - lastOtpClickRef.current < 1500)) {
+            return;
+        }
+        lastOtpClickRef.current = now;
+        otpSendLockRef.current = true;
+
         // Authenticator TOTP requires zero dispatch wait time
         if (method === 'totp') {
+            otpSendLockRef.current = false;
+            if (!hasTotp) {
+                toast.error('Google Authenticator is not registered for this account.');
+                return;
+            }
             setOtpMethod('totp');
             setStep(3);
             try {
@@ -416,7 +447,8 @@ export default function Login() {
         // If an active unexpired code is already dispatched to this method (within 5 mins),
         // let the user proceed immediately to Step 3 without triggering duplicate dispatch or errors
         if (!isResend && step === 2 && timer > 0 && method === otpMethod) {
-            toast.success(`Resuming verification with your active code sent via ${method === 'sms' ? 'SMS' : 'Email'}`);
+            otpSendLockRef.current = false;
+            toast.success('Resuming verification with your active code sent via Email');
             setStep(3);
             try {
                 const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
@@ -427,8 +459,9 @@ export default function Login() {
 
         // Anti-spam 60s cooldown check
         if (isCooldown) {
+            otpSendLockRef.current = false;
             if (timer > 0 && method === otpMethod) {
-                toast.success(`Enter the code already sent to your ${method === 'sms' ? 'phone' : 'email'}`);
+                toast.success('Enter the code already sent to your email');
                 setStep(3);
                 return;
             }
@@ -436,11 +469,11 @@ export default function Login() {
                 toast.error(`Please wait ${cooldown}s before requesting a new code.`);
                 return;
             }
-            toast.error(`Please wait ${cooldown}s before requesting a code via ${method === 'sms' ? 'SMS' : 'Email'}, or use the code already sent.`);
+            toast.error(`Please wait ${cooldown}s before requesting a code via Email, or use the code already sent.`);
             return;
         }
 
-        setOtpMethod(method);
+        setOtpMethod('email');
         setLoading(true);
         setError(null);
         
@@ -451,9 +484,8 @@ export default function Login() {
                 method: 'POST',
                 body: JSON.stringify({
                     email: sanitizedEmail,
-                    phone: employeeData?.phone,
                     user_id: employeeData?.id,
-                    method,
+                    method: 'email',
                     purpose: 'login_2fa'
                 })
             });
@@ -482,8 +514,8 @@ export default function Login() {
                 setGeneratedOtp(null);
                 toast.success(
                     isResend
-                        ? `Verification code resent via ${method === 'sms' ? 'SMS' : 'Email'}`
-                        : `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`
+                        ? `Verification code resent to ${maskEmail(sanitizedEmail)}`
+                        : `Verification code sent to ${maskEmail(sanitizedEmail)}`
                 );
             }
 
@@ -507,13 +539,18 @@ export default function Login() {
             setError(err.message || 'Error sending verification code');
             toast.error(err.message || 'Failed to send verification code');
         } finally {
+            otpSendLockRef.current = false;
             setLoading(false);
         }
     };
 
     const verifyOtpDirect = async (codeToVerify) => {
+        if (otpVerifyLockRef.current || loading) return;
+        otpVerifyLockRef.current = true;
+
         const enteredOtp = typeof codeToVerify === 'string' ? codeToVerify : otpCode.join('');
         if (enteredOtp.length < 6) {
+            otpVerifyLockRef.current = false;
             return setError("Please enter the complete 6-digit code.");
         }
 
@@ -527,8 +564,7 @@ export default function Login() {
                 method: 'POST',
                 body: JSON.stringify({
                     email: sanitizedEmail,
-                    phone: employeeData?.phone,
-                    identifier: otpMethod === 'sms' ? employeeData?.phone : sanitizedEmail,
+                    identifier: sanitizedEmail,
                     otp: enteredOtp,
                     purpose: 'login_2fa'
                 })
@@ -618,6 +654,7 @@ export default function Login() {
         } catch (err) {
             setError(err.message || "Failed to verify code.");
         } finally {
+            otpVerifyLockRef.current = false;
             setLoading(false);
         }
     };
@@ -630,7 +667,7 @@ export default function Login() {
     const handleOtpChange = (index, e) => {
         const rawValue = e.target.value;
 
-        // Support mobile SMS autofill and paste
+        // Support one-time code autofill and paste
         if (rawValue.length > 1) {
             const digits = rawValue.replace(/\D/g, '').slice(0, 6).split('');
             if (digits.length > 0) {
@@ -896,14 +933,14 @@ export default function Login() {
                                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
                                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-700"></span>
                                             </span>
-                                            <span>Code active via {otpMethod === 'sms' ? 'SMS' : 'Email'}</span>
+                                            <span>Code active via Email</span>
                                         </span>
                                         <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">
                                             {formattedTimer}
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
-                                        Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your {otpMethod === 'sms' ? 'phone' : 'email'}.
+                                        Your 6-digit code remains valid for {formattedTimer}. You can enter the code already sent to your email.
                                     </p>
                                     <button
                                         type="button"
@@ -926,31 +963,54 @@ export default function Login() {
                             <div className="space-y-2">
                                 <button
                                     type="button"
-                                    onClick={() => sendOtp('totp')}
-                                    className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs ${
-                                        otpMethod === 'totp'
-                                            ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
-                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                    disabled={!hasTotp}
+                                    onClick={() => {
+                                        if (hasTotp) sendOtp('totp');
+                                    }}
+                                    className={`w-full p-2.5 border rounded-md transition-all flex items-center text-left gap-2.5 shadow-2xs ${
+                                        !hasTotp
+                                            ? 'bg-slate-50/80 border-slate-200/80 opacity-55 cursor-not-allowed select-none'
+                                            : otpMethod === 'totp'
+                                                ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30 cursor-pointer'
+                                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50 cursor-pointer'
                                     }`}
                                 >
-                                    <div className="h-8 w-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                        <ShieldCheck className="w-4 h-4 text-white" />
+                                    <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 shadow-2xs ${
+                                        !hasTotp ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'
+                                    }`}>
+                                        <ShieldCheck className={`w-4 h-4 ${!hasTotp ? 'text-slate-400' : 'text-white'}`} />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-xs text-slate-900">Google Authenticator</p>
+                                            <p className={`font-semibold text-xs ${!hasTotp ? 'text-slate-500' : 'text-slate-900'}`}>
+                                                Google Authenticator
+                                            </p>
+                                            {!hasTotp && (
+                                                <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded-sm border border-slate-300/60">
+                                                    Not Registered
+                                                </span>
+                                            )}
                                         </div>
-                                        <p className="text-[11px] text-slate-500 truncate">
-                                            Instant 6-digit code from your phone app
+                                        <p className="text-[11px] text-slate-400 truncate">
+                                            {!hasTotp ? 'Not configured for this account' : 'Instant 6-digit code from your phone app'}
                                         </p>
                                     </div>
-                                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                    <ChevronRight className={`w-4 h-4 shrink-0 ${!hasTotp ? 'text-slate-300' : 'text-slate-400'}`} />
                                 </button>
 
                                 <button
                                     type="button"
-                                    onClick={() => sendOtp('email')}
-                                    className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs ${
+                                    onClick={() => {
+                                        setOtpMethod('email');
+                                        setStep(3);
+                                        try {
+                                            const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
+                                            sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3, otpMethod: 'email' }));
+                                        } catch {}
+                                    }}
+                                    disabled={loading}
+                                    style={{ pointerEvents: loading ? 'none' : 'auto' }}
+                                    className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs disabled:opacity-50 ${
                                         otpMethod === 'email' && timer > 0
                                             ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
                                             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
@@ -968,40 +1028,12 @@ export default function Login() {
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-[11px] text-slate-500 truncate">{maskEmail(email)}</p>
+                                        <p className="text-[11px] text-slate-500 truncate">
+                                            {otpMethod === 'email' && timer > 0 ? `Code active for ${maskEmail(email)}` : `Send code to ${maskEmail(email)}`}
+                                        </p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                                 </button>
-
-                                {employeeData?.phone && (
-                                    <button
-                                        type="button"
-                                        onClick={() => sendOtp('sms')}
-                                        className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs opacity-80 hover:opacity-100 ${
-                                            otpMethod === 'sms' && timer > 0
-                                                ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-400/30'
-                                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                                        }`}
-                                    >
-                                        <div className="h-8 w-8 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0">
-                                            <MessageSquare className="w-4 h-4 text-slate-700" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center justify-between">
-                                                <p className="font-semibold text-xs text-slate-900">Send via SMS (Fallback)</p>
-                                                {otpMethod === 'sms' && timer > 0 && (
-                                                    <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-sm border border-slate-200">
-                                                        Active ({formattedTimer})
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-[11px] text-slate-500 truncate">
-                                                Mobile ending in {maskPhone(employeeData?.phone)}
-                                            </p>
-                                        </div>
-                                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-                                    </button>
-                                )}
                             </div>
 
                             {error && (
@@ -1021,7 +1053,78 @@ export default function Login() {
                         </div>
                     )}
 
-                    {step === 3 && (
+                    {step === 3 && otpMethod === 'email' && timer === 0 ? (
+                        <div className="text-center">
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-800 mb-2.5 shadow-2xs">
+                                <Mail className="w-5 h-5 text-slate-800" />
+                            </div>
+                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                                Email Verification
+                            </h2>
+                            <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
+                                Click below to send a 6-digit security code to your registered email
+                            </p>
+
+                            <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-semibold text-slate-700"></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Mail className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span className="font-mono text-xs font-bold text-slate-900 truncate">
+                                        {maskEmail(email)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div role="alert" className="mb-3 p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            <button
+                                type="button"
+                                disabled={loading || isCooldown}
+                                style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
+                                onClick={() => sendOtp('email')}
+                                className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                        <span>Sending Code...</span>
+                                    </>
+                                ) : isCooldown ? (
+                                    <span>Wait {cooldown}s before sending</span>
+                                ) : (
+                                    <>
+                                        <Send className="w-3.5 h-3.5" />
+                                        <span>Send Code to {maskEmail(email)}</span>
+                                    </>
+                                )}
+                            </button>
+
+                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleSwitchMethod}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    Switch Method
+                                </button>
+                                <span className="text-slate-200 text-xs">•</span>
+                                <button
+                                    type="button"
+                                    onClick={handleReturnToLogin}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    Return to Login
+                                </button>
+                            </div>
+                        </div>
+                    ) : step === 3 && (
                         <div className="text-center">
                             <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white mb-2.5 shadow-2xs">
                                 {otpMethod === 'totp' ? (
@@ -1036,7 +1139,7 @@ export default function Login() {
                             <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
                                 {otpMethod === 'totp'
                                     ? 'Enter the 6-digit code from Google Authenticator or Microsoft Authenticator'
-                                    : `Enter the 6-digit code sent to your ${otpMethod === 'sms' ? 'phone' : 'email'}`}
+                                    : `Enter the 6-digit code sent to ${maskEmail(email)}`}
                             </p>
 
                             <form onSubmit={verifyOtp}>
@@ -1106,7 +1209,6 @@ export default function Login() {
 
                             {otpMethod === 'totp' ? (
                                 <p className="mt-3.5 text-[11px] text-slate-500 flex items-center justify-center gap-1.5 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                     <span>Code rotates every 30s • No cellular signal required</span>
                                 </p>
                             ) : (
@@ -1120,6 +1222,7 @@ export default function Login() {
                                     <button
                                         type="button"
                                         disabled={loading || isCooldown}
+                                        style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
                                         onClick={() => sendOtp(otpMethod, true)}
                                         className="text-blue-600 hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                                     >
@@ -1132,10 +1235,31 @@ export default function Login() {
                                 {otpMethod === 'totp' ? (
                                     <button
                                         type="button"
-                                        onClick={() => sendOtp('email')}
-                                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer"
+                                        disabled={loading}
+                                        style={{ pointerEvents: loading ? 'none' : 'auto' }}
+                                        onClick={() => {
+                                            setOtpMethod('email');
+                                            setOtpCode(['', '', '', '', '', '']);
+                                            setError(null);
+                                        }}
+                                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer disabled:opacity-50"
                                     >
                                         Use Email Code Instead
+                                    </button>
+                                ) : hasTotp ? (
+                                    <button
+                                        type="button"
+                                        disabled={loading}
+                                        style={{ pointerEvents: loading ? 'none' : 'auto' }}
+                                        onClick={() => {
+                                            setOtpMethod('totp');
+                                            setOtpCode(['', '', '', '', '', '']);
+                                            setError(null);
+                                            toast.success('Switched to Google Authenticator. Enter the code from your app.');
+                                        }}
+                                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        Use Authenticator Instead
                                     </button>
                                 ) : (
                                     <button
@@ -1146,6 +1270,14 @@ export default function Login() {
                                         Switch Method
                                     </button>
                                 )}
+                                <span className="text-slate-200 text-xs">•</span>
+                                <button
+                                    type="button"
+                                    onClick={handleSwitchMethod}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    All Options
+                                </button>
                                 <span className="text-slate-200 text-xs">•</span>
                                 <button
                                     type="button"

@@ -4,6 +4,7 @@ import { Brain } from '../services/geminiBrain.js';
 import { checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
+import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
 
 const router = express.Router();
 
@@ -712,7 +713,7 @@ router.post(
         ip_address: req.ip
       });
 
-      invalidateCache(['/api/attendance', '/api/dashboard']);
+      invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
 
       return res.status(201).json({
         status: 'success',
@@ -749,7 +750,7 @@ router.post(
         ip_address: req.ip
       });
 
-      invalidateCache(['/api/attendance', '/api/dashboard']);
+      invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
 
       return res.json({
         status: 'success',
@@ -814,6 +815,41 @@ router.get(
         dailyLogs,
         activeDates,
       },
+    });
+  })
+);
+
+// 3.5 GET /api/attendance/employee-monthly (Monthly Work Days, Lates, Absences, and Leaves)
+router.get(
+  '/employee-monthly',
+  checkAdminOrOwnership,
+  cacheResponse(15),
+  asyncHandler(async (req, res) => {
+    const { reqId } = req;
+    const { employee_id, month } = req.query;
+
+    if (!employee_id || typeof employee_id !== 'string') {
+      throw new ValidationError('Valid employee_id is required.');
+    }
+    if (month && !/^\d{4}-\d{2}$/.test(month)) {
+      throw new ValidationError('Invalid month format. Expected YYYY-MM.');
+    }
+
+    const data = await getEmployeeMonthlyAttendance({ employeeId: employee_id, month });
+
+    logger.info(reqId, 'Employee monthly attendance fetched', { 
+      employee_id, 
+      month: data.month, 
+      expectedWorkDays: data.summary?.expected_work_days,
+      daysPresent: data.summary?.days_present,
+      daysLate: data.summary?.days_late,
+      daysAbsent: data.summary?.days_absent
+    });
+
+    res.json({
+      success: true,
+      status: 'success',
+      data,
     });
   })
 );

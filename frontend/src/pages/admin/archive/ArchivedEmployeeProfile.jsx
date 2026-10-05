@@ -463,7 +463,16 @@ export default function ArchivedEmployeeProfile() {
                 </div>
                 <div className="col-span-2">
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Email Address</span>
-                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{employee.email || 'Not on file'}</span>
+                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">
+                    {employee.email?.includes('+archived_') ? (
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span>{employee.email.replace(/\+archived_\d+@/, '@')}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">Reassigned</span>
+                      </span>
+                    ) : (
+                      employee.email || 'Not on file'
+                    )}
+                  </span>
                 </div>
                 <div>
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Company ID</span>

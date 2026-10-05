@@ -1,5 +1,5 @@
 import express from 'express';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp } from '../services/otpService.js';
+import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
 import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
 import { supabase } from '../supabaseClient.js';
 
@@ -140,54 +140,72 @@ router.post('/send', async (req, res) => {
         // Cryptographically isolate OTP stores by action scope
         const identifier = `${purpose}_${baseIdentifier}`.toLowerCase().trim();
 
-        // Enterprise Resend Cooldown Check (scoped by purpose)
-        const cooldownCheck = checkOtpCooldown(identifier);
-        if (!cooldownCheck.allowed) {
+        // Atomic lock keys to prevent double-click / concurrent race conditions
+        const lockKeys = [identifier];
+        if (targetEmail) {
+            lockKeys.push(`dest_email_${targetEmail.toLowerCase().trim()}`);
+            if (baseIdentifier !== targetEmail) {
+                lockKeys.push(`${purpose}_${targetEmail}`.toLowerCase().trim());
+            }
+        }
+        if (targetPhone) {
+            lockKeys.push(`dest_phone_${targetPhone.toLowerCase().trim()}`);
+        }
+
+        // Enterprise Atomic Lock & Cooldown Check
+        const lock = acquireOtpLock(lockKeys);
+        if (!lock.acquired) {
+            const errorMsg = lock.reason === 'in_flight'
+                ? 'A verification code is already being dispatched to your account. Please wait a moment.'
+                : `Please wait ${lock.remainingSeconds}s before requesting a new verification code.`;
             return res.status(429).json({
                 success: false,
-                error: `Please wait ${cooldownCheck.remainingSeconds}s before requesting a new verification code.`,
-                retry_after: cooldownCheck.remainingSeconds
+                error: errorMsg,
+                retry_after: lock.remainingSeconds
             });
         }
 
-        // Enterprise Standard: Reuse active code if still valid (< 5 mins), otherwise generate fresh code
-        const otpInfo = getOrGenerateOtp(identifier);
-        const code = otpInfo.code;
-        storeOtp(identifier, code, method);
-        
-        // Also map to targetEmail under the same purpose scope so verification succeeds regardless of identifier provided
-        if (targetEmail && baseIdentifier !== targetEmail) {
-            const emailScopedId = `${purpose}_${targetEmail}`.toLowerCase().trim();
-            storeOtp(emailScopedId, code, method);
+        try {
+            // Enterprise Standard: Reuse active code if still valid (< 5 mins), otherwise generate fresh code
+            const otpInfo = getOrGenerateOtp(identifier);
+            const code = otpInfo.code;
+            storeOtp(identifier, code, method);
+            
+            // Also map to targetEmail under the same purpose scope so verification succeeds regardless of identifier provided
+            if (targetEmail && baseIdentifier !== targetEmail) {
+                const emailScopedId = `${purpose}_${targetEmail}`.toLowerCase().trim();
+                storeOtp(emailScopedId, code, method);
+            }
+
+            let dispatchResult;
+            if (method === 'sms') {
+                dispatchResult = await sendSmsOtp(targetPhone, code);
+            } else {
+                dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
+            }
+
+            // Release in-flight lock and stamp successful cooldown
+            releaseOtpLock(lockKeys, true);
+
+            const isSimulated = Boolean(dispatchResult?.simulated);
+            const previewCode = (isSimulated || method === 'sms' || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
+
+            return res.json({
+                success: true,
+                message: `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
+                method,
+                purpose,
+                cooldown: 60,
+                simulated: isSimulated,
+                previewCode,
+                reusedExisting: otpInfo.isExisting,
+                expiresIn: otpInfo.remainingSeconds
+            });
+        } catch (dispatchErr) {
+            // Release lock without punishing user if dispatch failed
+            releaseOtpLock(lockKeys, false);
+            throw dispatchErr;
         }
-
-        let dispatchResult;
-        if (method === 'sms') {
-            dispatchResult = await sendSmsOtp(targetPhone, code);
-        } else {
-            dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
-        }
-
-        // Record cooldown dispatch on both primary identifier and email (scoped by purpose)
-        recordOtpDispatch(identifier);
-        if (targetEmail && baseIdentifier !== targetEmail) {
-            recordOtpDispatch(`${purpose}_${targetEmail}`.toLowerCase().trim());
-        }
-
-        const isSimulated = Boolean(dispatchResult?.simulated);
-        const previewCode = (isSimulated || method === 'sms' || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
-
-        res.json({
-            success: true,
-            message: `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
-            method,
-            purpose,
-            cooldown: 60,
-            simulated: isSimulated,
-            previewCode,
-            reusedExisting: otpInfo.isExisting,
-            expiresIn: otpInfo.remainingSeconds
-        });
 
     } catch (err) {
         console.error('[OTP_SEND_ERROR]', err.message);

@@ -55,6 +55,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Static brand and email assets (zero-latency WebP caching)
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '30d', immutable: true }));
+app.use(express.static(path.join(__dirname, '../frontend/public'), { maxAge: '30d', immutable: true }));
+
 // Start background workers
 startCronJobs();
 
