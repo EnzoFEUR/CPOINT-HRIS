@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
+import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
 
@@ -62,6 +63,14 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
     if (isSuspended) operational_status = 'Suspended';
     else if (isTerminated) operational_status = 'Terminated';
 
+    const standing = computeDisciplinaryStanding({
+        isTerminated,
+        isSuspended,
+        status: emp.status,
+        operational_status,
+        disciplinaryLogs: logs
+    });
+
     return {
         is_terminated: isTerminated,
         is_suspended: isSuspended,
@@ -77,8 +86,11 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
             status: 'Active',
             date: emp.separation_date || emp.archived_at || new Date().toISOString()
         } : null)),
-        past_suspensions_count: logs.filter(l => l.type === 'Suspension').length,
-        disciplinary_count: logs.length
+        past_suspensions_count: standing.served_suspensions_count,
+        served_suspensions_count: standing.served_suspensions_count,
+        cleared_suspensions_count: standing.cleared_suspensions_count,
+        disciplinary_count: logs.length,
+        disciplinary_standing: standing
     };
 }
 

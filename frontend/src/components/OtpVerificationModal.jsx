@@ -4,22 +4,6 @@ import { useOtpCooldown } from '../utils/useOtpCooldown';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://cpoint-hris.onrender.com' : 'http://localhost:5000');
 
-// Sensitive Data Masking Helper
-const maskEmail = (mail) => {
-    if (!mail || typeof mail !== 'string') return '******';
-    const trimmed = mail.trim().toLowerCase();
-    const parts = trimmed.split('@');
-    if (parts.length < 2) return trimmed;
-    const [name, domain] = parts;
-    if (name.length <= 2) {
-        return `${name[0]}*****@${domain}`;
-    }
-    const visiblePrefix = name.slice(0, 2);
-    const visibleSuffix = name.slice(-1);
-    const maskedLength = Math.max(3, name.length - 3);
-    return `${visiblePrefix}${'*'.repeat(maskedLength)}${visibleSuffix}@${domain}`;
-};
-
 export default function OtpVerificationModal({
     isOpen,
     onClose,
@@ -60,7 +44,6 @@ export default function OtpVerificationModal({
     const [isSending, setIsSending] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
-    const [demoOtpCode, setDemoOtpCode] = useState(null);
     const [backupMode, setBackupMode] = useState(false);
     const [backupCode, setBackupCode] = useState('');
 
@@ -140,7 +123,6 @@ export default function OtpVerificationModal({
                     setExpiryTimer(diff);
                 } else {
                     setExpiryTimer(0);
-                    setDemoOtpCode(null);
                 }
             } catch {
                 setExpiryTimer(0);
@@ -177,7 +159,7 @@ export default function OtpVerificationModal({
     };
 
     // Explicit Manual Email OTP Dispatch (Dispatches only upon user manual click to preserve Brevo credits)
-    const handleSendEmailOtp = async (isResend = false) => {
+    const handleSendEmailOtp = async (isResend = false, isMock = false) => {
         // Double-click protection: Synchronous ref lock + 1500ms time throttle
         const now = Date.now();
         if (sendLockRef.current || isSending || (now - lastSendClickRef.current < 1500)) {
@@ -186,7 +168,7 @@ export default function OtpVerificationModal({
         lastSendClickRef.current = now;
         sendLockRef.current = true;
 
-        if (isCooldown) {
+        if (isCooldown && !isMock) {
             sendLockRef.current = false;
             toast.error(`Please wait ${cooldown}s before requesting a new code.`);
             return;
@@ -195,7 +177,6 @@ export default function OtpVerificationModal({
         setIsSending(true);
         setErrorMessage('');
         setDigits(['', '', '', '', '', '']);
-        setDemoOtpCode(null);
         setBackupMode(false);
 
         try {
@@ -205,7 +186,8 @@ export default function OtpVerificationModal({
                 body: JSON.stringify({
                     method: 'email',
                     email,
-                    purpose: 'modal_stepup'
+                    purpose: 'modal_stepup',
+                    mock: isMock
                 })
             });
 
@@ -220,8 +202,8 @@ export default function OtpVerificationModal({
                 throw new Error(data.error || 'Failed to dispatch email verification code.');
             }
 
-            // Start persistent 60s cooldown
-            startCooldown(data.cooldown || 60);
+            // Start persistent cooldown (shorter for mock testing)
+            startCooldown(data.cooldown || (isMock ? 5 : 60));
 
             // Persist code expiration timestamp
             const activeSeconds = data.expiresIn || 300;
@@ -231,16 +213,18 @@ export default function OtpVerificationModal({
             } catch {}
             setExpiryTimer(activeSeconds);
 
-            // Populate previewCode whenever returned by the backend
-            if (data.previewCode) {
-                setDemoOtpCode(data.previewCode);
+            if (isMock && data.previewCode) {
+                const previewDigits = data.previewCode.split('');
+                setDigits(previewDigits);
+                toast.success(`Mock OTP: ${data.previewCode} (Brevo email skipped)`);
+            } else {
+                toast.success(
+                    isResend
+                        ? `Verification code resent to ${email}`
+                        : `Verification code sent to ${email}`
+                );
             }
 
-            toast.success(
-                isResend
-                    ? `Verification code resent to ${maskEmail(email)}`
-                    : `Verification code sent to ${maskEmail(email)}`
-            );
             setTimeout(() => inputRefs.current[0]?.focus(), 150);
         } catch (err) {
             setErrorMessage(err.message || 'Failed to send verification code.');
@@ -524,7 +508,7 @@ export default function OtpVerificationModal({
                                             )}
                                         </div>
                                         <p className="text-[11px] text-slate-500 font-medium truncate">
-                                            {expiryTimer > 0 ? `Code active for ${maskEmail(email)}` : `Send code to ${maskEmail(email)}`}
+                                            {expiryTimer > 0 ? `Code active for ${email}` : `Send code to ${email}`}
                                         </p>
                                     </div>
                                 </div>
@@ -567,7 +551,7 @@ export default function OtpVerificationModal({
                                     <div className="flex items-center gap-2">
                                         <i className="ti ti-mail-check text-accent text-base shrink-0" />
                                         <span className="font-mono text-xs font-bold text-slate-900 truncate">
-                                            {maskEmail(email)}
+                                            {email}
                                         </span>
                                     </div>
                                 </div>
@@ -581,7 +565,7 @@ export default function OtpVerificationModal({
 
                                 <button
                                     type="button"
-                                    onClick={() => handleSendEmailOtp(false)}
+                                    onClick={() => handleSendEmailOtp(false, false)}
                                     disabled={isSending || isCooldown}
                                     style={{ pointerEvents: (isSending || isCooldown) ? 'none' : 'auto' }}
                                     className="w-full h-10 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-semibold rounded-md text-xs transition-colors duration-100 shadow-2xs cursor-pointer flex items-center justify-center gap-2"
@@ -596,16 +580,26 @@ export default function OtpVerificationModal({
                                     ) : (
                                         <>
                                             <i className="ti ti-send text-xs" />
-                                            <span>Send Code to {maskEmail(email)}</span>
+                                            <span>Send Code</span>
                                         </>
                                     )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={isSending}
+                                    onClick={() => handleSendEmailOtp(false, true)}
+                                    className="w-full h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer mt-2 border border-slate-200 shadow-2xs"
+                                >
+                                    <i className="ti ti-flask text-sm text-slate-500" />
+                                    <span>Mock OTP (Skip Brevo Email)</span>
                                 </button>
 
                                 <div className="text-center pt-1 border-t border-slate-100">
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setStep('select');
+                                             setStep('select');
                                             setDigits(['', '', '', '', '', '']);
                                             setErrorMessage('');
                                         }}
@@ -635,7 +629,7 @@ export default function OtpVerificationModal({
                                             ? (backupMode
                                                 ? 'Enter one of your 8 emergency backup codes (CP-XXXX-XXXX)'
                                                 : 'Enter the 6-digit code displayed in Google Authenticator')
-                                            : `Enter the 6-digit code sent to ${maskEmail(email)}`}
+                                            : `Enter the 6-digit code sent to ${email}`}
                                     </p>
                                 </div>
 
@@ -647,22 +641,6 @@ export default function OtpVerificationModal({
                                     </div>
                                 )}
 
-                                {/* Auto-fill Pill (Email preview code in test/demo mode) */}
-                                {demoOtpCode && method === 'email' && (
-                                    <div className="flex justify-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setDigits(demoOtpCode.split(''));
-                                                verifyOtpCode(demoOtpCode);
-                                            }}
-                                            className="h-7 px-2.5 bg-warning-subtle hover:bg-warning-subtle border border-warning/20 text-warning-ink rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
-                                        >
-                                            <i className="ti ti-bolt text-warning-ink" />
-                                            <span>Security Code: <strong className="font-mono text-xs tracking-wider font-bold text-accent">{demoOtpCode}</strong> (Autofill)</span>
-                                        </button>
-                                    </div>
-                                )}
 
                                 <div className="space-y-3">
                                     {backupMode ? (
@@ -783,7 +761,7 @@ export default function OtpVerificationModal({
                                                 setBackupCode('');
                                                 setMethod('email');
                                                 if (expiryTimer > 0) {
-                                                    toast.success(`Switched to Email OTP. Enter the code sent to ${maskEmail(email)}.`);
+                                                    toast.success(`Switched to Email OTP. Enter the code sent to ${email}.`);
                                                     setTimeout(() => inputRefs.current[0]?.focus(), 150);
                                                 }
                                             }}

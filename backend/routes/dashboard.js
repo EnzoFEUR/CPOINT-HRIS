@@ -4,7 +4,8 @@ import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.j
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
-import { isWorkforceEmployee, applyWorkforceFilter } from '../utils/workforce.js';
+import { isWorkforceEmployee, isAttendanceExempt, applyWorkforceFilter } from '../utils/workforce.js';
+import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
 
@@ -223,6 +224,8 @@ function countWorkingDays(start, end) {
 
 /**
  * In-memory weekly payroll forecaster
+ * Strictly computes payroll projections for active workforce employees (role === 'employee').
+ * Guards, Admins, and HR personnel are completely excluded from headcount, compensation, and department breakdowns.
  */
 function computePayrollForecastFromData(employees, attendances) {
     const today = new Date();
@@ -249,6 +252,15 @@ function computePayrollForecastFromData(employees, attendances) {
     let employeesWithPayrate = 0;
 
     (employees || []).forEach(emp => {
+        // Strictly filter out HR, Admins, Security Guards, and non-workforce personnel
+        if (isAttendanceExempt(emp)) return;
+        const role = (emp.role || '').toLowerCase();
+        if (role && role !== 'employee') return;
+        const deptLower = (emp.department || '').toLowerCase();
+        if (deptLower.includes('hr') || deptLower.includes('admin') || deptLower.includes('security')) return;
+        const titleLower = (emp.job_title || emp.position || '').toLowerCase();
+        if (titleLower.includes('guard') || titleLower.includes('security') || titleLower.includes('admin') || titleLower.includes('hr') || titleLower.includes('gate attendant')) return;
+
         const status = (emp.status || '').toLowerCase();
         if (status === 'inactive' || status === 'terminated' || status === 'suspended') return;
 
@@ -271,10 +283,36 @@ function computePayrollForecastFromData(employees, attendances) {
         projectedRemainingPay += empProjectedRemaining;
 
         const dept = emp.department || 'Unassigned';
+        if (dept.toLowerCase().includes('hr') || dept.toLowerCase().includes('admin') || dept.toLowerCase().includes('security')) return;
         deptTotals[dept] = (deptTotals[dept] || 0) + empActual + empProjectedRemaining;
     });
 
     const projectedCutoffTotal = actualPayToDate + projectedRemainingPay;
+
+    // Filter out departments with 0 or negative projected pay to eliminate zero-cost department clutter
+    const deptBreakdown = Object.entries(deptTotals)
+        .filter(([, total]) => Math.round(total) > 0)
+        .map(([name, total]) => ({ name, projected: Math.round(total) }))
+        .sort((a, b) => b.projected - a.projected);
+
+    // Enterprise low-latency, straightforward insight (0ms deterministic calculation)
+    let insight = null;
+    if (employeesWithPayrate === 0 || projectedCutoffTotal === 0) {
+        insight = 'No active workforce payroll projected for this cutoff.';
+    } else if (deptBreakdown.length === 1) {
+        const topDept = deptBreakdown[0];
+        insight = `${topDept.name} accounts for 100% of projected cutoff costs at ₱${topDept.projected.toLocaleString()}.`;
+    } else if (deptBreakdown.length > 1) {
+        const topDept = deptBreakdown[0];
+        const pct = Math.round((topDept.projected / projectedCutoffTotal) * 100);
+        if (pct >= 80) {
+            insight = `${topDept.name} accounts for ${pct}% of projected cutoff costs at ₱${topDept.projected.toLocaleString()}.`;
+        } else {
+            insight = `Projected cutoff payroll is ₱${projectedCutoffTotal.toLocaleString()}, led by ${topDept.name} (₱${topDept.projected.toLocaleString()}).`;
+        }
+    } else {
+        insight = `Projected cutoff payroll is ₱${projectedCutoffTotal.toLocaleString()}.`;
+    }
 
     return {
         cutoffLabel: label,
@@ -284,16 +322,16 @@ function computePayrollForecastFromData(employees, attendances) {
         remainingWorkingDays,
         actualPayToDate: Math.round(actualPayToDate),
         projectedCutoffTotal: Math.round(projectedCutoffTotal),
-        deptBreakdown: Object.entries(deptTotals)
-            .map(([name, total]) => ({ name, projected: Math.round(total) }))
-            .sort((a, b) => b.projected - a.projected),
+        deptBreakdown,
         employeesWithPayrate,
+        insight,
         generatedAt: new Date().toISOString()
     };
 }
 
 /**
  * Async standalone payroll forecaster for direct endpoint calls
+ * Strictly queries active workforce employees and excludes HR, Admin, and Guards.
  */
 async function computePayrollForecast() {
     const today = new Date();
@@ -301,13 +339,23 @@ async function computePayrollForecast() {
     const startStr = toDateStr(start);
     const todayStr = toDateStr(today);
 
-    const [{ data: employees, error: empErr }, { data: attendance, error: attErr }] = await Promise.all([
-        supabase.from('employees').select('id, department, daily_rate, hourly_rate, shift, status').not('company_id', 'is', null),
-        supabase.from('attendances').select('employee_id, date, status').gte('date', startStr).lte('date', todayStr)
+    const [{ data: rawEmployees, error: empErr }, { data: attendance, error: attErr }] = await Promise.all([
+        supabase
+            .from('employees')
+            .select('id, department, role, job_title, daily_rate, hourly_rate, shift, status, company_id')
+            .not('company_id', 'is', null)
+            .eq('role', 'employee'),
+        supabase
+            .from('attendances')
+            .select('employee_id, date, status')
+            .gte('date', startStr)
+            .lte('date', todayStr)
     ]);
 
     if (empErr) throw empErr;
     if (attErr) throw attErr;
+
+    const employees = (rawEmployees || []).filter(isWorkforceEmployee);
 
     return computePayrollForecastFromData(employees, attendance);
 }
@@ -419,7 +467,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         // 5. Cached AI briefing and insights (returns immediately if already generated)
         const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
         const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal) : null;
-        const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || null } : null;
+        const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || forecast.insight } : null;
 
         // Background pre-warm: if briefing is not yet cached, generate asynchronously without blocking response
         if (!cachedBriefing) {
@@ -661,6 +709,18 @@ router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req
             employeeObj.is_suspended = isSusp;
             employeeObj.is_terminated = isTerm;
             employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
+
+            const standing = computeDisciplinaryStanding({
+                isTerminated: isTerm,
+                isSuspended: isSusp,
+                status: employeeObj.status,
+                operational_status: employeeObj.operational_status,
+                disciplinaryLogs: discData || []
+            });
+            employeeObj.disciplinary_standing = standing;
+            employeeObj.past_suspensions_count = standing.served_suspensions_count;
+            employeeObj.served_suspensions_count = standing.served_suspensions_count;
+            employeeObj.cleared_suspensions_count = standing.cleared_suspensions_count;
         }
 
         res.json({
@@ -767,7 +827,7 @@ router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (re
     try {
         const forecast = await computePayrollForecast();
         const narrative = await Brain.Analytics.generatePayrollInsight(forecast).catch(() => null);
-        res.json({ ...forecast, insight: narrative?.insight || null });
+        res.json({ ...forecast, insight: narrative?.insight || forecast.insight });
     } catch (err) {
         console.error('[DASHBOARD_ROUTE] Payroll forecast error:', err.message);
         res.status(500).json({ error: err.message });

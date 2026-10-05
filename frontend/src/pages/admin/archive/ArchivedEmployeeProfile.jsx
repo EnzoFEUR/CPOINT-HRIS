@@ -581,7 +581,7 @@ export default function ArchivedEmployeeProfile() {
           <div className="space-y-3">
             <h3 className="font-bold text-slate-900 text-xs border-b pb-2">Archived 201 File Documents</h3>
             {documents.length === 0 ? (
-              <EmptyState icon="ti-folder-open" title="No 201 documents uploaded" hint="Files added to this employee's 201 folder before archiving will appear here." />
+              <EmptyState icon="ti-folder-open" title="No documents uploaded" hint="Files added to this employee's 201 folder before archiving will appear here." />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {documents.map((doc) => {

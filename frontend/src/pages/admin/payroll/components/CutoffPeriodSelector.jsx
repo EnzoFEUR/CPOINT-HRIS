@@ -27,9 +27,6 @@ const CutoffPeriodSelector = ({
                     </div>
                     <div className="min-w-0">
                         <h3 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Payroll Cutoff</h3>
-                        <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-snug truncate">
-                            Select work dates for this payroll run
-                        </p>
                     </div>
                 </div>
 

@@ -307,7 +307,7 @@ Respond with strictly valid JSON:
      */
     getCachedPayrollInsight(cutoffStart, projectedTotal) {
       if (!cutoffStart) return null;
-      const cacheKey = `payroll_insight_${cutoffStart}_${projectedTotal}`;
+      const cacheKey = `payroll_insight_v2_${cutoffStart}_${projectedTotal}`;
       return aiCache.get(cacheKey) || null;
     },
 
@@ -442,7 +442,12 @@ Respond in strictly valid JSON: { "general_health_assessment": "string" }`;
      * failure so the frontend can render the numbers without an insight line.
      */
     async generatePayrollInsight(forecast) {
-      const cacheKey = `payroll_insight_${forecast.cutoffStart}_${forecast.projectedCutoffTotal}`;
+      if (!forecast) return null;
+      if (forecast.employeesWithPayrate === 0 || !forecast.projectedCutoffTotal) {
+        return { insight: forecast.insight || 'No active workforce payroll projected for this cutoff.' };
+      }
+
+      const cacheKey = `payroll_insight_v2_${forecast.cutoffStart}_${forecast.projectedCutoffTotal}`;
       if (aiCache.has(cacheKey)) {
         return aiCache.get(cacheKey);
       }
@@ -451,34 +456,50 @@ Respond in strictly valid JSON: { "general_health_assessment": "string" }`;
         return await inFlightPromises.get(cacheKey);
       }
 
-      const insightPromise = (async () => {
-        const prompt = `Given this EXACT, already-computed payroll forecast (do not alter or invent any figures):
-Cutoff period: ${forecast.cutoffLabel}
-Working days elapsed: ${forecast.elapsedWorkingDays} of ${forecast.totalCutoffWorkingDays}
-Actual payroll accrued so far: PHP ${forecast.actualPayToDate}
-Projected total for the full cutoff: PHP ${forecast.projectedCutoffTotal}
-Department breakdown: ${JSON.stringify(forecast.deptBreakdown)}
+      const fallbackInsight = forecast.insight || (
+        forecast.deptBreakdown?.[0]
+          ? `${forecast.deptBreakdown[0].name} accounts for ${Math.round((forecast.deptBreakdown[0].projected / forecast.projectedCutoffTotal) * 100)}% of projected cutoff costs at ₱${forecast.deptBreakdown[0].projected.toLocaleString()}.`
+          : `Projected cutoff payroll total is ₱${forecast.projectedCutoffTotal.toLocaleString()}.`
+      );
 
-Write ONE concise, professional sentence an HR/finance executive would want to see - e.g. flagging
-the top-cost department or a notable trend. Do not invent numbers not shown above.
+      const insightPromise = (async () => {
+        const topDept = forecast.deptBreakdown?.[0];
+        const prompt = `Write ONE ultra-short, simple executive observation (under 12 words) for this payroll forecast:
+Projected total: PHP ${forecast.projectedCutoffTotal}
+Top department: ${topDept ? `${topDept.name} (PHP ${topDept.projected})` : 'N/A'}
+Departments: ${JSON.stringify(forecast.deptBreakdown)}
+
+STRICT RULES:
+- Maximum 12 words. Simple, straight forward, enterprise tone.
+- Do NOT repeat the cutoff dates, days elapsed, or zero-cost departments.
+- Do NOT recite "actual payroll accrued is X against projected total Y".
+- Focus purely on the main cost driver (e.g. "${topDept ? topDept.name : 'Retail'} accounts for all projected costs at PHP ${topDept ? topDept.projected : forecast.projectedCutoffTotal}.").
 
 Respond in strictly valid JSON: { "insight": "string" }`;
 
         try {
           const raw = await executeGemini(
             prompt,
-            'You are a payroll cost analyst AI. You only phrase numbers you are given - you never invent data.',
-            { isJson: true, timeoutMs: 4000 }
+            'You are a succinct payroll analyst. You write brief executive observations in 12 words or less. Never be verbose.',
+            { isJson: true, timeoutMs: 3500 }
           );
           const parsed = safeParseJson(raw, null);
-          if (parsed?.insight) {
-            aiCache.set(cacheKey, parsed, 86400);
-            return parsed;
+          const text = parsed?.insight?.trim();
+          
+          // Reject verbose, boilerplate, or overly long responses (> 16 words or repeating dates/days)
+          if (text && text.split(/\s+/).length <= 16 && !text.toLowerCase().includes('working days elapsed') && !text.toLowerCase().includes('cutoff with')) {
+            const result = { insight: text };
+            aiCache.set(cacheKey, result, 86400);
+            return result;
           }
-          return null;
+          
+          // Clean fallback
+          const result = { insight: fallbackInsight };
+          aiCache.set(cacheKey, result, 86400);
+          return result;
         } catch (err) {
-          console.warn('[BRAIN_ANALYTICS] Payroll insight unavailable:', err.message);
-          return null;
+          console.warn('[BRAIN_ANALYTICS] Payroll insight fallback to deterministic calculation:', err.message);
+          return { insight: fallbackInsight };
         } finally {
           inFlightPromises.delete(cacheKey);
         }

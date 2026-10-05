@@ -357,9 +357,16 @@ const Calendar = () => {
                                                             )}
                                                         </div>
                                                         
-                                                        <p className="font-bold text-slate-800 text-sm sm:text-base tracking-tight truncate">
-                                                            {fullName}
-                                                        </p>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <p className="font-bold text-slate-800 text-sm sm:text-base tracking-tight truncate">
+                                                                {fullName}
+                                                            </p>
+                                                            {(log.employees?.company_id || log.employee_id) && (
+                                                                <span className="font-mono text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                    {log.employees?.company_id || `CP-${String(log.employee_id).substring(0, 8).toUpperCase()}`}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 mt-0.5 truncate">
                                                             {log.employees?.job_title || 'Staff'} &bull; {log.employees?.department || 'General'}
                                                         </p>

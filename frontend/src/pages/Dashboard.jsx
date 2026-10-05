@@ -64,13 +64,15 @@ export default function Dashboard() {
 
             const isExemptOperator = (emp) => {
                 if (!emp) return true;
-                const r = (emp.role || '').toLowerCase().replace(/_/g, '');
+                const r = (emp.role || '').toLowerCase().replace(/[\s_-]/g, '');
                 const dept = (emp.department || '').toLowerCase();
                 const title = (emp.job_title || emp.position || '').toLowerCase();
                 return (
+                    (r && r !== 'employee') ||
                     ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
-                    dept === 'security' || dept === 'administration' || dept === 'human resources' ||
-                    title.includes('guard') || title.includes('security') || title.includes('administrator')
+                    r.includes('admin') || r.includes('security') || r.includes('guard') || r.includes('hr') ||
+                    dept.includes('security') || dept.includes('admin') || dept.includes('hr') || dept.includes('human resources') || dept.includes('administration') ||
+                    title.includes('guard') || title.includes('security') || title.includes('administrator') || title.includes('admin') || title.includes('gate attendant') || title.includes('hr')
                 );
             };
 
@@ -412,32 +414,24 @@ export default function Dashboard() {
 
             {/* AI Executive Briefing */}
             <div className="bg-slate-900 rounded-lg border border-slate-800 text-white shadow-2xs relative overflow-hidden">
-                <div className="relative z-10 space-y-4 p-6 sm:p-7">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                            {(isManualRefreshingAI || (!briefing && isAIFetching)) && (
-                                <span className="text-[11px] text-ink font-semibold flex items-center gap-1.5">
-                                    <Loader2 className="w-3 h-3 animate-spin" /> Analyzing live signals...
-                                </span>
-                            )}
-                        </div>
-                        <button
-                            onClick={handleRefreshAI}
-                            disabled={isAILoading}
-                            className="self-start sm:self-center h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs ml-auto"
-                        >
-                            <RefreshCw className={`w-3.5 h-3.5 text-ink-subtle ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
-                            <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>
-                        </button>
-                    </div>
-
+                <div className="relative z-10 space-y-4 p-5 sm:p-6">
                     {!briefing ? (
                         /* Enterprise Skeleton State only when absolutely zero telemetry is available */
-                        <div className="space-y-4 animate-pulse pt-1">
-                            <div className="h-7 bg-slate-800 rounded-md w-4/5 border-l-4 border-line pl-4 py-1 flex items-center">
-                                <span className="text-xs text-slate-400 font-medium tracking-wide">
-                                    Connecting to workforce intelligence telemetry...
-                                </span>
+                        <div className="space-y-4 animate-pulse">
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                <div className="h-7 bg-slate-800 rounded-md flex-1 max-w-xl border-l-4 border-line pl-4 py-1 flex items-center">
+                                    <span className="text-xs text-slate-400 font-medium tracking-wide">
+                                        Connecting to workforce intelligence telemetry...
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled
+                                    className="self-start shrink-0 h-8 px-3 bg-slate-800 border border-slate-700 rounded-md text-xs font-medium text-white/50 flex items-center gap-2 shadow-2xs opacity-50"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5 text-ink-subtle" />
+                                    <span>Refresh summary</span>
+                                </button>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4 space-y-2.5">
@@ -461,9 +455,27 @@ export default function Dashboard() {
                     ) : (
                         /* Loaded AI Briefing */
                         <>
-                            <p className="text-base sm:text-lg font-semibold text-white leading-relaxed border-l-4 border-line pl-4">
-                                {briefing.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-base sm:text-lg font-semibold text-white leading-relaxed border-l-4 border-line pl-4">
+                                        {briefing.executive_summary || `Workforce operational capacity is running at ${presentPercentage}% with ${presentTodayCount} active staff on site today.`}
+                                    </p>
+                                    {(isManualRefreshingAI || (!briefing && isAIFetching)) && (
+                                        <span className="text-[11px] text-ink font-semibold flex items-center gap-1.5 pl-4 mt-2">
+                                            <Loader2 className="w-3 h-3 animate-spin" /> Analyzing live signals...
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleRefreshAI}
+                                    disabled={isAILoading}
+                                    className="self-start shrink-0 h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 text-ink-subtle ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
+                                    <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>
+                                </button>
+                            </div>
 
                             {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
                                 <div className="flex flex-wrap items-center gap-2">

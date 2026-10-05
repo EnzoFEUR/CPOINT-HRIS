@@ -484,9 +484,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             <label className="block text-[10px] sm:text-xs font-bold text-warning-ink uppercase tracking-widest">
                                                 Shoe Production Station (Select 1 of 6 Crafts)
                                             </label>
-                                            <span className="text-[10px] font-bold text-slate-400">
-                                                Sequential 6-Stage Assembly Line
-                                            </span>
                                         </div>
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
@@ -497,29 +494,23 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                         type="button"
                                                         key={craft.id}
                                                         onClick={() => setSelectedCraft(craft.id)}
-                                                        className={`p-3 rounded-md border text-left transition-colors duration-100 flex flex-col justify-between space-y-2 cursor-pointer ${isSelected
+                                                        className={`p-2.5 rounded-md border text-left transition-colors duration-100 flex items-center justify-between gap-2.5 cursor-pointer ${isSelected
                                                             ? 'bg-warning/10 border-warning ring-1 ring-warning/30 shadow-2xs'
                                                             : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                                                             }`}
                                                     >
-                                                        <div className="flex items-start justify-between gap-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs shrink-0 ${isSelected ? 'bg-warning text-white' : 'bg-slate-100 text-slate-600'
-                                                                    }`}>
-                                                                    <i className={`ti ${craft.icon}`} />
-                                                                </span>
-                                                                <div>
-                                                                    <p className="font-bold text-xs text-slate-800 leading-tight">{craft.label}</p>
-                                                                    <p className="text-[10px] text-slate-400 font-medium">{craft.filipino}</p>
-                                                                </div>
-                                                            </div>
-                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
-                                                                {craft.stage.split(':')[0]}
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <span className={`w-7 h-7 rounded-md flex items-center justify-center text-xs shrink-0 ${isSelected ? 'bg-warning text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <i className={`ti ${craft.icon}`} />
                                                             </span>
+                                                            <div className="min-w-0">
+                                                                <p className="font-bold text-xs text-slate-800 leading-tight truncate">{craft.label}</p>
+                                                                <p className="text-[10px] text-slate-400 font-medium truncate">{craft.filipino}</p>
+                                                            </div>
                                                         </div>
-                                                        <p className="text-[10px] text-slate-500 leading-normal line-clamp-2">
-                                                            {craft.description}
-                                                        </p>
+                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 border border-slate-200/60">
+                                                            {craft.stage.split(':')[0]}
+                                                        </span>
                                                     </button>
                                                 );
                                             })}
@@ -533,9 +524,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
                                                     Assigned Production Line / Group
                                                 </label>
-                                                <p className="text-[11px] text-slate-400 font-medium">
-                                                    Assigns the worker to a database-tracked production group (e.g. Line A, Line B).
-                                                </p>
                                             </div>
                                             <button
                                                 type="button"
@@ -568,10 +556,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                     autoFocus
                                                     className="w-full h-9 px-3 bg-warning-subtle/50 border border-warning/20 focus:border-warning rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
                                                 />
-                                                <p className="text-[10px] text-warning-ink mt-1 flex items-center gap-1">
-                                                    <i className="ti ti-sparkles text-xs" />
-                                                    <span>This new line will be created in Supabase production_groups table.</span>
-                                                </p>
                                             </div>
                                         ) : (
                                             <div>
@@ -601,9 +585,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                     )}
                                                     <option value="__NEW__">+ Create new production line...</option>
                                                 </select>
-                                                <p className="text-[10px] text-slate-400 mt-1">
-                                                    Connected to Supabase <code className="text-warning-ink font-mono">production_groups</code> table with target quota tracking.
-                                                </p>
                                             </div>
                                         )}
                                     </div>
@@ -618,9 +599,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         <div>
                                             <p className="text-xs font-bold">
                                                 {department === 'Factory' ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
-                                            </p>
-                                            <p className="text-[11px] opacity-80 mt-0.5">
-                                                {department === 'Factory' ? 'Fixed shift. Strictly NO overtime allowed per company policy.' : 'Extended shift. Overtime eligible for excess rendered hours.'}
                                             </p>
                                         </div>
                                     </div>
@@ -654,9 +632,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             Pakyawan Pool
                                         </span>
                                     </div>
-                                    <p className="text-xs text-warning-ink leading-relaxed">
-                                        Factory workers are <strong>not paid via fixed rates</strong>. Compensation is calculated per completed batch/volume of shoes produced by the 6-worker line (<strong>Cutter, Marking, Areglo, Sapatero/Swelas, Alamoda, Finishing</strong>).
-                                    </p>
                                     <div className="pt-2 border-t border-warning/80 flex flex-wrap items-center gap-3 text-[11px] text-warning-ink font-medium">
                                         <span className="flex items-center gap-1">
                                             <i className="ti ti-check text-warning-ink" /> No fixed salary set at onboarding

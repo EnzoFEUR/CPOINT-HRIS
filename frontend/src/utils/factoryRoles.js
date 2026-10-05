@@ -4,54 +4,42 @@ export const FACTORY_SHOE_ROLES = [
   {
     id: 'Cutter',
     label: 'Cutter',
-    filipino: 'Pamumutol',
     stage: 'Stage 1: Material Cutting',
-    description: 'Cutting leather, synthetic fabrics, and pattern lining.',
     icon: 'ti-scissors',
     color: 'emerald'
   },
   {
     id: 'Marking',
     label: 'Marking',
-    filipino: 'Pagmamarka',
     stage: 'Stage 2: Pattern Marking',
-    description: 'Tracing alignment marks, stitch guides, and skiving lines.',
     icon: 'ti-pencil',
     color: 'blue'
   },
   {
     id: 'Areglo',
     label: 'Areglo',
-    filipino: 'Pang-aareglo',
     stage: 'Stage 3: Upper Assembly & Closing',
-    description: 'Upper assembly, edge folding, and piece stitching.',
     icon: 'ti-layers-intersect',
     color: 'cyan'
   },
   {
     id: 'Sapatero (Lapat/Swelas)',
-    label: 'Sapatero (Lapat/Swelas)',
-    filipino: 'Pagsasapatos at Paglalapat ng Swelas',
+    label: 'Sapatero',
     stage: 'Stage 4: Lasting & Soling (Lapat / Swelas)',
-    description: 'Lasting uppers onto shoe molds and attaching outsoles.',
     icon: 'ti-shoe',
     color: 'amber'
   },
   {
     id: 'Alamoda',
     label: 'Alamoda',
-    filipino: 'Pagtatahi ng Moda',
     stage: 'Stage 5: Edge & Collar Finishing',
-    description: 'Edge and collar stitching and upper embellishments.',
     icon: 'ti-needle',
     color: 'indigo'
   },
   {
     id: 'Finishing',
     label: 'Finishing',
-    filipino: 'Pang-finishing',
     stage: 'Stage 6: Final Cleanup & Boxing',
-    description: 'Cleaning, polishing, quality inspection, and boxing.',
     icon: 'ti-sparkles',
     color: 'rose'
   }

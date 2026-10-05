@@ -804,7 +804,7 @@ export default function EmployeesIndex() {
                                                 title={`Actions for ${employee.first_name}`}
                                                 items={[
                                                     {
-                                                        label: '201 Documents',
+                                                        label: 'Documents',
                                                         icon: 'ti-folders',
                                                         to: `/admin/documents?employee_id=${employee.id}`,
                                                     },
@@ -939,7 +939,7 @@ export default function EmployeesIndex() {
                                                     title={`Actions for ${employee.first_name}`}
                                                     items={[
                                                         {
-                                                            label: '201 Documents',
+                                                            label: 'Documents',
                                                             icon: 'ti-folders',
                                                             to: `/admin/documents?employee_id=${employee.id}`,
                                                         },
@@ -1129,7 +1129,7 @@ export default function EmployeesIndex() {
                                                                 title={`Actions for ${employee.first_name}`}
                                                                 items={[
                                                                     {
-                                                                        label: '201 Documents',
+                                                                        label: 'Documents',
                                                                         icon: 'ti-folders',
                                                                         to: `/admin/documents?employee_id=${employee.id}`,
                                                                     },

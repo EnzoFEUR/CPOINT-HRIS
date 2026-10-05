@@ -178,7 +178,11 @@ router.post('/send', async (req, res) => {
             }
 
             let dispatchResult;
-            if (method === 'sms') {
+            const isMock = Boolean(req.body.mock || req.body.is_mock);
+            if (isMock) {
+                // Mock OTP requested: Bypass Brevo / SMS dispatch completely to prevent quota drain
+                dispatchResult = { simulated: true, provider: 'mock', success: true };
+            } else if (method === 'sms') {
                 dispatchResult = await sendSmsOtp(targetPhone, code);
             } else {
                 dispatchResult = await sendEmailOtp(targetEmail, code, targetName);
@@ -188,14 +192,17 @@ router.post('/send', async (req, res) => {
             releaseOtpLock(lockKeys, true);
 
             const isSimulated = Boolean(dispatchResult?.simulated);
-            const previewCode = (isSimulated || method === 'sms' || process.env.ALLOW_OTP_PREVIEW !== 'false') ? code : undefined;
+            const previewCode = (isMock || isSimulated) ? code : undefined;
 
             return res.json({
                 success: true,
-                message: `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
+                message: isMock
+                    ? 'Mock verification code generated (Brevo email skipped)'
+                    : `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
                 method,
                 purpose,
-                cooldown: 60,
+                cooldown: isMock ? 5 : 60,
+                isMock,
                 simulated: isSimulated,
                 previewCode,
                 reusedExisting: otpInfo.isExisting,

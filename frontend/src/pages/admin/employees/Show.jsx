@@ -10,6 +10,7 @@ import ActionMenu from '../../../components/ui/ActionMenu';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import bannerCover from '../../../assets/employee-cover.jpg';
 import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
+import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -563,6 +564,14 @@ export default function Show() {
     const isSuspended = employee.operational_status === 'Suspended' || employee.is_suspended || employee.status === 'suspended';
     const isTerminated = !isSuspended && (employee.operational_status === 'Terminated' || employee.is_terminated || employee.status === 'terminated' || (Boolean(employee.archived_at) && employee.status !== 'active'));
 
+    const standing = useMemo(() => computeDisciplinaryStanding({
+        isTerminated,
+        isSuspended,
+        status: employee?.status,
+        operational_status: employee?.operational_status,
+        disciplinaryLogs
+    }), [isTerminated, isSuspended, employee?.status, employee?.operational_status, disciplinaryLogs]);
+
     // Termination cooldown: a separated employee stays visually flagged (grayed
     // out) but not yet finalized for this many days after their effective
     // separation date - a reversible window before the record is treated as
@@ -977,21 +986,16 @@ export default function Show() {
                     </div>
                 )}
 
-                {!isTerminated && !isSuspended && employee?.past_suspensions_count > 0 && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                                <i className="ti ti-history text-sm" />
+                {!isTerminated && !isSuspended && standing.tierCode !== 'CLEAN' && (
+                    <div className={`border rounded-md px-3.5 py-2.5 sm:px-4 flex items-center justify-between gap-3 text-xs ${standing.bannerClass}`}>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-6 h-6 rounded bg-white/80 border border-black/5 flex items-center justify-center shrink-0 shadow-2xs">
+                                <i className={`ti ${standing.icon} text-sm`} />
                             </div>
-                            <div>
-                                <span className="font-semibold text-slate-800">Prior Disciplinary History:</span>{' '}
-                                <span className="text-slate-600">
-                                    This employee has previously served <strong>{employee.past_suspensions_count}</strong> {employee.past_suspensions_count === 1 ? 'suspension' : 'suspensions'}. All terms have concluded and account is currently in <strong>Good Standing</strong>.
-                                </span>
-                            </div>
+                            <span className="font-bold text-slate-900 truncate">{standing.title}</span>
                         </div>
-                        <span className="px-2 py-0.5 bg-success-subtle text-success-ink text-[10px] font-semibold rounded shrink-0 border border-success/20">
-                            Active / Cleared
+                        <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border shrink-0 ${standing.badgeClass}`}>
+                            {standing.badgeLabel}
                         </span>
                     </div>
                 )}
@@ -1035,17 +1039,14 @@ export default function Show() {
                             <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Account Status</p>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        {isPendingRegistration ? 'Awaiting initial employee login & password setup' : 'Account active and personal password configured'}
-                                    </p>
+                                    <span className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase border ${
+                                        isPendingRegistration 
+                                            ? 'bg-warning-subtle text-warning-ink border-warning/20' 
+                                            : 'bg-surface-muted text-ink border-line'
+                                    }`}>
+                                        {isPendingRegistration ? 'Pending Setup' : 'Registered'}
+                                    </span>
                                 </div>
-                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase border ${
-                                    isPendingRegistration 
-                                        ? 'bg-warning-subtle text-warning-ink border-warning/20' 
-                                        : 'bg-surface-muted text-ink border-line'
-                                }`}>
-                                    {isPendingRegistration ? 'Pending Setup' : 'Registered'}
-                                </span>
                             </div>
                         </div>
                     </div>
@@ -1345,16 +1346,8 @@ export default function Show() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
-                                isTerminated ? 'bg-danger-subtle text-danger-ink border-danger/20' :
-                                isSuspended ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-warning-subtle text-warning-ink border-warning/20' :
-                                'bg-surface-muted text-ink border-line'
-                            }`}>
-                                {isTerminated ? 'Separated' :
-                                 isSuspended ? 'Suspended' :
-                                 disciplinaryLogs.some(l => l.status === 'Active') ? 'Active Notice' :
-                                 'Good Standing'}
+                            <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${standing.badgeClass}`}>
+                                {standing.badgeLabel}
                             </span>
 
                             <Link
@@ -1371,13 +1364,30 @@ export default function Show() {
                             <div className="h-10 w-10 bg-white text-ink rounded-md flex items-center justify-center border border-line shadow-2xs mb-2">
                                 <i className="ti ti-shield-check text-2xl" />
                             </div>
-                            <h4 className="text-sm font-semibold text-slate-900 mb-1">Clean Compliance Standing</h4>
+                            <h4 className="text-sm font-semibold text-slate-900 mb-1">
+                                {isTerminated ? 'Clean Record upon Separation' : 'Good Standing'}
+                            </h4>
                             <p className="text-xs text-slate-500 font-medium max-w-md">
-                                This employee currently has zero disciplinary infractions, warnings, or sanctions on record. Account is in full compliance with company policies and DOLE standards.
+                                {isTerminated
+                                    ? 'Employment ended in good standing with zero violations on record.'
+                                    : 'Clean record with zero warnings or violations on file. Account is in good standing.'
+                                }
                             </p>
                         </div>
                     ) : (
                         <div className="space-y-3">
+                            {!isTerminated && !isSuspended && standing.tierCode !== 'CLEAN' && (
+                                <div className={`p-3.5 rounded-md border text-xs flex items-start gap-2.5 mb-3.5 ${standing.bannerClass}`}>
+                                    <i className={`ti ${standing.icon} text-base shrink-0 mt-0.5`} />
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="font-bold">{standing.title}</p>
+                                            <span className="text-[10px] font-mono uppercase opacity-75">[{standing.levelName}]</span>
+                                        </div>
+                                        <p className="opacity-90 mt-0.5 leading-relaxed">{standing.description}</p>
+                                    </div>
+                                </div>
+                            )}
                             {disciplinaryLogs.map((log) => {
                                 const isOverturnedOrResolved = log.status === 'Resolved' || log.status === 'Overturned';
                                 const isResolvedTermination = log.type === 'Termination' && isOverturnedOrResolved;

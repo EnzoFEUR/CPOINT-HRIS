@@ -1,22 +1,111 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
 
+const SESSION_CACHE_KEY = 'cpoint_admin_daily_attendance_logs';
+
 const Index = () => {
+    const queryClient = useQueryClient();
+
+    // 0ms cold-start cache hydration
+    const [cachedLogs] = useState(() => {
+        try {
+            const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    });
+
     const fetchAttendance = async () => {
-        const res = await fetchWithAuth('/api/attendance');
+        const res = await fetchWithAuth('/api/attendance?limit=100');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch');
-        return data.data || data || [];
+        const logsData = data.data || data || [];
+        try {
+            sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(logsData));
+        } catch (_) {}
+        return logsData;
     };
 
     const { data: logs = [], isLoading } = useQuery({
         queryKey: ['adminAttendance'],
-        queryFn: fetchAttendance
+        queryFn: fetchAttendance,
+        initialData: cachedLogs || undefined,
+        staleTime: 30000,
+        refetchOnWindowFocus: false,
     });
+
+    // Resilient fallback directory for instant CP ID resolution
+    const { data: employeeList = [] } = useQuery({
+        queryKey: ['adminEmployeesListForAttendance'],
+        queryFn: async () => {
+            const { data } = await supabase
+                .from('employees')
+                .select('id, company_id, first_name, last_name, role, department, job_title');
+            return data || [];
+        },
+        staleTime: 120000,
+        refetchOnWindowFocus: false,
+    });
+
+    const employeeMap = useMemo(() => {
+        const map = new Map();
+        for (const emp of employeeList) {
+            if (emp.id) map.set(emp.id, emp);
+        }
+        return map;
+    }, [employeeList]);
+
+    const resolveEmployee = useCallback((log) => {
+        if (log.employees && (log.employees.first_name || log.employees.company_id)) {
+            return log.employees;
+        }
+        return employeeMap.get(log.employee_id) || null;
+    }, [employeeMap]);
+
+    const getEmployeeCpId = useCallback((log) => {
+        const emp = resolveEmployee(log);
+        return emp?.company_id || log.company_id || (log.employee_id ? `CP-${String(log.employee_id).substring(0, 8).toUpperCase()}` : 'N/A');
+    }, [resolveEmployee]);
+
+    const getEmployeeFullName = useCallback((log) => {
+        const emp = resolveEmployee(log);
+        if (emp && (emp.first_name || emp.last_name)) {
+            return `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+        }
+        return 'Unknown Worker';
+    }, [resolveEmployee]);
+
+    const copyCpId = useCallback((e, id) => {
+        e.stopPropagation();
+        if (!id || id === 'N/A') return;
+        navigator.clipboard.writeText(id);
+        toast.success(`Copied CP ID: ${id}`, { id: 'copy-cpid' });
+    }, []);
+
+    // Real-time synchronization on attendance & employee table updates
+    useEffect(() => {
+        const liveChannel = supabase
+            .channel('realtime_daily_attendance_logs')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployeesListForAttendance'] });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(liveChannel);
+        };
+    }, [queryClient]);
 
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
@@ -38,10 +127,17 @@ const Index = () => {
     };
 
     // Strictly filter out Admins, HR, and Security Guards from attendance tracking
-    const workforceLogs = logs.filter(log => !isExemptOperator(log.employees));
+    const workforceLogs = useMemo(() => {
+        return (logs || []).filter(log => {
+            const emp = resolveEmployee(log);
+            return !isExemptOperator(emp);
+        });
+    }, [logs, resolveEmployee]);
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todaysCount = workforceLogs.filter(log => log.date === todayStr).length;
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const todaysCount = useMemo(() => {
+        return workforceLogs.filter(log => log.date === todayStr).length;
+    }, [workforceLogs, todayStr]);
 
     const openImageModal = (imageUrl, type) => {
         if (!imageUrl) return;
@@ -65,16 +161,32 @@ const Index = () => {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isModalOpen]);
 
-    const filteredLogs = workforceLogs.filter(log => {
-        const name = `${log.employees?.first_name || ''} ${log.employees?.last_name || ''}`.toLowerCase();
-        return name.includes(searchQuery.toLowerCase()) || (log.date || '').includes(searchQuery);
-    });
+    const filteredLogs = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return workforceLogs;
+
+        return workforceLogs.filter(log => {
+            const emp = resolveEmployee(log);
+            const name = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase() : '';
+            const cpId = (emp?.company_id || log.company_id || '').toLowerCase();
+            const rawEmpId = (log.employee_id || '').toLowerCase();
+            const dateStr = (log.date || '').toLowerCase();
+
+            return (
+                name.includes(q) ||
+                cpId.includes(q) ||
+                rawEmpId.includes(q) ||
+                dateStr.includes(q)
+            );
+        });
+    }, [workforceLogs, searchQuery, resolveEmployee]);
 
     const totalItems = filteredLogs.length;
-    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-    const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const paginatedLogs = filteredLogs.slice((safeCurrentPage - 1) * itemsPerPage, safeCurrentPage * itemsPerPage);
 
-    if (isLoading) {
+    if (isLoading && !cachedLogs) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
                 <div className="w-10 h-10 border-3 border-slate-200 border-t-accent rounded-full animate-spin" />
@@ -102,7 +214,7 @@ const Index = () => {
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
                         <input 
                             type="text" 
-                            placeholder="Search by employee name, ID, or date (YYYY-MM-DD)..." 
+                            placeholder="Search by employee name, CP ID (e.g. CP-2026-001), or date (YYYY-MM-DD)..." 
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
@@ -117,24 +229,38 @@ const Index = () => {
                     
                     {/* MOBILE LIST VIEW (Visible on phones only) */}
                     <div className="block md:hidden divide-y divide-slate-100">
-                        {paginatedLogs.length > 0 ? paginatedLogs.map((log) => (
-                            <div 
-                                key={`mobile-${log.id}`} 
-                                className="p-4 space-y-3 hover:bg-accent-subtle/20 transition-colors"
-                            >
-                                {/* Card Header: Employee Info + Date */}
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <EmployeeAvatar employee={log.employees} employeeId={log.employee_id} size="h-10 w-10" />
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-black text-slate-800 truncate">
-                                                {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                                ID: #{String(log.employee_id).substring(0,8)}
-                                            </p>
+                        {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
+                            const resolvedEmp = resolveEmployee(log);
+                            const fullName = getEmployeeFullName(log);
+                            const cpId = getEmployeeCpId(log);
+
+                            return (
+                                <div 
+                                    key={`mobile-${log.id}`} 
+                                    className="p-4 space-y-3 hover:bg-slate-50/70 transition-colors"
+                                >
+                                    {/* Card Header: Employee Info + Date */}
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <EmployeeAvatar employee={resolvedEmp} companyId={cpId} employeeId={log.employee_id} size="h-10 w-10" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-black text-slate-800 truncate">
+                                                    {fullName}
+                                                </p>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">CP ID:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => copyCpId(e, cpId)}
+                                                        title="Click to copy CP ID"
+                                                        className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200/80 cursor-pointer select-none"
+                                                    >
+                                                        <span>{cpId}</span>
+                                                        <i className="ti ti-copy text-[10px] text-slate-400" />
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
 
                                     <div className="text-right shrink-0">
                                         <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
@@ -219,7 +345,8 @@ const Index = () => {
                                     </Badge>
                                 </div>
                             </div>
-                        )) : (
+                        );
+                    }) : (
                             <div className="p-8 text-center text-slate-400">
                                 <p className="text-xs font-bold">No attendance logs found for this date</p>
                             </div>
@@ -239,103 +366,120 @@ const Index = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-sm">
-                                {paginatedLogs.length > 0 ? paginatedLogs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-slate-50/70 transition-colors duration-100">
-                                        <td className="px-6 py-3.5">
-                                            <div className="flex items-center gap-3">
-                                                <EmployeeAvatar employee={log.employees} employeeId={log.employee_id} size="h-10 w-10" />
-                                                <div>
-                                                    <p className="text-sm font-semibold text-slate-900">
-                                                        {log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown'}
-                                                    </p>
-                                                    <p className="text-[11px] text-slate-400 font-mono">ID: #{String(log.employee_id).substring(0,8)}</p>
+                                {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
+                                    const resolvedEmp = resolveEmployee(log);
+                                    const fullName = getEmployeeFullName(log);
+                                    const cpId = getEmployeeCpId(log);
+
+                                    return (
+                                        <tr key={log.id} className="hover:bg-slate-50/70 transition-colors duration-100">
+                                            <td className="px-6 py-3.5">
+                                                <div className="flex items-center gap-3">
+                                                    <EmployeeAvatar employee={resolvedEmp} companyId={cpId} employeeId={log.employee_id} size="h-10 w-10" />
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-semibold text-slate-900 truncate">
+                                                            {fullName}
+                                                        </p>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">CP ID:</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => copyCpId(e, cpId)}
+                                                                title="Click to copy CP ID"
+                                                                className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200/80 cursor-pointer select-none"
+                                                            >
+                                                                <span>{cpId}</span>
+                                                                <i className="ti ti-copy text-[11px] text-slate-400" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </td>
+                                            </td>
 
-                                        {/* Date Column */}
-                                        <td className="px-6 py-3.5">
-                                            <p className="text-sm font-medium text-slate-600 font-mono tabular-nums">
-                                                {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                            </p>
-                                        </td>
-                                        
-                                        {/* Time In Column */}
-                                        <td className="px-6 py-3.5 text-center">
-                                            <div className="flex flex-col items-center gap-1.5">
-                                                {log.time_in ? (
-                                                    <span className="font-mono text-xs font-semibold text-ink bg-surface-muted px-2.5 py-0.5 rounded border border-line tabular-nums">
-                                                        {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-xs text-slate-300 font-mono">--:--</span>
-                                                )}
-                                                {log.time_in_photo && (
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
-                                                        onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
-                                                    >
-                                                        <img 
-                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
+                                            {/* Date Column */}
+                                            <td className="px-6 py-3.5">
+                                                <p className="text-sm font-medium text-slate-600 font-mono tabular-nums">
+                                                    {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </p>
+                                            </td>
+                                            
+                                            {/* Time In Column */}
+                                            <td className="px-6 py-3.5 text-center">
+                                                <div className="flex flex-col items-center gap-1.5">
+                                                    {log.time_in ? (
+                                                        <span className="font-mono text-xs font-semibold text-ink bg-surface-muted px-2.5 py-0.5 rounded border border-line tabular-nums">
+                                                            {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-300 font-mono">--:--</span>
+                                                    )}
+                                                    {log.time_in_photo && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
-                                                            draggable={false}
-                                                            className="w-full h-full object-cover pointer-events-none select-none" 
-                                                            alt="Proof" 
-                                                        />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
+                                                            className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                        >
+                                                            <img 
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
+                                                                onContextMenu={(e) => e.preventDefault()}
+                                                                draggable={false}
+                                                                className="w-full h-full object-cover pointer-events-none select-none" 
+                                                                alt="Proof" 
+                                                            />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                        {/* Time Out Column */}
-                                        <td className="px-6 py-3.5 text-center">
-                                            <div className="flex flex-col items-center gap-1.5">
-                                                {log.time_out ? (
-                                                    <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
-                                                        {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                    <span className="bg-warning-subtle text-warning-ink border border-warning/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
-                                                        Active
-                                                    </span>
-                                                ) : (
-                                                    <span className="bg-danger-subtle text-danger-ink border border-danger/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
-                                                        Missed clock-out
-                                                    </span>
-                                                )}
-                                                {log.time_out_photo && (
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
-                                                        onContextMenu={(e) => e.preventDefault()}
-                                                        className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
-                                                    >
-                                                        <img 
-                                                            src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
+                                            {/* Time Out Column */}
+                                            <td className="px-6 py-3.5 text-center">
+                                                <div className="flex flex-col items-center gap-1.5">
+                                                    {log.time_out ? (
+                                                        <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
+                                                            {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    ) : log.date === new Date().toISOString().split('T')[0] ? (
+                                                        <span className="bg-warning-subtle text-warning-ink border border-warning/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                            Active
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-danger-subtle text-danger-ink border border-danger/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                            Missed clock-out
+                                                        </span>
+                                                    )}
+                                                    {log.time_out_photo && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
-                                                            draggable={false}
-                                                            className="w-full h-full object-cover pointer-events-none select-none" 
-                                                            alt="Proof" 
-                                                        />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
+                                                            className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                        >
+                                                            <img 
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
+                                                                onContextMenu={(e) => e.preventDefault()}
+                                                                draggable={false}
+                                                                className="w-full h-full object-cover pointer-events-none select-none" 
+                                                                alt="Proof" 
+                                                            />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                        {/* Status Column */}
-                                        <td className="px-6 py-3.5 text-center">
-                                            <Badge 
-                                                variant={
-                                                    log.status?.toLowerCase().includes('absent') ? 'absent' :
-                                                    log.status?.toLowerCase().includes('late') ? 'late' : 
-                                                    'present'
-                                                }
-                                            >
-                                                {log.status}
-                                            </Badge>
-                                        </td>
-                                    </tr>
-                                )) : (
+                                            {/* Status Column */}
+                                            <td className="px-6 py-3.5 text-center">
+                                                <Badge 
+                                                    variant={
+                                                        log.status?.toLowerCase().includes('absent') ? 'absent' :
+                                                        log.status?.toLowerCase().includes('late') ? 'late' : 
+                                                        'present'
+                                                    }
+                                                >
+                                                    {log.status}
+                                                </Badge>
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
                                     <tr>
                                         <td colSpan="5" className="px-6 py-20 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
@@ -356,7 +500,7 @@ const Index = () => {
                     <div className="px-4 sm:px-8 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
                         <div>
                             {totalItems > 0 ? (
-                                <span>Showing <span className="text-slate-800 font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-semibold">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-semibold">{totalItems}</span></span>
+                                <span>Showing <span className="text-slate-800 font-semibold">{(safeCurrentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-semibold">{Math.min(safeCurrentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-semibold">{totalItems}</span></span>
                             ) : (
                                 <span>Showing <span className="text-slate-800 font-semibold">0</span> of <span className="text-slate-800 font-semibold">0</span></span>
                             )}
@@ -365,19 +509,19 @@ const Index = () => {
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                disabled={currentPage === 1}
+                                disabled={safeCurrentPage <= 1}
                                 className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 <i className="ti ti-chevron-left text-sm" /> Prev
                             </button>
                             
                             <span className="h-8 px-3 flex items-center justify-center bg-white border border-slate-200 rounded-md text-slate-800 font-semibold text-xs">
-                                {currentPage} / {totalPages}
+                                {safeCurrentPage} / {totalPages}
                             </span>
 
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                disabled={currentPage >= totalPages}
+                                disabled={safeCurrentPage >= totalPages}
                                 className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 Next <i className="ti ti-chevron-right text-sm" />
