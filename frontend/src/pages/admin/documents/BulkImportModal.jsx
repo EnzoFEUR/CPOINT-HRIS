@@ -239,7 +239,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                 upload flat files. Uncategorized files are assigned to "Other".
                             </div>
 
-                            <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50/20 transition-colors duration-100">
+                            <label className="flex flex-col items-center justify-center gap-2 py-10 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-accent hover:bg-accent-subtle/20 transition-colors duration-100">
                                 <i className="ti ti-file-zip text-3xl text-slate-400" />
                                 <span className="text-xs font-semibold text-slate-700">
                                     {isParsing ? 'Reading ZIP file...' : 'Click to choose a .zip file'}
@@ -263,7 +263,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                     {counts.total} file{counts.total === 1 ? '' : 's'} found
                                 </span>
                                 {committed && (
-                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm text-[11px] font-bold">
+                                    <span className="px-2 py-0.5 bg-accent-subtle text-accent border border-accent/20 rounded-sm text-[11px] font-bold">
                                         {counts.uploaded} uploaded · {counts.failed} failed
                                     </span>
                                 )}
@@ -321,10 +321,10 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                                                         <i className="ti ti-loader animate-spin text-slate-400 text-sm" />
                                                     )}
                                                     {row.status === 'success' && (
-                                                        <i className="ti ti-circle-check text-emerald-600 text-sm" />
+                                                        <i className="ti ti-circle-check text-ink text-sm" />
                                                     )}
                                                     {row.status === 'error' && (
-                                                        <span className="text-rose-600 font-semibold" title={row.error}>
+                                                        <span className="text-danger-ink font-semibold" title={row.error}>
                                                           <i className="ti ti-circle-x text-sm" /> Failed
                                                         </span>
                                                     )}
@@ -355,7 +355,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                             type="button"
                             onClick={handleCommit}
                             disabled={isCommitting || counts.included === 0}
-                            className="h-9 px-3.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
+                            className="h-9 px-3.5 text-xs font-semibold bg-accent hover:bg-accent-hover disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
                         >
                             {isCommitting ? 'Importing…' : `Import ${counts.included} file${counts.included === 1 ? '' : 's'}`}
                         </button>
@@ -364,7 +364,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, isTermina
                         <button
                             type="button"
                             onClick={handleRetryFailed}
-                            className="h-9 px-3.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
+                            className="h-9 px-3.5 text-xs font-semibold bg-warning hover:bg-warning text-white rounded-md cursor-pointer transition-colors duration-100 shadow-2xs"
                         >
                             Retry {counts.failed} failed
                         </button>

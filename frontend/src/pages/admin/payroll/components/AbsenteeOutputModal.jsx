@@ -44,18 +44,11 @@ const AbsenteeOutputModal = ({
             <div className="bg-white w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[88vh] rounded-t-lg sm:rounded-lg shadow-xl flex flex-col overflow-hidden border border-slate-200">
 
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
-                    <div className="min-w-0">
-                        <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
-                            <i className="ti ti-user-exclamation text-lg text-amber-600" />
-                            Declare output for workers who missed days
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            {workerSections.length} worker{workerSections.length === 1 ? '' : 's'} missed days and share a process with someone else.
-                            Enter the quantity each one actually finished so their pay is based on real output, not a day-weighted split.
-                            Workers who handle a process alone are not listed &mdash; they keep that process in full.
-                        </p>
-                    </div>
+                <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3 shrink-0">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i className="ti ti-user-exclamation text-lg text-warning-ink" />
+                        Declare output for workers who missed days
+                    </h3>
                     <button
                         type="button"
                         onClick={onClose}
@@ -70,7 +63,7 @@ const AbsenteeOutputModal = ({
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-slate-50/60">
                     {workerSections.length === 0 ? (
                         <div className="text-center py-10">
-                            <i className="ti ti-checks text-3xl text-emerald-500" />
+                            <i className="ti ti-checks text-3xl text-ink" />
                             <p className="text-xs font-bold text-slate-700 mt-2">Nothing to declare</p>
                             <p className="text-[11px] text-slate-400">
                                 Either everyone was present for the whole cutoff, or each absent worker handles their process alone and already keeps its full total.
@@ -90,7 +83,7 @@ const AbsenteeOutputModal = ({
                                         </span>
                                     </div>
                                 </div>
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md shrink-0 text-center leading-tight">
+                                <span className="text-[10px] font-bold text-warning-ink bg-warning-subtle border border-warning/20 px-2 py-1 rounded-md shrink-0 text-center leading-tight">
                                     {section.daysPresent}/{section.expectedWorkingDays} days
                                     <span className="block font-extrabold">
                                         {section.daysAbsent} absent
@@ -121,11 +114,11 @@ const AbsenteeOutputModal = ({
                                                     <span className="text-[10px] text-slate-400 font-medium block">
                                                         Batch qty {row.qty.toLocaleString('en-US')} &middot; Rate &#8369;{row.effectiveAmt.toFixed(2)}
                                                         {holidayRateMultiplier > 1 && (
-                                                            <span className="text-amber-600 font-bold"> ({holidayRateMultiplier.toFixed(1)}x holiday)</span>
+                                                            <span className="text-warning-ink font-bold"> ({holidayRateMultiplier.toFixed(1)}x holiday)</span>
                                                         )}
                                                         {' '}&middot; Total &#8369;{row.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </span>
-                                                    <span className={`text-[10px] font-bold block mt-0.5 ${row.isOverDeclared ? 'text-red-500' : 'text-slate-500'}`}>
+                                                    <span className={`text-[10px] font-bold block mt-0.5 ${row.isOverDeclared ? 'text-danger-ink' : 'text-slate-500'}`}>
                                                         {(row.declaredQtyTotal || 0).toLocaleString('en-US')} of {row.qty.toLocaleString('en-US')} claimed
                                                         {absenteesOnRow > 1 && ` by ${absenteesOnRow} absent workers`}
                                                         {' '}&middot; {(row.declaredQtyRemaining || 0).toLocaleString('en-US')} left for the present workers
@@ -141,21 +134,21 @@ const AbsenteeOutputModal = ({
                                                             onChange={(e) => setQty(section.idStr, row.id, e.target.value)}
                                                             placeholder="Qty made"
                                                             className={`w-28 h-8 px-2.5 text-xs font-mono font-bold rounded-md border outline-none transition-colors duration-100 ${exceeds
-                                                                ? 'border-red-400 bg-red-50 text-red-700 focus:border-red-500'
+                                                                ? 'border-danger bg-danger-subtle text-danger-ink focus:border-danger'
                                                                 : hasQty
-                                                                    ? 'border-slate-200 bg-white text-slate-800 focus:border-blue-600'
-                                                                    : 'border-amber-300 bg-amber-50 text-amber-900 placeholder:text-amber-500/70 focus:border-amber-500'
+                                                                    ? 'border-slate-200 bg-white text-slate-800 focus:border-accent'
+                                                                    : 'border-warning/20 bg-warning-subtle text-warning-ink placeholder:text-warning-ink/70 focus:border-warning'
                                                                 }`}
                                                         />
                                                     </div>
-                                                    <span className="font-mono font-black text-xs text-emerald-600 w-24 text-right">
+                                                    <span className="font-mono font-black text-xs text-ink w-24 text-right">
                                                         &#8369;{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
                                             </div>
 
                                             {exceeds && (
-                                                <p className="text-[10px] font-semibold text-red-500 mt-1.5 flex items-center gap-1">
+                                                <p className="text-[10px] font-semibold text-danger-ink mt-1.5 flex items-center gap-1">
                                                     <i className="ti ti-alert-triangle" />
                                                     {claimedByOthers > 0
                                                         ? `Only ${availableToThisWorker.toLocaleString('en-US')} left on this process \u2014 the other absent worker${absenteesOnRow > 2 ? 's have' : ' has'} already claimed ${claimedByOthers.toLocaleString('en-US')} of ${row.qty.toLocaleString('en-US')}.`
@@ -163,13 +156,13 @@ const AbsenteeOutputModal = ({
                                                 </p>
                                             )}
                                             {row.isOverDeclared && !exceeds && (
-                                                <p className="text-[10px] font-semibold text-red-500 mt-1.5 flex items-center gap-1">
+                                                <p className="text-[10px] font-semibold text-danger-ink mt-1.5 flex items-center gap-1">
                                                     <i className="ti ti-alert-triangle" />
                                                     Absent workers have claimed {(row.declaredQtyTotal || 0).toLocaleString('en-US')} between them, more than the {row.qty.toLocaleString('en-US')} logged. Lower the quantities to continue.
                                                 </p>
                                             )}
                                             {!row.isOverDeclared && row.presentIdsOnRow?.length === 0 && row.remainingPool > 0.005 && (
-                                                <p className="text-[10px] font-semibold text-amber-600 mt-1.5 flex items-center gap-1">
+                                                <p className="text-[10px] font-semibold text-warning-ink mt-1.5 flex items-center gap-1">
                                                     <i className="ti ti-info-circle" />
                                                     &#8369;{row.remainingPool.toFixed(2)} of this process stays unassigned &mdash; nobody assigned to it was present.
                                                 </p>
@@ -181,7 +174,7 @@ const AbsenteeOutputModal = ({
 
                             <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Declared output total</span>
-                                <span className="font-mono font-black text-sm text-emerald-600">
+                                <span className="font-mono font-black text-sm text-ink">
                                     &#8369;{section.declaredTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
@@ -191,7 +184,7 @@ const AbsenteeOutputModal = ({
 
                 {/* Footer */}
                 <div className="px-5 py-3.5 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-                    <p className={`text-[11px] font-semibold flex items-center gap-1.5 ${canClose ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    <p className={`text-[11px] font-semibold flex items-center gap-1.5 ${canClose ? 'text-success-ink' : 'text-warning-ink'}`}>
                         <i className={`ti ${canClose ? 'ti-circle-check' : 'ti-alert-circle'} text-base`} />
                         {missingCount > 0
                             ? `${missingCount} quantit${missingCount === 1 ? 'y' : 'ies'} still to enter`

@@ -99,7 +99,7 @@ export default function ForcePasswordChange() {
                 </div>
 
                 {error && (
-                    <div className="mb-4 p-2.5 bg-rose-50 text-rose-700 rounded-md text-xs font-medium flex items-center gap-2 border border-rose-200">
+                    <div className="mb-4 p-2.5 bg-danger-subtle text-danger-ink rounded-md text-xs font-medium flex items-center gap-2 border border-danger/20">
                         <i className="ti ti-alert-circle text-base shrink-0"></i>
                         <span>{error}</span>
                     </div>
@@ -148,20 +148,20 @@ export default function ForcePasswordChange() {
                     <div className="bg-slate-50 p-2.5 rounded-md border border-slate-200/80">
                         <p className="text-[10px] font-semibold text-slate-500 mb-2 uppercase tracking-wider">Security Requirements</p>
                         <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                            <div className={`flex items-center gap-1.5 transition-colors ${hasLength() ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                                <i className={`ti ${hasLength() ? 'ti-circle-check-filled text-emerald-600' : 'ti-point text-slate-400'} text-xs`}></i>
+                            <div className={`flex items-center gap-1.5 transition-colors ${hasLength() ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                                <i className={`ti ${hasLength() ? 'ti-circle-check-filled text-ink' : 'ti-point text-slate-400'} text-xs`}></i>
                                 8+ Characters
                             </div>
-                            <div className={`flex items-center gap-1.5 transition-colors ${hasUppercase() ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                                <i className={`ti ${hasUppercase() ? 'ti-circle-check-filled text-emerald-600' : 'ti-point text-slate-400'} text-xs`}></i>
+                            <div className={`flex items-center gap-1.5 transition-colors ${hasUppercase() ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                                <i className={`ti ${hasUppercase() ? 'ti-circle-check-filled text-ink' : 'ti-point text-slate-400'} text-xs`}></i>
                                 1 Uppercase
                             </div>
-                            <div className={`flex items-center gap-1.5 transition-colors ${hasNumber() ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                                <i className={`ti ${hasNumber() ? 'ti-circle-check-filled text-emerald-600' : 'ti-point text-slate-400'} text-xs`}></i>
+                            <div className={`flex items-center gap-1.5 transition-colors ${hasNumber() ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                                <i className={`ti ${hasNumber() ? 'ti-circle-check-filled text-ink' : 'ti-point text-slate-400'} text-xs`}></i>
                                 1 Number
                             </div>
-                            <div className={`flex items-center gap-1.5 transition-colors ${hasSpecial() ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                                <i className={`ti ${hasSpecial() ? 'ti-circle-check-filled text-emerald-600' : 'ti-point text-slate-400'} text-xs`}></i>
+                            <div className={`flex items-center gap-1.5 transition-colors ${hasSpecial() ? 'text-ink font-medium' : 'text-slate-400'}`}>
+                                <i className={`ti ${hasSpecial() ? 'ti-circle-check-filled text-ink' : 'ti-point text-slate-400'} text-xs`}></i>
                                 1 Special Char
                             </div>
                         </div>

@@ -100,7 +100,7 @@ export default function LeavesIndex() {
             const data = await res.json();
             if (data.success) {
                 toast.success(`Leave request approved (${isPaid ? 'Paid' : 'Unpaid'})`, {
-                    icon: <i className="ti ti-check text-xl text-emerald-500" />
+                    icon: <i className="ti ti-check text-xl text-ink" />
                 });
                 queryClient.setQueryData(['adminLeaves'], old => {
                     if (!Array.isArray(old)) return old;
@@ -144,7 +144,7 @@ export default function LeavesIndex() {
             const data = await res.json();
             if (data.success) {
                 toast.success(status === 'Approved' ? 'Leave Approved!' : (status === 'New' ? 'Leave Re-opened' : 'Leave Rejected'), {
-                    icon: status === 'Approved' ? <i className="ti ti-check text-xl text-emerald-500" /> : <i className="ti ti-x text-xl text-rose-500" />
+                    icon: status === 'Approved' ? <i className="ti ti-check text-xl text-accent" /> : <i className="ti ti-x text-xl text-accent" />
                 });
                 queryClient.setQueryData(['adminLeaves'], old => {
                     if (!Array.isArray(old)) return old;
@@ -182,7 +182,7 @@ export default function LeavesIndex() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                <div className="w-10 h-10 border-3 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading leave requests...</p>
             </div>
         );
@@ -195,7 +195,7 @@ export default function LeavesIndex() {
                 actions={
                     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-md">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Requires review:</span>
-                        <span className="font-mono text-sm font-bold text-amber-600 tabular-nums">{pendingCount}</span>
+                        <span className="font-mono text-sm font-bold text-warning-ink tabular-nums">{pendingCount}</span>
                     </div>
                 }
             />
@@ -210,7 +210,7 @@ export default function LeavesIndex() {
                                 onClick={() => handleFilterChange(status)}
                                 className={`h-8 px-3.5 sm:px-4 rounded-md text-xs font-semibold transition-colors duration-100 whitespace-nowrap flex items-center ${
                                     filterStatus === status 
-                                    ? 'bg-blue-600 text-white shadow-2xs' 
+                                    ? 'bg-accent text-white shadow-2xs' 
                                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                                 }`}
                             >
@@ -231,7 +231,7 @@ export default function LeavesIndex() {
                         return (
                             <div 
                                 key={`mobile-${leave.id}`} 
-                                className="p-4 space-y-3 hover:bg-purple-50/20 transition-colors"
+                                className="p-4 space-y-3 hover:bg-accent-subtle/20 transition-colors"
                             >
                                 {/* Header: Employee + Status */}
                                 <div className="flex items-start justify-between gap-3">
@@ -248,21 +248,21 @@ export default function LeavesIndex() {
                                     </div>
 
                                     {leave.status === 'New' && (
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-amber-50 text-amber-600 border border-amber-200 flex items-center shrink-0">
+                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-warning-subtle text-warning-ink border border-warning/20 flex items-center shrink-0">
                                             Pending
                                         </span>
                                     )}
                                     {leave.status === 'Approved' && (
                                         <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center shrink-0 ${
                                             leave.pay_type === 'without_pay' || leave.is_paid === false
-                                                ? 'bg-amber-50 text-amber-700 border-amber-300'
-                                                : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                                ? 'bg-warning-subtle text-warning-ink border-warning/20'
+                                                : 'bg-surface-muted text-ink border-line'
                                         }`}>
                                             {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • Paid'}
                                         </span>
                                     )}
                                     {leave.status === 'Rejected' && (
-                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-red-50 text-red-600 border border-red-200 flex items-center shrink-0">
+                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-danger-subtle text-danger-ink border border-danger/20 flex items-center shrink-0">
                                             Rejected
                                         </span>
                                     )}
@@ -271,7 +271,7 @@ export default function LeavesIndex() {
                                 {/* Body details */}
                                 <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-2">
                                     <div className="flex items-center justify-between text-xs">
-                                        <span className="font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{leave.type}</span>
+                                        <span className="font-black text-accent bg-accent-subtle px-2 py-0.5 rounded border border-accent/20">{leave.type}</span>
                                         <span className="font-bold text-slate-600">
                                             {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} 
                                             <span className="text-slate-300 mx-1">&rarr;</span> 
@@ -291,13 +291,13 @@ export default function LeavesIndex() {
                                     <div className="flex items-center gap-2 pt-1">
                                         <button 
                                             onClick={() => handleOpenApproveModal(leave)} 
-                                            className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
+                                            className="flex-1 h-9 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                                         >
                                             <i className="ti ti-check text-sm font-bold" /> Approve
                                         </button>
                                         <button 
                                             onClick={() => handleStatusChange(leave.id, 'Rejected')} 
-                                            className="flex-1 h-9 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-semibold text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
+                                            className="flex-1 h-9 bg-white hover:bg-danger-subtle text-danger-ink border border-danger/20 font-semibold text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                                         >
                                             <i className="ti ti-x text-sm font-bold" /> Reject
                                         </button>
@@ -309,7 +309,7 @@ export default function LeavesIndex() {
                                         </span>
                                         <button
                                             onClick={() => handleStatusChange(leave.id, 'New')}
-                                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 underline px-2 py-1"
+                                            className="text-[10px] font-bold text-accent hover:text-accent underline px-2 py-1"
                                             title="Re-open this request"
                                         >
                                             Re-open
@@ -342,13 +342,13 @@ export default function LeavesIndex() {
                                 const daysCount = Math.ceil((new Date(leave.end_date) - new Date(leave.start_date)) / (1000 * 60 * 60 * 24)) + 1;
                                 
                                 return (
-                                    <tr key={leave.id} className="hover:bg-purple-50/30 transition-colors group">
+                                    <tr key={leave.id} className="hover:bg-accent-subtle/30 transition-colors group">
                                         
                                         <td className="px-6 lg:px-8 py-4">
                                             <div className="flex items-center gap-3">
                                                 <EmployeeAvatar employee={leave.employees} size="h-12 w-12" />
                                                 <div>
-                                                    <p className="text-sm font-black text-slate-800 group-hover:text-purple-600 transition-colors">
+                                                    <p className="text-sm font-black text-slate-800 group-hover:text-accent transition-colors">
                                                         {leave.employees ? `${leave.employees.first_name} ${leave.employees.last_name}` : 'Unknown'}
                                                     </p>
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
@@ -380,21 +380,21 @@ export default function LeavesIndex() {
 
                                         <td className="px-6 lg:px-8 py-4 text-center">
                                             {leave.status === 'New' && (
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-2xs flex w-max items-center mx-auto">
+                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-warning-subtle text-warning-ink border border-warning/20 shadow-2xs flex w-max items-center mx-auto">
                                                     Pending
                                                 </span>
                                             )}
                                             {leave.status === 'Approved' && (
                                                 <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center mx-auto ${
                                                     leave.pay_type === 'without_pay' || leave.is_paid === false
-                                                        ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-2xs'
-                                                        : 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs'
+                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20 shadow-2xs'
+                                                        : 'bg-surface-muted text-ink border-line shadow-2xs'
                                                 }`}>
                                                     {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • With Pay'}
                                                 </span>
                                             )}
                                             {leave.status === 'Rejected' && (
-                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-red-50 text-red-600 border border-red-200 flex w-max items-center mx-auto">
+                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-danger-subtle text-danger-ink border border-danger/20 flex w-max items-center mx-auto">
                                                     Rejected
                                                 </span>
                                             )}
@@ -405,14 +405,14 @@ export default function LeavesIndex() {
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button 
                                                         onClick={() => handleOpenApproveModal(leave)} 
-                                                        className="h-8 w-8 flex items-center justify-center bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-md hover:bg-emerald-600 hover:text-white transition-colors duration-100 shadow-2xs" 
+                                                        className="h-8 w-8 flex items-center justify-center bg-accent-subtle border border-accent/20 text-accent rounded-md hover:bg-accent hover:text-white transition-colors duration-100 shadow-2xs" 
                                                         title="Approve Request (With Pay / Without Pay)"
                                                     >
                                                         <i className="ti ti-check text-sm font-bold" />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleStatusChange(leave.id, 'Rejected')} 
-                                                        className="h-8 w-8 flex items-center justify-center bg-rose-50 border border-rose-300 text-rose-700 rounded-md hover:bg-rose-600 hover:text-white transition-colors duration-100 shadow-2xs" 
+                                                        className="h-8 w-8 flex items-center justify-center bg-danger-subtle border border-danger/20 text-danger-ink rounded-md hover:bg-danger hover:text-white transition-colors duration-100 shadow-2xs" 
                                                         title="Reject Request"
                                                     >
                                                         <i className="ti ti-x text-sm font-bold" />
@@ -487,7 +487,7 @@ export default function LeavesIndex() {
                         {/* Header */}
                         <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shrink-0">
+                                <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20 shrink-0">
                                     <i className="ti ti-calendar-check text-lg" />
                                 </div>
                                 <div>
@@ -520,7 +520,7 @@ export default function LeavesIndex() {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-bold text-xs border border-blue-200">
+                                    <span className="px-2.5 py-1 rounded-md bg-accent-subtle text-accent font-bold text-xs border border-accent/20">
                                         {Math.ceil((new Date(approvalModalLeave.end_date) - new Date(approvalModalLeave.start_date)) / (1000 * 60 * 60 * 24)) + 1} Day(s)
                                     </span>
                                 </div>
@@ -549,7 +549,7 @@ export default function LeavesIndex() {
                                     onClick={() => setApprovalPayType('with_pay')}
                                     className={`p-3.5 rounded-md border flex items-start gap-3.5 cursor-pointer transition-colors duration-100 ${
                                         approvalPayType === 'with_pay' 
-                                            ? 'border-emerald-500 bg-emerald-50/50 shadow-2xs' 
+                                            ? 'border-accent/20 bg-accent-subtle shadow-2xs' 
                                              : 'border-slate-200 hover:border-slate-300 bg-white'
                                     }`}
                                 >
@@ -558,12 +558,12 @@ export default function LeavesIndex() {
                                         name="pay_type" 
                                         checked={approvalPayType === 'with_pay'} 
                                         onChange={() => setApprovalPayType('with_pay')}
-                                        className="mt-1 text-emerald-600 focus:ring-emerald-500" 
+                                        className="mt-1 text-accent focus:ring-accent/20" 
                                     />
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-bold text-slate-800">Paid leave</span>
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-success-subtle text-success-ink">
                                                 Full pay
                                             </span>
                                         </div>
@@ -578,7 +578,7 @@ export default function LeavesIndex() {
                                     onClick={() => setApprovalPayType('without_pay')}
                                     className={`p-3.5 rounded-md border flex items-start gap-3.5 cursor-pointer transition-colors duration-100 ${
                                         approvalPayType === 'without_pay' 
-                                            ? 'border-amber-500 bg-amber-50/50 shadow-2xs' 
+                                            ? 'border-warning bg-warning-subtle/50 shadow-2xs' 
                                             : 'border-slate-200 hover:border-slate-300 bg-white'
                                     }`}
                                 >
@@ -587,12 +587,12 @@ export default function LeavesIndex() {
                                         name="pay_type" 
                                         checked={approvalPayType === 'without_pay'} 
                                         onChange={() => setApprovalPayType('without_pay')}
-                                        className="mt-1 text-amber-600 focus:ring-amber-500" 
+                                        className="mt-1 text-warning-ink focus:ring-warning" 
                                     />
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-bold text-slate-800">Unpaid leave</span>
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700">
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-warning-subtle text-warning-ink">
                                                 Unpaid
                                             </span>
                                         </div>
@@ -620,8 +620,8 @@ export default function LeavesIndex() {
                                 disabled={isSubmittingApproval}
                                 className={`h-9 px-4 rounded-md text-xs font-semibold text-white shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer ${
                                     approvalPayType === 'with_pay' 
-                                        ? 'bg-emerald-600 hover:bg-emerald-700' 
-                                        : 'bg-amber-600 hover:bg-amber-700'
+                                        ? 'bg-ink-subtle hover:bg-ink-subtle' 
+                                        : 'bg-warning hover:bg-warning-ink'
                                 }`}
                             >
                                 {isSubmittingApproval ? (

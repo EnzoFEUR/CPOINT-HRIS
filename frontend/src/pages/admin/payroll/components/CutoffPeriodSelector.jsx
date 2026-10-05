@@ -22,7 +22,7 @@ const CutoffPeriodSelector = ({
         <div className="bg-slate-50 p-4 sm:p-5 rounded-lg border border-slate-200 space-y-4 mb-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2.5 sm:gap-3">
-                    <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center text-sm font-bold border border-blue-200 shrink-0">
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-sm font-bold border border-accent/20 shrink-0">
                         <i className="ti ti-calendar-event"></i>
                     </div>
                     <div className="min-w-0">
@@ -34,7 +34,7 @@ const CutoffPeriodSelector = ({
                 </div>
 
                 {activePreset === 'custom' && (
-                    <span className="text-[10px] sm:text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md shrink-0 flex items-center gap-1 shadow-2xs">
+                    <span className="text-[10px] sm:text-[11px] font-bold text-warning-ink bg-warning-subtle border border-warning/20 px-2.5 py-1 rounded-md shrink-0 flex items-center gap-1 shadow-2xs">
                         <i className="ti ti-edit"></i> {CUTOFF_MODE_META[cutoffMode]?.badge || 'Custom'}
                     </span>
                 )}
@@ -49,7 +49,7 @@ const CutoffPeriodSelector = ({
                             onClick={() => handleCutoffModeChange(key)}
                             title={meta.hint}
                             className={`flex-1 sm:flex-none h-8 px-3.5 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center justify-center ${cutoffMode === key
-                                ? 'bg-white text-blue-700 shadow-2xs'
+                                ? 'bg-white text-accent shadow-2xs'
                                 : 'text-slate-600 hover:text-slate-900'
                                 }`}
                         >
@@ -66,9 +66,9 @@ const CutoffPeriodSelector = ({
                 <div className="bg-white p-3.5 sm:p-4 rounded-lg border border-slate-200 shadow-2xs transition-colors duration-100">
                     <div className="flex items-center justify-between mb-2 gap-1">
                         <label htmlFor="cutoff-start-date" className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 truncate cursor-pointer">
-                            <i className="ti ti-calendar-event text-blue-600 text-sm shrink-0"></i> Start Date
+                            <i className="ti ti-calendar-event text-accent text-sm shrink-0"></i> Start Date
                         </label>
-                        <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
+                        <span className="text-[10px] sm:text-[11px] font-semibold text-accent bg-accent-subtle px-2 py-0.5 rounded-md shrink-0 font-mono">
                             {formatReadableDate(periodStart)}
                         </span>
                     </div>
@@ -77,7 +77,7 @@ const CutoffPeriodSelector = ({
                         type="date"
                         value={periodStart}
                         onChange={(e) => handleStartDateChange(e.target.value)}
-                        className="w-full h-9 px-3 bg-slate-50 hover:bg-white focus:bg-white text-slate-800 font-medium rounded-md border border-slate-200 focus:border-blue-600 outline-none transition-colors duration-100 text-xs sm:text-sm cursor-pointer"
+                        className="w-full h-9 px-3 bg-slate-50 hover:bg-white focus:bg-white text-slate-800 font-medium rounded-md border border-slate-200 focus:border-accent outline-none transition-colors duration-100 text-xs sm:text-sm cursor-pointer"
                     />
                 </div>
 
@@ -87,7 +87,7 @@ const CutoffPeriodSelector = ({
                             <i className="ti ti-lock text-slate-400 text-sm shrink-0"></i> End Date
                             <span className="text-[9px] font-bold text-slate-400 normal-case tracking-normal">(auto)</span>
                         </label>
-                        <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0 font-mono">
+                        <span className="text-[10px] sm:text-[11px] font-semibold text-ink bg-surface-muted px-2 py-0.5 rounded-md shrink-0 font-mono">
                             {formatReadableDate(periodEnd)}
                         </span>
                     </div>
@@ -104,7 +104,7 @@ const CutoffPeriodSelector = ({
             </div>
 
             {isInvalidDateRange && (
-                <p className="text-xs text-red-600 font-bold flex items-center gap-1 pt-1">
+                <p className="text-xs text-danger-ink font-bold flex items-center gap-1 pt-1">
                     <i className="ti ti-alert-circle text-base"></i>{' '}
                     {isRangeTooLong
                         ? `Cutoff cannot be longer than ${maxCutoffDays} days (${periodDaysCount} selected). Payroll is weekly.`
@@ -113,15 +113,15 @@ const CutoffPeriodSelector = ({
             )}
 
             {periodDaysCount > 0 && !isInvalidDateRange && (
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50 border border-blue-200 p-3 rounded-md text-xs text-blue-900 font-medium">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-subtle border border-accent/20 p-3 rounded-md text-xs text-accent-strong font-medium">
                     <div className="flex items-center gap-2 min-w-0">
-                        <i className="ti ti-info-circle text-blue-600 text-base shrink-0"></i>
+                        <i className="ti ti-info-circle text-accent text-base shrink-0"></i>
                         <span className="truncate">
                             {formatReadableDate(periodStart)} &rarr; {formatReadableDate(periodEnd)}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="shrink-0 font-semibold bg-blue-600 text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-2xs">
+                        <span className="shrink-0 font-semibold bg-accent text-white px-2.5 py-0.5 rounded-md text-[11px] shadow-2xs">
                             {periodDaysCount} Days
                         </span>
                     </div>

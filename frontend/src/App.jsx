@@ -24,7 +24,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
 const AuthFallback = (
   <div className="h-[100dvh] w-screen flex items-center justify-center bg-slate-50">
-    <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+    <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-accent animate-spin" />
   </div>
 );
 
@@ -126,7 +126,7 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics>
               <EmployeeModuleGate>
-                <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-blue-600 rounded-full animate-spin" /></div>}>
+                <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-accent rounded-full animate-spin" /></div>}>
                   <EmployeeQrPrint />
                 </Suspense>
               </EmployeeModuleGate>

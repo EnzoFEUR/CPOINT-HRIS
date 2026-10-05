@@ -1858,7 +1858,7 @@ const PayrollCreate = () => {
                 {/* Header & Mode Switcher */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 shrink-0 bg-blue-600 text-white rounded-md flex items-center justify-center text-lg shadow-2xs">
+                        <div className="h-9 w-9 shrink-0 bg-accent text-white rounded-md flex items-center justify-center text-lg shadow-2xs">
                             <i className="ti ti-calculator"></i>
                         </div>
                         <div className="min-w-0">
@@ -1871,7 +1871,7 @@ const PayrollCreate = () => {
                             type="button"
                             onClick={() => { setEntryMode('batch'); setError(null); setSuccess(null); }}
                             className={`h-8 px-3 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${entryMode === 'batch'
-                                ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                                ? 'bg-white text-accent shadow-2xs font-semibold'
                                 : 'text-slate-500 hover:text-slate-800'
                                 }`}
                         >
@@ -1882,7 +1882,7 @@ const PayrollCreate = () => {
                             type="button"
                             onClick={() => { setEntryMode('single'); setError(null); setSuccess(null); }}
                             className={`h-8 px-3 rounded-sm text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer ${entryMode === 'single'
-                                ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                                ? 'bg-white text-accent shadow-2xs font-semibold'
                                 : 'text-slate-500 hover:text-slate-800'
                                 }`}
                         >
@@ -1894,31 +1894,31 @@ const PayrollCreate = () => {
 
                 {/* Notifications & Error Alerts */}
                 {error && (
-                    <div className="mb-6 p-3.5 sm:p-4 bg-red-50 border-l-4 border-red-500 rounded-r-md shadow-2xs flex items-start gap-3">
-                        <i className="ti ti-alert-triangle text-red-500 mt-0.5 text-lg"></i>
+                    <div className="mb-6 p-3.5 sm:p-4 bg-danger-subtle border-l-4 border-danger rounded-r-md shadow-2xs flex items-start gap-3">
+                        <i className="ti ti-alert-triangle text-danger-ink mt-0.5 text-lg"></i>
                         <div className="min-w-0">
-                            <h4 className="text-xs sm:text-sm font-bold text-red-800">Action Stopped</h4>
-                            <p className="text-xs sm:text-sm text-red-600 mt-0.5 break-words">{error}</p>
+                            <h4 className="text-xs sm:text-sm font-bold text-danger-ink">Action Stopped</h4>
+                            <p className="text-xs sm:text-sm text-danger-ink mt-0.5 break-words">{error}</p>
                         </div>
                     </div>
                 )}
 
                 {success && (
-                    <div className="mb-6 p-3.5 sm:p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-md shadow-2xs flex items-start gap-3">
-                        <i className="ti ti-circle-check text-emerald-500 mt-0.5 text-lg"></i>
+                    <div className="mb-6 p-3.5 sm:p-4 bg-surface-muted border-l-4 border-line rounded-r-md shadow-2xs flex items-start gap-3">
+                        <i className="ti ti-circle-check text-ink mt-0.5 text-lg"></i>
                         <div className="min-w-0">
-                            <h4 className="text-xs sm:text-sm font-bold text-emerald-800">Success</h4>
-                            <p className="text-xs sm:text-sm text-emerald-600 mt-0.5 break-words">{success}</p>
+                            <h4 className="text-xs sm:text-sm font-bold text-ink">Success</h4>
+                            <p className="text-xs sm:text-sm text-ink mt-0.5 break-words">{success}</p>
                         </div>
                     </div>
                 )}
 
                 {prefillEmployeeMissing && (
-                    <div className="mb-6 p-3.5 sm:p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-md shadow-2xs flex items-start gap-3">
-                        <i className="ti ti-alert-triangle text-amber-500 mt-0.5 text-lg"></i>
+                    <div className="mb-6 p-3.5 sm:p-4 bg-warning-subtle border-l-4 border-warning rounded-r-md shadow-2xs flex items-start gap-3">
+                        <i className="ti ti-alert-triangle text-warning-ink mt-0.5 text-lg"></i>
                         <div className="min-w-0">
-                            <h4 className="text-xs sm:text-sm font-bold text-amber-800">Employee Not Found</h4>
-                            <p className="text-xs sm:text-sm text-amber-700 mt-0.5 break-words">
+                            <h4 className="text-xs sm:text-sm font-bold text-warning-ink">Employee Not Found</h4>
+                            <p className="text-xs sm:text-sm text-warning-ink mt-0.5 break-words">
                                 The requested employee is no longer active in the roster or is a factory worker. Please select a valid daily/hourly employee.
                             </p>
                         </div>
@@ -1927,16 +1927,16 @@ const PayrollCreate = () => {
 
                 {/* Explicit Holiday Generation Reminder — only shows when this year genuinely has no holidays yet */}
                 {holidayYearStatus.checked && !holidayYearStatus.generated && (
-                    <div className="mb-6 bg-red-50 border border-red-200 p-3.5 sm:p-4 rounded-lg shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="mb-6 bg-danger-subtle border border-danger/20 p-3.5 sm:p-4 rounded-lg shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-md bg-red-500 text-white flex items-center justify-center shrink-0">
+                            <div className="w-8 h-8 rounded-md bg-danger text-white flex items-center justify-center shrink-0">
                                 <i className="ti ti-calendar-exclamation text-base"></i>
                             </div>
                             <div className="min-w-0">
-                                <h4 className="text-xs sm:text-sm font-bold text-red-800">
+                                <h4 className="text-xs sm:text-sm font-bold text-danger-ink">
                                     Holidays for {holidayYearStatus.year} haven't been generated yet
                                 </h4>
-                                <p className="text-xs text-red-700 mt-0.5">
+                                <p className="text-xs text-danger-ink mt-0.5">
                                     Generate them now so holiday pay is applied correctly before you process payroll.
                                 </p>
                             </div>
@@ -1945,7 +1945,7 @@ const PayrollCreate = () => {
                             type="button"
                             onClick={handleGenerateHolidaysNow}
                             disabled={isGeneratingHolidays}
-                            className="shrink-0 h-8 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-md transition-colors duration-100 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
+                            className="shrink-0 h-8 px-3 bg-danger hover:bg-danger-ink text-white text-xs font-semibold rounded-md transition-colors duration-100 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
                         >
                             <i className="ti ti-wand text-sm"></i>
                             {isGeneratingHolidays ? 'Generating…' : `Generate ${holidayYearStatus.year} Holidays`}
@@ -1955,20 +1955,20 @@ const PayrollCreate = () => {
 
                 {/* List of holidays actually added, shown right after a successful "Generate" click */}
                 {justGeneratedHolidays && (
-                    <div className="mb-6 bg-emerald-50 border border-emerald-200 p-3.5 sm:p-4 rounded-lg shadow-2xs">
+                    <div className="mb-6 bg-surface-muted border border-line p-3.5 sm:p-4 rounded-lg shadow-2xs">
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 rounded-md bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                                <div className="w-8 h-8 rounded-md bg-ink-subtle text-white flex items-center justify-center shrink-0">
                                     <i className="ti ti-circle-check text-base"></i>
                                 </div>
                                 <div className="min-w-0">
-                                    <h4 className="text-xs sm:text-sm font-bold text-emerald-800">
+                                    <h4 className="text-xs sm:text-sm font-bold text-ink">
                                         {justGeneratedHolidays.inserted.length > 0
                                             ? `${justGeneratedHolidays.inserted.length} holiday${justGeneratedHolidays.inserted.length === 1 ? '' : 's'} added for ${justGeneratedHolidays.year}`
                                             : `No new holidays to add for ${justGeneratedHolidays.year}`}
                                     </h4>
                                     {justGeneratedHolidays.skippedExisting > 0 && (
-                                        <p className="text-[11px] text-emerald-700 mt-0.5">
+                                        <p className="text-[11px] text-ink mt-0.5">
                                             {justGeneratedHolidays.skippedExisting} already existed and were left as-is.
                                         </p>
                                     )}
@@ -1977,7 +1977,7 @@ const PayrollCreate = () => {
                             <button
                                 type="button"
                                 onClick={() => setJustGeneratedHolidays(null)}
-                                className="shrink-0 w-7 h-7 rounded-md bg-emerald-100 hover:bg-emerald-200 text-emerald-700 flex items-center justify-center transition-colors duration-100 cursor-pointer"
+                                className="shrink-0 w-7 h-7 rounded-md bg-surface-muted hover:bg-surface-muted text-ink flex items-center justify-center transition-colors duration-100 cursor-pointer"
                             >
                                 <i className="ti ti-x text-sm"></i>
                             </button>
@@ -1989,8 +1989,8 @@ const PayrollCreate = () => {
                                     .slice()
                                     .sort((a, b) => (a.date < b.date ? -1 : 1))
                                     .map((h) => (
-                                        <li key={h.id || `${h.date}-${h.name}`} className="text-xs text-emerald-900 flex items-center gap-1.5">
-                                            <span className="font-mono font-semibold text-emerald-700 shrink-0">
+                                        <li key={h.id || `${h.date}-${h.name}`} className="text-xs text-ink flex items-center gap-1.5">
+                                            <span className="font-mono font-semibold text-ink shrink-0">
                                                 {formatReadableDate(h.date)}
                                             </span>
                                             <span className="truncate">{h.name}</span>
@@ -2000,7 +2000,7 @@ const PayrollCreate = () => {
                         )}
 
                         {justGeneratedHolidays.reminder && (
-                            <p className="text-[11px] text-emerald-700/80 mt-3 border-t border-emerald-200 pt-2">
+                            <p className="text-[11px] text-ink mt-3 border-t border-line pt-2">
                                 {justGeneratedHolidays.reminder}
                             </p>
                         )}
@@ -2009,27 +2009,27 @@ const PayrollCreate = () => {
 
                 {/* Automatic Holiday Banner Indicator */}
                 {holidayPreview.items.length > 0 && (
-                    <div className="mb-6 bg-amber-50 border border-amber-200 p-3.5 sm:p-4 rounded-lg shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="mb-6 bg-warning-subtle border border-warning/20 p-3.5 sm:p-4 rounded-lg shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-md bg-amber-500 text-white flex items-center justify-center font-bold text-base shrink-0">
+                            <div className="w-8 h-8 rounded-md bg-warning text-white flex items-center justify-center font-bold text-base shrink-0">
                                 <i className="ti ti-calendar-event"></i>
                             </div>
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="text-xs sm:text-sm font-bold text-amber-950">
+                                    <h4 className="text-xs sm:text-sm font-bold text-warning-ink">
                                         Automatic Holiday Rate Adjustment Active
                                     </h4>
-                                    <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md">
+                                    <span className="text-[10px] font-bold bg-warning-subtle text-warning-ink px-2 py-0.5 rounded-md">
                                         +{(holidayRateMultiplier * 100 - 100).toFixed(0)}% Rate Premium
                                     </span>
                                 </div>
-                                <p className="text-xs text-amber-800 mt-0.5 truncate">
+                                <p className="text-xs text-warning-ink mt-0.5 truncate">
                                     Holidays: {holidayPreview.items.map(h => `${h.holidayName} (${formatReadableDate(h.date)})`).join(', ')}
                                 </p>
                             </div>
                         </div>
                         <div className="self-end sm:self-center shrink-0">
-                            <span className="text-xs font-mono font-bold text-amber-900 bg-white border border-amber-200 px-2.5 py-1 rounded-md shadow-2xs">
+                            <span className="text-xs font-mono font-bold text-warning-ink bg-white border border-warning/20 px-2.5 py-1 rounded-md shadow-2xs">
                                 Rate Multiplier: {holidayRateMultiplier.toFixed(2)}x
                             </span>
                         </div>

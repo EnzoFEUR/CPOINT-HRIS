@@ -653,7 +653,7 @@ export default function BiometricSetup() {
       {/* Header bar */}
       <div className="w-full max-w-[420px] z-10 pt-1 sm:pt-2 text-center">
         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-sm text-[10px] font-medium text-slate-300 tracking-wide uppercase mb-1">
-          <i className={`ti ${state.isOnline ? 'ti-wifi' : 'ti-wifi-off'} text-xs ${state.isOnline ? 'text-emerald-400' : 'text-rose-400'}`} />
+          <i className={`ti ${state.isOnline ? 'ti-wifi' : 'ti-wifi-off'} text-xs ${state.isOnline ? 'text-ink' : 'text-danger'}`} />
           {deviceInfo.isMobile ? 'Mobile Station' : 'Workstation'}
         </div>
         <h1 className="text-base sm:text-lg font-bold text-white">Face Scan Registration</h1>
@@ -671,14 +671,14 @@ export default function BiometricSetup() {
             <div key={ph.id} className="flex items-center gap-1.5">
               <div 
                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center text-xs font-semibold transition-colors duration-100 border ${
-                  isDone ? 'bg-emerald-600 border-emerald-500 text-white' :
-                  isActive ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 text-slate-500 border-slate-800'
+                  isDone ? 'bg-ink-subtle border-line text-white' :
+                  isActive ? 'bg-accent border-accent text-white' : 'bg-slate-900 text-slate-500 border-slate-800'
                 }`}
               >
                 {isDone ? <i className="ti ti-check text-xs" /> : i + 1}
               </div>
               {i < PHASE_LIST.length - 1 && (
-                <div className={`w-2 h-0.5 rounded-sm ${isDone ? 'bg-emerald-500' : 'bg-slate-800'}`} />
+                <div className={`w-2 h-0.5 rounded-sm ${isDone ? 'bg-ink-subtle' : 'bg-slate-800'}`} />
               )}
             </div>
           );
@@ -708,7 +708,7 @@ export default function BiometricSetup() {
           className="absolute top-3 right-3 z-30 h-8 px-2.5 rounded-md bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/50 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 text-xs font-medium cursor-pointer"
           title="Flip Camera (Front / Rear)"
         >
-          <i className="ti ti-camera-rotate text-sm text-blue-400" />
+          <i className="ti ti-camera-rotate text-sm text-accent-on-dark" />
           <span className="text-[10px] hidden sm:inline capitalize">
             {cameraFacing === 'user' ? 'Front' : 'Rear'}
           </span>
@@ -719,13 +719,13 @@ export default function BiometricSetup() {
           <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
             {state.mode === MODES.BOOT ? (
               <>
-                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-accent rounded-full animate-spin mb-3" />
                 <p className="font-medium text-slate-200 text-xs sm:text-sm">{state.statusText}</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">Loading face scanner...</p>
               </>
             ) : (
               <>
-                <div className="w-10 h-10 rounded-md bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl mb-3">
+                <div className="w-10 h-10 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center text-accent-on-dark text-xl mb-3">
                   <i className="ti ti-face-id" />
                 </div>
                 <h2 className="text-base font-bold text-white mb-1">Face Registration</h2>
@@ -734,7 +734,7 @@ export default function BiometricSetup() {
                 </p>
                 <button 
                   onClick={startEnrollment}
-                  className="w-full max-w-[200px] h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-md font-semibold text-xs transition-colors duration-100 shadow-2xs cursor-pointer"
+                  className="w-full max-w-[200px] h-10 bg-accent hover:bg-accent text-white rounded-md font-semibold text-xs transition-colors duration-100 shadow-2xs cursor-pointer"
                 >
                   Start Registration
                 </button>
@@ -763,7 +763,7 @@ export default function BiometricSetup() {
                   transform: 'translate(-50%, -50%)',
                 }}
               >
-                <div className="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center text-base font-bold shadow-2xs">
+                <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-base font-bold shadow-2xs">
                   {activePhase.id === 0 ? '•' : activePhase.id === 1 ? '←' : activePhase.id === 2 ? '→' : activePhase.id === 3 ? '↑' : '↓'}
                 </div>
               </div>
@@ -803,7 +803,7 @@ export default function BiometricSetup() {
         {/* Uploading State */}
         {state.mode === MODES.UPLOADING && (
           <div className="absolute inset-0 z-20 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-accent rounded-full animate-spin mb-3" />
             <h3 className="text-sm font-bold text-white">Saving profile</h3>
             <p className="text-slate-400 text-xs mt-0.5">Saving your face scan securely...</p>
           </div>
@@ -814,7 +814,7 @@ export default function BiometricSetup() {
           <div 
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center"
           >
-            <div className="w-10 h-10 rounded-md bg-emerald-600 text-white flex items-center justify-center text-lg shadow-2xs mb-3">
+            <div className="w-10 h-10 rounded-md bg-ink-subtle text-white flex items-center justify-center text-lg shadow-2xs mb-3">
               <i className="ti ti-check" />
             </div>
             <h3 className="text-base font-bold text-white">Face scan registered successfully</h3>
@@ -827,7 +827,7 @@ export default function BiometricSetup() {
           <div 
             className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-5 text-center"
           >
-            <div className="w-10 h-10 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center text-lg mb-2">
+            <div className="w-10 h-10 rounded-md bg-danger/10 text-danger border border-danger/20 flex items-center justify-center text-lg mb-2">
               <i className="ti ti-alert-triangle" />
             </div>
             <h3 className="text-sm font-bold text-white">Registration incomplete</h3>

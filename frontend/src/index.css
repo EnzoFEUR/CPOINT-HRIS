@@ -4,10 +4,37 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
+  /* Surfaces */
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  /* Text */
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-subtle: #64748b;
+
+  /* Accent: actions, selection, focus, links */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-subtle: #eff6ff;
+
+  /* Status: dots, icons, destructive buttons use the base value; text uses -ink */
+  --color-danger: #dc2626;
+  --color-danger-ink: #b91c1c;
+  --color-danger-subtle: #fef2f2;
+  --color-warning: #d97706;
+  --color-warning-ink: #b45309;
+  --color-warning-subtle: #fffbeb;
+  --color-success: #16a34a;
+  --color-success-ink: #15803d;
+  --color-success-subtle: #f0fdf4;
+
   --color-surface-canvas: #f8fafc;
   --color-surface-card: #ffffff;
   --color-surface-subtle: #f1f5f9;
-  --color-surface-muted: #e2e8f0;
   --color-surface-dark: #0f172a;
   --color-surface-dark-card: #1e293b;
 

@@ -36,7 +36,7 @@ const EmployeeSelectionModal = ({
                         value={empSearch}
                         onChange={(e) => setEmpSearch(e.target.value)}
                         placeholder="Search regular employee by name or department..."
-                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-600 rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
+                        className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-accent rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
                     />
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                         {availableDepartments.map((dept) => (
@@ -44,7 +44,7 @@ const EmployeeSelectionModal = ({
                                 key={dept}
                                 type="button"
                                 onClick={() => setSelectedDeptFilter(dept)}
-                                className={`h-7 px-2.5 rounded-md text-xs font-semibold transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center ${selectedDeptFilter === dept ? 'bg-blue-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                className={`h-7 px-2.5 rounded-md text-xs font-semibold transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center ${selectedDeptFilter === dept ? 'bg-accent text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                             >
                                 {dept}
                             </button>
@@ -69,7 +69,7 @@ const EmployeeSelectionModal = ({
                                 <div className="flex items-center gap-3 min-w-0">
                                     <EmployeeAvatar employee={emp} size="h-9 w-9" rounded="rounded-md" textSize="text-xs" />
                                     <div className="min-w-0">
-                                        <p className="text-xs font-bold text-slate-800 group-hover:text-blue-700 transition-colors truncate">
+                                        <p className="text-xs font-bold text-slate-800 group-hover:text-accent transition-colors truncate">
                                             {emp.first_name} {emp.last_name}
                                         </p>
                                         <p className="text-[10px] text-slate-400 font-semibold uppercase truncate">
@@ -77,7 +77,7 @@ const EmployeeSelectionModal = ({
                                         </p>
                                     </div>
                                 </div>
-                                <i className="ti ti-chevron-right text-slate-300 group-hover:text-blue-600 transition-colors"></i>
+                                <i className="ti ti-chevron-right text-slate-300 group-hover:text-accent transition-colors"></i>
                             </button>
                         ))
                     )}

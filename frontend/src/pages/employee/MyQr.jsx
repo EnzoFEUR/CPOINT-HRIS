@@ -427,7 +427,7 @@ const MyQr = () => {
               photoUrl={photoUrl}
               size="w-12 h-12"
               rounded="rounded-full"
-              border={isTerminated ? "ring-2 ring-rose-300" : isSuspended ? "ring-2 ring-orange-300" : "ring-2 ring-white"}
+              border={isTerminated ? "ring-2 ring-danger/20" : isSuspended ? "ring-2 ring-warning/20" : "ring-2 ring-white"}
               shadow="shadow-xs"
               theme="dark"
               textSize="text-base"
@@ -447,16 +447,16 @@ const MyQr = () => {
           {/* Status / Company ID badge */}
           <div className="shrink-0 flex items-center gap-1.5">
             {isTerminated ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2.5 py-1 rounded-md border border-warning/20">
                 {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Archived'}
               </span>
             ) : isSuspended ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2.5 py-1 rounded-md border border-warning/20">
                 Suspended
               </span>
             ) : isMedicalExempt ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2.5 py-1 rounded-md border border-warning/20 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-warning-ink shrink-0" />
                 <span>Medical Grace</span>
               </span>
             ) : (
@@ -469,11 +469,11 @@ const MyQr = () => {
 
         {isTerminated ? (
           <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-slate-200 shadow-2xs text-center">
-            <div className="w-12 h-12 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 mb-4">
-              <Archive className="w-6 h-6 text-amber-700" />
+            <div className="w-12 h-12 rounded-lg bg-warning-subtle border border-warning/20 flex items-center justify-center text-warning-ink mb-4">
+              <Archive className="w-6 h-6 text-warning-ink" />
             </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 text-xs font-semibold rounded-md mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-warning" />
               {isPendingArchive ? `Pending Archive · ${daysUntilPermanentArchive}d Cooldown` : 'Cold Storage Archive'}
             </span>
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Attendance Pass Revoked</h3>
@@ -491,12 +491,12 @@ const MyQr = () => {
             </div>
           </div>
         ) : isSuspended ? (
-          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200 shadow-2xs text-center">
-            <div className="w-12 h-12 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-4">
-              <Lock className="w-6 h-6 text-amber-600" />
+          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center">
+            <div className="w-12 h-12 rounded-lg bg-warning-subtle border border-warning/20 flex items-center justify-center text-warning-ink mb-4">
+              <Lock className="w-6 h-6 text-warning-ink" />
             </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold rounded-md mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-xs font-semibold rounded-md mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-warning" />
               Attendance Suspended
             </span>
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Credential Paused</h3>
@@ -505,8 +505,8 @@ const MyQr = () => {
             </p>
 
             {suspensionEndDate && (
-              <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200/60 rounded-md text-left w-full text-xs">
-                <div className="flex items-center justify-between font-bold text-amber-900">
+              <div className="mt-4 p-3 bg-warning-subtle/70 border border-warning/60 rounded-md text-left w-full text-xs">
+                <div className="flex items-center justify-between font-bold text-warning-ink">
                   <span>Scheduled End:</span>
                   <span className="font-mono">{suspensionEndDate}</span>
                 </div>
@@ -516,7 +516,7 @@ const MyQr = () => {
             <div className="mt-5 w-full space-y-2">
               <Link 
                 to="/employee/dashboard?view=disciplinary" 
-                className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                className="w-full h-9 bg-warning hover:bg-warning text-slate-950 font-bold text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
               >
                 <FileText className="w-4 h-4" />
                 <span>Review Disciplinary Notice</span>
@@ -532,20 +532,20 @@ const MyQr = () => {
           </div>
         ) : !disciplinaryState.checked ? (
           <div className="w-full bg-white rounded-lg p-8 flex flex-col items-center justify-center border border-slate-200 shadow-2xs min-h-[290px]">
-            <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3" />
+            <div className="w-8 h-8 border-2 border-slate-200 border-t-accent rounded-full animate-spin mb-3" />
             <span className="text-xs text-slate-400 font-medium">Verifying access...</span>
           </div>
         ) : !hasFaceBiometrics ? (
-          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-amber-200 shadow-2xs text-center relative overflow-hidden">
-            <div className="w-16 h-16 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 mb-4 relative">
+          <div className="w-full bg-white rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center border border-warning/20 shadow-2xs text-center relative overflow-hidden">
+            <div className="w-16 h-16 rounded-lg bg-warning/10 border border-warning/30 flex items-center justify-center text-warning-ink mb-4 relative">
               <ScanFace className="w-8 h-8 animate-pulse" />
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-warning text-slate-950 flex items-center justify-center text-xs font-black shadow-xs">
                 <Lock className="w-3 h-3" />
               </div>
             </div>
 
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-warning-subtle text-warning-ink border border-warning/20 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-warning" />
               Biometrics Incomplete · Pass Locked
             </span>
 
@@ -560,7 +560,7 @@ const MyQr = () => {
             <div className="mt-5 w-full max-w-xs space-y-2">
               <Link
                 to="/biometric-setup"
-                className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
                 <span>Register face scan</span>
@@ -569,7 +569,7 @@ const MyQr = () => {
 
             <div className="mt-4 pt-4 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-400 font-medium px-2">
               <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-warning animate-ping" />
                 <span>Live sync</span>
               </span>
               <span className="font-mono text-slate-500">Unlocks instantly</span>
@@ -581,27 +581,27 @@ const MyQr = () => {
 
         {/* Medical Grace Exemption Status Callout */}
         {isMedicalExempt && !isTerminated && !isSuspended && (
-          <div className="w-full mt-4 p-4 bg-amber-50 border border-amber-200 rounded-md text-left shadow-2xs">
-            <div className="flex items-center gap-2 text-amber-950 font-bold text-xs">
-              <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+          <div className="w-full mt-4 p-4 bg-warning-subtle border border-warning/20 rounded-md text-left shadow-2xs">
+            <div className="flex items-center gap-2 text-warning-ink font-bold text-xs">
+              <ShieldCheck className="w-4 h-4 text-warning-ink shrink-0" />
               <span>Medical Grace Protocol Active</span>
             </div>
-            <p className="text-[11px] text-amber-900/85 mt-1 leading-relaxed font-medium">
+            <p className="text-[11px] text-warning-ink/85 mt-1 leading-relaxed font-medium">
               Facial biometric comparison is waived for temporary recovery. Hold this QR badge up to the kiosk camera to record attendance.
             </p>
             {medicalExemption?.valid_until && (
-              <div className="mt-2 pt-2 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-mono text-amber-950 font-bold">
+              <div className="mt-2 pt-2 border-t border-warning/70 flex items-center justify-between text-[11px] font-mono text-warning-ink font-bold">
                 <span>Valid through: {medicalExemption.valid_until}</span>
                 {daysRemaining !== null && (
-                  <span className="px-2 py-0.5 bg-amber-200/70 text-amber-950 rounded text-[10px] font-sans font-bold">
+                  <span className="px-2 py-0.5 bg-warning-subtle/70 text-warning-ink rounded text-[10px] font-sans font-bold">
                     {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining
                   </span>
                 )}
               </div>
             )}
             {medicalExemption?.granted_by && (
-              <p className="mt-1.5 text-[10px] text-amber-900/80 font-medium flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <p className="mt-1.5 text-[10px] text-warning-ink/80 font-medium flex items-center gap-1">
+                <UserCheck className="w-3.5 h-3.5 text-warning-ink shrink-0" />
                 <span>Authorized by: <strong>{/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(medicalExemption.granted_by) ? 'System Administrator (HR)' : (medicalExemption.granted_by_role ? `${medicalExemption.granted_by} (${medicalExemption.granted_by_role})` : medicalExemption.granted_by)}</strong></span>
               </p>
             )}

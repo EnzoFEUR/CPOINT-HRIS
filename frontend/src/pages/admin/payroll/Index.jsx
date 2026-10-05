@@ -102,14 +102,14 @@ const getStatusVisuals = (status) => {
     if (normalized === 'pending' || normalized === 'draft') {
         return {
             label: status || 'Pending',
-            badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200/90',
-            dotClass: 'bg-amber-500 animate-pulse',
+            badgeClass: 'bg-warning-subtle text-warning-ink border border-warning/90',
+            dotClass: 'bg-warning animate-pulse',
         };
     }
     return {
         label: status || 'Completed',
-        badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200/90',
-        dotClass: 'bg-emerald-500',
+        badgeClass: 'bg-success-subtle text-success-ink border border-success/90',
+        dotClass: 'bg-success',
     };
 };
 
@@ -193,9 +193,9 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
         <tr
             onClick={handleRowClick}
             title={payroll.isPending ? `Click to process payroll for ${payroll._fullName}` : `Click to view payslip for ${payroll._fullName}`}
-            className={`cursor-pointer transition-all duration-150 group select-none ${isSelected ? 'bg-red-50/60 hover:bg-red-50/80' : isGroupChild
-                ? 'bg-slate-50/40 hover:bg-emerald-50/50 hover:shadow-2xs active:bg-emerald-100/30'
-                : 'bg-white hover:bg-emerald-50/35 hover:shadow-2xs active:bg-emerald-100/30'
+            className={`cursor-pointer transition-all duration-150 group select-none ${isSelected ? 'bg-danger-subtle/60 hover:bg-danger-subtle/80' : isGroupChild
+                ? 'bg-slate-50/40 hover:bg-surface-muted hover:shadow-2xs active:bg-surface-muted'
+                : 'bg-white hover:bg-surface-muted hover:shadow-2xs active:bg-surface-muted'
                 }`}
         >
             {/* 0. Select */}
@@ -206,7 +206,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         checked={isSelected}
                         onChange={() => onToggleSelect?.(payroll.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer"
                     />
                 )}
             </td>
@@ -215,17 +215,17 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
             <td className={`py-5 px-3 xl:px-4 align-middle ${isGroupChild ? 'pl-8 xl:pl-10' : ''}`}>
                 <div className="flex items-center gap-3.5 min-w-0">
                     {isGroupChild && (
-                        <i className="ti ti-corner-down-right text-emerald-600/70 shrink-0 text-sm" title="Factory Line Member" />
+                        <i className="ti ti-corner-down-right text-ink shrink-0 text-sm" title="Factory Line Member" />
                     )}
                     <div className="shrink-0 relative">
                         <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-11 w-11" theme="emerald" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                            <p className="text-sm font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors truncate" title={payroll._fullName}>
+                            <p className="text-sm font-extrabold text-slate-900 group-hover:text-accent transition-colors truncate" title={payroll._fullName}>
                                 {payroll._fullName || 'Unknown'}
                             </p>
-                            <i className="ti ti-arrow-up-right text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity text-sm shrink-0" />
+                            <i className="ti ti-arrow-up-right text-ink opacity-0 group-hover:opacity-100 transition-opacity text-sm shrink-0" />
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                             <span className="text-xs text-slate-500 font-medium truncate">
@@ -237,7 +237,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                             </span>
                             {isGroupEmp ? (
                                 (viewMode === 'flat' || !isGroupChild) && (
-                                    <span className="ml-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-md text-[10px] font-bold uppercase tracking-wide shrink-0 inline-flex items-center gap-1">
+                                    <span className="ml-1 px-2 py-0.5 bg-surface-muted text-ink border border-line rounded-md text-[10px] font-bold uppercase tracking-wide shrink-0 inline-flex items-center gap-1">
                                         <i className="ti ti-building-factory-2 text-[11px]" />
                                         <span>Group{payroll._line ? ` • ${payroll._line}` : ''}</span>
                                     </span>
@@ -280,7 +280,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                             ₱{payroll._gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {payroll.overtime_pay > 0 && (
-                            <span className="text-[10px] font-semibold text-blue-600 font-sans mt-0.5">
+                            <span className="text-[10px] font-semibold text-accent font-sans mt-0.5">
                                 +₱{toSafeNumber(payroll.overtime_pay).toFixed(2)} OT
                             </span>
                         )}
@@ -294,7 +294,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                     <span className="text-slate-300 font-bold text-sm">—</span>
                 ) : (
                     <div className="flex flex-col items-end">
-                        <span className="font-bold text-rose-600 text-sm">
+                        <span className="font-bold text-danger-ink text-sm">
                             ₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {(payroll._sss > 0 || payroll._philHealth > 0 || payroll._pagIbig > 0 || payroll._tax > 0) && (
@@ -315,7 +315,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                 {payroll.isPending ? (
                     <span className="text-slate-300 font-bold text-sm">—</span>
                 ) : (
-                    <span className="text-sm sm:text-base font-black text-emerald-600 tracking-tight">
+                    <span className="text-sm sm:text-base font-black text-ink tracking-tight">
                         ₱{payroll._net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                 )}
@@ -347,16 +347,16 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                                 isFactoryEmployee: isFactoryDept(payroll.employees?.department),
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
+                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-warning-subtle hover:bg-warning-subtle text-warning-ink border border-warning/20 font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
                         >
-                            <i className="ti ti-player-play text-xs font-medium text-amber-700" />
+                            <i className="ti ti-player-play text-xs font-medium text-warning-ink" />
                             <span>Process</span>
                         </Link>
                     ) : (
                         <Link
                             to={`/admin/payroll/${payroll.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-600 hover:text-white text-slate-700 font-medium text-xs rounded-md shadow-2xs group-hover:border-emerald-400 group-hover:text-emerald-700 group-hover:bg-emerald-50 transition-colors duration-100 cursor-pointer"
+                            className="h-8 inline-flex items-center gap-1.5 px-2.5 bg-white border border-slate-200 hover:border-line hover:bg-ink-subtle hover:text-white text-slate-700 font-medium text-xs rounded-md shadow-2xs group-hover:border-line group-hover:text-ink group-hover:bg-surface-muted transition-colors duration-100 cursor-pointer"
                         >
                             <i className="ti ti-receipt-2 text-xs font-medium" />
                             <span>View Slip</span>
@@ -385,8 +385,8 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
     return (
         <tr
             onClick={onToggle}
-            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${selectionState !== 'none' ? 'bg-red-50/50 border-red-200' : isExpanded
-                ? 'bg-emerald-50/75 border-emerald-200 shadow-2xs'
+            className={`cursor-pointer transition-all duration-150 border-y select-none group/line ${selectionState !== 'none' ? 'bg-danger-subtle/50 border-danger/20' : isExpanded
+                ? 'bg-surface-muted border-line shadow-2xs'
                 : 'bg-slate-50/90 border-slate-200/90 hover:bg-slate-100/90'
                 }`}
         >
@@ -400,7 +400,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                         onChange={() => onToggleGroupSelect?.(group.items)}
                         onClick={(e) => e.stopPropagation()}
                         title={`Select all ${group.items.length} records in ${group.groupName}`}
-                        className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer"
                     />
                 )}
             </td>
@@ -410,7 +410,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div
                         className={`w-10 h-10 rounded-md flex items-center justify-center text-base transition-colors duration-100 shadow-2xs shrink-0 ${isExpanded
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-ink-subtle text-white'
                             : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
                             }`}
                     >
@@ -421,7 +421,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                             <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-emerald-800 transition-colors truncate">
                                 {group.groupName}
                             </span>
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300/60 text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
+                            <span className="px-2 py-0.5 bg-surface-muted text-ink border border-line text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
                                 Group
                             </span>
                         </div>
@@ -451,7 +451,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                     ) : (
                         <span className="text-xs font-semibold text-slate-700">Current Cycle</span>
                     )}
-                    <span className="px-2 py-0.5 bg-emerald-100/70 text-emerald-800 rounded-md text-[10px] font-bold uppercase tracking-wider w-max border border-emerald-200/80">
+                    <span className="px-2 py-0.5 bg-surface-muted text-ink rounded-md text-[10px] font-bold uppercase tracking-wider w-max border border-line">
                         Line Batch
                     </span>
                 </div>
@@ -472,7 +472,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
             {/* 4. Statutory Deductions */}
             <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
-                    <span className="font-extrabold text-rose-600 text-sm">
+                    <span className="font-extrabold text-danger-ink text-sm">
                         ₱{group.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 font-sans uppercase tracking-wider mt-0.5">
@@ -484,10 +484,10 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
             {/* 5. Net Payout */}
             <td className="py-5 px-3 xl:px-4 text-right font-mono tabular-nums align-middle">
                 <div className="flex flex-col items-end">
-                    <span className="text-sm sm:text-base font-black text-emerald-600 tracking-tight">
+                    <span className="text-sm sm:text-base font-black text-ink tracking-tight">
                         ₱{group.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span className="text-[10px] font-bold text-emerald-700 font-sans uppercase tracking-wider mt-0.5">
+                    <span className="text-[10px] font-bold text-ink font-sans uppercase tracking-wider mt-0.5">
                         Net Take-Home
                     </span>
                 </div>
@@ -496,11 +496,11 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
             {/* 6. Status */}
             <td className="py-5 px-3 xl:px-4 text-center align-middle whitespace-nowrap">
                 {group.pendingCount === 0 && group.completedCount > 0 ? (
-                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-success-subtle text-success-ink border border-success/20">
                         <span>Paid</span>
                     </span>
                 ) : group.pendingCount > 0 ? (
-                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="px-2.5 py-1 text-xs font-bold rounded-lg inline-flex items-center justify-center mx-auto bg-warning-subtle text-warning-ink border border-warning/20">
                         <span>Pending</span>
                     </span>
                 ) : (
@@ -520,8 +520,8 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                             onToggle();
                         }}
                         className={`h-8 inline-flex items-center gap-1.5 px-2.5 font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer border ${isExpanded
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
+                            ? 'bg-ink-subtle text-white border-line'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-line hover:text-ink hover:bg-surface-muted'
                             }`}
                         title={isExpanded ? `Collapse ${group.groupName}` : `Inspect workers in ${group.groupName}`}
                     >
@@ -543,7 +543,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
     return (
         <div
-            className={`p-4 space-y-3 rounded-lg border transition-colors duration-100 ${isSelected ? 'bg-red-50/60 border-red-300' : isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-l-emerald-500' : 'bg-white border-slate-200 shadow-2xs'
+            className={`p-4 space-y-3 rounded-lg border transition-colors duration-100 ${isSelected ? 'bg-danger-subtle/60 border-danger/20' : isGroupChild ? 'bg-white border-slate-200 shadow-2xs border-l-4 border-line' : 'bg-white border-slate-200 shadow-2xs'
                 }`}
         >
             <div className="flex items-start justify-between gap-3">
@@ -553,7 +553,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => onToggleSelect?.(payroll.id)}
-                            className="w-4 h-4 mt-0.5 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer shrink-0"
+                            className="w-4 h-4 mt-0.5 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer shrink-0"
                         />
                     )}
                     <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="emerald" />
@@ -567,7 +567,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                             </span>
                             {isGroupEmp ? (
                                 (viewMode === 'flat' || !isGroupChild) && (
-                                    <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[9px] font-semibold uppercase inline-flex items-center gap-0.5">
+                                    <span className="px-1.5 py-0.5 bg-surface-muted text-ink border border-line rounded text-[9px] font-semibold uppercase inline-flex items-center gap-0.5">
                                         <i className="ti ti-building-factory-2 text-[10px]" />
                                         <span>Group{payroll._line ? ` • ${payroll._line}` : ''}</span>
                                     </span>
@@ -598,7 +598,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                 </div>
 
                 {payroll.isPending ? (
-                    <div className="pt-2 border-t border-slate-200 text-xs text-center text-amber-700 font-medium py-1 bg-amber-50 rounded-md">
+                    <div className="pt-2 border-t border-slate-200 text-xs text-center text-warning-ink font-medium py-1 bg-warning-subtle rounded-md">
                         Awaiting Computation for Current Cycle
                     </div>
                 ) : (
@@ -611,8 +611,8 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                                 </p>
                             </div>
                             <div className="text-right">
-                                <span className="text-[10px] font-medium text-red-400 uppercase">Deductions</span>
-                                <p className="font-mono font-semibold text-red-500 text-xs">
+                                <span className="text-[10px] font-medium text-danger uppercase">Deductions</span>
+                                <p className="font-mono font-semibold text-danger-ink text-xs">
                                     ₱{payroll._deductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </p>
                             </div>
@@ -620,7 +620,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
                         <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                             <span className="text-xs font-semibold uppercase text-slate-600">Net Take-Home Pay</span>
-                            <span className="text-base font-bold text-emerald-600 font-mono">
+                            <span className="text-base font-bold text-ink font-mono">
                                 ₱{payroll._net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -643,7 +643,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                         daily_rate: payroll.employees?.daily_rate,
                         isFactoryEmployee: isFactoryDept(payroll.employees?.department),
                     }}
-                    className="w-full h-9 bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                    className="w-full h-9 bg-warning hover:bg-warning-ink text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                 >
                     <i className="ti ti-player-play text-base" />
                     <span>Process Payroll</span>
@@ -651,7 +651,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
             ) : (
                 <Link
                     to={`/admin/payroll/${payroll.id}`}
-                    className="w-full h-9 bg-slate-900 hover:bg-emerald-600 text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                    className="w-full h-9 bg-slate-900 hover:bg-ink-subtle text-white font-medium text-xs rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
                 >
                     <i className="ti ti-receipt-2 text-base" />
                     <span>View Full Payslip</span>
@@ -1498,7 +1498,7 @@ export default function PayrollIndex() {
 
                         <Link
                             to="/admin/payroll/process"
-                            className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                            className="h-9 px-4 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                         >
                             <i className="ti ti-calculator text-base" />
                             <span>Compute payroll</span>
@@ -1509,17 +1509,17 @@ export default function PayrollIndex() {
 
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="bg-white p-4 rounded-lg border border-emerald-200 shadow-2xs flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-lg border border-line shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                        <span className="text-[10px] sm:text-xs font-bold text-ink uppercase tracking-wider">
                             Total Net Payout
                         </span>
-                        <div className="w-8 h-8 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-accent-subtle text-ink flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-cash" />
                         </div>
                     </div>
                     <div className="mt-2.5">
-                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-emerald-600 tracking-tight">
+                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-ink tracking-tight">
                             ₱{metrics.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                     </div>
@@ -1530,7 +1530,7 @@ export default function PayrollIndex() {
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
                             Gross Compensation
                         </span>
-                        <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-calculator" />
                         </div>
                     </div>
@@ -1546,12 +1546,12 @@ export default function PayrollIndex() {
                         <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
                             Statutory Deductions
                         </span>
-                        <div className="w-8 h-8 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold shadow-2xs">
+                        <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center text-sm font-bold shadow-2xs">
                             <i className="ti ti-scale" />
                         </div>
                     </div>
                     <div className="mt-2.5">
-                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-rose-500 tracking-tight">
+                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-danger-ink tracking-tight">
                             ₱{metrics.totalStatutory.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                     </div>
@@ -1572,12 +1572,12 @@ export default function PayrollIndex() {
                                 {metrics.completionRate}%
                             </div>
                             <span className="text-xs font-bold text-slate-500">
-                                <span className="text-emerald-600 font-black">{metrics.completedCount}</span> / {metrics.totalCount} paid
+                                <span className="text-success-ink font-black">{metrics.completedCount}</span> / {metrics.totalCount} paid
                             </span>
                         </div>
                         <div className="w-full bg-slate-100 h-1.5 rounded overflow-hidden mt-1.5">
                             <div
-                                className="bg-emerald-500 h-full rounded transition-all duration-300"
+                                className="bg-ink-subtle h-full rounded transition-all duration-300"
                                 style={{ width: `${metrics.completionRate}%` }}
                             />
                         </div>
@@ -1621,9 +1621,9 @@ export default function PayrollIndex() {
                                 onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }}
                                 className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${filterStatus === tab.id
                                     ? (tab.id === 'Completed'
-                                        ? 'bg-emerald-600 text-white shadow-2xs'
+                                        ? 'bg-success text-white shadow-2xs'
                                         : tab.id === 'Pending'
-                                            ? 'bg-amber-500 text-white shadow-2xs'
+                                            ? 'bg-warning text-white shadow-2xs'
                                             : 'bg-slate-900 text-white shadow-2xs')
                                     : 'text-slate-500 hover:text-slate-900'
                                     }`}
@@ -1632,7 +1632,7 @@ export default function PayrollIndex() {
                                 <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-mono tabular-nums ${filterStatus === tab.id
                                     ? 'bg-white/20 text-white'
                                     : tab.alert
-                                        ? 'bg-amber-100 text-amber-800 font-bold'
+                                        ? 'bg-warning-subtle text-warning-ink font-bold'
                                         : 'bg-slate-200/80 text-slate-600'
                                     }`}>
                                     {tab.count}
@@ -1701,7 +1701,7 @@ export default function PayrollIndex() {
                                                     type="button"
                                                     onClick={() => handleCalendarSelect(m)}
                                                     className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors duration-100 cursor-pointer ${isSelected
-                                                        ? 'bg-emerald-600 text-white'
+                                                        ? 'bg-ink-subtle text-white'
                                                         : 'text-slate-600 hover:bg-slate-100'
                                                         }`}
                                                 >
@@ -1756,7 +1756,7 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={jumpToCurrentCycle}
-                                className="h-9 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                className="h-9 px-3 bg-surface-muted hover:bg-surface-muted text-ink border border-line rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer whitespace-nowrap"
                                 title="Jump to current active payroll cycle"
                             >
                                 <i className="ti ti-calendar-event text-xs" />
@@ -1774,7 +1774,7 @@ export default function PayrollIndex() {
                             <button
                                 type="button"
                                 onClick={handleClearFilters}
-                                className="h-9 px-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer"
+                                className="h-9 px-2.5 bg-danger-subtle hover:bg-danger-subtle text-danger-ink rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1 cursor-pointer"
                                 title="Reset all filters"
                             >
                                 <i className="ti ti-filter-off text-xs" />
@@ -1789,7 +1789,7 @@ export default function PayrollIndex() {
             {selectedIds.size > 0 && (
                 <div className="sticky top-2 z-20 bg-slate-900 text-white rounded-lg shadow-xl px-4 sm:px-5 py-2.5 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-slate-800">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-md bg-slate-800 text-indigo-400 border border-slate-700 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-md bg-slate-800 text-accent-on-dark border border-slate-700 flex items-center justify-center shrink-0">
                             <i className="ti ti-checkbox text-lg" />
                         </div>
                         <span className="text-sm font-bold">
@@ -1807,7 +1807,7 @@ export default function PayrollIndex() {
                         <button
                             type="button"
                             onClick={() => setIsBulkDeleteModalOpen(true)}
-                            className="flex-1 sm:flex-none h-8 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer flex items-center justify-center gap-1.5"
+                            className="flex-1 sm:flex-none h-8 px-4 bg-danger hover:bg-danger-ink text-white text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer flex items-center justify-center gap-1.5"
                         >
                             <i className="ti ti-trash text-sm" />
                             <span>Delete Selected</span>
@@ -1859,8 +1859,8 @@ export default function PayrollIndex() {
                                             </td>
                                             <td className="px-3 xl:px-4 py-5"><div className="h-3.5 w-28 bg-slate-100 rounded" /><div className="h-2.5 w-16 bg-slate-100 rounded mt-2" /></td>
                                             <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-24 bg-slate-200 rounded ml-auto" /></td>
-                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-28 bg-rose-100 rounded ml-auto" /><div className="h-2.5 w-20 bg-slate-100 rounded ml-auto mt-1.5" /></td>
-                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4.5 w-24 bg-emerald-100 rounded ml-auto" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4 w-28 bg-danger-subtle rounded ml-auto" /><div className="h-2.5 w-20 bg-slate-100 rounded ml-auto mt-1.5" /></td>
+                                            <td className="px-3 xl:px-4 py-5 text-right"><div className="h-4.5 w-24 bg-surface-muted rounded ml-auto" /></td>
                                             <td className="px-3 xl:px-4 py-5 text-center"><div className="h-6 w-20 bg-slate-100 rounded-md mx-auto" /></td>
                                             <td className="px-3 xl:px-4 py-5 text-right"><div className="h-8 w-24 bg-slate-100 rounded-md ml-auto" /></td>
                                         </tr>
@@ -1926,16 +1926,16 @@ export default function PayrollIndex() {
                                                             onChange={() => toggleSelectGroup(item.items)}
                                                             onClick={(e) => e.stopPropagation()}
                                                             title={`Select all ${item.items.length} records in ${item.groupName}`}
-                                                            className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer shrink-0"
+                                                            className="w-4 h-4 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer shrink-0"
                                                         />
                                                     )}
-                                                    <div className="w-8 h-8 rounded-md bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                                                    <div className="w-8 h-8 rounded-md bg-ink-subtle text-white flex items-center justify-center font-bold text-sm shadow-2xs">
                                                         <i className="ti ti-building-factory-2" />
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-1.5">
                                                             <h3 className="text-sm font-black text-slate-800">{item.groupName}</h3>
-                                                            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded-md">
+                                                            <span className="px-1.5 py-0.5 bg-surface-muted text-ink text-[9px] font-black uppercase rounded-md">
                                                                 Factory Line
                                                             </span>
                                                         </div>
@@ -1957,14 +1957,14 @@ export default function PayrollIndex() {
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-between font-sans">
-                                                    <span className="text-red-500 font-bold">Processed Line Deductions</span>
-                                                    <span className="font-mono font-bold text-red-500">
+                                                    <span className="text-danger-ink font-bold">Processed Line Deductions</span>
+                                                    <span className="font-mono font-bold text-danger-ink">
                                                         ₱{item.totalDed.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
                                                 <div className="pt-2 border-t border-slate-100 flex justify-between items-center font-sans">
                                                     <span className="font-black text-slate-600 uppercase text-[10px]">Line Net Take-Home</span>
-                                                    <span className="text-base font-black text-emerald-600 font-mono">
+                                                    <span className="text-base font-black text-ink font-mono">
                                                         ₱{item.totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
@@ -1973,17 +1973,17 @@ export default function PayrollIndex() {
                                             <div className="flex items-center justify-between text-xs font-bold pt-1">
                                                 <div className="flex items-center gap-1.5">
                                                     {item.completedCount > 0 && (
-                                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black rounded-md">
+                                                        <span className="px-2 py-0.5 bg-success-subtle text-success-ink border border-success/20 text-[10px] font-black rounded-md">
                                                             {item.completedCount} Paid
                                                         </span>
                                                     )}
                                                     {item.pendingCount > 0 && (
-                                                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-black rounded-md">
+                                                        <span className="px-2 py-0.5 bg-warning-subtle text-warning-ink border border-warning/20 text-[10px] font-black rounded-md">
                                                             {item.pendingCount} Pending
                                                         </span>
                                                     )}
                                                 </div>
-                                                <span className="text-emerald-600 text-xs font-black flex items-center gap-1">
+                                                <span className="text-ink text-xs font-black flex items-center gap-1">
                                                     {isExpanded ? 'Collapse' : 'Inspect Roster'}
                                                     <i className={`ti ti-chevron-${isExpanded ? 'up' : 'down'} text-lg`} />
                                                 </span>
@@ -2048,7 +2048,7 @@ export default function PayrollIndex() {
                                                     });
                                                 }}
                                                 title="Select all on this page"
-                                                className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                className="w-4 h-4 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer"
                                             />
                                         </th>
 
@@ -2061,7 +2061,7 @@ export default function PayrollIndex() {
                                             <div className="flex items-center gap-2">
                                                 <span>Worker &amp; Role</span>
                                                 <i className={`ti ${sortConfig.key === 'name'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
@@ -2076,7 +2076,7 @@ export default function PayrollIndex() {
                                             <div className="flex items-center gap-2">
                                                 <span>Cycle Period</span>
                                                 <i className={`ti ${sortConfig.key === 'date'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
@@ -2090,7 +2090,7 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'gross'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Gross Pay</span>
@@ -2105,7 +2105,7 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'deductions'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Deductions</span>
@@ -2120,7 +2120,7 @@ export default function PayrollIndex() {
                                         >
                                             <div className="flex items-center justify-end gap-2">
                                                 <i className={`ti ${sortConfig.key === 'net'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                                 <span>Net Payout</span>
@@ -2136,7 +2136,7 @@ export default function PayrollIndex() {
                                             <div className="flex items-center justify-center gap-2">
                                                 <span>Status</span>
                                                 <i className={`ti ${sortConfig.key === 'status'
-                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-emerald-600 font-bold' : 'ti-arrow-down text-emerald-600 font-bold')
+                                                    ? (sortConfig.direction === 'asc' ? 'ti-arrow-up text-accent font-bold' : 'ti-arrow-down text-accent font-bold')
                                                     : 'ti-arrows-sort text-slate-300 opacity-0 group-hover:opacity-100'
                                                     } text-xs transition-opacity`} />
                                             </div>
@@ -2251,8 +2251,8 @@ export default function PayrollIndex() {
                 <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5 text-rose-600">
-                                <div className="w-10 h-10 rounded-md bg-rose-50 flex items-center justify-center text-xl">
+                            <div className="flex items-center gap-2.5 text-danger-ink">
+                                <div className="w-10 h-10 rounded-md bg-danger-subtle flex items-center justify-center text-xl">
                                     <i className="ti ti-alert-triangle" />
                                 </div>
                                 <h3 className="text-lg font-bold text-slate-900">Confirm Bulk Delete</h3>
@@ -2268,7 +2268,7 @@ export default function PayrollIndex() {
 
                         <p className="text-xs text-slate-600 leading-relaxed">
                             You are about to permanently delete <strong className="text-slate-900">{selectedIds.size} payroll record(s)</strong>.
-                            This action cannot be undone. To proceed, please type <span className="font-mono font-bold text-rose-600">DELETE</span> below.
+                            This action cannot be undone. To proceed, please type <span className="font-mono font-bold text-danger-ink">DELETE</span> below.
                         </p>
 
                         <input
@@ -2276,7 +2276,7 @@ export default function PayrollIndex() {
                             placeholder="Type DELETE to confirm"
                             value={bulkDeleteConfirmText}
                             onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
-                            className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 transition-colors duration-100"
+                            className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 outline-none focus:ring-1 focus:ring-danger focus:border-danger transition-colors duration-100"
                         />
 
                         <div className="flex items-center justify-end gap-2 pt-2">
@@ -2291,7 +2291,7 @@ export default function PayrollIndex() {
                                 type="button"
                                 onClick={handleBulkDelete}
                                 disabled={bulkDeleteConfirmText !== 'DELETE' || isBulkDeleting}
-                                className="h-9 px-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
+                                className="h-9 px-4 bg-danger hover:bg-danger-ink disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                             >
                                 {isBulkDeleting ? (
                                     <>

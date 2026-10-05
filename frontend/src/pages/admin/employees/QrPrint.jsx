@@ -40,7 +40,7 @@ export default function QrPrint({ employee = {} }) {
 
                 <div className="mb-6">
                     <h2 className="text-2xl font-black text-slate-900 leading-tight">{employee.name}</h2>
-                    <p className="text-blue-600 font-black uppercase text-xs tracking-widest mt-1">{employee.job_title ?? 'STAFF'}</p>
+                    <p className="text-accent font-black uppercase text-xs tracking-widest mt-1">{employee.job_title ?? 'STAFF'}</p>
                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{employee.department ? `${employee.department} Dept.` : 'Operations'}</p>
                 </div>
 

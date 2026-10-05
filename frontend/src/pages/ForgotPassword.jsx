@@ -505,14 +505,14 @@ export default function ForgotPassword() {
 
         {/* Global Error Banner */}
         {error && (
-          <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium leading-relaxed">
             {error}
           </div>
         )}
 
         {/* Global Success Banner */}
         {successMsg && (
-          <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 font-medium leading-relaxed">
+          <div className="mb-4 p-2.5 bg-surface-muted border border-line rounded-md text-xs text-ink font-medium leading-relaxed">
             {successMsg}
           </div>
         )}
@@ -588,11 +588,11 @@ export default function ForgotPassword() {
                   placeholder="name@company.com or CP-2026-..."
                   className={`w-full h-9 pl-9 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs ${
                     accountStatus === 'verified'
-                      ? 'border-emerald-500 focus:border-emerald-600'
+                      ? 'border-line focus:border-line'
                       : accountStatus === 'not_found'
-                      ? 'border-rose-400 focus:border-rose-500 bg-rose-50/20'
+                      ? 'border-danger focus:border-danger bg-danger-subtle/20'
                       : accountStatus === 'no_email'
-                      ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20'
+                      ? 'border-warning focus:border-warning bg-warning-subtle/20'
                       : 'border-slate-300 focus:border-slate-500'
                   }`}
                 />
@@ -600,13 +600,13 @@ export default function ForgotPassword() {
 
               {/* Real-Time Workplace Account Verification Feedback */}
               {accountStatus === 'verified' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-md text-xs text-emerald-800">
+                <div className="mt-2 p-2.5 bg-surface-muted border border-line rounded-md text-xs text-ink">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <i className="ti ti-circle-check text-emerald-600 text-base shrink-0" />
+                      <i className="ti ti-circle-check text-ink text-base shrink-0" />
                       <div>
                         <span className="font-bold text-slate-900">{accountInfo.name}</span>
-                        <span className="text-[11px] text-emerald-700 block">
+                        <span className="text-[11px] text-ink block">
                           {accountInfo.company_id ? `${accountInfo.company_id} • ` : ''}{accountInfo.role?.toUpperCase()} • Active Account
                         </span>
                         {accountInfo.email && accountInfo.email !== email.trim().toLowerCase() && (
@@ -616,7 +616,7 @@ export default function ForgotPassword() {
                         )}
                       </div>
                     </div>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm border border-emerald-200 shrink-0">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider bg-surface-muted text-ink px-1.5 py-0.5 rounded-sm border border-line shrink-0">
                       Verified
                     </span>
                   </div>
@@ -624,11 +624,11 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'pending_registration' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
-                  <i className="ti ti-shield-lock text-amber-600 text-base shrink-0 mt-0.5" />
+                <div className="mt-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-md text-xs text-warning-ink flex items-start gap-2 shadow-2xs">
+                  <i className="ti ti-shield-lock text-warning-ink text-base shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold text-amber-950 block">{accountInfo.name} ({accountInfo.company_id})</span>
-                    <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                    <span className="font-bold text-warning-ink block">{accountInfo.name} ({accountInfo.company_id})</span>
+                    <span className="text-[11px] text-warning-ink leading-relaxed block mt-0.5">
                       This account is pending initial registration and must complete initial security setup with the temporary credentials provided by HR before self-service password recovery is enabled.
                     </span>
                   </div>
@@ -636,11 +636,11 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'not_found' && (
-                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 flex items-start gap-2">
-                  <i className="ti ti-alert-circle text-rose-500 text-base shrink-0 mt-0.5" />
+                <div className="mt-2 p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink flex items-start gap-2">
+                  <i className="ti ti-alert-circle text-danger-ink text-base shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold text-rose-800 block">No Registered Account Found</span>
-                    <span className="text-[11px] text-rose-600 leading-relaxed block mt-0.5">
+                    <span className="font-bold text-danger-ink block">No Registered Account Found</span>
+                    <span className="text-[11px] text-danger-ink leading-relaxed block mt-0.5">
                       You can only reset your password if you have a registered workplace account. Please check your spelling or contact HR.
                     </span>
                   </div>
@@ -648,11 +648,11 @@ export default function ForgotPassword() {
               )}
 
               {accountStatus === 'no_email' && accountInfo && (
-                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 flex items-start gap-2">
-                  <i className="ti ti-alert-triangle text-amber-600 text-base shrink-0 mt-0.5" />
+                <div className="mt-2 p-2.5 bg-warning-subtle border border-warning/20 rounded-md text-xs text-warning-ink flex items-start gap-2">
+                  <i className="ti ti-alert-triangle text-warning-ink text-base shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold text-amber-900 block">{accountInfo.name} ({accountInfo.company_id})</span>
-                    <span className="text-[11px] text-amber-700 leading-relaxed block mt-0.5">
+                    <span className="font-bold text-warning-ink block">{accountInfo.name} ({accountInfo.company_id})</span>
+                    <span className="text-[11px] text-warning-ink leading-relaxed block mt-0.5">
                       This employee account does not have a registered workplace email on file. Please contact HR or your supervisor for an in-person credential reset.
                     </span>
                   </div>
@@ -763,9 +763,9 @@ export default function ForgotPassword() {
               }
               className={`w-full h-10 mt-2 text-white font-semibold rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer ${
                 accountStatus === 'not_found'
-                  ? 'bg-rose-600 hover:bg-rose-700'
+                  ? 'bg-danger hover:bg-danger-ink'
                   : accountStatus === 'pending_registration' || accountStatus === 'no_email'
-                  ? 'bg-amber-600 hover:bg-amber-700'
+                  ? 'bg-warning hover:bg-warning-ink'
                   : accountStatus === 'inactive'
                   ? 'bg-slate-500 hover:bg-slate-600'
                   : 'bg-slate-900 hover:bg-slate-800'

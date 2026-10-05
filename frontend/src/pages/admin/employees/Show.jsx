@@ -543,7 +543,7 @@ export default function Show() {
     if (isLoading || !employee) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-accent rounded-full animate-spin" />
                 <p className="text-slate-500 font-bold tracking-widest uppercase text-sm">Loading Profile...</p>
             </div>
         );
@@ -615,7 +615,7 @@ export default function Show() {
                         </button>
 
                         {/* Primary Action CTA */}
-                        <Link to={`/admin/employees/${employee.id}/edit`} className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600">
+                        <Link to={`/admin/employees/${employee.id}/edit`} className="h-8 px-3.5 bg-accent hover:bg-accent-hover active:bg-accent-hover text-white font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent">
                             <i className="ti ti-pencil text-sm" />
                             <span>Edit Profile</span>
                         </Link>
@@ -628,7 +628,7 @@ export default function Show() {
                                 ...(isTerminated ? [
                                     {
                                         label: 'Reinstate Employee',
-                                        icon: 'ti-rotate-clockwise text-emerald-600',
+                                        icon: 'ti-rotate-clockwise text-success-ink',
                                         onClick: () => setIsReinstateModalOpen(true),
                                     },
                                     { divider: true },
@@ -691,11 +691,11 @@ export default function Show() {
                                 textSize="text-3xl sm:text-4xl"
                             />
                             {isTerminated ? (
-                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-danger text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
                                     <i className="ti ti-x" /> Terminated
                                 </span>
                             ) : isSuspended ? (
-                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
+                                <span className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-warning text-white text-[10px] font-semibold uppercase ring-2 ring-slate-900 flex items-center gap-1 shadow-2xs">
                                     <i className="ti ti-clock-pause" /> Suspended
                                 </span>
                             ) : null}
@@ -709,43 +709,43 @@ export default function Show() {
 
                                 {/* Status badge */}
                                 {isTerminated ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-semibold rounded border border-rose-500/40">
-                                        <i className="ti ti-circle-x text-sm text-rose-400" /> Terminated / Separated
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-danger/20 text-danger text-xs font-semibold rounded border border-danger/40">
+                                        <i className="ti ti-circle-x text-sm text-danger" /> Terminated / Separated
                                     </span>
                                 ) : isSuspended ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/40">
-                                        <i className="ti ti-alert-triangle text-sm text-amber-400" /> Suspended · Operational Hold
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded border border-warning/40">
+                                        <i className="ti ti-alert-triangle text-sm text-warning" /> Suspended · Operational Hold
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded border border-line">
                                         Active Personnel
                                     </span>
                                 )}
 
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded border border-accent/30">
                                     {employee.department || 'General'}
                                 </span>
                                 {isFactory ? (
                                     <>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded border border-warning/30">
                                             <i className={`ti ${shoeRole?.icon || 'ti-shoe'}`} />
                                             {shoeRole ? shoeRole.label : (employee.job_title || 'Shoe Craft')}
                                         </span>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded border border-amber-500/30">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded border border-warning/30">
                                             <i className="ti ti-users" />
                                             {employee?.production_groups?.name || prodGroup}
                                             {employee?.production_groups?.code ? ` (${employee.production_groups.code})` : ''}
                                         </span>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded border border-purple-500/30">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded border border-accent/30">
                                             Group Piece-Rate (Pool)
                                         </span>
                                     </>
                                 ) : (
                                     <>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded border border-blue-500/30">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded border border-accent/30">
                                             Regular (08:00 - 20:00 • OT Eligible)
                                         </span>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded border border-line">
                                             Salaried Monthly
                                         </span>
                                     </>
@@ -775,23 +775,23 @@ export default function Show() {
 
                 {/* Temporary credentials for unregistered accounts */}
                 {isPendingRegistration && (
-                    <div className="bg-amber-500/10 border border-amber-300 rounded-lg p-4 sm:p-5 shadow-2xs space-y-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
+                    <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 sm:p-5 shadow-2xs space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-warning/80">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-md bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <div className="w-8 h-8 rounded-md bg-warning text-white flex items-center justify-center shrink-0 shadow-2xs">
                                     <i className="ti ti-key text-lg" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h3 className="font-semibold text-amber-950 text-base sm:text-lg">
+                                        <h3 className="font-semibold text-warning-ink text-base sm:text-lg">
                                             Account Pending Initial Registration
                                         </h3>
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-warning-subtle text-warning-ink border border-warning/20">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                                             Unregistered
                                         </span>
                                     </div>
-                                    <p className="text-xs text-amber-800/90 font-medium mt-0.5">
+                                    <p className="text-xs text-warning-ink/90 font-medium mt-0.5">
                                         This employee has not signed in yet. Their temporary password remains preserved below until first login.
                                     </p>
                                 </div>
@@ -800,7 +800,7 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={copyAllCredentials}
-                                    className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer"
+                                    className="h-8 px-3 bg-warning hover:bg-warning-ink text-white font-medium text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <i className={`ti ${copiedKey === 'all' ? 'ti-check' : 'ti-copy'} text-sm`} />
                                     <span>{copiedKey === 'all' ? 'Credentials Copied' : 'Copy Onboarding Info'}</span>
@@ -810,9 +810,9 @@ export default function Show() {
                                     onClick={handleResetTempPassword}
                                     disabled={isResettingPassword}
                                     title="Generate a fresh temporary password"
-                                    className="h-8 px-3 bg-white hover:bg-amber-50 text-amber-900 font-medium text-xs rounded-md border border-amber-300 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-white hover:bg-warning-subtle text-warning-ink font-medium text-xs rounded-md border border-warning/20 shadow-2xs transition-colors duration-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 >
-                                    <i className={`ti ${isResettingPassword ? 'ti-loader animate-spin' : 'ti-refresh'} text-sm text-amber-700`} />
+                                    <i className={`ti ${isResettingPassword ? 'ti-loader animate-spin' : 'ti-refresh'} text-sm text-warning-ink`} />
                                     <span className="hidden sm:inline">New Temp Pass</span>
                                 </button>
                             </div>
@@ -820,7 +820,7 @@ export default function Show() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                             {/* Email */}
-                            <div className="bg-white p-3 rounded-md border border-amber-200/80 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-warning/80 flex flex-col justify-between space-y-2">
                                 <div>
                                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Login Email</p>
                                     <p className="font-semibold text-xs text-slate-800 truncate mt-0.5" title={employee.email}>
@@ -830,15 +830,15 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(employee.email, 'email')}
-                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
+                                    className="text-[11px] font-semibold text-accent hover:text-accent flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
                                 >
-                                    <i className={`ti ${copiedKey === 'email' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <i className={`ti ${copiedKey === 'email' ? 'ti-check text-ink' : 'ti-copy'} text-xs`} />
                                     <span>{copiedKey === 'email' ? 'Copied' : 'Copy Email'}</span>
                                 </button>
                             </div>
 
                             {/* Company ID */}
-                            <div className="bg-white p-3 rounded-md border border-amber-200/80 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-warning/80 flex flex-col justify-between space-y-2">
                                 <div>
                                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Company ID</p>
                                     <p className="font-mono font-semibold text-sm text-slate-900 mt-0.5">
@@ -848,17 +848,17 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={() => copyToClipboard(employee.company_id || employee.id, 'company_id')}
-                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
+                                    className="text-[11px] font-semibold text-accent hover:text-accent flex items-center gap-1 self-start cursor-pointer transition-colors duration-100"
                                 >
-                                    <i className={`ti ${copiedKey === 'company_id' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                    <i className={`ti ${copiedKey === 'company_id' ? 'ti-check text-ink' : 'ti-copy'} text-xs`} />
                                     <span>{copiedKey === 'company_id' ? 'Copied' : 'Copy ID'}</span>
                                 </button>
                             </div>
 
                             {/* Temporary Password */}
-                            <div className="bg-white p-3 rounded-md border border-amber-300 flex flex-col justify-between space-y-2">
+                            <div className="bg-white p-3 rounded-md border border-warning/20 flex flex-col justify-between space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wider">Temporary Password</p>
+                                    <p className="text-[10px] font-semibold text-warning-ink uppercase tracking-wider">Temporary Password</p>
                                     <button
                                         type="button"
                                         onClick={() => setShowTempPassword(!showTempPassword)}
@@ -869,23 +869,23 @@ export default function Show() {
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-mono font-semibold text-base text-amber-950 tracking-wider">
+                                    <span className="font-mono font-semibold text-base text-warning-ink tracking-wider">
                                         {showTempPassword ? (employee.temp_password || 'Emp-1234') : '••••••••'}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(employee.temp_password || 'Emp-1234', 'password')}
-                                        className="h-7 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium text-xs rounded transition-colors duration-100 flex items-center gap-1 cursor-pointer"
+                                        className="h-7 px-2.5 bg-warning-subtle hover:bg-warning-subtle text-warning-ink font-medium text-xs rounded transition-colors duration-100 flex items-center gap-1 cursor-pointer"
                                     >
-                                        <i className={`ti ${copiedKey === 'password' ? 'ti-check text-emerald-600' : 'ti-copy'} text-xs`} />
+                                        <i className={`ti ${copiedKey === 'password' ? 'ti-check text-ink' : 'ti-copy'} text-xs`} />
                                         <span>{copiedKey === 'password' ? 'Copied' : 'Copy'}</span>
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="pt-2 border-t border-amber-200/60 flex items-center gap-2 text-[11px] text-amber-800/80 font-medium">
-                            <i className="ti ti-info-circle text-amber-700 shrink-0 text-sm" />
+                        <div className="pt-2 border-t border-warning/60 flex items-center gap-2 text-[11px] text-warning-ink/80 font-medium">
+                            <i className="ti ti-info-circle text-warning-ink shrink-0 text-sm" />
                             <span>
                                 Once the employee registers by logging in and configuring their personal password, this temporary password will be wiped and will automatically disappear from this profile.
                             </span>
@@ -895,30 +895,30 @@ export default function Show() {
 
                 {/* Status alert banner */}
                 {isTerminated && (
-                    <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="bg-danger-subtle border border-danger/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
+                            <div className="w-8 h-8 rounded-md bg-danger-subtle text-danger-ink flex items-center justify-center shrink-0 border border-danger/20">
                                 <i className="ti ti-ban text-lg" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-semibold text-rose-900 text-sm sm:text-base">Administrative Separation & Account Termination</h4>
-                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded ${isInCooldown ? 'bg-amber-200/80 text-amber-900' : 'bg-rose-200/80 text-rose-900'}`}>
+                                    <h4 className="font-semibold text-danger-ink text-sm sm:text-base">Administrative Separation & Account Termination</h4>
+                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded ${isInCooldown ? 'bg-warning-subtle/80 text-warning-ink' : 'bg-danger-subtle/80 text-danger-ink'}`}>
                                         {isInCooldown ? `Cooldown · ${cooldownDaysRemaining}d Left` : 'DOLE Separated · Finalized'}
                                     </span>
                                 </div>
-                                <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                                <p className="text-xs text-danger-ink mt-1 leading-relaxed">
                                     {employee.termination_record?.reason || 'This employee account has been officially separated from active roster. Portal access and attendance permissions are deactivated.'}
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-rose-700 font-medium">
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-danger-ink font-medium">
                                     {employee.termination_record?.date && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-rose-900 font-semibold">{employee.termination_record.date}</strong>
+                                            <i className="ti ti-calendar-event" /> Effective Date: <strong className="text-danger-ink font-semibold">{employee.termination_record.date}</strong>
                                         </span>
                                     )}
                                     {isInCooldown && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-hourglass-low" /> <strong className="text-rose-900 font-semibold">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
+                                            <i className="ti ti-hourglass-low" /> <strong className="text-danger-ink font-semibold">{cooldownDaysRemaining} day{cooldownDaysRemaining === 1 ? '' : 's'}</strong> remaining in the reversible cooldown window.
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
@@ -934,13 +934,13 @@ export default function Show() {
                             <button
                                 type="button"
                                 onClick={() => setIsReinstateModalOpen(true)}
-                                className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer touch-manipulation"
+                                className="h-8 px-3 bg-success hover:bg-success-ink text-white text-xs font-medium rounded-md shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer touch-manipulation"
                             >
                                 <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
                             </button>
                             <Link
                                 to={`/admin/documents?employee_id=${employee.id}`}
-                                className="h-8 px-3 bg-white hover:bg-rose-100 text-rose-800 text-xs font-medium rounded-md border border-rose-300 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
+                                className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-medium rounded-md border border-danger/20 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                             >
                                 <i className="ti ti-folders text-sm" /> Review Documents
                             </Link>
@@ -949,23 +949,23 @@ export default function Show() {
                 )}
 
                 {isSuspended && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                            <div className="w-8 h-8 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+                            <div className="w-8 h-8 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center shrink-0 border border-warning/20">
                                 <i className="ti ti-alert-triangle text-lg" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-semibold text-amber-900 text-sm sm:text-base">Active Disciplinary Suspension</h4>
-                                    <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-semibold uppercase rounded">Operational Hold</span>
+                                    <h4 className="font-semibold text-warning-ink text-sm sm:text-base">Active Disciplinary Suspension</h4>
+                                    <span className="px-2 py-0.5 bg-warning-subtle/80 text-warning-ink text-[10px] font-semibold uppercase rounded">Operational Hold</span>
                                 </div>
-                                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                <p className="text-xs text-warning-ink mt-1 leading-relaxed">
                                     {employee.active_suspension?.reason || 'This employee is currently serving an active disciplinary suspension.'}
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-amber-700 font-medium">
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-warning-ink font-medium">
                                     {employee.active_suspension?.date && (
                                         <span className="flex items-center gap-1">
-                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-amber-900 font-semibold">{employee.active_suspension.date}</strong>
+                                            <i className="ti ti-calendar-time" /> Served Date: <strong className="text-warning-ink font-semibold">{employee.active_suspension.date}</strong>
                                         </span>
                                     )}
                                     <span className="flex items-center gap-1">
@@ -980,7 +980,7 @@ export default function Show() {
                         <div className="shrink-0 self-stretch sm:self-center">
                             <Link
                                 to="/admin/disciplinary"
-                                className="h-8 px-3 bg-white hover:bg-amber-100 text-amber-900 text-xs font-medium rounded-md border border-amber-300 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
+                                className="h-8 px-3 bg-white hover:bg-warning-subtle text-warning-ink text-xs font-medium rounded-md border border-warning/20 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                             >
                                 <i className="ti ti-gavel text-sm" /> Disciplinary Logs
                             </Link>
@@ -1001,7 +1001,7 @@ export default function Show() {
                                 </span>
                             </div>
                         </div>
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-semibold rounded shrink-0 border border-emerald-200">
+                        <span className="px-2 py-0.5 bg-success-subtle text-success-ink text-[10px] font-semibold rounded shrink-0 border border-success/20">
                             Active / Cleared
                         </span>
                     </div>
@@ -1012,7 +1012,7 @@ export default function Show() {
 
                     <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className="h-8 w-8 bg-indigo-50 text-indigo-600 rounded-md flex items-center justify-center border border-indigo-100">
+                            <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center border border-accent/20">
                                 <i className="ti ti-user text-lg" />
                             </div>
                             <div>
@@ -1052,8 +1052,8 @@ export default function Show() {
                                 </div>
                                 <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase border ${
                                     isPendingRegistration 
-                                        ? 'bg-amber-50 text-amber-800 border-amber-200' 
-                                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        ? 'bg-warning-subtle text-warning-ink border-warning/20' 
+                                        : 'bg-surface-muted text-ink border-line'
                                 }`}>
                                     {isPendingRegistration ? 'Pending Setup' : 'Registered'}
                                 </span>
@@ -1063,7 +1063,7 @@ export default function Show() {
 
                     <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                            <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${isFactory ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${isFactory ? 'bg-warning-subtle text-warning-ink border-warning/20' : 'bg-surface-muted text-ink border-line'
                                 }`}>
                                 <i className={`ti ${isFactory ? 'ti-building-factory-2' : 'ti-cash-banknote'} text-lg`} />
                             </div>
@@ -1076,14 +1076,14 @@ export default function Show() {
                             <div className="grid grid-cols-2 gap-4 text-xs">
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Department</p>
-                                    <span className={`inline-flex items-center gap-1 font-semibold text-sm ${isFactory ? 'text-amber-700' : 'text-slate-800'}`}>
+                                    <span className={`inline-flex items-center gap-1 font-semibold text-sm ${isFactory ? 'text-warning-ink' : 'text-slate-800'}`}>
                                         {employee.department || 'General'}
                                     </span>
                                 </div>
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
                                     <p className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-amber-600`} />}
+                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle`} />}
                                         {employee.job_title || 'N/A'}
                                     </p>
                                 </div>
@@ -1100,19 +1100,19 @@ export default function Show() {
                                 <div className="pt-2 border-t border-slate-100">
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Overtime Status</p>
                                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                                        isFactory ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                        isFactory ? 'bg-warning-subtle text-warning-ink border border-warning/20' : 'bg-accent-subtle text-accent-strong border border-accent/20'
                                     }`}>
                                         {isFactory ? 'No Overtime (Prohibited)' : 'Overtime Eligible'}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className={`p-3.5 rounded-md border ${isFactory ? 'bg-amber-50/80 border-amber-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
+                            <div className={`p-3.5 rounded-md border ${isFactory ? 'bg-warning-subtle/80 border-warning/20' : 'bg-surface-muted border-line'}`}>
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className={`text-[11px] font-semibold uppercase tracking-wider ${isFactory ? 'text-amber-900' : 'text-slate-500'}`}>
+                                    <span className={`text-[11px] font-semibold uppercase tracking-wider ${isFactory ? 'text-warning-ink' : 'text-slate-500'}`}>
                                         {isFactory ? 'Factory Compensation Model' : 'Wage Structure'}
                                     </span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border ${isFactory ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border ${isFactory ? 'bg-warning-subtle text-warning-ink border-warning/20' : 'bg-surface-muted text-ink border-line'
                                         }`}>
                                         {isFactory ? 'Group Piece-Rate' : 'Daily & Hourly Wage'}
                                     </span>
@@ -1120,11 +1120,11 @@ export default function Show() {
 
                                 {isFactory ? (
                                     <div className="space-y-1.5 pt-1">
-                                        <div className="text-base sm:text-lg font-semibold text-amber-900 tracking-tight flex items-center gap-1.5">
-                                            <i className="ti ti-box-multiple text-amber-600 text-lg" />
+                                        <div className="text-base sm:text-lg font-semibold text-warning-ink tracking-tight flex items-center gap-1.5">
+                                            <i className="ti ti-box-multiple text-warning-ink text-lg" />
                                             Group Production Batch Pool
                                         </div>
-                                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                                        <p className="text-xs text-warning-ink leading-relaxed font-medium">
                                             Compensation is calculated based on completed pairs of shoes produced by the 6-worker team ({shoeRole?.stage || 'Assembly'}) upon QA inspection.
                                         </p>
                                     </div>
@@ -1134,7 +1134,7 @@ export default function Show() {
                                             <div>
                                                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Daily Rate</span>
                                                 <div className="text-xl sm:text-2xl font-semibold text-slate-900 tracking-tight flex items-baseline gap-1">
-                                                    <span className="text-emerald-600 text-lg font-bold">₱</span>
+                                                    <span className="text-ink text-lg font-bold">₱</span>
                                                     {dailyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     <span className="text-xs font-medium text-slate-400 uppercase">/ day</span>
                                                 </div>
@@ -1142,7 +1142,7 @@ export default function Show() {
                                             <div className="text-right">
                                                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Hourly Rate</span>
                                                 <div className="text-base sm:text-lg font-semibold text-slate-700 tracking-tight flex items-baseline justify-end gap-1">
-                                                    <span className="text-emerald-600 text-sm font-bold">₱</span>
+                                                    <span className="text-ink text-sm font-bold">₱</span>
                                                     {hourlyRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     <span className="text-xs font-medium text-slate-400 uppercase">/ hr</span>
                                                 </div>
@@ -1182,9 +1182,9 @@ export default function Show() {
                         <div className="flex items-center gap-3">
                             <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${
                                 isMedicalExemptActive
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+                                    ? 'bg-warning-subtle text-warning-ink border-warning/70'
                                     : employee?.has_registered_biometrics
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+                                    ? 'bg-surface-muted text-ink border-line'
                                     : 'bg-slate-50 text-slate-600 border-slate-200/70'
                             }`}>
                                 <i className={`ti ${isMedicalExemptActive ? 'ti-first-aid-kit' : 'ti-face-id'} text-lg`} />
@@ -1199,9 +1199,9 @@ export default function Show() {
                         <div className="flex items-center gap-2">
                             <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
                                 isMedicalExemptActive
-                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    ? 'bg-warning-subtle text-warning-ink border-warning/20'
                                     : employee?.has_registered_biometrics
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    ? 'bg-surface-muted text-ink border-line'
                                     : 'bg-slate-50 text-slate-600 border-slate-200'
                             }`}>
                                 {isMedicalExemptActive
@@ -1214,19 +1214,19 @@ export default function Show() {
                     </div>
 
                     {isMedicalExemptActive ? (
-                        <div className="bg-amber-50/70 border border-amber-200 rounded-md p-4 text-xs text-slate-700 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-amber-200/60">
+                        <div className="bg-warning-subtle/70 border border-warning/20 rounded-md p-4 text-xs text-slate-700 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-warning/60">
                                 <div>
-                                    <h4 className="font-semibold text-amber-950 text-sm flex items-center gap-1.5">
-                                        <i className="ti ti-first-aid-kit text-amber-700 text-base" />
+                                    <h4 className="font-semibold text-warning-ink text-sm flex items-center gap-1.5">
+                                        <i className="ti ti-first-aid-kit text-warning-ink text-base" />
                                         Medical Grace Exemption Active (QR-Only Clock-In)
                                     </h4>
-                                    <p className="text-amber-900/80 mt-0.5">
+                                    <p className="text-warning-ink/80 mt-0.5">
                                         Facial recognition verification is temporarily bypassed. Clock-in requires QR badge only, and the kiosk takes an audit photo.
                                     </p>
                                 </div>
                                 {daysRemaining !== null && (
-                                    <span className="px-2 py-0.5 rounded bg-amber-200/70 text-amber-900 font-semibold text-xs shrink-0 self-start sm:self-auto">
+                                    <span className="px-2 py-0.5 rounded bg-warning-subtle/70 text-warning-ink font-semibold text-xs shrink-0 self-start sm:self-auto">
                                         {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining
                                     </span>
                                 )}
@@ -1262,12 +1262,12 @@ export default function Show() {
                                 </div>
                             )}
 
-                            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200/60">
+                            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-warning/60">
                                 <button
                                     type="button"
                                     onClick={() => handleExtendExemption(7)}
                                     disabled={isSubmittingExemption}
-                                    className="h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer disabled:opacity-50"
+                                    className="h-8 px-3 bg-warning-subtle hover:bg-warning-subtle text-warning-ink font-medium text-xs rounded-md transition-colors duration-100 cursor-pointer disabled:opacity-50"
                                 >
                                     +7 Days Extension
                                 </button>
@@ -1284,7 +1284,7 @@ export default function Show() {
                                         type="button"
                                         onClick={handleResetBiometrics}
                                         disabled={isResettingBiometrics}
-                                        className="h-8 px-3 bg-white hover:bg-rose-50 text-rose-700 font-medium text-xs rounded-md border border-rose-200 transition-colors duration-100 cursor-pointer disabled:opacity-50 ml-auto"
+                                        className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink font-medium text-xs rounded-md border border-danger/20 transition-colors duration-100 cursor-pointer disabled:opacity-50 ml-auto"
                                     >
                                         {isResettingBiometrics ? 'Resetting...' : 'Reset Biometrics'}
                                     </button>
@@ -1294,7 +1294,7 @@ export default function Show() {
                     ) : employee?.has_registered_biometrics ? (
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
                             <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                                <div className="w-8 h-8 rounded-md bg-surface-muted text-ink flex items-center justify-center shrink-0 border border-line">
                                     <i className="ti ti-check text-base" />
                                 </div>
                                 <div>
@@ -1306,7 +1306,7 @@ export default function Show() {
                                 <button
                                     type="button"
                                     onClick={() => setIsExemptionModalOpen(true)}
-                                    className="h-8 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium rounded-md border border-amber-200 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer"
+                                    className="h-8 px-3 bg-warning-subtle hover:bg-warning-subtle text-warning-ink font-medium rounded-md border border-warning/20 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <i className="ti ti-first-aid-kit text-sm" />
                                     <span>Grant medical exemption</span>
@@ -1338,7 +1338,7 @@ export default function Show() {
                             <button
                                 type="button"
                                 onClick={() => setIsExemptionModalOpen(true)}
-                                className="h-8 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium rounded-md border border-amber-200 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer shrink-0 self-stretch sm:self-auto justify-center"
+                                className="h-8 px-3 bg-warning-subtle hover:bg-warning-subtle text-warning-ink font-medium rounded-md border border-warning/20 transition-colors duration-100 text-xs flex items-center gap-1.5 cursor-pointer shrink-0 self-stretch sm:self-auto justify-center"
                             >
                                 <i className="ti ti-first-aid-kit text-sm" />
                                 <span>Grant medical exemption</span>
@@ -1351,7 +1351,7 @@ export default function Show() {
                 <div className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
                         <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 bg-amber-50 text-amber-700 rounded-md flex items-center justify-center border border-amber-200/70">
+                            <div className="h-8 w-8 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/70">
                                 <i className="ti ti-scale text-lg" />
                             </div>
                             <div>
@@ -1363,10 +1363,10 @@ export default function Show() {
 
                         <div className="flex items-center gap-2">
                             <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${
-                                isTerminated ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                isSuspended ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                                'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                isTerminated ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                                isSuspended ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                                disciplinaryLogs.some(l => l.status === 'Active') ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                                'bg-surface-muted text-ink border-line'
                             }`}>
                                 {isTerminated ? 'Separated' :
                                  isSuspended ? 'Suspended' :
@@ -1384,8 +1384,8 @@ export default function Show() {
                     </div>
 
                     {disciplinaryLogs.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center text-center py-8 px-4 bg-emerald-50/40 rounded-md border border-dashed border-emerald-200">
-                            <div className="h-10 w-10 bg-white text-emerald-600 rounded-md flex items-center justify-center border border-emerald-100 shadow-2xs mb-2">
+                        <div className="flex flex-col items-center justify-center text-center py-8 px-4 bg-surface-muted rounded-md border border-dashed border-line">
+                            <div className="h-10 w-10 bg-white text-ink rounded-md flex items-center justify-center border border-line shadow-2xs mb-2">
                                 <i className="ti ti-shield-check text-2xl" />
                             </div>
                             <h4 className="text-sm font-semibold text-slate-900 mb-1">Clean Compliance Standing</h4>
@@ -1405,11 +1405,11 @@ export default function Show() {
                                         key={log.id}
                                         className={`p-4 rounded-md border transition-colors duration-100 ${
                                             isResolvedTermination
-                                                ? 'bg-emerald-50/30 border-emerald-200'
+                                                ? 'bg-success-subtle/30 border-success/20'
                                                 : log.status === 'Active'
-                                                ? 'bg-rose-50/30 border-rose-200'
+                                                ? 'bg-danger-subtle/30 border-danger/20'
                                                 : log.status === 'Acknowledged'
-                                                ? 'bg-blue-50/30 border-blue-200'
+                                                ? 'bg-accent-subtle/30 border-accent/20'
                                                 : 'bg-slate-50/70 border-slate-200'
                                         }`}
                                     >
@@ -1417,12 +1417,12 @@ export default function Show() {
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 ${
                                                     isResolvedTermination
-                                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                        ? 'bg-success-subtle text-success-ink border-success/20'
                                                         : log.type === 'Termination'
-                                                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                                        ? 'bg-danger-subtle text-danger-ink border-danger/20'
                                                         : log.type === 'Suspension'
-                                                        ? 'bg-orange-100 text-orange-800 border-orange-300'
-                                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20'
+                                                        : 'bg-warning-subtle text-warning-ink border-warning/20'
                                                 }`}>
                                                     <i className={`ti ${
                                                         isResolvedTermination ? 'ti-circle-check' :
@@ -1434,10 +1434,10 @@ export default function Show() {
 
                                                 {log.severity && (
                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
-                                                        log.severity === 'Critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                        log.severity === 'High' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                                        log.severity === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                        'bg-blue-50 text-blue-700 border-blue-200'
+                                                        log.severity === 'Critical' ? 'bg-danger-subtle text-danger-ink border-danger/20' :
+                                                        log.severity === 'High' ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                                                        log.severity === 'Medium' ? 'bg-warning-subtle text-warning-ink border-warning/20' :
+                                                        'bg-accent-subtle text-accent border-accent/20'
                                                     }`}>
                                                         {log.severity} Severity
                                                     </span>
@@ -1451,17 +1451,17 @@ export default function Show() {
 
                                             <div className="flex items-center gap-2">
                                                 <span className={`px-2 py-0.5 rounded-md text-xs font-semibold border flex items-center gap-1.5 ${
-                                                    log.status === 'Resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                    log.status === 'Overturned' ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                                                    log.status === 'Acknowledged' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                    'bg-rose-50 text-rose-700 border-rose-200'
+                                                    log.status === 'Resolved' ? 'bg-success-subtle text-success-ink border-success/20' :
+                                                    log.status === 'Overturned' ? 'bg-success-subtle text-success-ink border-success/20' :
+                                                    log.status === 'Acknowledged' ? 'bg-accent-subtle text-accent border-accent/20' :
+                                                    'bg-danger-subtle text-danger-ink border-danger/20'
                                                 }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                                        log.status === 'Resolved' ? 'bg-emerald-500' :
-                                                        log.status === 'Overturned' ? 'bg-teal-500' :
-                                                        log.status === 'Acknowledged' ? 'bg-blue-500' :
-                                                        'bg-rose-500'
-                                                    }`} />
+                                                    {log.status !== 'Resolved' && log.status !== 'Overturned' && (
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${
+                                                            log.status === 'Acknowledged' ? 'bg-accent' :
+                                                            'bg-danger'
+                                                        }`} />
+                                                    )}
                                                     <span>
                                                         {log.status === 'Resolved' ? 'Resolved' :
                                                          log.status === 'Overturned' ? 'Cleared' :
@@ -1477,13 +1477,13 @@ export default function Show() {
                                         </div>
 
                                         {log.status === 'Acknowledged' && (
-                                            <div className="mt-2.5 pt-2 border-t border-slate-100 text-[11px] text-blue-700 font-medium flex items-center gap-1.5">
+                                            <div className="mt-2.5 pt-2 border-t border-slate-100 text-[11px] text-accent font-medium flex items-center gap-1.5">
                                                 <i className="ti ti-file-certificate text-sm" />
                                                 <span>Acknowledged by employee via portal.</span>
                                             </div>
                                         )}
                                         {isReinstatedNote && (
-                                            <div className="mt-2.5 pt-2 border-t border-emerald-100 text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5">
+                                            <div className="mt-2.5 pt-2 border-t border-success/20 text-[11px] text-success-ink font-semibold flex items-center gap-1.5">
                                                 <i className="ti ti-check text-sm" />
                                                 <span>Record cleared and active standing restored.</span>
                                             </div>
@@ -1515,8 +1515,8 @@ export default function Show() {
                             <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 border ${
                                     removalMode === 'archive' 
-                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-600' 
-                                        : 'bg-rose-50 border-rose-200 text-rose-600'
+                                        ? 'bg-accent-subtle border-accent/20 text-accent' 
+                                        : 'bg-danger-subtle border-danger/20 text-danger-ink'
                                 }`}>
                                     <i className={`ti ${removalMode === 'archive' ? 'ti-archive' : 'ti-alert-triangle'} text-lg`} />
                                 </div>
@@ -1549,38 +1549,38 @@ export default function Show() {
                                 onClick={() => setRemovalMode('archive')}
                                 className={`h-8 px-3 rounded font-medium text-xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer ${
                                     removalMode === 'archive'
-                                        ? 'bg-white text-indigo-700 shadow-2xs'
+                                        ? 'bg-white text-accent shadow-2xs'
                                         : 'text-slate-600 hover:text-slate-900'
                                 }`}
                             >
                                 <i className="ti ti-shield-check text-sm" />
                                 <span>DOLE Archive</span>
-                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-semibold rounded uppercase">Standard</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-accent-subtle text-accent text-[10px] font-semibold rounded uppercase">Standard</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setRemovalMode('purge')}
                                 className={`h-8 px-3 rounded font-medium text-xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer ${
                                     removalMode === 'purge'
-                                        ? 'bg-rose-600 text-white shadow-2xs'
-                                        : 'text-rose-600 hover:text-rose-700'
+                                        ? 'bg-danger text-white shadow-2xs'
+                                        : 'text-danger-ink hover:text-danger-ink'
                                 }`}
                             >
                                 <i className="ti ti-trash text-sm" />
                                 <span>Forensic Purge</span>
-                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-semibold rounded uppercase">Danger</span>
+                                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-danger-subtle text-danger-ink text-[10px] font-semibold rounded uppercase">Danger</span>
                             </button>
                         </div>
 
                         {/* Mode 1: DOLE Archive */}
                         {removalMode === 'archive' && (
                             <div className="space-y-4">
-                                <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-md p-3 text-xs text-indigo-950 space-y-1">
-                                    <div className="flex items-center gap-1.5 font-semibold text-indigo-900">
-                                        <i className="ti ti-shield-check text-base text-indigo-600" />
+                                <div className="bg-accent-subtle/70 border border-accent/80 rounded-md p-3 text-xs text-accent-strong space-y-1">
+                                    <div className="flex items-center gap-1.5 font-semibold text-accent-strong">
+                                        <i className="ti ti-shield-check text-base text-accent" />
                                         <span>Statutory Compliance & Digital Revocation</span>
                                     </div>
-                                    <p className="text-[11px] text-indigo-800 leading-relaxed font-normal">
+                                    <p className="text-[11px] text-accent-strong leading-relaxed font-normal">
                                         Retains 201 records, biometric timestamps, BIR 2316 tax history, and payslips in cold storage per DOLE labor regulations. Real-time access to gate scanners and portal accounts is permanently severed immediately.
                                     </p>
                                 </div>
@@ -1652,19 +1652,19 @@ export default function Show() {
                                 <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200/70 text-center">
                                     <div className="space-y-0.5">
                                         <span className="block text-[10px] font-semibold text-slate-400 uppercase">Face scan</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-danger-ink">
                                             <i className="ti ti-lock text-xs" /> Revoked (0ms)
                                         </span>
                                     </div>
                                     <div className="space-y-0.5 border-x border-slate-200">
                                         <span className="block text-[10px] font-semibold text-slate-400 uppercase">Portal Auth</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-danger-ink">
                                             <i className="ti ti-user-x text-xs" /> Signed Out
                                         </span>
                                     </div>
                                     <div className="space-y-0.5">
                                         <span className="block text-[10px] font-semibold text-slate-400 uppercase">Grace Cooldown</span>
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600">
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-warning-ink">
                                             <i className="ti ti-hourglass-low text-xs" /> 14 Days Review
                                         </span>
                                     </div>
@@ -1683,7 +1683,7 @@ export default function Show() {
                                         type="button"
                                         onClick={handleArchiveEmployee}
                                         disabled={isArchiving}
-                                        className="h-9 flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md text-xs transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        className="h-9 flex-1 bg-accent hover:bg-accent-hover text-white font-medium rounded-md text-xs transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                                     >
                                         {isArchiving ? (
                                             <>
@@ -1704,12 +1704,12 @@ export default function Show() {
                         {/* Mode 2: Purge Tab */}
                         {removalMode === 'purge' && (
                             <div className="space-y-4">
-                                <div className="bg-rose-50 border border-rose-200 rounded-md p-3 text-xs text-rose-950 space-y-1.5">
-                                    <div className="flex items-center gap-1.5 font-semibold text-rose-900">
-                                        <i className="ti ti-alert-triangle text-base text-rose-600" />
+                                <div className="bg-danger-subtle border border-danger/20 rounded-md p-3 text-xs text-danger-ink space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-semibold text-danger-ink">
+                                        <i className="ti ti-alert-triangle text-base text-danger-ink" />
                                         <span>Permanent Record & Account Deletion</span>
                                     </div>
-                                    <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
+                                    <p className="text-[11px] text-danger-ink leading-relaxed font-normal">
                                         This permanently deletes the employee record, along with all attendance logs, payslips, leave requests, uploaded documents, and saved face scan photos. <strong>This action cannot be undone.</strong>
                                     </p>
                                 </div>
@@ -1731,7 +1731,7 @@ export default function Show() {
                                         value={deleteConfirmText}
                                         onChange={(e) => setDeleteConfirmText(e.target.value)}
                                         placeholder="Type full name to confirm..."
-                                        className="h-9 w-full px-3.5 bg-white border border-slate-200 rounded-md text-center font-semibold text-xs text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
+                                        className="h-9 w-full px-3.5 bg-white border border-slate-200 rounded-md text-center font-semibold text-xs text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-danger"
                                     />
                                 </div>
 
@@ -1748,7 +1748,7 @@ export default function Show() {
                                         type="button"
                                         onClick={handleDelete}
                                         disabled={deleteConfirmText.trim().toLowerCase() !== employeeFullName.toLowerCase() || isDeleting}
-                                        className="h-9 flex-1 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                        className="h-9 flex-1 bg-danger hover:bg-danger-ink disabled:bg-slate-200 disabled:text-slate-400 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
                                     >
                                         {isDeleting ? (
                                             <>
@@ -1813,7 +1813,7 @@ export default function Show() {
 
                             <div className="mb-5">
                                 <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-tight truncate">{employee.name}</h2>
-                                <p className="text-indigo-600 font-medium uppercase text-xs tracking-wider mt-1">{employee.job_title ?? 'STAFF'}</p>
+                                <p className="text-accent font-medium uppercase text-xs tracking-wider mt-1">{employee.job_title ?? 'STAFF'}</p>
                                 <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mt-0.5">{employee.department ? employee.department + ' Department' : 'Operations'}</p>
                             </div>
 
@@ -1821,7 +1821,7 @@ export default function Show() {
                                 <button type="button" onClick={() => setIsPrintModalOpen(false)} className="flex-1 h-9 px-3 bg-slate-100 text-slate-700 font-medium rounded-md hover:bg-slate-200 transition-colors duration-100 text-xs">
                                     Close
                                 </button>
-                                <button type="button" onClick={printCard} className="flex-1 h-9 px-3 flex items-center justify-center gap-2 bg-slate-900 text-white font-medium rounded-md hover:bg-indigo-600 transition-colors duration-100 text-xs">
+                                <button type="button" onClick={printCard} className="flex-1 h-9 px-3 flex items-center justify-center gap-2 bg-slate-900 text-white font-medium rounded-md hover:bg-accent transition-colors duration-100 text-xs">
                                     <i className="ti ti-printer text-sm" /> Print Badge
                                 </button>
                             </div>
@@ -1837,7 +1837,7 @@ export default function Show() {
                         onClick={() => !isReinstating && setIsReinstateModalOpen(false)}
                     />
                     <div className="relative bg-white rounded-lg p-6 text-center shadow-xl w-full max-w-md border border-slate-200 z-10 space-y-4">
-                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center mx-auto border border-emerald-200">
+                        <div className="w-10 h-10 bg-surface-muted text-ink rounded-md flex items-center justify-center mx-auto border border-line">
                             <i className="ti ti-rotate-clockwise text-xl" />
                         </div>
 
@@ -1871,7 +1871,7 @@ export default function Show() {
                                 type="button"
                                 onClick={handleReinstate}
                                 disabled={isReinstating}
-                                className="flex-1 h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                className="flex-1 h-9 px-3 bg-ink-subtle hover:bg-ink-subtle text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                             >
                                 {isReinstating ? (
                                     <>
@@ -1900,7 +1900,7 @@ export default function Show() {
                     <div className="relative bg-white rounded-lg p-6 shadow-xl w-full max-w-lg border border-slate-200 z-10 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 bg-amber-50 text-amber-700 rounded-md flex items-center justify-center border border-amber-200">
+                                <div className="w-9 h-9 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/20">
                                     <i className="ti ti-first-aid-kit text-xl" />
                                 </div>
                                 <div>
@@ -1923,19 +1923,19 @@ export default function Show() {
                         </div>
 
                         <form onSubmit={handleEnableExemption} className="space-y-4 text-xs">
-                            <div className="p-3 bg-amber-50 rounded-md border border-amber-200 text-amber-900 leading-relaxed font-medium">
-                                <p className="font-semibold flex items-center gap-1.5 text-amber-950 mb-0.5">
-                                    <i className="ti ti-info-circle text-base text-amber-600" />
+                            <div className="p-3 bg-warning-subtle rounded-md border border-warning/20 text-warning-ink leading-relaxed font-medium">
+                                <p className="font-semibold flex items-center gap-1.5 text-warning-ink mb-0.5">
+                                    <i className="ti ti-info-circle text-base text-warning-ink" />
                                     How this protocol functions:
                                 </p>
                                 <span>
-                                    Enabling Medical Grace allows <strong className="text-amber-950">{employeeFullName}</strong> to clock in/out using their QR code without triggering Euclidean facial distance or eye-blink rejections. The kiosk camera will still capture a high-resolution snapshot for evidentiary verification.
+                                    Enabling Medical Grace allows <strong className="text-warning-ink">{employeeFullName}</strong> to clock in/out using their QR code without triggering Euclidean facial distance or eye-blink rejections. The kiosk camera will still capture a high-resolution snapshot for evidentiary verification.
                                 </span>
                             </div>
 
                             <div>
                                 <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
-                                    Clinical Reason / Trauma Description <span className="text-rose-500">*</span>
+                                    Clinical Reason / Trauma Description <span className="text-danger-ink">*</span>
                                 </label>
                                 <textarea
                                     required
@@ -1943,14 +1943,14 @@ export default function Show() {
                                     value={exemptionForm.reason}
                                     onChange={(e) => setExemptionForm({ ...exemptionForm, reason: e.target.value })}
                                     placeholder="e.g., Facial lacerations and gauze dressing following road accident per attending physician..."
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                 />
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
-                                        Medical Cert / Ref ID <span className="text-rose-500">*</span>
+                                        Medical Cert / Ref ID <span className="text-danger-ink">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -1958,7 +1958,7 @@ export default function Show() {
                                         value={exemptionForm.cert_ref}
                                         onChange={(e) => setExemptionForm({ ...exemptionForm, cert_ref: e.target.value })}
                                         placeholder="e.g., MC-2026-DR-SANTOS-88"
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-mono font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-mono font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                     />
                                 </div>
 
@@ -1969,7 +1969,7 @@ export default function Show() {
                                     <select
                                         value={exemptionForm.duration_days}
                                         onChange={(e) => setExemptionForm({ ...exemptionForm, duration_days: Number(e.target.value) })}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
+                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                     >
                                         <option value={7}>7 Days (Minor injury / swelling)</option>
                                         <option value={14}>14 Days (Standard trauma / sutures)</option>
@@ -1988,7 +1988,7 @@ export default function Show() {
                                     value={exemptionForm.document_url}
                                     onChange={(e) => setExemptionForm({ ...exemptionForm, document_url: e.target.value })}
                                     placeholder="e.g., /admin/documents?employee_id=... or Medical Certificate scan"
-                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-amber-500 focus:bg-white transition-colors duration-100 outline-none"
+                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                 />
                             </div>
 
@@ -2004,7 +2004,7 @@ export default function Show() {
                                 <button
                                     type="submit"
                                     disabled={isSubmittingExemption}
-                                    className="flex-1 h-9 px-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    className="flex-1 h-9 px-3 bg-warning hover:bg-warning-ink text-white font-medium rounded-md text-xs transition-colors duration-100 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 >
                                     {isSubmittingExemption ? (
                                         <>

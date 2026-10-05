@@ -229,6 +229,11 @@ const reconcileClientAttendance = ({ employee, attendances = [], leaves = [], ho
 };
 
 export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isEmployeeView = false, className = '' }) {
+    // Strictly restricted to administrative workforce view
+    if (isEmployeeView) {
+        return null;
+    }
+
     const queryClient = useQueryClient();
 
     const todayMonthStr = useMemo(() => {
@@ -349,7 +354,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
     };
 
     // Query Monthly Attendance (API with direct Supabase fallback)
-    const { data: monthlyData, isLoading } = useQuery({
+    const { data: monthlyData, isLoading, isFetching } = useQuery({
         queryKey: ['employeeMonthlyAttendance', activeEmpId, selectedMonth],
         queryFn: async () => {
             // 1. Try Backend Reconciled Endpoint
@@ -386,7 +391,8 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
         },
         enabled: Boolean(activeEmpId),
         staleTime: 30_000,
-        gcTime: 300_000
+        gcTime: 300_000,
+        placeholderData: (previousData) => previousData
     });
 
     // Real-time Supabase synchronization
@@ -401,6 +407,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
             .channel(`monthly-attendance-live-${activeEmpId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'holidays' }, handleSync)
             .subscribe();
 
         return () => {
@@ -456,53 +463,53 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
         switch (day?.status) {
             case 'PRESENT':
                 return {
-                    badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                    iconBox: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                    dotBg: 'bg-emerald-500',
+                    badgeBg: 'bg-slate-900 text-white border-slate-800',
+                    iconBox: 'bg-slate-900 text-white border-slate-800',
+                    dotBg: 'bg-slate-400',
                     cardBorder: 'border-slate-200 hover:border-slate-300 bg-white',
-                    cardHighlight: 'border-l-2 border-l-emerald-500',
+                    cardHighlight: 'border-l-2 border-slate-900',
                     tag: 'Present',
                     icon: 'ti-check'
                 };
             case 'LATE':
                 return {
-                    badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
-                    iconBox: 'bg-amber-50 text-amber-700 border-amber-200',
-                    dotBg: 'bg-amber-500',
-                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-amber-50/20',
-                    cardHighlight: 'border-l-2 border-l-amber-500',
+                    badgeBg: 'bg-warning-subtle text-warning-ink border-warning/20',
+                    iconBox: 'bg-warning-subtle text-warning-ink border-warning/20',
+                    dotBg: 'bg-warning',
+                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-warning-subtle/20',
+                    cardHighlight: 'border-l-2 border-l-warning',
                     tag: `Late (${day.minutes_late}m)`,
                     icon: 'ti-clock-alert'
                 };
             case 'ABSENT':
                 return {
-                    badgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
-                    iconBox: 'bg-rose-50 text-rose-700 border-rose-200',
-                    dotBg: 'bg-rose-500',
-                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-rose-50/20',
-                    cardHighlight: 'border-l-2 border-l-rose-500',
+                    badgeBg: 'bg-danger-subtle text-danger-ink border-danger/20',
+                    iconBox: 'bg-danger-subtle text-danger-ink border-danger/20',
+                    dotBg: 'bg-danger',
+                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-danger-subtle/20',
+                    cardHighlight: 'border-l-2 border-l-danger',
                     tag: 'Absent',
                     icon: 'ti-user-x'
                 };
             case 'APPROVED_LEAVE':
             case 'FUTURE_LEAVE':
                 return {
-                    badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-                    iconBox: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-                    dotBg: 'bg-indigo-500',
-                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-indigo-50/20',
-                    cardHighlight: 'border-l-2 border-l-indigo-500',
+                    badgeBg: 'bg-accent-subtle text-accent border-accent/20',
+                    iconBox: 'bg-accent-subtle text-accent border-accent/20',
+                    dotBg: 'bg-accent',
+                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-accent-subtle/20',
+                    cardHighlight: 'border-l-2 border-l-accent',
                     tag: day.leave?.type || 'Leave',
                     icon: 'ti-file-certificate'
                 };
             case 'HOLIDAY':
             case 'FUTURE_HOLIDAY':
                 return {
-                    badgeBg: 'bg-sky-50 text-sky-700 border-sky-200',
-                    iconBox: 'bg-sky-50 text-sky-700 border-sky-200',
-                    dotBg: 'bg-sky-500',
-                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-sky-50/20',
-                    cardHighlight: 'border-l-2 border-l-sky-500',
+                    badgeBg: 'bg-accent-subtle text-accent border-accent/20',
+                    iconBox: 'bg-accent-subtle text-accent border-accent/20',
+                    dotBg: 'bg-accent',
+                    cardBorder: 'border-slate-200 hover:border-slate-300 bg-accent-subtle/20',
+                    cardHighlight: 'border-l-2 border-l-accent',
                     tag: 'Holiday',
                     icon: 'ti-calendar-event'
                 };
@@ -519,11 +526,11 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 };
             case 'AWAITING_PUNCH':
                 return {
-                    badgeBg: 'bg-blue-50 text-blue-700 border-blue-200',
-                    iconBox: 'bg-blue-50 text-blue-700 border-blue-200',
-                    dotBg: 'bg-blue-500',
-                    cardBorder: 'border-blue-200 bg-blue-50/30',
-                    cardHighlight: 'border-l-2 border-l-blue-500',
+                    badgeBg: 'bg-accent-subtle text-accent border-accent/20',
+                    iconBox: 'bg-accent-subtle text-accent border-accent/20',
+                    dotBg: 'bg-accent',
+                    cardBorder: 'border-accent/20 bg-accent-subtle/30',
+                    cardHighlight: 'border-l-2 border-l-accent',
                     tag: 'Today',
                     icon: 'ti-clock'
                 };
@@ -551,24 +558,30 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
     };
 
     return (
-        <div className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 space-y-5 relative ${className}`}>
+        <div className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative ${className}`}>
             {/* Header Toolbar */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-md flex items-center justify-center border bg-slate-50 text-slate-600 border-slate-200/70 shrink-0">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 pb-4 border-b border-slate-100">
+                <div className="flex items-start sm:items-center gap-3">
+                    <div className="h-9 w-9 rounded-md flex items-center justify-center border bg-slate-50 text-slate-700 border-slate-200 shrink-0">
                         <i className="ti ti-calendar-time text-lg" />
                     </div>
                     <div>
-                        <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
-                            {isEmployeeView ? 'My Monthly Work Schedule & Attendance' : 'Monthly Work Schedule & Attendance Audit'}
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                                Monthly Work Schedule &amp; Attendance Audit
+                            </h3>
+                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                <span className={`h-1.5 w-1.5 rounded-full ${isFetching ? 'bg-accent animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+                                <span>{isFetching ? 'Syncing...' : 'Live Sync'}</span>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">
                             Shift: <span className="font-semibold text-slate-700">{monthlyData?.employee?.shift || 'Factory Standard (08:00 AM - 05:00 PM)'}</span> · Rest Day: <span className="font-semibold text-slate-700">Sunday</span>
                         </p>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
                     {/* Month Navigator */}
                     <div className="inline-flex items-center bg-slate-50 rounded-md p-0.5 border border-slate-200">
                         <button
@@ -577,10 +590,11 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             disabled={isLoading}
                             className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded transition-colors cursor-pointer disabled:opacity-40"
                             title="Previous Month"
+                            aria-label="Previous Month"
                         >
                             <i className="ti ti-chevron-left text-sm" />
                         </button>
-                        <span className="px-2.5 text-xs font-semibold text-slate-800 select-none min-w-[110px] text-center">
+                        <span className="px-2 text-xs font-semibold text-slate-800 select-none min-w-[105px] text-center">
                             {monthLabel}
                         </span>
                         <button
@@ -589,6 +603,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             disabled={isLoading}
                             className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded transition-colors cursor-pointer disabled:opacity-40"
                             title="Next Month"
+                            aria-label="Next Month"
                         >
                             <i className="ti ti-chevron-right text-sm" />
                         </button>
@@ -618,7 +633,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             title="Calendar Grid View"
                         >
                             <i className="ti ti-layout-grid text-sm" />
-                            <span className="hidden sm:inline">Calendar</span>
+                            <span>Calendar</span>
                         </button>
                         <button
                             type="button"
@@ -628,10 +643,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                     ? 'bg-white text-slate-900 shadow-2xs font-semibold' 
                                     : 'text-slate-600 hover:text-slate-900'
                             }`}
-                            title="Audit Table View"
+                            title="Audit Timeline View"
                         >
                             <i className="ti ti-list text-sm" />
-                            <span className="hidden sm:inline">Timeline</span>
+                            <span>Timeline</span>
                         </button>
                     </div>
                 </div>
@@ -657,80 +672,80 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 </div>
 
                 {/* Days Rendered */}
-                <div className="bg-emerald-50/40 p-3 sm:p-3.5 rounded-md border border-emerald-200 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-emerald-700">
+                <div className="bg-surface-muted p-3 sm:p-3.5 rounded-md border border-line flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-ink">
                         <span className="text-[10px] font-semibold uppercase tracking-wider">Days Rendered</span>
-                        <i className="ti ti-circle-check text-sm text-emerald-600" />
+                        <i className="ti ti-circle-check text-sm text-ink" />
                     </div>
                     <div className="mt-2 flex items-baseline gap-1.5">
-                        <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-700 tabular-nums">
+                        <span className="text-xl sm:text-2xl font-bold font-mono text-ink tabular-nums">
                             {summary.days_present}
                         </span>
                         <span className="text-[10px] text-slate-400 font-medium">/ {summary.expected_work_days}</span>
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold text-emerald-700">
+                    <div className="mt-1 text-[10px] font-semibold text-ink">
                         {summary.days_on_time} on-time ({summary.attendance_rate_pct}%)
                     </div>
                 </div>
 
                 {/* Late Punches */}
-                <div className="bg-amber-50/40 p-3 sm:p-3.5 rounded-md border border-amber-200 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-amber-800">
+                <div className="bg-warning-subtle/40 p-3 sm:p-3.5 rounded-md border border-warning/20 flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-warning-ink">
                         <span className="text-[10px] font-semibold uppercase tracking-wider">Late Punches</span>
-                        <i className="ti ti-clock-alert text-sm text-amber-600" />
+                        <i className="ti ti-clock-alert text-sm text-warning-ink" />
                     </div>
                     <div className="mt-2 flex items-baseline gap-1.5">
-                        <span className="text-xl sm:text-2xl font-bold font-mono text-amber-800 tabular-nums">
+                        <span className="text-xl sm:text-2xl font-bold font-mono text-warning-ink tabular-nums">
                             {summary.days_late}
                         </span>
                         <span className="text-[10px] text-slate-400 font-medium">punches</span>
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold text-amber-800">
+                    <div className="mt-1 text-[10px] font-semibold text-warning-ink">
                         {summary.total_late_minutes}m total tardiness
                     </div>
                 </div>
 
                 {/* Unexcused Absences */}
-                <div className="bg-rose-50/40 p-3 sm:p-3.5 rounded-md border border-rose-200 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-rose-700">
+                <div className="bg-danger-subtle/40 p-3 sm:p-3.5 rounded-md border border-danger/20 flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-danger-ink">
                         <span className="text-[10px] font-semibold uppercase tracking-wider">Absences</span>
-                        <i className="ti ti-user-x text-sm text-rose-600" />
+                        <i className="ti ti-user-x text-sm text-danger-ink" />
                     </div>
                     <div className="mt-2 flex items-baseline gap-1.5">
-                        <span className="text-xl sm:text-2xl font-bold font-mono text-rose-700 tabular-nums">
+                        <span className="text-xl sm:text-2xl font-bold font-mono text-danger-ink tabular-nums">
                             {summary.days_absent}
                         </span>
                         <span className="text-[10px] text-slate-400 font-medium">days unexcused</span>
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold text-rose-700">
+                    <div className="mt-1 text-[10px] font-semibold text-danger-ink">
                         {summary.days_absent === 0 ? 'Zero unexcused absences' : 'Absence deduction applies'}
                     </div>
                 </div>
 
                 {/* Approved Leaves */}
-                <div className="col-span-2 sm:col-span-1 bg-indigo-50/40 p-3 sm:p-3.5 rounded-md border border-indigo-200 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-indigo-700">
+                <div className="col-span-2 sm:col-span-1 bg-accent-subtle/40 p-3 sm:p-3.5 rounded-md border border-accent/20 flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-accent">
                         <span className="text-[10px] font-semibold uppercase tracking-wider">Approved Leaves</span>
-                        <i className="ti ti-file-certificate text-sm text-indigo-600" />
+                        <i className="ti ti-file-certificate text-sm text-accent" />
                     </div>
                     <div className="mt-2 flex items-baseline gap-1.5">
-                        <span className="text-xl sm:text-2xl font-bold font-mono text-indigo-700 tabular-nums">
+                        <span className="text-xl sm:text-2xl font-bold font-mono text-accent tabular-nums">
                             {summary.approved_leaves}
                         </span>
                         <span className="text-[10px] text-slate-400 font-medium">days filed</span>
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold text-indigo-700">
+                    <div className="mt-1 text-[10px] font-semibold text-accent">
                         Authorized by HR
                     </div>
                 </div>
             </div>
 
             {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 sm:flex-wrap no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
                     type="button"
                     onClick={() => setStatusFilter('all')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
                         statusFilter === 'all'
                             ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                             : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
@@ -741,10 +756,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 <button
                     type="button"
                     onClick={() => setStatusFilter('present')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
                         statusFilter === 'present'
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                            : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-200'
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
                     }`}
                 >
                     Present ({summary.days_on_time})
@@ -752,10 +767,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 <button
                     type="button"
                     onClick={() => setStatusFilter('late')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
                         statusFilter === 'late'
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                            : 'bg-white text-amber-800 hover:bg-amber-50 border-amber-200'
+                            ? 'bg-warning text-white border-warning shadow-2xs'
+                            : 'bg-white text-warning-ink hover:bg-warning-subtle border-warning/20'
                     }`}
                 >
                     Lates ({summary.days_late})
@@ -763,10 +778,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 <button
                     type="button"
                     onClick={() => setStatusFilter('absent')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
                         statusFilter === 'absent'
-                            ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                            : 'bg-white text-rose-700 hover:bg-rose-50 border-rose-200'
+                            ? 'bg-danger text-white border-danger shadow-2xs'
+                            : 'bg-white text-danger-ink hover:bg-danger-subtle border-danger/20'
                     }`}
                 >
                     Absents ({summary.days_absent})
@@ -774,10 +789,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 <button
                     type="button"
                     onClick={() => setStatusFilter('leave')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
                         statusFilter === 'leave'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                            : 'bg-white text-indigo-700 hover:bg-indigo-50 border-indigo-200'
+                            ? 'bg-accent text-white border-accent shadow-2xs'
+                            : 'bg-white text-accent hover:bg-accent-subtle border-accent/20'
                     }`}
                 >
                     Leaves &amp; Holidays ({summary.approved_leaves + summary.holidays})
@@ -800,7 +815,8 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider py-2">
                         {WEEKDAYS.map((wd, idx) => (
                             <div key={wd} className={idx >= 5 ? 'text-slate-400' : 'text-slate-600'}>
-                                {wd}
+                                <span className="sm:hidden">{wd[0]}</span>
+                                <span className="hidden sm:inline">{wd}</span>
                             </div>
                         ))}
                     </div>
@@ -810,7 +826,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         {calendarGrid.map((item) => {
                             if (item.isBlank) {
                                 return (
-                                    <div key={item.key} className="min-h-[85px] sm:min-h-[105px] bg-slate-50/40" />
+                                    <div key={item.key} className="min-h-[56px] sm:min-h-[105px] bg-slate-50/40" />
                                 );
                             }
 
@@ -825,91 +841,204 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 <div
                                     key={item.key}
                                     onClick={() => setSelectedDayDetail(item)}
-                                    className={`min-h-[85px] sm:min-h-[105px] p-2 transition-colors cursor-pointer relative group flex flex-col justify-between hover:bg-slate-50/80 ${
+                                    className={`min-h-[56px] sm:min-h-[105px] p-1 sm:p-2 transition-all cursor-pointer relative group flex flex-col justify-between hover:bg-slate-50/80 active:scale-[0.98] ${
                                         theme.cardBorder
                                     } ${theme.cardHighlight} ${
                                         matchesFilter ? 'opacity-100' : 'opacity-35 hover:opacity-100'
-                                    } ${item.is_today ? 'ring-1 ring-inset ring-blue-500 bg-blue-50/20 z-10' : ''}`}
+                                    } ${item.is_today ? 'ring-1 ring-inset ring-accent bg-accent-subtle/20 z-10' : ''}`}
                                 >
                                     {/* Day Top Bar */}
                                     <div className="flex items-center justify-between">
-                                        <span className={`text-xs font-semibold ${
+                                        <span className={`text-[11px] sm:text-xs font-semibold ${
                                             item.is_today 
-                                                ? 'h-5 w-5 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]' 
+                                                ? 'h-4 w-4 sm:h-5 sm:w-5 rounded bg-accent text-white flex items-center justify-center font-bold text-[10px] sm:text-[11px]' 
                                                 : item.day_of_week === 0 
-                                                    ? 'text-rose-600 font-bold' 
+                                                    ? 'text-ink font-bold' 
                                                     : 'text-slate-800'
                                         }`}>
                                             {item.day_number}
                                         </span>
 
-                                        <span className={`h-2 w-2 rounded-full ${theme.dotBg} shrink-0`} title={item.status_label} />
+                                        <span className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${item.status === 'PRESENT' ? 'bg-slate-900' : theme.dotBg} shrink-0`} title={item.status_label} />
                                     </div>
 
                                     {/* Middle Content */}
-                                    <div className="my-1.5 space-y-1">
-                                        {item.status === 'PRESENT' && (
-                                            <div className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/70 truncate">
-                                                {item.time_in_formatted}
-                                            </div>
-                                        )}
+                                    <div className="my-0.5 sm:my-1.5 space-y-1">
+                                        {/* Desktop View (sm and up) */}
+                                        <div className="hidden sm:block space-y-1">
+                                            {item.status === 'PRESENT' && (
+                                                <div className="text-[10px] font-semibold text-white bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 truncate">
+                                                    {item.time_in_formatted}
+                                                </div>
+                                            )}
 
-                                        {item.status === 'LATE' && (
-                                            <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/70 truncate">
-                                                {item.time_in_formatted} <span className="hidden sm:inline">({item.minutes_late}m)</span>
-                                            </div>
-                                        )}
+                                            {item.status === 'LATE' && (
+                                                <div className="text-[10px] font-semibold text-warning-ink bg-warning-subtle px-1.5 py-0.5 rounded border border-warning/70 truncate">
+                                                    {item.time_in_formatted} <span className="hidden sm:inline">({item.minutes_late}m)</span>
+                                                </div>
+                                            )}
 
-                                        {item.status === 'ABSENT' && (
-                                            <div className="text-[10px] font-semibold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200/70 truncate">
-                                                Absent
-                                            </div>
-                                        )}
+                                            {item.status === 'ABSENT' && (
+                                                <div className="text-[10px] font-semibold text-danger-ink bg-danger-subtle px-1.5 py-0.5 rounded border border-danger/70 truncate">
+                                                    Absent
+                                                </div>
+                                            )}
 
-                                        {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (
-                                            <div className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200/70 truncate" title={item.status_label}>
-                                                {item.leave?.type || 'Leave'}
-                                            </div>
-                                        )}
+                                            {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (
+                                                <div className="text-[10px] font-semibold text-accent bg-accent-subtle px-1.5 py-0.5 rounded border border-accent/70 truncate" title={item.status_label}>
+                                                    {item.leave?.type || 'Leave'}
+                                                </div>
+                                            )}
 
-                                        {(item.status === 'HOLIDAY' || item.status === 'FUTURE_HOLIDAY') && (
-                                            <div className="text-[10px] font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200/70 truncate" title={item.holiday?.name}>
-                                                Holiday
-                                            </div>
-                                        )}
+                                            {(item.status === 'HOLIDAY' || item.status === 'FUTURE_HOLIDAY') && (
+                                                <div className="text-[10px] font-semibold text-accent bg-accent-subtle px-1.5 py-0.5 rounded border border-accent/70 truncate" title={item.holiday?.name}>
+                                                    Holiday
+                                                </div>
+                                            )}
 
-                                        {(item.status === 'REST_DAY' || item.status === 'FUTURE_REST_DAY') && (
-                                            <div className="text-[10px] font-medium text-slate-400">
-                                                Rest Day
-                                            </div>
-                                        )}
+                                            {(item.status === 'REST_DAY' || item.status === 'FUTURE_REST_DAY') && (
+                                                <div className="text-[10px] font-medium text-slate-400">
+                                                    Rest Day
+                                                </div>
+                                            )}
 
-                                        {item.status === 'AWAITING_PUNCH' && (
-                                            <div className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 truncate">
-                                                Today
-                                            </div>
-                                        )}
+                                            {item.status === 'AWAITING_PUNCH' && (
+                                                <div className="text-[10px] font-semibold text-accent bg-accent-subtle px-1.5 py-0.5 rounded border border-accent/20 truncate">
+                                                    Today
+                                                </div>
+                                            )}
 
-                                        {item.status === 'SCHEDULED' && (
-                                            <div className="text-[10px] font-medium text-slate-400">
-                                                Scheduled
-                                            </div>
-                                        )}
+                                            {item.status === 'SCHEDULED' && (
+                                                <div className="text-[10px] font-medium text-slate-400">
+                                                    Scheduled
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Mobile View (< sm) */}
+                                        <div className="sm:hidden">
+                                            {item.status === 'PRESENT' && (
+                                                <span className="text-[8px] font-mono font-bold text-white bg-slate-900 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    {item.time_in_formatted ? item.time_in_formatted.replace(' AM', '').replace(' PM', '') : 'In'}
+                                                </span>
+                                            )}
+                                            {item.status === 'LATE' && (
+                                                <span className="text-[8px] font-mono font-bold text-warning-ink bg-warning-subtle border border-warning/30 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    +{item.minutes_late}m
+                                                </span>
+                                            )}
+                                            {item.status === 'ABSENT' && (
+                                                <span className="text-[8px] font-bold text-danger-ink bg-danger-subtle border border-danger/30 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Abs
+                                                </span>
+                                            )}
+                                            {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (
+                                                <span className="text-[8px] font-bold text-accent bg-accent-subtle border border-accent/30 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Lve
+                                                </span>
+                                            )}
+                                            {(item.status === 'HOLIDAY' || item.status === 'FUTURE_HOLIDAY') && (
+                                                <span className="text-[8px] font-bold text-accent bg-accent-subtle border border-accent/30 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Hol
+                                                </span>
+                                            )}
+                                            {(item.status === 'REST_DAY' || item.status === 'FUTURE_REST_DAY') && (
+                                                <span className="text-[8px] text-slate-400 font-medium block text-center leading-none">
+                                                    Rest
+                                                </span>
+                                            )}
+                                            {item.status === 'AWAITING_PUNCH' && (
+                                                <span className="text-[8px] font-bold text-accent bg-accent-subtle rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Today
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    {/* Bottom Info: Hours Worked */}
-                                    <div className="text-[9px] text-slate-400 font-mono truncate">
+                                    {/* Bottom Info: Hours Worked (Desktop) */}
+                                    <div className="hidden sm:block text-[9px] text-slate-400 font-mono truncate">
                                         {item.time_out_formatted ? `Out: ${item.time_out_formatted}` : item.hours_worked ? `${item.hours_worked} hrs` : ''}
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
+
+                    {/* Mobile Tap Guide */}
+                    <div className="sm:hidden px-3 py-2 text-center text-[10px] text-slate-400 border-t border-slate-100 bg-slate-50/50 flex items-center justify-center gap-1.5">
+                        <i className="ti ti-hand-click text-xs text-slate-400" />
+                        <span>Tap any date to inspect full biometric audit record</span>
+                    </div>
                 </div>
             ) : (
-                /* Chronological Audit Table View */
+                /* Chronological Audit Table & Mobile Card View */
                 <div className="border border-slate-200 rounded-md overflow-hidden bg-white shadow-2xs">
-                    <div className="overflow-x-auto">
+                    {/* Mobile Dynamic Card Stack (< md) */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                        {filteredDays.length === 0 ? (
+                            <div className="p-8 text-center text-slate-400 text-xs">
+                                No attendance records found matching the active filter.
+                            </div>
+                        ) : (
+                            filteredDays.map((day) => {
+                                const theme = getStatusTheme(day);
+                                return (
+                                    <div
+                                        key={day.date}
+                                        onClick={() => setSelectedDayDetail(day)}
+                                        className={`p-3.5 transition-colors cursor-pointer hover:bg-slate-50 space-y-2.5 active:bg-slate-100 ${
+                                            day.is_today ? 'bg-accent-subtle/20' : ''
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="font-mono font-bold text-xs text-slate-900">{day.date}</span>
+                                                <span className="text-xs text-slate-500 font-medium">{day.full_day_name}</span>
+                                            </div>
+                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${theme.badgeBg}`}>
+                                                <span className={`h-1.5 w-1.5 rounded-full ${theme.dotBg}`} />
+                                                {day.status_label}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50/70 p-2.5 rounded border border-slate-100">
+                                            <div className="space-y-0.5">
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Clock In / Out</span>
+                                                <div className="font-mono text-xs font-semibold text-slate-800">
+                                                    {day.time_in_formatted || '--:--'} <span className="text-slate-400 font-normal">to</span> {day.time_out_formatted || '--:--'}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-0.5 text-right">
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Duration &amp; Delay</span>
+                                                <div className="text-xs font-semibold">
+                                                    {day.minutes_late > 0 ? (
+                                                        <span className="text-warning-ink font-semibold">+{day.minutes_late}m late</span>
+                                                    ) : day.status === 'PRESENT' ? (
+                                                        <span className="text-slate-700 font-medium">On-time</span>
+                                                    ) : (
+                                                        <span className="text-slate-400">--</span>
+                                                    )}
+                                                    {day.hours_worked ? <span className="text-slate-500 font-normal"> · {day.hours_worked}h</span> : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-[11px] pt-0.5 text-slate-500">
+                                            <span className="text-[10px] text-slate-400">
+                                                {day.time_in_photo ? 'Biometric photo attached' : 'Standard biometric punch'}
+                                            </span>
+                                            <span className="font-semibold text-accent hover:text-accent-strong flex items-center gap-1">
+                                                Inspect <i className="ti ti-chevron-right text-xs" />
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* Desktop Table View (>= md) */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
@@ -938,7 +1067,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                                 key={day.date}
                                                 onClick={() => setSelectedDayDetail(day)}
                                                 className={`hover:bg-slate-50 transition-colors cursor-pointer ${
-                                                    day.is_today ? 'bg-blue-50/20' : ''
+                                                    day.is_today ? 'bg-accent-subtle/20' : ''
                                                 }`}
                                             >
                                                 <td className="py-2.5 px-3.5 font-mono font-semibold text-slate-900">
@@ -961,11 +1090,11 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                                 </td>
                                                 <td className="py-2.5 px-3.5">
                                                     {day.minutes_late > 0 ? (
-                                                        <span className="font-semibold text-amber-800">
+                                                        <span className="font-semibold text-warning-ink">
                                                             +{day.minutes_late} mins
                                                         </span>
                                                     ) : day.status === 'PRESENT' ? (
-                                                        <span className="text-emerald-700 font-medium">On-time</span>
+                                                        <span className="text-slate-700 font-medium">On-time</span>
                                                     ) : (
                                                         <span className="text-slate-300">--</span>
                                                     )}
@@ -980,7 +1109,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                                             e.stopPropagation();
                                                             setSelectedDayDetail(day);
                                                         }}
-                                                        className="text-xs font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
+                                                        className="text-xs font-medium text-accent hover:text-accent-strong cursor-pointer"
                                                     >
                                                         Inspect
                                                     </button>
@@ -1038,7 +1167,11 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                     <span className={`h-2 w-2 rounded-full ${getStatusTheme(selectedDayDetail).dotBg}`} />
                                     <span className="font-semibold text-xs uppercase tracking-wider">Attendance Status</span>
                                 </div>
-                                <span className="font-semibold text-xs px-2 py-0.5 rounded border bg-white/80">
+                                <span className={`font-semibold text-xs px-2 py-0.5 rounded border ${
+                                    selectedDayDetail.status === 'PRESENT'
+                                        ? 'bg-slate-800 text-white border-slate-700'
+                                        : 'bg-white/80'
+                                }`}>
                                     {selectedDayDetail.status_label}
                                 </span>
                             </div>
@@ -1073,7 +1206,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 </div>
                                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
                                     <span className="text-slate-500 font-medium">Tardiness / Delay:</span>
-                                    <span className={`font-mono font-semibold ${selectedDayDetail.minutes_late > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                    <span className={`font-mono font-semibold ${selectedDayDetail.minutes_late > 0 ? 'text-warning-ink' : 'text-ink'}`}>
                                         {selectedDayDetail.minutes_late > 0 ? `+${selectedDayDetail.minutes_late} minutes` : '0 mins (On Time)'}
                                     </span>
                                 </div>

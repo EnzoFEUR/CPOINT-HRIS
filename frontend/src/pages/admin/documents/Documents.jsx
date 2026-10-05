@@ -195,10 +195,10 @@ export default function Documents() {
     // Get icon based on file extension
     const getFileIcon = (fileName = '') => {
         const ext = fileName.split('.').pop().toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'ti-photo text-sky-500 bg-sky-50';
-        if (['pdf'].includes(ext)) return 'ti-file-type-pdf text-rose-500 bg-rose-50';
-        if (['doc', 'docx'].includes(ext)) return 'ti-file-description text-blue-500 bg-blue-50';
-        return 'ti-file-text text-indigo-500 bg-indigo-50';
+        if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'ti-photo text-accent bg-accent-subtle';
+        if (['pdf'].includes(ext)) return 'ti-file-type-pdf text-danger-ink bg-danger-subtle';
+        if (['doc', 'docx'].includes(ext)) return 'ti-file-description text-accent bg-accent-subtle';
+        return 'ti-file-text text-accent bg-accent-subtle';
     };
 
     const isImageFile = (fileName = '') => {
@@ -220,9 +220,9 @@ export default function Documents() {
     };
 
     const expiryBadgeStyles = {
-        expired: 'bg-rose-50 text-rose-600 border-rose-200',
-        warning: 'bg-amber-50 text-amber-600 border-amber-200',
-        valid: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+        expired: 'bg-danger-subtle text-danger-ink border-danger/20',
+        warning: 'bg-warning-subtle text-warning-ink border-warning/20',
+        valid: 'bg-surface-muted text-ink border-line',
     };
 
     const alerts = useMemo(() => {
@@ -486,16 +486,16 @@ useEffect(() => {
             </div>
 
             {/* Header */}
-            <div className={`bg-white rounded-lg shadow-2xs border ${isTerminated ? 'border-rose-200' : 'border-slate-200'} p-5 sm:p-6`}>
+            <div className={`bg-white rounded-lg shadow-2xs border ${isTerminated ? 'border-danger/20' : 'border-slate-200'} p-5 sm:p-6`}>
                 <div className="flex items-center gap-4">
-                    <div className={`h-10 w-10 ${isTerminated ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'} rounded-md flex items-center justify-center border shrink-0`}>
+                    <div className={`h-10 w-10 ${isTerminated ? 'bg-danger-subtle text-danger-ink border-danger/20' : 'bg-slate-100 text-slate-700 border-slate-200'} rounded-md flex items-center justify-center border shrink-0`}>
                         <i className={`ti ${isTerminated ? 'ti-file-off' : 'ti-folders'} text-xl`} />
                     </div>
                     <div>
                         <div className="flex flex-wrap items-center gap-2.5">
                             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Documents</h1>
                             {isTerminated && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
                                     <i className="ti ti-lock text-xs" /> Separated · Read-only audit
                                 </span>
                             )}
@@ -513,21 +513,21 @@ useEffect(() => {
 
             {/* TERMINATED AUDIT BANNER */}
             {isTerminated && (
-                <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 shadow-2xs">
+                <div className="bg-danger-subtle border border-danger/20 rounded-lg p-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="h-8 w-8 shrink-0 bg-rose-100 text-rose-600 rounded-md flex items-center justify-center border border-rose-200">
+                        <div className="h-8 w-8 shrink-0 bg-danger-subtle text-danger-ink rounded-md flex items-center justify-center border border-danger/20">
                             <i className="ti ti-lock text-lg" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <h4 className="text-xs font-bold text-rose-950 uppercase tracking-wide">
+                                <h4 className="text-xs font-bold text-danger-ink uppercase tracking-wide">
                                     Document uploads disabled (separated account)
                                 </h4>
-                                <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold bg-rose-200 text-rose-800">
+                                <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold bg-danger-subtle text-danger-ink">
                                     Read-only audit mode
                                 </span>
                             </div>
-                            <p className="text-xs text-rose-800/90 leading-relaxed font-medium">
+                            <p className="text-xs text-danger-ink/90 leading-relaxed font-medium">
                                 This employee is separated from the company. Under Philippine labor rules, document uploads and edits are locked. Historical 201 records remain available below for review and export.
                             </p>
                         </div>
@@ -537,13 +537,13 @@ useEffect(() => {
 
             {/* COMPLIANCE ALERTS */}
             {alerts.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-2xs">
+                <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 shadow-2xs">
                     <div className="flex items-start gap-3">
-                        <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-600 rounded-md flex items-center justify-center">
+                        <div className="h-8 w-8 shrink-0 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center">
                             <i className="ti ti-alert-triangle text-base" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-amber-900">
+                            <p className="text-xs font-bold text-warning-ink">
                                 {alerts.length} document{alerts.length > 1 ? 's need' : ' needs'} attention
                             </p>
                             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -624,7 +624,7 @@ useEffect(() => {
             {/* FILE GRID / LOADING / EMPTY STATE */}
             {isLoading ? (
                 <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-                    <i className="ti ti-loader animate-spin text-4xl text-indigo-600 mb-2" />
+                    <i className="ti ti-loader animate-spin text-4xl text-accent mb-2" />
                     <p className="text-xs font-semibold text-slate-500">Loading documents...</p>
                 </div>
             ) : filteredDocuments.length === 0 ? (
@@ -711,7 +711,7 @@ useEffect(() => {
                                         </a>
                                         <button
                                             onClick={() => handleDeleteDocument(doc)}
-                                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors duration-100 cursor-pointer"
+                                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-danger-ink hover:bg-danger-subtle rounded-md transition-colors duration-100 cursor-pointer"
                                             title="Delete"
                                         >
                                             <i className="ti ti-trash text-base" />
@@ -856,7 +856,7 @@ useEffect(() => {
                                                     setSelectedFile(null);
                                                     if (fileInputRef.current) fileInputRef.current.value = '';
                                                 }}
-                                                className="w-7 h-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
+                                                className="w-7 h-7 text-slate-400 hover:text-danger-ink hover:bg-danger-subtle rounded-md flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
                                             >
                                                 <i className="ti ti-trash text-sm" />
                                             </button>

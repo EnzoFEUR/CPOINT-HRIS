@@ -106,18 +106,18 @@ export const EmployeeAvatar = ({
 
     const themeClass = useMemo(() => {
         if (theme === 'auto') {
-            return isFactory ? 'bg-amber-50 text-amber-800' : 'bg-indigo-50 text-indigo-800';
+            return isFactory ? 'bg-surface-muted text-ink' : 'bg-accent-subtle text-accent-strong';
         }
         switch (theme) {
-            case 'amber': return 'bg-amber-50 text-amber-800';
-            case 'blue': return 'bg-blue-50 text-blue-800';
-            case 'indigo': return 'bg-indigo-50 text-indigo-800';
-            case 'emerald': return 'bg-emerald-50 text-emerald-800';
-            case 'purple': return 'bg-purple-50 text-purple-800';
-            case 'cyan': return 'bg-cyan-50 text-cyan-800';
-            case 'red': return 'bg-red-50 text-red-800';
+            case 'amber': return 'bg-surface-muted text-ink';
+            case 'blue': return 'bg-accent-subtle text-accent-strong';
+            case 'indigo': return 'bg-accent-subtle text-accent-strong';
+            case 'emerald': return 'bg-surface-muted text-ink';
+            case 'purple': return 'bg-accent-subtle text-accent-strong';
+            case 'cyan': return 'bg-accent-subtle text-accent-strong';
+            case 'red': return 'bg-surface-muted text-ink';
             case 'dark': return 'bg-slate-900 text-white';
-            case 'gradient': return 'bg-indigo-600 text-white';
+            case 'gradient': return 'bg-accent text-white';
             default: return 'bg-slate-100 text-slate-800';
         }
     }, [theme, isFactory]);

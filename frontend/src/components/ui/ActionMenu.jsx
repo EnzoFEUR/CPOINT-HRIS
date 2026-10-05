@@ -76,7 +76,7 @@ export default function ActionMenu({
                         const content = (
                             <>
                                 {item.icon && (
-                                    <i className={`ti ${item.icon} text-sm shrink-0 ${item.destructive ? 'text-rose-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                                    <i className={`ti ${item.icon} text-sm shrink-0 ${item.destructive ? 'text-danger-ink' : 'text-slate-400 group-hover:text-slate-600'}`} />
                                 )}
                                 <span className="flex-1 truncate">{item.label}</span>
                                 {item.badge && (
@@ -89,7 +89,7 @@ export default function ActionMenu({
 
                         const commonClasses = `h-8 w-full text-left px-2 text-xs font-medium rounded-sm flex items-center gap-2 transition-colors duration-100 group cursor-pointer ${
                             item.destructive
-                                ? 'text-rose-600 hover:bg-rose-50 hover:text-rose-700'
+                                ? 'text-danger-ink hover:bg-danger-subtle hover:text-danger-ink'
                                 : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                         }`;
 

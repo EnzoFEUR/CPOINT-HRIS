@@ -71,7 +71,7 @@ export default function EmployeeModuleGate({ children }) {
     return (
         <div className="min-h-[calc(100vh-140px)] flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
             <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8 text-center space-y-6">
-                <div className="h-14 w-14 mx-auto bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center border border-blue-200 shadow-2xs">
+                <div className="h-14 w-14 mx-auto bg-accent-subtle text-accent rounded-2xl flex items-center justify-center border border-accent/20 shadow-2xs">
                     <i className="ti ti-shield-lock text-2xl" />
                 </div>
 
@@ -88,7 +88,7 @@ export default function EmployeeModuleGate({ children }) {
                     <button
                         type="button"
                         onClick={() => setIsModalOpen(true)}
-                        className="w-full h-11 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-2 transition-colors duration-100 cursor-pointer"
+                        className="w-full h-11 bg-accent hover:bg-accent-hover active:bg-accent-hover text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-2 transition-colors duration-100 cursor-pointer"
                     >
                         <i className="ti ti-shield-lock text-base" />
                         <span>Verify Identity (2FA)</span>
