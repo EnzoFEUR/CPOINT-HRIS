@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
 import {
-    Sparkles,
     RefreshCw,
     Loader2,
     Lightbulb,
@@ -416,9 +415,6 @@ export default function Dashboard() {
                 <div className="relative z-10 space-y-4 p-6 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                            <span className="px-3 py-1 bg-surface-muted text-ink-subtle border border-line rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-ink-subtle" /> Google Gemini Brief
-                            </span>
                             {(isManualRefreshingAI || (!briefing && isAIFetching)) && (
                                 <span className="text-[11px] text-ink font-semibold flex items-center gap-1.5">
                                     <Loader2 className="w-3 h-3 animate-spin" /> Analyzing live signals...
@@ -428,7 +424,7 @@ export default function Dashboard() {
                         <button
                             onClick={handleRefreshAI}
                             disabled={isAILoading}
-                            className="self-start sm:self-center h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                            className="self-start sm:self-center h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs ml-auto"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 text-ink-subtle ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
                             <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>

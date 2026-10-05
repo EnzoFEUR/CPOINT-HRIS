@@ -1535,7 +1535,7 @@ export default function PayrollIndex() {
                         </div>
                     </div>
                     <div className="mt-2.5">
-                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-slate-900 tracking-tight">
+                        <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-accent tracking-tight">
                             ₱{metrics.totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                     </div>
