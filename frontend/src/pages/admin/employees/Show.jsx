@@ -787,13 +787,9 @@ export default function Show() {
                                             Account Pending Initial Registration
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-warning-subtle text-warning-ink border border-warning/20">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                                             Unregistered
                                         </span>
                                     </div>
-                                    <p className="text-xs text-warning-ink/90 font-medium mt-0.5">
-                                        This employee has not signed in yet. Their temporary password remains preserved below until first login.
-                                    </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
@@ -882,13 +878,6 @@ export default function Show() {
                                     </button>
                                 </div>
                             </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-warning/60 flex items-center gap-2 text-[11px] text-warning-ink/80 font-medium">
-                            <i className="ti ti-info-circle text-warning-ink shrink-0 text-sm" />
-                            <span>
-                                Once the employee registers by logging in and configuring their personal password, this temporary password will be wiped and will automatically disappear from this profile.
-                            </span>
                         </div>
                     </div>
                 )}
