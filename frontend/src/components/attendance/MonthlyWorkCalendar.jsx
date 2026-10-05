@@ -850,7 +850,6 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                             {item.day_number}
                                         </span>
 
-                                        <span className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${item.status === 'PRESENT' ? 'bg-slate-900' : theme.dotBg} shrink-0`} title={item.status_label} />
                                     </div>
 
                                     {/* Middle Content */}
@@ -1136,9 +1135,6 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                     <h3 className="text-base font-semibold text-slate-900">
                                         {selectedDayDetail.full_day_name}, {selectedDayDetail.date}
                                     </h3>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        Daily Attendance &amp; Shift Reconciliation
-                                    </p>
                                 </div>
                             </div>
                             <button
@@ -1155,7 +1151,6 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         <div className="space-y-3.5 text-sm">
                             <div className={`p-3 rounded-md border flex items-center justify-between ${getStatusTheme(selectedDayDetail).badgeBg}`}>
                                 <div className="flex items-center gap-2">
-                                    <span className={`h-2 w-2 rounded-full ${getStatusTheme(selectedDayDetail).dotBg}`} />
                                     <span className="font-semibold text-xs uppercase tracking-wider">Attendance Status</span>
                                 </div>
                                 <span className={`font-semibold text-xs px-2 py-0.5 rounded border ${
@@ -1171,14 +1166,12 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Call Time</span>
                                     <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">08:00 AM</span>
-                                    <span className="text-[10px] text-slate-500 block mt-0.5">Factory shift start</span>
                                 </div>
                                 <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Duration Rendered</span>
                                     <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">
                                         {selectedDayDetail.hours_worked ? `${selectedDayDetail.hours_worked} hrs` : '--'}
                                     </span>
-                                    <span className="text-[10px] text-slate-500 block mt-0.5">Logged work hours</span>
                                 </div>
                             </div>
 
