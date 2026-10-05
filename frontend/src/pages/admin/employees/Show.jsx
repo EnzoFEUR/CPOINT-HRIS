@@ -1124,9 +1124,6 @@ export default function Show() {
                                             <i className="ti ti-box-multiple text-warning-ink text-lg" />
                                             Group Production Batch Pool
                                         </div>
-                                        <p className="text-xs text-warning-ink leading-relaxed font-medium">
-                                            Compensation is calculated based on completed pairs of shoes produced by the 6-worker team ({shoeRole?.stage || 'Assembly'}) upon QA inspection.
-                                        </p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2 pt-1">
@@ -1148,9 +1145,6 @@ export default function Show() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <p className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-200/60">
-                                            Standard DOLE 8-hour workday (Daily Rate ÷ 8).
-                                        </p>
                                     </div>
                                 )}
                             </div>
