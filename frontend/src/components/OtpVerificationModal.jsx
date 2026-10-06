@@ -216,7 +216,7 @@ export default function OtpVerificationModal({
             if (isMock && data.previewCode) {
                 const previewDigits = data.previewCode.split('');
                 setDigits(previewDigits);
-                toast.success(`Mock OTP: ${data.previewCode} (Brevo email skipped)`);
+                toast.success(`Mock OTP: ${data.previewCode} (for testing only)`);
             } else {
                 toast.success(
                     isResend
@@ -592,7 +592,7 @@ export default function OtpVerificationModal({
                                     className="w-full h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer mt-2 border border-slate-200 shadow-2xs"
                                 >
                                     <i className="ti ti-flask text-sm text-slate-500" />
-                                    <span>Mock OTP (Skip Brevo Email)</span>
+                                    <span>Test OTP</span>
                                 </button>
 
                                 <div className="text-center pt-1 border-t border-slate-100">

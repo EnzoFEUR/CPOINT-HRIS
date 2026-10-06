@@ -1328,11 +1328,6 @@ export default function EmployeesIndex() {
                             {copiedAll ? 'Copied to Clipboard' : 'Copy All Login Credentials'}
                         </button>
 
-                        <p className="text-[11px] text-slate-400 text-center font-medium leading-relaxed">
-                            <i className="ti ti-info-circle mr-1" />
-                            The employee will be required to change this password upon their first sign-in.
-                        </p>
-
                         {/* Dismiss */}
                         <div className="pt-2 border-t border-slate-100">
                             <button

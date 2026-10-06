@@ -774,7 +774,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 <i className="ti ti-check text-xl font-bold" />
                             </div>
                             <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                                Account Created Successfully!
+                                Account Created Successfully
                             </h3>
                             <p className="text-xs text-slate-500 font-medium">
                                 Provide these temporary login credentials to the employee.
@@ -858,11 +858,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             <i className={`ti ${copiedAll ? 'ti-check text-ink' : 'ti-clipboard-check'} text-sm`} />
                             {copiedAll ? 'Copied to Clipboard!' : 'Copy All Login Credentials'}
                         </button>
-
-                        <p className="text-[11px] text-slate-500 text-center font-medium leading-relaxed">
-                            <i className="ti ti-info-circle mr-1" />
-                            The employee will be required to change this password upon their first sign-in.
-                        </p>
 
                         {/* Modal Actions */}
                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
