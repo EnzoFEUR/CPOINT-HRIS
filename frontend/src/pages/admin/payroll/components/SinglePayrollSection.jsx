@@ -18,7 +18,8 @@ const SinglePayrollSection = ({
     isInvalidDateRange,
     handleSubmitSingle,
     periodStart,
-    periodEnd
+    periodEnd,
+    attendanceBlock = null
 }) => {
     return (
         <form onSubmit={handleSubmitSingle} className="space-y-6">
@@ -50,8 +51,20 @@ const SinglePayrollSection = ({
                         <i className="ti ti-chevron-right text-slate-400 text-base group-hover:text-accent transition-colors shrink-0 ml-2"></i>
                     </button>
                 ) : (
-                    <div className="bg-white p-3.5 sm:p-4 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden">
-                        <div className="flex items-start justify-between gap-3">
+                    <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Change selected employee"
+                        onClick={() => setIsEmpModalOpen(true)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setIsEmpModalOpen(true);
+                            }
+                        }}
+                        className="group bg-white p-3.5 sm:p-4 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden cursor-pointer transition-all duration-100 hover:border-accent hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                        <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
                                 <EmployeeAvatar
                                     employee={selectedEmployee}
@@ -77,7 +90,7 @@ const SinglePayrollSection = ({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsEmpModalOpen(true)}
+                                onClick={(e) => { e.stopPropagation(); setIsEmpModalOpen(true); }}
                                 className="shrink-0 h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md transition-colors duration-100 cursor-pointer flex items-center"
                             >
                                 Change
@@ -276,8 +289,10 @@ const SinglePayrollSection = ({
                     )}
                 </div>
                 <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*\.?[0-9]{0,2}"
+                    autoComplete="off"
                     name="late_deductions"
                     value={formData.late_deductions}
                     onChange={handleInputChange}
@@ -292,9 +307,19 @@ const SinglePayrollSection = ({
                 )}
             </div>
 
+            {attendanceBlock && (
+                <div role="alert" className="flex items-start gap-2.5 p-3.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium">
+                    <i className="ti ti-ban text-base shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                        <p className="font-bold">Payroll blocked for this employee</p>
+                        <p className="mt-0.5 leading-relaxed">{attendanceBlock.reason}</p>
+                    </div>
+                </div>
+            )}
+
             <button
                 type="submit"
-                disabled={isSubmitting || !formData.employee_id || isInvalidDateRange}
+                disabled={isSubmitting || !formData.employee_id || isInvalidDateRange || Boolean(attendanceBlock)}
                 className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
                 {!isSubmitting ? (

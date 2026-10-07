@@ -61,6 +61,9 @@ const PayrollCreate = () => {
     const [groupAttendanceMap, setGroupAttendanceMap] = useState({});
     // employee_id -> list of dates (YYYY-MM-DD) the worker actually clocked in and out on
     const [groupWorkedDatesMap, setGroupWorkedDatesMap] = useState({});
+    // Workers whose attendance lookup failed. Their 0 is "unknown", not "absent all week",
+    // so they are never auto-skipped from the payout.
+    const [attendanceFailedIds, setAttendanceFailedIds] = useState([]);
     const [isLoadingGroupAttendance, setIsLoadingGroupAttendance] = useState(false);
 
     // Absentee output declaration.
@@ -130,7 +133,6 @@ const PayrollCreate = () => {
     // Modal & UI State
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
     const [empSearch, setEmpSearch] = useState('');
-    const [selectedDeptFilter, setSelectedDeptFilter] = useState('ALL');
     const [activePreset, setActivePreset] = useState('current_week');
 
     // Cutoff length: '7day' (Mon-Sun) or '5day' (Mon-Fri, weekends excluded from the count).
@@ -1068,7 +1070,7 @@ const PayrollCreate = () => {
                             return { empId, daysPresent: workedDatesSet.size, workedDates: Array.from(workedDatesSet) };
                         } catch (err) {
                             console.error(`Attendance fetch failed for worker ${empId}:`, err);
-                            return { empId, daysPresent: 0, workedDates: [] };
+                            return { empId, daysPresent: 0, workedDates: [], failed: true };
                         }
                     })
                 );
@@ -1082,6 +1084,7 @@ const PayrollCreate = () => {
                     });
                     setGroupAttendanceMap(map);
                     setGroupWorkedDatesMap(datesMap);
+                    setAttendanceFailedIds(results.filter(r => r.failed).map(r => r.empId));
                 }
             } catch (err) {
                 console.error('Group attendance load error:', err);
@@ -1121,6 +1124,25 @@ const PayrollCreate = () => {
         return count;
     }, [periodStart, periodEnd, cutoffMode, isInvalidDateRange]);
 
+    // Workers with 0 days present in the cutoff are left out of the batch entirely:
+    // not asked for a declared output, and not given a share of any process.
+    // Only counted once this group's attendance has really loaded (the key must exist, so a
+    // stale map from another group or a still-loading fetch never marks anyone as zero),
+    // and never for workers whose attendance lookup failed.
+    const zeroAttendanceIdSet = useMemo(() => {
+        const set = new Set();
+        if (entryMode !== 'batch' || isLoadingGroupAttendance) return set;
+        const failed = new Set(attendanceFailedIds);
+        activeGroupEmployees.forEach(emp => {
+            const idStr = String(emp.id);
+            const loaded = Object.prototype.hasOwnProperty.call(groupAttendanceMap, idStr);
+            if (loaded && groupAttendanceMap[idStr] === 0 && !failed.has(idStr)) {
+                set.add(idStr);
+            }
+        });
+        return set;
+    }, [entryMode, isLoadingGroupAttendance, activeGroupEmployees, groupAttendanceMap, attendanceFailedIds]);
+
     // Anyone short of even one expected day. Held back until attendance has actually
     // loaded so the whole roster isn't flagged mid-fetch.
     const absenteeInfo = useMemo(() => {
@@ -1143,6 +1165,7 @@ const PayrollCreate = () => {
 
         activeGroupEmployees.forEach(emp => {
             const idStr = String(emp.id);
+            if (zeroAttendanceIdSet.has(idStr)) return; // 0 days present: skipped, not an absentee to declare
             const daysPresent = groupAttendanceMap[idStr] || 0;
             const workedDates = new Set(groupWorkedDatesMap[idStr] || []);
             const unworkedHolidayDays = nonWorkingHolidayDates.filter(d => !workedDates.has(d)).length;
@@ -1153,7 +1176,7 @@ const PayrollCreate = () => {
             }
         });
         return map;
-    }, [entryMode, activeGroupEmployees, groupAttendanceMap, groupWorkedDatesMap, expectedWorkingDays, isLoadingGroupAttendance, holidayPreview, cutoffMode]);
+    }, [entryMode, activeGroupEmployees, groupAttendanceMap, groupWorkedDatesMap, expectedWorkingDays, isLoadingGroupAttendance, holidayPreview, cutoffMode, zeroAttendanceIdSet]);
 
     // Computed Factory Operation Rows
     const computedFactoryRows = useMemo(() => {
@@ -1184,10 +1207,16 @@ const PayrollCreate = () => {
                 effectiveAssignedIds = jobMatchedEmployees.map(e => String(e.id));
             }
 
+            // Workers with 0 days present are skipped: no declaration, no share.
+            // The solo rule below still looks at the original roster, so a worker who only
+            // looks "alone" because a coworker had 0 days is not handed the whole process.
+            const rosterSizeBeforeSkip = effectiveAssignedIds.length;
+            effectiveAssignedIds = effectiveAssignedIds.filter(id => !zeroAttendanceIdSet.has(String(id)));
+
             // A worker who is the ONLY one assigned to a process has nobody to split it
             // with, so the whole operation is theirs whether they were absent or not.
             // There is nothing for HR to declare, so they are never asked about this row.
-            const isSoloAssignment = effectiveAssignedIds.length === 1;
+            const isSoloAssignment = rosterSizeBeforeSkip === 1 && effectiveAssignedIds.length === 1;
 
             // Otherwise split the roster on this operation into workers who completed the
             // cutoff and workers who missed at least one day.
@@ -1285,7 +1314,7 @@ const PayrollCreate = () => {
                 isSoloAssignment
             };
         });
-    }, [factoryRows, activeGroupEmployees, activeGroupEmployeeIdSet, holidayRateMultiplier, groupAttendanceMap, absenteeInfo, absenteeOutputs]);
+    }, [factoryRows, activeGroupEmployees, activeGroupEmployeeIdSet, holidayRateMultiplier, groupAttendanceMap, absenteeInfo, absenteeOutputs, zeroAttendanceIdSet]);
 
     const grandTotalFactoryPayout = useMemo(() => {
         if (!selectedGroup) return 0;
@@ -1530,11 +1559,17 @@ const PayrollCreate = () => {
         return otHours * regularHourlyRate * 1.25;
     }, [formData.overtime_hours, regularHourlyRate]);
 
-    const availableDepartments = useMemo(() => {
-        const nonFactoryEmployees = employees.filter(e => !isFactoryDept(getEmployeeDept(e)));
-        const depts = new Set(nonFactoryEmployees.map(getEmployeeDept));
-        return ['ALL', ...Array.from(depts)];
-    }, [employees]);
+    // Individual payroll: HR may still open this employee, but the server says there is nothing to
+    // pay for (no completed attendance and no approved paid leave in the selected cutoff).
+    // The echoed employee/period guard stops a slow answer for a previous selection from
+    // blocking (or unblocking) the wrong person.
+    const attendanceBlock = useMemo(() => {
+        const check = holidayPreview?.attendanceCheck;
+        if (entryMode !== 'single' || !check?.blocked || !formData.employee_id) return null;
+        if (String(check.employee_id) !== String(formData.employee_id)) return null;
+        if (check.period_start !== periodStart || check.period_end !== periodEnd) return null;
+        return check;
+    }, [holidayPreview, entryMode, formData.employee_id, periodStart, periodEnd]);
 
     const filteredEmployees = useMemo(() => {
         const search = empSearch.toLowerCase();
@@ -1544,10 +1579,13 @@ const PayrollCreate = () => {
             const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
             const dept = getEmployeeDept(emp);
             const matchesSearch = fullName.includes(search) || dept.toLowerCase().includes(search);
-            const matchesDept = selectedDeptFilter === 'ALL' || dept === selectedDeptFilter;
-            return matchesSearch && matchesDept;
+            return matchesSearch;
         });
-    }, [employees, empSearch, selectedDeptFilter]);
+    }, [employees, empSearch]);
+
+    // The employee + week the late-deduction / overtime fields currently belong to. When it changes,
+    // those fields must not keep the previous person's numbers.
+    const lastCalcKeyRef = useRef('');
 
     // Single Employee Attendance & Calculation (with 2-Hour Regular Lateness Rule)
     useEffect(() => {
@@ -1556,9 +1594,11 @@ const PayrollCreate = () => {
         }
 
         let isMounted = true;
+        const calcKey = `${formData.employee_id}|${periodStart}|${periodEnd}`;
 
         const calculatePayroll = async () => {
             setIsCalculating(true);
+            const selectionChanged = lastCalcKeyRef.current !== calcKey;
             try {
                 const attendanceRes = await fetchWithAuth(
                     `/api/attendance?employee_id=${formData.employee_id}&start_date=${periodStart}&end_date=${periodEnd}`
@@ -1624,16 +1664,28 @@ const PayrollCreate = () => {
                 const daysWorked = uniqueWorkedDates.length;
 
                 if (isMounted) {
+                    // A different employee or week starts clean. Within the same selection, anything HR
+                    // typed is kept (these two fields stay editable).
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
                         late_minutes: totalLateMinutes,
-                        overtime_hours: calculatedOtHours > 0 ? calculatedOtHours.toFixed(2) : prev.overtime_hours,
-                        late_deductions: adjustments > 0 ? adjustments.toFixed(2) : (prev.late_deductions || '0.00')
+                        overtime_hours: calculatedOtHours > 0
+                            ? calculatedOtHours.toFixed(2)
+                            : (selectionChanged ? '' : prev.overtime_hours),
+                        late_deductions: adjustments > 0
+                            ? adjustments.toFixed(2)
+                            : (selectionChanged ? '0.00' : (prev.late_deductions || '0.00'))
                     }));
+                    lastCalcKeyRef.current = calcKey;
                 }
             } catch (err) {
                 console.error('Calculation error:', err);
+                // If the attendance lookup fails, still never show the previous person's numbers.
+                if (isMounted && selectionChanged) {
+                    setFormData(prev => ({ ...prev, late_deductions: '0.00', overtime_hours: '' }));
+                    lastCalcKeyRef.current = calcKey;
+                }
             } finally {
                 if (isMounted) setIsCalculating(false);
             }
@@ -1643,9 +1695,17 @@ const PayrollCreate = () => {
         return () => { isMounted = false; };
     }, [entryMode, formData.employee_id, periodStart, periodEnd, selectedEmployee, employeeRates, isInvalidDateRange]);
 
+    // Peso amount fields: digits plus one decimal point (max 2 decimals). No letters or symbols.
+    const sanitizeAmount = (raw) => {
+        const cleaned = String(raw).replace(/[^\d.]/g, '');
+        const [whole, ...rest] = cleaned.split('.');
+        return rest.length ? `${whole}.${rest.join('').slice(0, 2)}` : whole;
+    };
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const next = name === 'late_deductions' ? sanitizeAmount(value) : value;
+        setFormData(prev => ({ ...prev, [name]: next }));
     };
 
     const handleSubmitBatch = async (e) => {
@@ -1793,6 +1853,11 @@ const PayrollCreate = () => {
 
         if (!selectedEmployee) {
             setError('Please select an employee.');
+            return;
+        }
+
+        if (attendanceBlock) {
+            setError(attendanceBlock.reason);
             return;
         }
 
@@ -2125,6 +2190,7 @@ const PayrollCreate = () => {
                         handleSubmitSingle={handleSubmitSingle}
                         periodStart={periodStart}
                         periodEnd={periodEnd}
+                        attendanceBlock={attendanceBlock}
                     />
                 )}
             </div>
@@ -2146,9 +2212,6 @@ const PayrollCreate = () => {
                 isOpen={isEmpModalOpen}
                 onClose={() => setIsEmpModalOpen(false)}
                 filteredEmployees={filteredEmployees}
-                availableDepartments={availableDepartments}
-                selectedDeptFilter={selectedDeptFilter}
-                setSelectedDeptFilter={setSelectedDeptFilter}
                 empSearch={empSearch}
                 setEmpSearch={setEmpSearch}
                 onSelectEmployee={(empId) => setFormData(prev => ({ ...prev, employee_id: empId }))}

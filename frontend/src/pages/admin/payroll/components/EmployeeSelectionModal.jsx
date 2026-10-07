@@ -6,9 +6,6 @@ const EmployeeSelectionModal = ({
     isOpen,
     onClose,
     filteredEmployees,
-    availableDepartments,
-    selectedDeptFilter,
-    setSelectedDeptFilter,
     empSearch,
     setEmpSearch,
     onSelectEmployee
@@ -38,18 +35,6 @@ const EmployeeSelectionModal = ({
                         placeholder="Search regular employee by name or department..."
                         className="h-9 w-full px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-accent rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400"
                     />
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-                        {availableDepartments.map((dept) => (
-                            <button
-                                key={dept}
-                                type="button"
-                                onClick={() => setSelectedDeptFilter(dept)}
-                                className={`h-7 px-2.5 rounded-md text-xs font-semibold transition-colors duration-100 whitespace-nowrap cursor-pointer flex items-center ${selectedDeptFilter === dept ? 'bg-accent text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                            >
-                                {dept}
-                            </button>
-                        ))}
-                    </div>
                 </div>
 
                 <div className="overflow-y-auto p-2.5 space-y-1.5">

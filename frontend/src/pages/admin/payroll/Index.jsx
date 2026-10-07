@@ -121,6 +121,38 @@ const FREQUENCY_LABELS = {
     monthly: 'Monthly',
 };
 
+// -- Weekly pending cycles -------------------------------------------------
+const toLocalDateKey = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Mon-Sun payroll weeks (the same weeks the process page's 7-day cutoff uses) that have ALREADY
+// STARTED inside the selected month. Future weeks are never listed, and a week belongs to the
+// month it starts in (the same rule the ledger uses to file a payroll under a month).
+const getPendingWeeks = (cycleBounds, now = new Date()) => {
+    const todayKey = toLocalDateKey(now);
+    const monday = new Date(`${cycleBounds.start}T00:00:00`);
+    monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7)); // first Monday on/after the 1st
+
+    const weeks = [];
+    while (toLocalDateKey(monday) <= cycleBounds.end && toLocalDateKey(monday) <= todayKey) {
+        const start = toLocalDateKey(monday);
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        const end = toLocalDateKey(sunday);
+        weeks.push({ start, end, isCurrent: start <= todayKey && todayKey <= end });
+        monday.setDate(monday.getDate() + 7);
+    }
+    return weeks;
+};
+
+// A week counts as paid when any of the employee's payrolls overlaps it, so a Mon-Fri
+// payroll or an older longer-range payroll still marks the week as done.
+const filterUnpaidWeeks = (weeks, paidRanges = []) =>
+    weeks.filter(week => !paidRanges.some(range => range.start <= week.end && range.end >= week.start));
+
+const countDistinctWorkers = (items = []) =>
+    new Set(items.map(i => String(i.employee_id ?? i.id))).size;
+
 const getPayFrequencyLabel = (payroll) => {
     const saved = String(payroll?.pay_frequency || '').toLowerCase().replace(/[\s_]+/g, '-');
     if (FREQUENCY_LABELS[saved]) return FREQUENCY_LABELS[saved];
@@ -265,7 +297,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <span>{payroll._endFormatted}</span>
                     </span>
                     <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-semibold uppercase tracking-wider w-max border border-slate-200/60">
-                        {payroll.isPending ? 'Current Cycle' : getPayFrequencyLabel(payroll)}
+                        {payroll.isPending ? (payroll.pendingLabel || 'Current Week') : getPayFrequencyLabel(payroll)}
                     </span>
                 </div>
             </td>
@@ -427,7 +459,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                             <span className="text-xs text-slate-600 font-semibold truncate">
-                                {group.items.length} {group.items.length === 1 ? 'Worker' : 'Workers'}
+                                {countDistinctWorkers(group.items)} {countDistinctWorkers(group.items) === 1 ? 'Worker' : 'Workers'}
                             </span>
                             <span className="text-slate-300">•</span>
                             <span className="text-[11px] font-sans text-slate-400">
@@ -599,7 +631,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
                 {payroll.isPending ? (
                     <div className="pt-2 border-t border-slate-200 text-xs text-center text-warning-ink font-medium py-1 bg-warning-subtle rounded-md">
-                        Awaiting Computation for Current Cycle
+                        Awaiting Computation for {payroll.pendingLabel === 'Missed Week' ? 'this Missed Week' : 'the Current Week'}
                     </div>
                 ) : (
                     <>
@@ -943,7 +975,7 @@ export default function PayrollIndex() {
 
     // ── Single-Pass Precomputation & Enriched Records ──
     const enrichedRecords = useMemo(() => {
-        const computedEmployeeIds = new Set();
+        const employeePeriods = new Map();
         const employeeLastKnownLineMap = {};
 
         const enrichedActual = payrolls.map(p => {
@@ -952,9 +984,12 @@ export default function PayrollIndex() {
                 employeeLastKnownLineMap[String(p.employee_id)] = line;
             }
 
-            const periodStart = dayjs(p.period_start);
-            if (periodStart.isValid() && periodStart.year() === cycleBounds.year && (periodStart.month() + 1) === cycleBounds.month) {
-                computedEmployeeIds.add(String(p.employee_id));
+            const startKey = String(p.period_start || '').substring(0, 10);
+            const endKey = String(p.period_end || p.period_start || '').substring(0, 10);
+            if (startKey && p.employee_id) {
+                const empKey = String(p.employee_id);
+                if (!employeePeriods.has(empKey)) employeePeriods.set(empKey, []);
+                employeePeriods.get(empKey).push({ start: startKey, end: endKey || startKey });
             }
 
             const gross = calculateGrossPay(p);
@@ -1004,9 +1039,14 @@ export default function PayrollIndex() {
             );
         };
 
+        const pendingWeeks = getPendingWeeks(cycleBounds);
+
         const pendingEntries = employees
-            .filter(emp => !computedEmployeeIds.has(String(emp.id)) && !isExcludedStatus(emp))
-            .map(emp => {
+            .filter(emp => !isExcludedStatus(emp))
+            .flatMap(emp => {
+                const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
+                if (openWeeks.length === 0) return [];
+
                 const mockPayroll = { employees: emp };
                 const inheritedLine = employeeLastKnownLineMap[String(emp.id)];
                 const line = inheritedLine || getEmployeeLine(mockPayroll);
@@ -1017,15 +1057,16 @@ export default function PayrollIndex() {
                 const jobTitle = emp.job_title || emp.position || '';
                 const searchTokens = `${fullName} ${companyId} ${emp.email || ''} ${jobTitle} ${dept} ${line}`.toLowerCase();
 
-                return {
-                    id: `pending-${emp.id}`,
+                return openWeeks.map(week => ({
+                    id: `pending-${emp.id}-${week.start}`,
                     employee_id: emp.id,
                     employees: emp,
                     line: line,
                     _line: line,
                     status: 'Pending',
-                    period_start: cycleBounds.start,
-                    period_end: cycleBounds.end,
+                    period_start: week.start,
+                    period_end: week.end,
+                    pendingLabel: week.isCurrent ? 'Current Week' : 'Missed Week',
                     gross_pay: 0,
                     deductions: 0,
                     net_pay: 0,
@@ -1041,10 +1082,10 @@ export default function PayrollIndex() {
                     _dept: dept,
                     _jobTitle: jobTitle,
                     _searchTokens: searchTokens,
-                    _startFormatted: dayjs(cycleBounds.start).format('MMM DD'),
-                    _endFormatted: dayjs(cycleBounds.end).format('MMM DD, YYYY'),
+                    _startFormatted: dayjs(week.start).format('MMM DD'),
+                    _endFormatted: dayjs(week.end).format('MMM DD, YYYY'),
                     isPending: true,
-                };
+                }));
             });
 
         return [...enrichedActual, ...pendingEntries];
@@ -1940,7 +1981,7 @@ export default function PayrollIndex() {
                                                             </span>
                                                         </div>
                                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                                            {item.items.length} Total {item.items.length === 1 ? 'Worker' : 'Workers'}
+                                                            {countDistinctWorkers(item.items)} Total {countDistinctWorkers(item.items) === 1 ? 'Worker' : 'Workers'}
                                                         </p>
                                                     </div>
                                                 </div>

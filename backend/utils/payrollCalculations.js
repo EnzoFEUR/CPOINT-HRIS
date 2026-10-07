@@ -1,4 +1,3 @@
-
 // Data Sanitization & Math Helpers
 export function toSafeNumber(val, fallback = 0) {
     if (val === null || val === undefined || val === '') return fallback;
@@ -170,6 +169,7 @@ export function computeDayPay({
     canOvertime = true,
     salaryIncludesHolidayPay = false,
     paidLeaveDates = new Set(),
+    salaryCoversRestDays = true,
 }) {
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
@@ -177,6 +177,11 @@ export function computeDayPay({
     const safeHoursWorked = toSafeNumber(hoursWorked);
     const worked = safeHoursWorked > 0;
     const restDayToday = isRestDay(dateStr, restDays);
+    // Is this date already paid inside the fixed salary?
+    //  - monthly-salaried staff: the salary spans every day, rest days included;
+    //  - daily/hourly staff: weekly pay covers working days only, so a holiday that lands on
+    //    their rest day is NOT in the salary and must be paid in full.
+    const salaryCoversDate = salaryIncludesHolidayPay && (salaryCoversRestDays || !restDayToday);
     const regularHours = Math.min(safeHoursWorked, STANDARD_SHIFT_HOURS);
     // Factory workers cannot overtime per company policy
     const overtimeHours = canOvertime ? Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0) : 0;
@@ -190,7 +195,7 @@ export function computeDayPay({
         if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING || holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING) {
             const note = holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING
                 ? 'Special Working Day is treated as an ordinary working day — no work, no pay, no holiday premium.'
-                : 'No work, no pay.';
+                : 'No work, no pay (DOLE: special non-working day, unless a company policy or CBA grants pay).';
             return {
                 date: dateStr,
                 holidayType: holiday.type,
@@ -214,7 +219,7 @@ export function computeDayPay({
             }
         }
         const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays, { nonWorkingDates, paidLeaveDates });
-        const alreadyInSalary = salaryIncludesHolidayPay && eligible;
+        const alreadyInSalary = salaryCoversDate && eligible;
         const pay = eligible && !alreadyInSalary ? round2(dailyRate) : 0;
         return {
             date: dateStr,
@@ -246,7 +251,7 @@ export function computeDayPay({
     // premium above it is added here; otherwise the day would be paid salary (100%) + multiplier,
     // e.g. 300% for a regular holiday or 230% for a special day.
     // Overtime hours keep the full multiplier below.
-    const salaryCredit = salaryIncludesHolidayPay ? 1 : 0;
+    const salaryCredit = salaryCoversDate ? 1 : 0;
     const basicHolidayPay = toSafeNumber(hourlyRate) * (multiplier - salaryCredit) * regularHours;
     const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
     const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
@@ -289,6 +294,7 @@ export function computeHolidayPayForPeriod({
     dailyRate: dailyRateOverride,
     hourlyRate: hourlyRateOverride,
     paidLeaveDates = [],
+    salaryCoversRestDays = true,
 }) {
     // Contractual rates win over the DOLE-derived ones (see calculateStatutoryLeavePay).
     const derived = deriveRates(monthlySalary);
@@ -318,6 +324,7 @@ export function computeHolidayPayForPeriod({
             canOvertime,
             salaryIncludesHolidayPay,
             paidLeaveDates: paidLeaveDateSet,
+            salaryCoversRestDays,
         });
         if (result) items.push(result);
     }

@@ -113,6 +113,39 @@ const getRecordDateKey = (log) => {
     return String(raw || '').substring(0, 10);
 };
 
+// Individual payroll must not be processed for an employee with nothing to pay for: no COMPLETED
+// attendance (a clock-in AND a clock-out) inside the period and no approved paid leave.
+// A clock-in that was never clocked out does not count as attendance.
+const evaluateAttendanceEligibility = ({
+    attendanceLogs = [],
+    approvedPaidLeaveDays = 0,
+    periodStart,
+    periodEnd,
+    exempt = false,
+}) => {
+    const completedDays = new Set(
+        (attendanceLogs || [])
+            .filter(l => l && l.time_out)
+            .map(getRecordDateKey)
+            .filter(key => key && (!periodStart || key >= periodStart) && (!periodEnd || key <= periodEnd))
+    );
+    const attendanceDays = completedDays.size;
+    const paidLeaveDays = toSafeNumber(approvedPaidLeaveDays);
+    const blocked = !exempt && attendanceDays === 0 && paidLeaveDays <= 0;
+
+    const label = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    const range = periodStart && periodEnd ? `${label(periodStart)} to ${label(periodEnd)}` : 'this period';
+
+    return {
+        blocked,
+        attendanceDays,
+        approvedPaidLeaveDays: paidLeaveDays,
+        reason: blocked
+            ? `No attendance and no approved paid leave for ${range}, so payroll cannot be processed. Only days with both a clock-in and a clock-out count as attendance.`
+            : null,
+    };
+};
+
 // Expands approved PAID leave records (start_date..end_date) into individual YYYY-MM-DD dates.
 const getPaidLeaveDates = (leaveRecords = []) => {
     const dates = new Set();
@@ -126,6 +159,22 @@ const getPaidLeaveDates = (leaveRecords = []) => {
         }
     }
     return Array.from(dates);
+};
+
+// DOLE Labor Advisories: an unworked Special (Non-Working) Day is "no work, no pay" UNLESS a
+// favorable company policy, practice or CBA grants pay. Set to true if C-Point grants that pay.
+const PAY_UNWORKED_SPECIAL_NON_WORKING_DAY = false;
+
+// The contractual daily rate exactly as agreed (P610/day stays P610; P100/hr -> P800/day).
+// Same precedence as getEffectiveMonthlySalary (daily -> hourly). Returns 0 for salary-based and
+// piece-rate employees, whose daily rate is derived from their monthly figure instead.
+const getContractualDailyRate = (employee) => {
+    if (!employee) return 0;
+    const daily = toSafeNumber(employee.daily_rate || employee.daily_pay);
+    if (daily > 0) return round2(daily);
+    const hourly = toSafeNumber(employee.hourly_rate);
+    if (hourly > 0) return round2(hourly * 8);
+    return 0;
 };
 
 const isValidUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
@@ -823,14 +872,28 @@ router.post('/preview', async (req, res) => {
             // Keep the preview identical to what the saved payroll will pay.
             salaryIncludesHolidayPay: !isFactoryWorker,
             // Contractual rates are applied directly without synthetic monthly inflation
-            dailyRate: toSafeNumber(employee.daily_rate || employee.daily_pay),
+            dailyRate: getContractualDailyRate(employee),
             hourlyRate: toSafeNumber(employee.hourly_rate),
+            salaryCoversRestDays: !getContractualDailyRate(employee),
         });
 
         res.json({
             ...preview,
             approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
             paidLeaveRecords: paidLeaveInfo.leaveRecords,
+            attendanceCheck: {
+                ...evaluateAttendanceEligibility({
+                    attendanceLogs,
+                    approvedPaidLeaveDays: paidLeaveInfo?.totalPaidLeaveDays,
+                    periodStart: pStart,
+                    periodEnd: pEnd,
+                    exempt: isFactoryWorker,
+                }),
+                // Echoed so the screen can ignore a stale answer for a different employee/period.
+                employee_id,
+                period_start,
+                period_end,
+            },
             isFactoryWorker,
             canOvertime: !isFactoryWorker,
             policyNotice: isFactoryWorker
@@ -951,7 +1014,11 @@ router.post('/', async (req, res) => {
         // DOLE Standard Base Rate Formulas: Preserve contractual daily/hourly rates if present
         const empDailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
         const annualWorkDays = toSafeNumber(working_days_in_year) || 261;
-        const dailyRate = empDailyRate > 0 ? empDailyRate : round2((effectiveMonthlySalary * 12) / annualWorkDays);
+        const contractualDailyRate = getContractualDailyRate(employee);
+        const hasContractualRate = contractualDailyRate > 0;
+        const dailyRate = hasContractualRate
+            ? contractualDailyRate
+            : round2((effectiveMonthlySalary * 12) / annualWorkDays);
         const empHourlyRate = toSafeNumber(employee.hourly_rate);
         const hourlyRate = empHourlyRate > 0 ? empHourlyRate : round2(dailyRate / 8);
         const weeklySalary = empDailyRate > 0 ? round2(empDailyRate * 6) : round2((effectiveMonthlySalary * 12) / 52);
@@ -996,6 +1063,23 @@ router.post('/', async (req, res) => {
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
         const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
+        // Server-side stop (cannot be bypassed from the browser): uses the server's own attendance
+        // records, never the days_worked sent by the client.
+        const attendanceCheck = evaluateAttendanceEligibility({
+            attendanceLogs,
+            approvedPaidLeaveDays: paidLeaveInfo?.totalPaidLeaveDays,
+            periodStart: pStart,
+            periodEnd: pEnd,
+            exempt: isFactory,
+        });
+        if (attendanceCheck.blocked) {
+            return res.status(422).json({
+                error: attendanceCheck.reason,
+                code: 'NO_ATTENDANCE_IN_PERIOD',
+                attendanceCheck,
+            });
+        }
+
         const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
             ? employee.rest_days
             : [0];
@@ -1016,6 +1100,8 @@ router.post('/', async (req, res) => {
             // Contractual daily and hourly rates take precedence to preserve exact compensation terms
             dailyRate,
             hourlyRate,
+            // Daily/hourly staff are paid for working days only; monthly salaries span rest days too.
+            salaryCoversRestDays: !hasContractualRate,
         });
 
         // Absence Deduction for Non-Factory Personnel under DOLE "No Work, No Pay" Principle
@@ -1079,7 +1165,14 @@ router.post('/', async (req, res) => {
                 absenceNote = ` [ABSENT: ${unworkedDays} unworked day(s) (-₱${absenceDeduction.toFixed(2)})]`;
             }
             if (unworkedSpecialNonWorking > 0) {
-                absenceNote += ` [${unworkedSpecialNonWorking} Special Non-Working Day(s) not counted as absence]`;
+                if (PAY_UNWORKED_SPECIAL_NON_WORKING_DAY) {
+                    absenceNote += ` [${unworkedSpecialNonWorking} Special Non-Working Day(s) not counted as absence - paid per company policy]`;
+                } else {
+                    // Not an absence, but unpaid under DOLE "no work, no pay".
+                    const specialDayDeduction = round2(unworkedSpecialNonWorking * dailyRate);
+                    basicPay = Math.max(0, round2(basicPay - specialDayDeduction));
+                    absenceNote += ` [SPECIAL NON-WORKING DAY: ${unworkedSpecialNonWorking} day(s) unpaid - no work, no pay (-₱${specialDayDeduction.toFixed(2)})]`;
+                }
             }
             if (forfeitedHolidayDates.size > 0) {
                 absenceNote += ` [${forfeitedHolidayDates.size} Regular Holiday(s) forfeited - absent without pay the workday before]`;
