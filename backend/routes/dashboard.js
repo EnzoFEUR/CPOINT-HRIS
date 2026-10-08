@@ -778,7 +778,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, first_name, last_name, department, shift, role, job_title')
+                    .select('id, first_name, last_name, department, shift, role, job_title, company_id')
             )
         ]);
 
@@ -799,6 +799,9 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             const entry = {
                 id: att.id,
                 employee_id: att.employee_id,
+                company_id: emp.company_id,
+                first_name: emp.first_name,
+                last_name: emp.last_name,
                 name: `${emp.first_name} ${emp.last_name}`,
                 department: emp.department || 'Unassigned',
                 time_in: att.time_in,

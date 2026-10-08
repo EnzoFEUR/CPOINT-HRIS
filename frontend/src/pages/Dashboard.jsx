@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 import {
     RefreshCw,
     Loader2,
@@ -999,9 +1000,15 @@ export default function Dashboard() {
                                             className="p-3 bg-slate-50 rounded-md border border-slate-200 flex items-center justify-between gap-3"
                                         >
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <div className="w-9 h-9 rounded-md bg-accent text-white font-bold flex items-center justify-center text-xs shrink-0">
-                                                    {formatDisplayName(person.name).split(' ').map(p => p[0]).slice(0, 2).join('')}
-                                                </div>
+                                                <EmployeeAvatar
+                                                    firstName={person.first_name}
+                                                    lastName={person.last_name}
+                                                    name={person.name}
+                                                    companyId={person.company_id}
+                                                    employeeId={person.employee_id}
+                                                    department={person.department}
+                                                    size="h-9 w-9"
+                                                />
                                                 <div className="min-w-0">
                                                     <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(person.name)}</p>
                                                     <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
