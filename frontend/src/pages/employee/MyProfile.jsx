@@ -1,20 +1,23 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
-import { getDisciplinaryCache } from '../../utils/disciplinaryCache';
+import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
 import bannerCover from '../../assets/employee-cover.jpg';
+import useEmployeeDocuments from '../../utils/useEmployeeDocuments';
+import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/documentApi';
+import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry } from '../../utils/documentUtils';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
-const EXPIRY_WARNING_DAYS = 30;
 
 export default function MyProfile() {
     const queryClient = useQueryClient();
+    const location = useLocation();
 
     // Reactive current user from storage to instantly sync if session changes
     const [storedUser, setStoredUser] = useState(() => {
@@ -336,10 +339,26 @@ export default function MyProfile() {
         return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     }, [isMedicalExempt, medicalExemption]);
 
-    const documents = profileResponse?.documents || [];
     const disciplinaryLogs = profileResponse?.disciplinary_logs || [];
     const isLoading = isQueryLoading && !profile;
     const [docSearch, setDocSearch] = useState('');
+    const [docStatus, setDocStatus] = useState('all');
+    const [docCategory, setDocCategory] = useState('All');
+    const [docSort, setDocSort] = useState('newest');
+    const [openingDocument, setOpeningDocument] = useState(null);
+    const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id), status: docStatus, category: docCategory, sort: docSort, search: docSearch });
+    const documents = documentQuery.documents;
+    useEffect(() => {
+        if (location.hash !== '#documents' || !profile?.id) return;
+        const frame = requestAnimationFrame(() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        return () => cancelAnimationFrame(frame);
+    }, [location.hash, profile?.id]);
+    const handleOpenDocument = async (id) => {
+        setOpeningDocument(id);
+        try { await openEmployeeDocument(id); }
+        catch (error) { toast.error(error.message); }
+        finally { setOpeningDocument(null); }
+    };
     const fileInputRef = useRef(null);
     const dragCounter = useRef(0);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -595,34 +614,12 @@ export default function MyProfile() {
 
         setIsUploading(true);
         try {
-            const formData = new FormData();
-            formData.append('employee_id', profile.id);
-            formData.append('title', uploadForm.title);
-            formData.append('category', uploadForm.category);
-            if (uploadForm.expiryDate) formData.append('expiry_date', uploadForm.expiryDate);
-            formData.append('file', uploadForm.file);
-
-            const res = await fetchWithAuth('/api/employee-documents', {
-                method: 'POST',
-                body: formData
-            });
-
-            const rawText = await res.text();
-            let data = {};
-            try {
-                data = JSON.parse(rawText);
-            } catch {
-                console.error('Server response non-JSON:', rawText);
-            }
-
-            if (res.ok && (data.success || data.document)) {
-                toast.success('Document uploaded successfully!');
-                setShowUploadModal(false);
-                resetUploadForm();
-                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
-            } else {
-                toast.error(data.message || data.error || `Upload failed with status ${res.status}`);
-            }
+            await uploadEmployeeDocument({ employeeId: profile.id, file: uploadForm.file, title: uploadForm.title, category: uploadForm.category, expiryDate: uploadForm.expiryDate });
+            toast.success('Document submitted for review.');
+            setShowUploadModal(false);
+            resetUploadForm();
+            documentQuery.refresh();
+            queryClient.invalidateQueries({ queryKey: ['myProfile'] });
         } catch (err) {
             console.error('Document upload error:', err);
             toast.error(err.message || 'Error uploading document');
@@ -640,13 +637,7 @@ export default function MyProfile() {
         });
     };
 
-    const formatFileSize = (bytes) => {
-        if (!bytes) return '';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    };
+    const formatFileSize = formatDocumentSize;
 
     const getFileMeta = (fileName = '') => {
         const ext = (fileName.split('.').pop() || '').toLowerCase();
@@ -671,17 +662,7 @@ export default function MyProfile() {
 
     const isImageFile = (fileName = '') => ['png', 'jpg', 'jpeg', 'heic', 'webp'].includes((fileName.split('.').pop() || '').toLowerCase());
 
-    const getExpiryStatus = (doc) => {
-        const expiryDate = doc.expiry_date || doc.expiryDate;
-        if (!expiryDate) return null;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const expiry = new Date(expiryDate);
-        const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-        if (daysLeft < 0) return { level: 'expired', label: `Expired ${Math.abs(daysLeft)}d ago`, daysLeft };
-        if (daysLeft <= EXPIRY_WARNING_DAYS) return { level: 'warning', label: `Expires in ${daysLeft}d`, daysLeft };
-        return { level: 'valid', label: `Valid · exp. ${formatDate(expiryDate)}`, daysLeft };
-    };
+    const getExpiryStatus = getDocumentExpiry;
 
     const expiryBadgeStyles = {
         expired: 'bg-danger-subtle text-danger-ink border-danger/20',
@@ -691,18 +672,17 @@ export default function MyProfile() {
 
     const alerts = useMemo(() => {
         return documents
-            .map((doc) => ({ doc, status: getExpiryStatus(doc) }))
+            .map((doc) => ({ doc, status: getDocumentExpiry(doc) }))
             .filter(({ status }) => status && status.level !== 'valid')
             .sort((a, b) => a.status.daysLeft - b.status.daysLeft);
     }, [documents]);
 
     const filteredDocuments = useMemo(() => {
         const q = docSearch.toLowerCase().trim();
-        if (!q) return documents;
         return documents.filter((doc) =>
             (doc.title || '').toLowerCase().includes(q) || (doc.file_name || '').toLowerCase().includes(q)
-        );
-    }, [documents, docSearch]);
+        ).sort((a, b) => docSort === 'oldest' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at));
+    }, [documents, docSearch, docSort]);
 
     const showExpiryField = EXPIRABLE_CATEGORIES.includes(uploadForm.category);
 
@@ -1393,7 +1373,12 @@ export default function MyProfile() {
             </div>
 
             {/* 201 documents */}
-            <div className="space-y-4">
+            <div id="documents" className="space-y-4 scroll-mt-20">
+                {documentQuery.error && (
+                    <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                        {documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button>
+                    </div>
+                )}
                 {alerts.length > 0 && (
                     <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 shadow-2xs">
                         <div className="flex items-start gap-3">
@@ -1446,12 +1431,22 @@ export default function MyProfile() {
                                 <h3 className="font-bold text-slate-900 text-sm sm:text-base">Personnel Documents</h3>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            {documents.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <select aria-label="Document review status" value={docStatus} onChange={e => setDocStatus(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
+                                {DOCUMENT_STATUSES.map(status => <option key={status.key} value={status.key}>{status.label}</option>)}
+                            </select>
+                            <select aria-label="Document category" value={docCategory} onChange={e => setDocCategory(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
+                                {['All', ...new Set([...CATEGORIES, 'Contract', 'Certificate', 'Performance', 'Other'])].map(category => <option key={category}>{category}</option>)}
+                            </select>
+                            <select aria-label="Document sort order" value={docSort} onChange={e => setDocSort(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-xs">
+                                <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+                            </select>
+                            {(documents.length > 0 || docSearch) && (
                                 <div className="relative">
                                     <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
                                     <input
                                         type="text"
+                                        maxLength={200}
                                         placeholder="Search files..."
                                         value={docSearch}
                                         onChange={(e) => setDocSearch(e.target.value)}
@@ -1465,7 +1460,9 @@ export default function MyProfile() {
                         </div>
                     </div>
 
-                    {documents.length === 0 ? (
+                    {documentQuery.isPending ? <p className="py-8 text-center text-xs text-slate-500">Loading documents…</p> : documents.length === 0 && (docStatus !== 'all' || docCategory !== 'All' || docSearch.trim()) ? (
+                        <p className="py-8 text-center text-xs text-slate-500">No documents match these filters.</p>
+                    ) : documents.length === 0 ? (
                         isTerminated ? (
                             <div className="text-center py-10 bg-slate-50 rounded-md border border-dashed border-slate-200 space-y-2">
                                 <i className="ti ti-folder-off text-3xl text-slate-400 block" />
@@ -1502,24 +1499,17 @@ export default function MyProfile() {
                             {filteredDocuments.map((doc) => {
                                 const meta = getFileMeta(doc.file_name || doc.title);
                                 const status = getExpiryStatus(doc);
-                                const fileUrl = doc.file_path?.startsWith('http')
-                                    ? doc.file_path
-                                    : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/documents/${doc.file_path}`;
+                                const review = getDocumentStatus(doc);
 
                                 return (
                                     <div key={doc.id} className="p-3.5 rounded-md border border-slate-200 hover:border-slate-300 transition-colors duration-100 flex items-start gap-3 bg-white">
-                                        {isImageFile(doc.file_name) ? (
-                                            <div className="h-10 w-10 shrink-0 rounded-md overflow-hidden border border-slate-200">
-                                                <img src={fileUrl} alt="" className="h-full w-full object-cover" />
-                                            </div>
-                                        ) : (
-                                            <div className={`h-10 w-10 shrink-0 rounded-md flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
-                                                <i className={`ti ${meta.icon} text-lg`} />
-                                            </div>
-                                        )}
+                                        <div className={`h-10 w-10 shrink-0 rounded-md flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
+                                            <i className={`ti ${meta.icon} text-lg`} />
+                                        </div>
                                         <div className="min-w-0 flex-1">
                                             <p className="text-xs font-semibold text-slate-800 truncate" title={doc.title || doc.file_name}>{doc.title || doc.file_name}</p>
                                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                <span className={`rounded border px-1.5 text-[10px] font-semibold ${review.className}`}>{review.label}</span>
                                                 {doc.category && (
                                                     <span className="inline-block px-1.5 py-0.2 bg-slate-100 text-slate-600 font-semibold text-[10px] rounded">
                                                         {doc.category}
@@ -1531,20 +1521,23 @@ export default function MyProfile() {
                                                     </span>
                                                 )}
                                             </div>
-                                            <a
-                                                href={fileUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
+                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-rose-700">{doc.rejection_reason}</p>}
+                                            <p className="mt-1 text-[10px] text-slate-400">{formatFileSize(doc.file_size)}</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenDocument(doc.id)}
+                                                disabled={openingDocument === doc.id}
                                                 className="mt-2 text-[11px] font-semibold text-accent hover:underline flex items-center gap-1"
                                             >
-                                                <i className="ti ti-external-link text-xs" /> View File
-                                            </a>
+                                                <i className="ti ti-external-link text-xs" /> {openingDocument === doc.id ? 'Opening…' : 'View File'}
+                                            </button>
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
                     )}
+                    {documentQuery.hasNextPage && <button type="button" disabled={documentQuery.isFetchingNextPage} onClick={() => documentQuery.fetchNextPage()} className="mt-4 rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold">{documentQuery.isFetchingNextPage ? 'Loading…' : 'Load more documents'}</button>}
                 </div>
             </div>
 

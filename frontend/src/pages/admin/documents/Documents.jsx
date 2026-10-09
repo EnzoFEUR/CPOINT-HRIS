@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { supabase } from '../../../supabaseClient';
+import useEmployeeDocuments from '../../../utils/useEmployeeDocuments';
+import { documentRequest, openEmployeeDocument, uploadEmployeeDocument } from '../../../utils/documentApi';
+import { DOCUMENT_STATUSES, getDocumentStatus, getDocumentExpiry, formatDocumentSize } from '../../../utils/documentUtils';
 import BulkImportModal from './BulkImportModal';
 
 const CATEGORIES = [
@@ -22,7 +24,6 @@ const SORT_OPTIONS = [
 ];
 
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance', 'Certificate'];
-const EXPIRY_WARNING_DAYS = 30;
 
 export default function Documents() {
     const [searchParams] = useSearchParams();
@@ -30,15 +31,22 @@ export default function Documents() {
     const fileInputRef = useRef(null);
 
     // Document & Loading states
-    const [documents, setDocuments] = useState([]);
-    const [employee, setEmployee] = useState(null);
-    const [isTerminated, setIsTerminated] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    const [actorId] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').id; } catch { return null; } });
 
     // Filter, search & sort states
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('newest');
+    const [reviewStatus, setReviewStatus] = useState('all');
+    const [openingDocument, setOpeningDocument] = useState(null);
+    const [reviewingDocument, setReviewingDocument] = useState(null);
+    const documentQuery = useEmployeeDocuments({ employeeId, actorId, status: reviewStatus, category: selectedCategory, sort: sortBy, search: searchQuery });
+    const documents = documentQuery.documents;
+    const employee = documentQuery.employee;
+    const isTerminated = Boolean(documentQuery.uploadLocked);
+    const isLoading = documentQuery.isPending;
+    const fetchDocuments = documentQuery.refresh;
+    const hasDocumentFilters = Boolean(searchQuery.trim() || reviewStatus !== 'all' || selectedCategory !== 'All');
 
     // Upload Modal states
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -47,149 +55,38 @@ export default function Documents() {
     const [category, setCategory] = useState('Contract');
     const [expiryDate, setExpiryDate] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const previewRef = useRef(null);
+    const updateSelectedFile = (file) => {
+        if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+        const url = file?.type?.startsWith('image/') ? URL.createObjectURL(file) : null;
+        previewRef.current = url;
+        setPreviewUrl(url);
+        setSelectedFile(file);
+    };
+    useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current); }, []);
     const [isUploading, setIsUploading] = useState(false);
     const [isDraggingPage, setIsDraggingPage] = useState(false);
     const dragCounter = useRef(0);
 
-    // 1. FETCH DOCUMENTS & EMPLOYEE DETAILS ON COMPONENT MOUNT
-    useEffect(() => {
-    fetchDocuments();
-}, [employeeId]);
-
-    // Real-time synchronization for instant status changes
-    useEffect(() => {
-        if (!employeeId) return;
-        const channel = supabase
-            .channel(`admin-docs-${employeeId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${employeeId}` }, () => {
-                fetchDocuments();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${employeeId}` }, () => {
-                fetchDocuments();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents', filter: `employee_id=eq.${employeeId}` }, () => {
-                fetchDocuments();
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [employeeId]);
-
-    const fetchDocuments = async () => {
+    const formatFileSize = formatDocumentSize;
+    const handleOpenDocument = async (id) => {
+        setOpeningDocument(id);
+        try { await openEmployeeDocument(id); }
+        catch (error) { toast.error(error.message); }
+        finally { setOpeningDocument(null); }
+    };
+    const handleReviewDocument = async (doc, status) => {
+        const reason = status === 'rejected' ? window.prompt('Why is this document rejected?') : '';
+        if (reason === null) return;
+        if (status === 'rejected' && !reason.trim()) { toast.error('Please provide a rejection reason.'); return; }
+        setReviewingDocument(doc.id);
         try {
-            setIsLoading(true);
-
-            if (employeeId) {
-                // KAPAG MAY EMPLOYEE ID: Kunin ang docs at details ng specific employee
-                const [
-                    { data: docData, error: docError },
-                    { data: empData, error: empError },
-                    { data: termLogs }
-                ] = await Promise.all([
-                    supabase
-                        .from('employee_documents')
-                        .select('*')
-                        .eq('employee_id', employeeId)
-                        .order('created_at', { ascending: false }),
-                    supabase
-                        .from('employees')
-                        .select('id, first_name, last_name, company_id, department, status, is_active')
-                        .eq('id', employeeId)
-                        .maybeSingle(),
-                    supabase
-                        .from('disciplinary_logs')
-                        .select('id, type, status, reason, created_at')
-                        .eq('employee_id', employeeId)
-                        .eq('type', 'Termination')
-                        .limit(1)
-                ]);
-
-                if (docError) throw docError;
-
-                if (empData) {
-                    setEmployee(empData);
-                    const activeTermLog = (termLogs || []).find(l => {
-                    const s = (l.status || '').toLowerCase();
-                    return !['resolved', 'overturned', 'dismissed', 'cancelled', 'closed'].includes(s);
-                });
-
-                const terminated =
-                    empData.status === 'inactive' ||
-                    empData.status === 'terminated' ||
-                    empData.is_active === false ||
-                    Boolean(activeTermLog);
-                    setIsTerminated(terminated);
-
-                    // I-attach ang employee details sa bawat doc
-                    const docsWithEmp = (docData || []).map(doc => ({
-                        ...doc,
-                        employees: empData
-                    }));
-                    setDocuments(docsWithEmp);
-                } else {
-                    setDocuments(docData || []);
-                }
-            } else {
-                // KAPAG WALANG EMPLOYEE ID: Kunin LAHAT ng documents sa system
-                const { data: docData, error: docError } = await supabase
-                    .from('employee_documents')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (docError) throw docError;
-
-                // Kunin ang mga pangalan ng empleyado para sa bawat dokumento
-                const empIds = [...new Set((docData || []).map(d => d.employee_id).filter(Boolean))];
-                let empMap = {};
-
-                if (empIds.length > 0) {
-                    const { data: empData } = await supabase
-                        .from('employees')
-                        .select('id, first_name, last_name, company_id')
-                        .in('id', empIds);
-
-                    if (empData) {
-                        empData.forEach(emp => {
-                            empMap[emp.id] = emp;
-                        });
-                    }
-                }
-
-                const docsWithEmp = (docData || []).map(doc => ({
-                    ...doc,
-                    employees: empMap[doc.employee_id] || null
-                }));
-
-                setDocuments(docsWithEmp);
-                setEmployee(null);
-                setIsTerminated(false);
-            }
-        } catch (error) {
-            console.error('Error fetching documents:', error);
-            toast.error('Failed to load documents from database.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    // Generate Public URL for stored files in 'documents' bucket
-    const getPublicUrl = (filePath) => {
-        if (!filePath) return '#';
-        const { data } = supabase.storage
-            .from('documents')
-            .getPublicUrl(filePath);
-        return data.publicUrl;
-    };
-
-    // Format file size
-    const formatFileSize = (bytes) => {
-        if (!bytes) return '0 KB';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            await documentRequest(`/api/documents/${doc.id}/status`, { method: 'PATCH', body: JSON.stringify({ status, rejection_reason: reason }) });
+            documentQuery.refresh();
+            toast.success(status === 'approved' ? 'Document approved.' : 'Document rejected.');
+        } catch (error) { toast.error(error.message); }
+        finally { setReviewingDocument(null); }
     };
 
     // Get icon based on file extension
@@ -207,17 +104,7 @@ export default function Documents() {
     };
 
     // ---- Expiry helpers ----
-    const getExpiryStatus = (doc) => {
-        if (!doc.expiry_date) return null;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const expiry = new Date(doc.expiry_date);
-        const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-
-        if (daysLeft < 0) return { level: 'expired', label: 'Expired', daysLeft };
-        if (daysLeft <= EXPIRY_WARNING_DAYS) return { level: 'warning', label: `Expires in ${daysLeft}d`, daysLeft };
-        return { level: 'valid', label: 'Valid', daysLeft };
-    };
+    const getExpiryStatus = getDocumentExpiry;
 
     const expiryBadgeStyles = {
         expired: 'bg-danger-subtle text-danger-ink border-danger/20',
@@ -227,14 +114,14 @@ export default function Documents() {
 
     const alerts = useMemo(() => {
         return documents
-            .map((doc) => ({ doc, status: getExpiryStatus(doc) }))
+            .map((doc) => ({ doc, status: getDocumentExpiry(doc) }))
             .filter(({ status }) => status && (status.level === 'expired' || status.level === 'warning'))
             .sort((a, b) => a.status.daysLeft - b.status.daysLeft);
     }, [documents]);
 
     const resetUploadForm = () => {
         setDocumentTitle('');
-        setSelectedFile(null);
+        updateSelectedFile(null);
         setCategory('Contract');
         setExpiryDate('');
     };
@@ -244,13 +131,13 @@ export default function Documents() {
             toast.error('Cannot upload documents: Employee account is separated/terminated.');
             return;
         }
-        setSelectedFile(file);
+        updateSelectedFile(file);
         setIsUploadModalOpen(true);
     };
 
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files[0]) {
-            setSelectedFile(e.target.files[0]);
+            updateSelectedFile(e.target.files[0]);
         }
     };
 
@@ -306,39 +193,8 @@ export default function Documents() {
         setIsUploading(true);
 
         try {
-            const fileExt = selectedFile.name.split('.').pop();
-            const filePath = `${employeeId}/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-
-            // Step A: Upload File to Storage Bucket 'documents'
-            const { error: storageError } = await supabase.storage
-                .from('documents')
-                .upload(filePath, selectedFile, {
-                    cacheControl: '3600',
-                    upsert: false
-                });
-
-            if (storageError) throw storageError;
-
-            // Step B: Insert Record into Database
-            const { data: insertedData, error: dbError } = await supabase
-                .from('employee_documents')
-                .insert([
-                    {
-                        employee_id: employeeId,
-                        title: documentTitle.trim() || selectedFile.name,
-                        category: category,
-                        file_name: selectedFile.name,
-                        file_path: filePath,
-                        file_size: formatFileSize(selectedFile.size),
-                        expiry_date: expiryDate || null
-                    }
-                ])
-                .select()
-                .single();
-
-            if (dbError) throw dbError;
-
-            setDocuments((prev) => [insertedData, ...prev]);
+            await uploadEmployeeDocument({ employeeId, file: selectedFile, title: documentTitle || selectedFile.name, category, expiryDate });
+            documentQuery.refresh();
             toast.success('Document uploaded successfully!');
 
             setIsUploadModalOpen(false);
@@ -356,22 +212,8 @@ export default function Documents() {
         if (!confirm('Are you sure you want to delete this document?')) return;
 
         try {
-            // Step A: Remove from Storage Bucket 'documents'
-            const { error: storageError } = await supabase.storage
-                .from('documents')
-                .remove([doc.file_path]);
-
-            if (storageError) console.error('Storage deletion warning:', storageError);
-
-            // Step B: Delete row from DB Table
-            const { error: dbError } = await supabase
-                .from('employee_documents')
-                .delete()
-                .eq('id', doc.id);
-
-            if (dbError) throw dbError;
-
-            setDocuments((prev) => prev.filter((item) => item.id !== doc.id));
+            await documentRequest(`/api/documents/${doc.id}`, { method: 'DELETE' });
+            documentQuery.refresh();
             toast.success('Document deleted successfully.');
         } catch (error) {
             console.error('Delete error:', error);
@@ -384,7 +226,7 @@ export default function Documents() {
         let result = documents.filter((doc) => {
             const matchesCategory = selectedCategory === 'All' || doc.category === selectedCategory;
             const q = searchQuery.toLowerCase();
-            const matchesSearch = doc.title.toLowerCase().includes(q) || doc.file_name.toLowerCase().includes(q);
+            const matchesSearch = (doc.title || '').toLowerCase().includes(q) || (doc.file_name || '').toLowerCase().includes(q);
             return matchesCategory && matchesSearch;
         });
 
@@ -393,7 +235,7 @@ export default function Documents() {
                 result = [...result].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                 break;
             case 'name':
-                result = [...result].sort((a, b) => a.title.localeCompare(b.title));
+                result = [...result].sort((a, b) => (a.title || a.file_name || '').localeCompare(b.title || b.file_name || ''));
                 break;
             case 'expiry':
                 result = [...result].sort((a, b) => {
@@ -410,20 +252,6 @@ export default function Documents() {
 
     const showExpiryField = EXPIRABLE_CATEGORIES.includes(category);
 
-    const [previewUrl, setPreviewUrl] = useState(null);
-
-useEffect(() => {
-  if (!selectedFile || !selectedFile.type?.startsWith('image/')) {
-    setPreviewUrl(null);
-    return;
-  }
-  //temporary browser memory URL for the image
-  const objectUrl = URL.createObjectURL(selectedFile);
-  setPreviewUrl(objectUrl);
-
-  // Automatically free memory when user selects another file or closes modal
-  return () => URL.revokeObjectURL(objectUrl);
-}, [selectedFile]);
 
     return (
         <div
@@ -562,6 +390,7 @@ useEffect(() => {
                 </div>
             )}
 
+            {documentQuery.error && <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button></div>}
             {/* CONTROLS */}
             <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -570,6 +399,7 @@ useEffect(() => {
                         <input
                             type="text"
                             placeholder="Search documents..."
+                            maxLength={200}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-700 transition-colors duration-100 shadow-2xs"
@@ -577,6 +407,9 @@ useEffect(() => {
                     </div>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                        <select aria-label="Document review status" value={reviewStatus} onChange={event => setReviewStatus(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs">
+                            {DOCUMENT_STATUSES.map(status => <option key={status.key} value={status.key}>{status.label}</option>)}
+                        </select>
                         <div className="relative">
                             <select
                                 value={sortBy}
@@ -629,15 +462,15 @@ useEffect(() => {
                 </div>
             ) : filteredDocuments.length === 0 ? (
                 <div
-                    onClick={() => !isTerminated && documents.length === 0 && setIsUploadModalOpen(true)}
+                    onClick={() => !isTerminated && !hasDocumentFilters && documents.length === 0 && setIsUploadModalOpen(true)}
                     className={`border border-dashed border-slate-200 rounded-lg p-10 flex flex-col items-center justify-center text-slate-400 bg-white shadow-2xs ${!isTerminated && documents.length === 0 ? 'cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-colors duration-100' : ''}`}
                 >
                     <i className="ti ti-file-x text-4xl mb-2 text-slate-300" />
                     <p className="text-xs font-semibold text-slate-700">
-                        {documents.length === 0 ? (isTerminated ? 'No archived documents on file' : 'No documents uploaded yet') : 'No matching documents found'}
+                        {documents.length === 0 && !hasDocumentFilters ? (isTerminated ? 'No archived documents on file' : 'No documents uploaded yet') : 'No matching documents found'}
                     </p>
                     <p className="text-xs text-slate-500 font-medium mt-0.5 text-center">
-                        {documents.length === 0 
+                        {documents.length === 0 && !hasDocumentFilters
                             ? (isTerminated ? 'This separated employee has no archived documents on record.' : 'Click here or drag and drop a file anywhere on this page.') 
                             : 'Try adjusting your search query or selected category filter.'}
                     </p>
@@ -647,7 +480,7 @@ useEffect(() => {
                     {filteredDocuments.map((doc) => {
                         const iconClasses = getFileIcon(doc.file_name);
                         const status = getExpiryStatus(doc);
-                        const publicUrl = getPublicUrl(doc.file_path);
+                        const review = getDocumentStatus(doc);
 
                         return (
                             <div
@@ -656,15 +489,9 @@ useEffect(() => {
                             >
                                 <div>
                                     <div className="flex items-start justify-between gap-3 mb-2.5">
-                                        {isImageFile(doc.file_name) ? (
-                                            <div className="h-9 w-9 rounded-md overflow-hidden border border-slate-200 shrink-0">
-                                                <img src={publicUrl} alt="" className="h-full w-full object-cover" />
-                                            </div>
-                                        ) : (
-                                            <div className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 border border-slate-200/60 ${iconClasses}`}>
-                                                <i className={`ti ${iconClasses.split(' ')[0]} text-lg`} />
-                                            </div>
-                                        )}
+                                        <div className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 border border-slate-200/60 ${iconClasses}`}>
+                                            <i className={`ti ${iconClasses.split(' ')[0]} text-lg`} />
+                                        </div>
                                         <span className="px-2 py-0.5 bg-slate-100 text-slate-600 font-medium text-[10px] uppercase tracking-wider rounded-sm border border-slate-200/60">
                                             {doc.category}
                                         </span>
@@ -683,6 +510,8 @@ useEffect(() => {
                                         {doc.file_name}
                                     </p>
 
+                                    <span className={`inline-flex mt-2 rounded border px-2 py-0.5 text-[10px] font-medium ${review.className}`}>{review.label}</span>
+                                    {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-rose-700">{doc.rejection_reason}</p>}
                                     {status && (
                                         <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-sm border text-[10px] font-medium ${expiryBadgeStyles[status.level]}`}>
                                             <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : status.level === 'warning' ? 'ti-clock' : 'ti-circle-check'} text-xs`} />
@@ -696,19 +525,15 @@ useEffect(() => {
                                         <p className="text-[11px] text-slate-600 font-medium">
                                             {new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 font-mono">{doc.file_size}</p>
+                                        <p className="text-[10px] text-slate-400 font-mono">{formatFileSize(doc.file_size)}</p>
                                     </div>
 
                                     <div className="flex items-center gap-1">
-                                        <a
-                                            href={publicUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors duration-100"
-                                            title="View / Download"
-                                        >
-                                            <i className="ti ti-download text-base" />
-                                        </a>
+                                        <button type="button" onClick={() => handleOpenDocument(doc.id)} disabled={openingDocument === doc.id} aria-label={`Open ${doc.title || doc.file_name}`} className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md" title="View / Download">
+                                            <i className={`ti ${openingDocument === doc.id ? 'ti-loader animate-spin' : 'ti-download'} text-base`} />
+                                        </button>
+                                        {review.key !== 'approved' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'approved')} className="text-xs text-emerald-700 font-semibold px-1" title="Approve document">Approve</button>}
+                                        {review.key !== 'rejected' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'rejected')} className="text-xs text-rose-700 font-semibold px-1" title="Reject document">Reject</button>}
                                         <button
                                             onClick={() => handleDeleteDocument(doc)}
                                             className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-danger-ink hover:bg-danger-subtle rounded-md transition-colors duration-100 cursor-pointer"
@@ -724,11 +549,13 @@ useEffect(() => {
                 </div>
             )}
 
+            {documentQuery.hasNextPage && <button type="button" disabled={documentQuery.isFetchingNextPage} onClick={() => documentQuery.fetchNextPage()} className="rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold">{documentQuery.isFetchingNextPage ? 'Loading…' : 'Load more documents'}</button>}
             {/* BULK IMPORT MODAL */}
             <BulkImportModal
                 isOpen={isBulkImportOpen}
                 onClose={() => setIsBulkImportOpen(false)}
                 employeeId={employeeId}
+                employeeName={employee ? `${employee.first_name} ${employee.last_name} (${employee.company_id || 'No ID'})` : employeeId}
                 isTerminated={isTerminated}
                 categories={CATEGORIES.filter((c) => c !== 'All')}
                 onImported={fetchDocuments}
@@ -831,7 +658,7 @@ useEffect(() => {
                                             <div className="flex items-center gap-2.5 overflow-hidden">
                                                 {isImageFile(selectedFile.name) ? (
                                                     <img
-                                                        src={URL.createObjectURL(selectedFile)}
+                                                        src={previewUrl || undefined}
                                                         alt="Preview"
                                                         className="h-8 w-8 rounded-md object-cover border border-slate-200 shrink-0"
                                                     />
@@ -853,7 +680,7 @@ useEffect(() => {
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSelectedFile(null);
+                                                    updateSelectedFile(null);
                                                     if (fileInputRef.current) fileInputRef.current.value = '';
                                                 }}
                                                 className="w-7 h-7 text-slate-400 hover:text-danger-ink hover:bg-danger-subtle rounded-md flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"

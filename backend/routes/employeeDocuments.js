@@ -1,13 +1,22 @@
 import express from 'express';
 import multer from 'multer';
 import { supabase } from '../supabaseClient.js';
+import { assertDocumentOwner, assertUuid, DOCUMENT_MAX_BYTES, DOCUMENT_URL_TTL, DocumentError, documentRoute, ensureWritableEmployee, findDocument, listDocuments, normalizeDocumentPath, requireDocumentAdmin, uploadDocument } from '../services/documentService.js';
+import { documentClassifier } from '../services/documentClassifier.js';
+import { importEmployeeDocument, requireBulkAdmin } from '../services/bulkDocumentImport.js';
 
+export function createEmployeeDocumentsRouter(client = supabase, classifier = documentClassifier) {
 const router = express.Router();
+router.use((req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
+    if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
+    next();
+});
 
 // Configure multer to hold file buffers in memory
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 } // 10 MB limit
+    limits: { fileSize: DOCUMENT_MAX_BYTES, fields: 12, fieldSize: 4096, parts: 40 } // 10 MB per file
 });
 
 // Hot Folder document category keywords, checked in order - first match wins.
@@ -61,116 +70,44 @@ function matchEmployeeToFilename(filename, employees) {
     return null;
 }
 
-// GET /api/employee-documents?employee_id=...
-router.get('/', async (req, res) => {
+// Keep the legacy list envelope, with server-enforced employee scope.
+router.get('/', documentRoute(async (req, res) => {
+    const result = await listDocuments(client, req.user, req.query);
+    res.json({ success: true, ...result });
+}));
+
+// Adapted from commit 4ba2955: links expire after five minutes and are never cached.
+router.get('/:id/url', documentRoute(async (req, res) => {
+    const document = await findDocument(client, req.params.id);
+    assertDocumentOwner(req.user, document.employee_id);
+    const path = normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+    const { data, error } = await client.storage.from('documents').createSignedUrl(path, DOCUMENT_URL_TTL);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('Storage did not return a signed URL.');
+    res.json({ success: true, url: data.signedUrl, expires_in: DOCUMENT_URL_TTL });
+}));
+
+// Advisory classification only: no storage upload, document write, or draft broadcast.
+router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('file'), documentRoute(async (req, res) => {
+    if (req.body.analysis_consent !== 'true') throw new DocumentError(400, 'Consent to content analysis is required.');
+    const employeeId = assertUuid(req.body.employee_id, 'Employee ID');
+    await ensureWritableEmployee(client, employeeId);
+    if (res.destroyed) return;
+    const controller = new AbortController();
+    const disconnect = () => controller.abort(new Error('Client disconnected'));
+    res.once('close', disconnect);
     try {
-        const { employee_id } = req.query;
+        const classification = await classifier.classify(req.file, { actorId: req.user.id, signal: controller.signal });
+        if (!res.destroyed) res.json({ success: true, classification });
+    } catch (error) {
+        if (!controller.signal.aborted) throw error;
+    } finally { res.removeListener('close', disconnect); }
+}));
 
-        let query = supabase.from('employee_documents').select('*');
-
-        if (employee_id) {
-            query = query.eq('employee_id', employee_id);
-        }
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        return res.status(200).json({
-            success: true,
-            documents: data || []
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            error: err.message
-        });
-    }
-});
-
-// POST /api/employee-documents
-router.post('/', upload.single('file'), async (req, res) => {
-    try {
-        const { employee_id, title, category, expiry_date } = req.body;
-        const file = req.file;
-
-        if (!file) {
-            return res.status(400).json({ success: false, message: 'No file uploaded' });
-        }
-
-        if (!employee_id || !title) {
-            return res.status(400).json({ success: false, message: 'Employee ID and Title are required' });
-        }
-
-        // Security check: Verify employee's current status
-        const { data: employee, error: empErr } = await supabase
-            .from('employees')
-            .select('id, first_name, last_name, status, is_active')
-            .eq('id', employee_id)
-            .single();
-
-        if (empErr || !employee) {
-            return res.status(404).json({ success: false, message: 'Employee record not found.' });
-        }
-
-        const isTerminated =
-            employee.status === 'inactive' ||
-            employee.status === 'terminated' ||
-            employee.is_active === false;
-
-        if (isTerminated) {
-            return res.status(403).json({
-                success: false,
-                code: 'ACCOUNT_TERMINATED',
-                message: 'Document uploads are disabled for separated or terminated employee accounts. Existing records remain available for compliance audit.'
-            });
-        }
-
-        // 1. Build unique storage path
-        const fileExt = file.originalname.split('.').pop();
-        const fileName = `${employee_id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-
-        // 2. Upload file directly to Supabase Storage
-        const { error: storageError } = await supabase.storage
-            .from('documents')
-            .upload(fileName, file.buffer, {
-                contentType: file.mimetype || 'application/octet-stream',
-                upsert: true
-            });
-
-        if (storageError) throw storageError;
-
-        // 3. Insert record into database table (file_type removed)
-        const { data: dbData, error: dbError } = await supabase
-            .from('employee_documents')
-            .insert([
-                {
-                    employee_id,
-                    title,
-                    category: category || 'General',
-                    file_name: file.originalname,
-                    file_path: fileName,
-                    file_size: file.size,
-                    expiry_date: expiry_date || null
-                }
-            ])
-            .select();
-
-        if (dbError) throw dbError;
-
-        return res.status(200).json({
-            success: true,
-            message: 'Document uploaded successfully',
-            document: dbData?.[0] || null
-        });
-    } catch (err) {
-        console.error('Upload Error:', err);
-        return res.status(500).json({
-            success: false,
-            error: err.message || 'Failed to upload document'
-        });
-    }
-});
+router.post('/', upload.single('file'), requireBulkAdmin, documentRoute(async (req, res) => {
+    const document = await importEmployeeDocument(client, req.user, req.body, req.file);
+    res.json({ success: true, message: 'Document uploaded successfully', document });
+}));
 
 /**
  * POST /api/employee-documents/hot-folder
@@ -181,16 +118,16 @@ router.post('/', upload.single('file'), async (req, res) => {
  * (e.g. by re-submitting them individually through the existing single-file
  * POST /api/employee-documents route above, once an employee_id is chosen).
  */
-router.post('/hot-folder', upload.array('files', 25), async (req, res) => {
+router.post('/hot-folder', requireDocumentAdmin, upload.array('files', 25), async (req, res) => {
     try {
         const files = req.files || [];
         if (files.length === 0) {
             return res.status(400).json({ success: false, message: 'No files uploaded.' });
         }
 
-        const { data: employees, error: empErr } = await supabase
+        const { data: employees, error: empErr } = await client
             .from('employees')
-            .select('id, company_id, first_name, last_name, status, is_active');
+            .select('id, company_id, first_name, last_name, status, is_active, archived_at');
         if (empErr) throw empErr;
 
         const uploaded = [];
@@ -212,9 +149,8 @@ router.post('/hot-folder', upload.array('files', 25), async (req, res) => {
 
             const { employee } = match;
             const isTerminated =
-                employee.status === 'inactive' ||
-                employee.status === 'terminated' ||
-                employee.is_active === false;
+                ['inactive', 'terminated', 'separated', 'archived'].includes(String(employee.status || '').toLowerCase()) ||
+                Boolean(employee.archived_at) || employee.is_active === false;
 
             if (isTerminated) {
                 blocked.push({
@@ -226,36 +162,13 @@ router.post('/hot-folder', upload.array('files', 25), async (req, res) => {
             }
 
             try {
-                const fileExt = file.originalname.split('.').pop();
-                const storagePath = `${employee.id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-
-                const { error: storageError } = await supabase.storage
-                    .from('documents')
-                    .upload(storagePath, file.buffer, {
-                        contentType: file.mimetype || 'application/octet-stream',
-                        upsert: true
-                    });
-                if (storageError) throw storageError;
-
-                const { data: dbData, error: dbError } = await supabase
-                    .from('employee_documents')
-                    .insert([{
-                        employee_id: employee.id,
-                        title: file.originalname,
-                        category: detectedCategory,
-                        file_name: file.originalname,
-                        file_path: storagePath,
-                        file_size: file.size
-                    }])
-                    .select();
-                if (dbError) throw dbError;
-
+                const document = await uploadDocument(client, req.user, { employee_id: employee.id, title: file.originalname, category: detectedCategory }, file);
                 uploaded.push({
                     file_name: file.originalname,
                     matched_employee: `${employee.first_name} ${employee.last_name}`,
                     matched_via: match.confidence,
                     category: detectedCategory,
-                    document: dbData?.[0] || null
+                    document
                 });
             } catch (fileErr) {
                 unassigned.push({
@@ -287,4 +200,10 @@ router.post('/hot-folder', upload.array('files', 25), async (req, res) => {
     }
 });
 
-export default router;
+router.use((error, req, res, next) => {
+    if (!(error instanceof multer.MulterError)) return next(error);
+    res.status(400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? 'Each document must be no larger than 10 MB.' : 'Invalid upload. Select at most 25 files in the expected file field.' });
+});
+return router;
+}
+export default createEmployeeDocumentsRouter();
