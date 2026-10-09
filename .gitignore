@@ -33,3 +33,8 @@ docs/
 # Supabase CLI temp files
 supabase/.temp/
 .temp/
+
+# Local regression tests
+/backend/tests/api-cancellation.test.js
+/backend/tests/document-classification.test.js
+/backend/tests/documents.test.js
