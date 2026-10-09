@@ -38,3 +38,4 @@ supabase/.temp/
 /backend/tests/api-cancellation.test.js
 /backend/tests/document-classification.test.js
 /backend/tests/documents.test.js
+/backend/tests/otp-cooldown.test.js

@@ -5,7 +5,7 @@ import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
 import { isWorkforceEmployee, isAttendanceExempt, applyWorkforceFilter } from '../utils/workforce.js';
-import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
+import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
 
@@ -635,107 +635,115 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
 });
 
 // Composite Employee Dashboard BFF Endpoint
-router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
+export function createEmployeeDashboardHandler(client = supabase) {
+    return async (req, res) => {
+        res.set('Cache-Control', 'private, no-store');
+        try {
+            const { id } = req.params;
+            const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
 
-        // Fetch employee attendance, latest payroll, profile, infractions, and leaves in parallel
-        const [
-            { data: attendanceData, error: attErr },
-            { data: payrollData, error: payErr },
-            { data: employee, error: empErr },
-            { data: discData, error: discErr },
-            { data: leaveData, error: leaveErr }
-        ] = await Promise.all([
-            supabase
-                .from('attendances')
-                .select('*')
-                .eq('employee_id', id)
-                .gte('date', thirtyDaysAgo)
-                .order('created_at', { ascending: false })
-                .limit(20),
-            supabase
-                .from('payrolls')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle(),
-            supabase
-                .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics, archived_at, separation_date, separation_type, separation_reason, separation_notes, created_at, updated_at')
-                .eq('id', id)
-                .single(),
-            supabase
-                .from('disciplinary_logs')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(50),
-            supabase
-                .from('leave_requests')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(10)
-        ]);
+            // Fetch employee attendance, latest payroll, profile, infractions, and leaves in parallel
+            const [
+                { data: attendanceData, error: attErr },
+                { data: payrollData, error: payErr },
+                { data: employee, error: empErr },
+                { data: discData, error: discErr },
+                { data: leaveData, error: leaveErr }
+            ] = await Promise.all([
+                client
+                    .from('attendances')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .gte('date', thirtyDaysAgo)
+                    .order('created_at', { ascending: false })
+                    .limit(20),
+                client
+                    .from('payrolls')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle(),
+                client
+                    .from('employees')
+                    .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics, archived_at, separation_date, separation_type, separation_reason, separation_notes, created_at, updated_at')
+                    .eq('id', id)
+                    .maybeSingle(),
+                client
+                    .from('disciplinary_logs')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(50),
+                client
+                    .from('leave_requests')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(10)
+            ]);
 
-        if (attErr) throw attErr;
-        if (payErr) throw payErr;
-        if (empErr) throw empErr;
+            if (attErr) throw attErr;
+            if (payErr) throw payErr;
+            if (empErr) throw empErr;
+            if (discErr) throw discErr;
+            if (leaveErr) throw leaveErr;
+            if (!employee) return res.status(404).json({ error: 'Employee record not found.', code: 'EMPLOYEE_NOT_FOUND' });
 
-        let employeeObj = employee ? { ...employee } : null;
-        if (employeeObj) {
-            const termLog = (discData || []).find(l => {
-                if (l.type !== 'Termination') return false;
-                const s = (l.status || '').toLowerCase();
-                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+            let employeeObj = employee ? { ...employee } : null;
+            if (employeeObj) {
+                const termLog = (discData || []).find(l => {
+                    if (l.type !== 'Termination' || isExoneratedOrCleared(l)) return false;
+                    const s = (l.status || '').toLowerCase();
+                    return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+                });
+                const suspLog = (discData || []).find(l => {
+                    if (l.type !== 'Suspension' || isExoneratedOrCleared(l)) return false;
+                    const s = (l.status || '').toLowerCase();
+                    return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+                });
+
+                // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
+                const status = String(employeeObj.status || '').toLowerCase();
+                const isTerm = Boolean(
+                    ['terminated', 'separated', 'archived'].includes(status) ||
+                    Boolean(termLog) ||
+                    Boolean(employeeObj.archived_at)
+                );
+                const isSusp = !isTerm && (status === 'suspended' || Boolean(suspLog));
+
+                employeeObj.is_suspended = isSusp;
+                employeeObj.is_terminated = isTerm;
+                employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
+
+                const standing = computeDisciplinaryStanding({
+                    isTerminated: isTerm,
+                    isSuspended: isSusp,
+                    status: employeeObj.status,
+                    operational_status: employeeObj.operational_status,
+                    disciplinaryLogs: discData || []
+                });
+                employeeObj.disciplinary_standing = standing;
+                employeeObj.past_suspensions_count = standing.served_suspensions_count;
+                employeeObj.served_suspensions_count = standing.served_suspensions_count;
+                employeeObj.cleared_suspensions_count = standing.cleared_suspensions_count;
+            }
+
+            res.json({
+                attendanceData: attendanceData || [],
+                payrollData: payrollData || null,
+                shiftData: employeeObj ? [{ ...employeeObj }] : [],
+                employee: employeeObj,
+                discData: discData || [],
+                leaveData: leaveData || []
             });
-            const suspLog = (discData || []).find(l => {
-                if (l.type !== 'Suspension') return false;
-                const s = (l.status || '').toLowerCase();
-                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
-            });
-
-            // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
-            const isSusp = (employeeObj.status === 'suspended' || Boolean(suspLog)) && !Boolean(termLog);
-            const isTerm = !isSusp && Boolean(
-                employeeObj.status === 'terminated' ||
-                Boolean(termLog) ||
-                (employeeObj.archived_at !== null && employeeObj.status !== 'active')
-            );
-
-            employeeObj.is_suspended = isSusp;
-            employeeObj.is_terminated = isTerm;
-            employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
-
-            const standing = computeDisciplinaryStanding({
-                isTerminated: isTerm,
-                isSuspended: isSusp,
-                status: employeeObj.status,
-                operational_status: employeeObj.operational_status,
-                disciplinaryLogs: discData || []
-            });
-            employeeObj.disciplinary_standing = standing;
-            employeeObj.past_suspensions_count = standing.served_suspensions_count;
-            employeeObj.served_suspensions_count = standing.served_suspensions_count;
-            employeeObj.cleared_suspensions_count = standing.cleared_suspensions_count;
+        } catch (err) {
+            console.error('[DASHBOARD_ROUTE] Employee dashboard error:', err.message);
+            res.status(500).json({ error: 'Employee dashboard unavailable. Please try again.' });
         }
-
-        res.json({
-            attendanceData: attendanceData || [],
-            payrollData: payrollData || null,
-            shiftData: employeeObj ? [{ ...employeeObj }] : [],
-            employee: employeeObj,
-            discData: discData || [],
-            leaveData: leaveData || []
-        });
-    } catch (err) {
-        console.error('[DASHBOARD_ROUTE] Employee dashboard error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
+    };
+}
+router.get('/employee/:id', checkAdminOrOwnership, createEmployeeDashboardHandler());
 
 const SHIFT_START_HOUR = 8; // Company-wide shift start: 8:00 AM (Asia/Manila)
 

@@ -1,424 +1,137 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
-import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding';
+import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
-import { isSecurity, isAdmin } from '../routes/guards';
-import { performLogout } from '../utils/authSession';
+import { getUser, isSecurity, isAdmin } from '../routes/guards';
+import useEmployeeDashboard from '../utils/useEmployeeDashboard';
+import { acknowledgeDashboardNotices, createDashboardRefresh, getDashboardPayrolls, targetsDashboardEmployee } from '../utils/employeeDashboardData';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
-    const storedUser = (() => {
-        try {
-            const raw = localStorage.getItem('user');
-            return (raw && raw !== 'undefined') ? JSON.parse(raw) : { name: 'Loading...', id: '', department: 'Team Member' };
-        } catch {
-            return { name: 'Loading...', id: '', department: 'Team Member' };
-        }
-    })();
-    const [user, setUser] = useState(storedUser);
-
-    // Initial disciplinary state from cache
-    const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(storedUser?.id));
-
-    // Modals
+    const [storedUser] = useState(() => getUser() || { name: 'Loading...', id: '', department: 'Team Member' });
+    const enabled = Boolean(storedUser.id) && !isSecurity(storedUser) && !isAdmin(storedUser);
+    const { dashboard, history, refresh } = useEmployeeDashboard(storedUser.id, enabled);
+    const data = dashboard.data;
+    const payHistoryData = history.data;
+    const isPayHistoryLoading = history.isLoading;
+    const liveEmployee = data?.employee || data?.shiftData?.[0] || null;
+    const user = useMemo(() => liveEmployee ? {
+        ...storedUser, ...liveEmployee,
+        name: [liveEmployee.first_name, liveEmployee.last_name].filter(Boolean).join(' ') || storedUser.name,
+    } : storedUser, [storedUser, liveEmployee]);
+    const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(storedUser.id));
+    const [now, setNow] = useState(() => Date.now());
     const [showQrModal, setShowQrModal] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [showPayslipModal, setShowPayslipModal] = useState(false);
-    const [showInfractionsModal, setShowInfractionsModal] = useState(false);
-    const [showLatestPayMasked, setShowLatestPayMasked] = useState(false);
-
-    // Leave Form State
-    const [leaveForm, setLeaveForm] = useState({
-        leave_type: 'Sick Leave',
-        start_date: '',
-        end_date: '',
-        reason: ''
+    const [showInfractionsModal, setShowInfractionsModal] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('view') === 'disciplinary' || params.get('tab') === 'disciplinary';
     });
+    const [showLatestPayMasked, setShowLatestPayMasked] = useState(false);
+    const [leaveForm, setLeaveForm] = useState({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
     const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
     useEffect(() => {
-        if (isSecurity(storedUser)) {
-            window.location.replace('/scanner');
-        } else if (isAdmin(storedUser)) {
-            window.location.replace('/');
-        }
+        if (isSecurity(storedUser)) window.location.replace('/scanner');
+        else if (isAdmin(storedUser)) window.location.replace('/');
     }, [storedUser]);
 
-    const fetchDashboardData = async (userId) => {
-        try {
-            const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json && (json.attendanceData !== undefined || json.leaveData !== undefined)) {
-                    return json;
-                }
-            }
-        } catch (err) {
-            console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
-        }
-
-        // Fallback fetch
-        const [attRes, payRes, discRes, leaveRes] = await Promise.allSettled([
-            fetchWithAuth(`/api/attendance?employee_id=${userId}`),
-            fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=12`),
-            fetchWithAuth(`/api/disciplinary?employee_id=${userId}`),
-            fetchWithAuth(`/api/leaves?employee_id=${userId}`)
-        ]);
-
-        const attendanceData = attRes.status === 'fulfilled' && attRes.value.ok ? await attRes.value.json() : [];
-        const payrollData = payRes.status === 'fulfilled' && payRes.value.ok ? await payRes.value.json() : [];
-        const discData = discRes.status === 'fulfilled' && discRes.value.ok ? await discRes.value.json() : [];
-        const leaveData = leaveRes.status === 'fulfilled' && leaveRes.value.ok ? await leaveRes.value.json() : [];
-
-        return { attendanceData, payrollData, discData, leaveData };
-    };
-
-    const getCachedDashboard = (userId) => {
-        if (!userId) return undefined;
-        try {
-            const cached = sessionStorage.getItem(`cpoint_emp_dash_${userId}`);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (parsed && (parsed.attendanceData || parsed.payrollData)) {
-                    return parsed;
-                }
-            }
-        } catch (_) { }
-        return undefined;
-    };
-
-    const { data, isLoading } = useQuery({
-        queryKey: ['employeeDashboard', user.id],
-        queryFn: () => fetchDashboardData(user.id),
-        initialData: () => getCachedDashboard(user.id),
-        enabled: !!user.id && user.role !== 'security',
-        staleTime: 60_000,
-        refetchOnWindowFocus: false,
-    });
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 60000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
-        if (data && user?.id && (data.attendanceData || data.payrollData)) {
-            try {
-                sessionStorage.setItem(`cpoint_emp_dash_${user.id}`, JSON.stringify(data));
-            } catch (_) { }
-        }
-    }, [data, user?.id]);
+        if (!liveEmployee) return;
+        try {
+            const saved = getUser();
+            if (saved?.id === user.id) {
+                const updated = { ...saved, ...liveEmployee, name: user.name };
+                const serialized = JSON.stringify(updated);
+                if (serialized !== JSON.stringify(saved)) localStorage.setItem('user', serialized);
+            }
+        } catch { /* The server profile still renders when browser storage is unavailable. */ }
+    }, [liveEmployee, user.id, user.name]);
 
-    // Real-time synchronization
     useEffect(() => {
-        if (!user?.id) return;
-
-        const channel = supabase
-            .channel(`employee-live-dashboard-${user.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, (payload) => {
-                if (!payload?.new?.employee_id || String(payload?.new?.employee_id) === String(user.id) || String(payload?.old?.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_CREATED' }, ({ payload }) => {
-                if (!payload?.employee_id || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                    toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
+        if (!enabled) return;
+        let disposed = false;
+        const scheduled = createDashboardRefresh(refresh);
+        const onPayroll = event => ({ payload }) => {
+            if (disposed || !targetsDashboardEmployee(payload, storedUser.id)) return;
+            scheduled.refresh(true);
+            if (['PAYROLL_CREATED', 'PAYROLL_BATCH_DISTRIBUTED'].includes(event) &&
+                (payload?.employee_id || Array.isArray(payload?.employee_ids))) {
                 toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-            })
-            .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_BULK_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .subscribe();
-
-        const broadcastBus = supabase
-            .channel(`dashboard-disciplinary-sync-${user.id}`)
-            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    if (payload?.type === 'Suspension') {
-                        const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-                        setDisciplinaryCache(user.id, statusObj);
-                        setDisciplinaryState(statusObj);
-                        setUser(prev => ({
-                            ...prev,
-                            status: 'suspended',
-                            is_active: false,
-                            is_suspended: true,
-                            is_terminated: false,
-                            operational_status: 'Suspended'
-                        }));
-                        setShowInfractionsModal(true);
-                    } else if (payload?.type === 'Termination') {
-                        const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-                        setDisciplinaryCache(user.id, statusObj);
-                        setDisciplinaryState(statusObj);
-                        setUser(prev => ({
-                            ...prev,
-                            status: 'inactive',
-                            is_active: false,
-                            is_suspended: false,
-                            is_terminated: true,
-                            operational_status: 'Terminated',
-                            archived_at: payload.archived_at || new Date().toISOString(),
-                            separation_reason: payload.reason
-                        }));
-                    } else if (payload?.type === 'Warning') {
-                        setShowInfractionsModal(true);
-                    }
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'suspended',
-                        is_active: false,
-                        is_suspended: true,
-                        is_terminated: false,
-                        operational_status: 'Suspended'
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Operational Hold: Your account has been placed on temporary disciplinary suspension.', {
-                        id: 'susp-live-alert',
-                        duration: 8000
-                    });
-                    setShowInfractionsModal(true);
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'inactive',
-                        is_active: false,
-                        is_suspended: false,
-                        is_terminated: true,
-                        operational_status: 'Terminated',
-                        archived_at: payload.archived_at || new Date().toISOString(),
-                        separation_reason: payload.reason
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Account Separated: Your status has been updated to Separated / Pending Archive.', {
-                        id: 'term-live-alert',
-                        duration: 8000
-                    });
-                }
-            })
-            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Disciplinary decision overturned. Good standing restored.', { id: 'disc-ot-alert' });
-                }
-            })
-            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Disciplinary action resolved. Access restored.', { id: 'disc-res-alert' });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Account fully restored to active status.', { id: 'emp-rest-alert' });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Medical Grace protocol status updated');
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    setUser(prev => ({
-                        ...prev,
-                        has_registered_biometrics: true,
-                        biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Face Biometrics Registered! Turnstile QR pass activated.', { id: 'bio-dash-toast' });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    setUser(prev => ({
-                        ...prev,
-                        has_registered_biometrics: false,
-                        biometric_baseline_path: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Face Biometrics Reset: Please re-enroll in Biometric Setup.', { id: 'bio-dash-toast' });
-                }
-            })
-            .subscribe();
-
-        const payrollSyncBus = supabase
-            .channel(`payroll-emp-sync-${user.id}`)
-            .on('broadcast', { event: 'PAYROLL_CREATED' }, ({ payload }) => {
-                if (!payload?.employee_id || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                    toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_BULK_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .subscribe();
-
-        const handleRefresh = () => {
-            queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-        };
-        const handleOpenDisciplinary = () => {
-            setShowInfractionsModal(true);
-        };
-
-        window.addEventListener('refresh_dashboard', handleRefresh);
-        window.addEventListener('open_disciplinary_modal', handleOpenDisciplinary);
-
-        const handleDisciplinarySync = (e) => {
-            if (!user?.id || e.detail?.userId === user.id) {
-                setDisciplinaryState(getDisciplinaryCache(user?.id));
             }
         };
-        window.addEventListener('hris_disciplinary_sync', handleDisciplinarySync);
-
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('view') === 'disciplinary' || params.get('tab') === 'disciplinary') {
-            setShowInfractionsModal(true);
-        }
-
-        return () => {
-            supabase.removeChannel(channel);
-            supabase.removeChannel(broadcastBus);
-            supabase.removeChannel(payrollSyncBus);
-            window.removeEventListener('refresh_dashboard', handleRefresh);
-            window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
-            window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
+        const alerts = {
+            EMPLOYEE_SUSPENDED: ['error', 'Operational Hold: Your account has been placed on temporary disciplinary suspension.', 'susp-live-alert'],
+            EMPLOYEE_TERMINATED: ['error', 'Account Separated: Your status has been updated to Separated / Pending Archive.', 'term-live-alert'],
+            DISCIPLINARY_OVERTURNED: ['success', 'Disciplinary decision overturned. Good standing restored.', 'disc-ot-alert'],
+            DISCIPLINARY_RESOLVED: ['success', 'Disciplinary action resolved. Access restored.', 'disc-res-alert'],
+            EMPLOYEE_RESTORED: ['success', 'Account fully restored to active status.', 'emp-rest-alert'],
+            BIOMETRIC_EXEMPTION_UPDATED: ['success', 'Medical Grace protocol status updated', 'medical-dash-toast'],
+            BIOMETRICS_REGISTERED: ['success', 'Face Biometrics Registered! Turnstile QR pass activated.', 'bio-dash-toast'],
+            BIOMETRICS_RESET: ['error', 'Face Biometrics Reset: Please re-enroll in Biometric Setup.', 'bio-dash-toast'],
         };
-    }, [user?.id, queryClient]);
+        const onEmployeeEvent = event => ({ payload }) => {
+            if (disposed || !targetsDashboardEmployee(payload, storedUser.id)) return;
+            // Broadcasts announce changes; authenticated reads determine account/QR permissions.
+            scheduled.refresh();
+            if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && ['Suspension', 'Warning'].includes(payload?.type))) setShowInfractionsModal(true);
+            const alert = alerts[event];
+            if (alert) toast[alert[0]](alert[1], { id: alert[2], duration: 8000 });
+        };
+        const onSubscribe = status => { if (status === 'SUBSCRIBED') scheduled.refresh(true); };
+        const channel = supabase.channel(`employee-live-dashboard-${storedUser.id}`);
+        for (const table of ['attendances', 'leave_requests', 'payrolls', 'disciplinary_logs', 'employees']) {
+            const column = table === 'employees' ? 'id' : 'employee_id';
+            channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `${column}=eq.${storedUser.id}` }, payload => {
+                if (targetsDashboardEmployee(payload, storedUser.id, column)) scheduled.refresh(table === 'payrolls');
+            });
+        }
+        // shortcut: unscoped payroll deletions reconcile by polling; target employee topics for immediate updates.
+        for (const event of ['PAYROLL_CREATED', 'PAYROLL_BATCH_DISTRIBUTED', 'PAYROLL_UPDATED', 'PAYROLL_DELETED', 'PAYROLL_BULK_DELETED']) {
+            channel.on('broadcast', { event }, onPayroll(event));
+        }
+        const disciplinaryBus = supabase.channel(`dashboard-disciplinary-sync-${storedUser.id}`);
+        for (const event of ['DISCIPLINARY_CREATED', 'DISCIPLINARY_STATUS_UPDATED', 'DISCIPLINARY_DELETED', ...Object.keys(alerts)]) {
+            channel.on('broadcast', { event }, onEmployeeEvent(event));
+            disciplinaryBus.on('broadcast', { event }, onEmployeeEvent(event));
+        }
+        channel.subscribe(onSubscribe);
+        disciplinaryBus.subscribe(onSubscribe);
+        const openDisciplinary = () => setShowInfractionsModal(true);
+        const refreshAll = () => scheduled.refresh(true);
+        const syncDisciplinary = event => {
+            if (event.detail?.userId === storedUser.id) setDisciplinaryState(getDisciplinaryCache(storedUser.id));
+        };
+        window.addEventListener('refresh_dashboard', refreshAll);
+        window.addEventListener('open_disciplinary_modal', openDisciplinary);
+        window.addEventListener('hris_disciplinary_sync', syncDisciplinary);
+        return () => {
+            disposed = true;
+            scheduled.cancel();
+            for (const subscription of [channel, disciplinaryBus]) supabase.removeChannel(subscription);
+            window.removeEventListener('refresh_dashboard', refreshAll);
+            window.removeEventListener('open_disciplinary_modal', openDisciplinary);
+            window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
+        };
+    }, [enabled, storedUser.id, refresh]);
 
-    // Derived state
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
-
-    // Full pay history. The dashboard endpoint may return only the latest payslip,
-    // so the complete list is fetched separately and merged below with 0ms cache-first rendering.
-    const { data: payHistoryData, isLoading: isPayHistoryLoading } = useQuery({
-        queryKey: ['employeePayHistory', user.id],
-        queryFn: async () => {
-            const res = await fetchWithAuth(`/api/payroll?employee_id=${user.id}&limit=100`);
-            if (!res.ok) throw new Error('Failed to load pay history');
-            return res.json();
-        },
-        enabled: !!user.id && user.role !== 'security',
-        initialData: () => {
-            try {
-                const cached = sessionStorage.getItem(`cpoint_emp_pay_history_${user.id}`);
-                return cached ? JSON.parse(cached) : undefined;
-            } catch {
-                return undefined;
-            }
-        },
-        placeholderData: (prev) => prev,
-        staleTime: 60_000,
-        gcTime: 300_000,
-        refetchOnWindowFocus: false,
-    });
-
-    // Save pay history cache into sessionStorage for instantaneous cold-start hydration
-    useEffect(() => {
-        if (payHistoryData && user?.id) {
-            try {
-                sessionStorage.setItem(`cpoint_emp_pay_history_${user.id}`, JSON.stringify(payHistoryData));
-            } catch (_) { }
-        }
-    }, [payHistoryData, user?.id]);
 
     // Global keyboard listener for accessible ESC dismissal of all modals
     useEffect(() => {
@@ -434,27 +147,7 @@ const EmployeeDashboard = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Merged, de-duplicated, and sorted newest first so the dashboard card shows the newest payslip
-    const allPayrolls = useMemo(() => {
-        const toList = (raw) => {
-            const v = raw?.data || raw || [];
-            return Array.isArray(v) ? v : (v?.id ? [v] : []);
-        };
-        const merged = new Map();
-        [...toList(data?.payrollData), ...toList(payHistoryData)].forEach((p) => {
-            if (!p) return;
-            const key = p.id || `${p.period_start}_${p.period_end}`;
-            merged.set(key, { ...(merged.get(key) || {}), ...p });
-        });
-        const time = (v) => {
-            const t = new Date(v || 0).getTime();
-            return Number.isNaN(t) ? 0 : t;
-        };
-        return Array.from(merged.values()).sort((a, b) =>
-            (time(b.period_end || b.period_start) - time(a.period_end || a.period_start)) ||
-            (time(b.created_at) - time(a.created_at))
-        );
-    }, [data, payHistoryData]);
+    const allPayrolls = useMemo(() => getDashboardPayrolls(data?.payrollData, payHistoryData), [data?.payrollData, payHistoryData]);
     const latestPayroll = allPayrolls.length > 0 ? allPayrolls[0] : null;
     const [payslipView, setPayslipView] = useState('history'); // 'history' | 'detail'
     const [selectedPayslipId, setSelectedPayslipId] = useState(null);
@@ -541,59 +234,7 @@ const EmployeeDashboard = () => {
     const workerSchedule = isFactoryWorker ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM';
     const overtimePolicy = isFactoryWorker ? 'Strict Shift · No Overtime' : 'Extended Shift · OT Eligible';
 
-    // Live employee data
-    const liveEmployee = data?.employee || (data?.shiftData && data?.shiftData[0]) || null;
-    const currentStatus = (liveEmployee?.status || user?.status || 'active').toLowerCase();
-    const currentIsActive = liveEmployee?.is_active !== undefined ? liveEmployee.is_active : (user?.is_active !== undefined ? user.is_active : true);
-
-    // Sync live employee status, biometrics, separation details, and medical exemption to user state and localStorage
-    useEffect(() => {
-        if (liveEmployee && (
-            (liveEmployee.status && liveEmployee.status !== user?.status) ||
-            liveEmployee.is_active !== user?.is_active ||
-            liveEmployee.medical_record_url !== user?.medical_record_url ||
-            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics ||
-            liveEmployee.archived_at !== user?.archived_at ||
-            liveEmployee.separation_date !== user?.separation_date ||
-            liveEmployee.operational_status !== user?.operational_status ||
-            liveEmployee.is_suspended !== user?.is_suspended ||
-            liveEmployee.is_terminated !== user?.is_terminated
-        )) {
-            setUser(prev => ({
-                ...prev,
-                status: liveEmployee.status || prev?.status,
-                is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
-                medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
-                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics,
-                archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : prev?.archived_at,
-                separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : prev?.separation_date,
-                separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : prev?.separation_type,
-                separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : prev?.separation_reason,
-                separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : prev?.separation_notes,
-                operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : prev?.operational_status,
-                is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : prev?.is_suspended,
-                is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : prev?.is_terminated
-            }));
-            try {
-                const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({
-                    ...stored,
-                    status: liveEmployee.status || stored?.status,
-                    is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
-                    medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
-                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics,
-                    archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : stored?.archived_at,
-                    separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : stored?.separation_date,
-                    separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : stored?.separation_type,
-                    separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : stored?.separation_reason,
-                    separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : stored?.separation_notes,
-                    operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : stored?.operational_status,
-                    is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : stored?.is_suspended,
-                    is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : stored?.is_terminated
-                }));
-            } catch (e) { }
-        }
-    }, [liveEmployee]);
+    const currentStatus = String(user.status || 'active').toLowerCase();
 
     // Medical grace protocol state
     const medicalExemption = useMemo(() => {
@@ -612,55 +253,33 @@ const EmployeeDashboard = () => {
 
     const isMedicalExempt = useMemo(() => {
         if (!medicalExemption?.expires_at) return false;
-        return new Date(medicalExemption.expires_at).getTime() > Date.now();
-    }, [medicalExemption]);
+        return new Date(medicalExemption.expires_at).getTime() > now;
+    }, [medicalExemption, now]);
 
     const daysRemaining = useMemo(() => {
         if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
-        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-    }, [isMedicalExempt, medicalExemption]);
+        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - now) / (1000 * 60 * 60 * 24)));
+    }, [isMedicalExempt, medicalExemption, now]);
 
     const rawDisc = data?.discData?.data || data?.discData;
-    const queryHasLoaded = data !== undefined && rawDisc !== undefined;
-    const discData = Array.isArray(rawDisc) ? rawDisc : [];
-    const employeeDisciplinary = discData.filter(log => String(log.employee_id) === String(user?.id));
+    const queryHasLoaded = Array.isArray(rawDisc);
+    const employeeDisciplinary = useMemo(() => {
+        const logs = data?.discData?.data || data?.discData || [];
+        return Array.isArray(logs) ? logs.filter(log => String(log.employee_id) === String(user.id)) : [];
+    }, [data?.discData, user.id]);
     const infractions = employeeDisciplinary.filter(log => log.status === 'Active');
     const unresolvedInfractions = employeeDisciplinary.filter(log => log.status !== 'Resolved');
-
-    // Check for active termination record (exclude resolved and overturned)
-    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && log.status !== 'Resolved' && log.status !== 'Overturned');
-    const activeTermination = queryHasLoaded
-        ? terminationRecord
-        : (disciplinaryState.isTerminated ? (disciplinaryState.record || { type: 'Termination', reason: 'Account separated' }) : null);
-
+    const isActiveSanction = log => !isExoneratedOrCleared(log) && !['resolved', 'overturned', 'dismissed', 'cleared', 'cancelled', 'closed'].includes(String(log.status || '').toLowerCase());
+    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && isActiveSanction(log));
+    const activeTermination = queryHasLoaded ? terminationRecord : (disciplinaryState.isTerminated ? disciplinaryState.record : null);
     const activeSuspension = queryHasLoaded
-        ? employeeDisciplinary.find(log => log.type === 'Suspension' && log.status !== 'Resolved' && log.status !== 'Overturned')
-        : (disciplinaryState.isSuspended ? (disciplinaryState.record || { type: 'Suspension', reason: 'Operational access temporarily suspended' }) : null);
-
-    // Invariant: Suspension and Termination are strictly mutually exclusive.
-    const isSuspended = !Boolean(activeTermination) && Boolean(
-        activeSuspension ||
-        disciplinaryState.isSuspended ||
-        currentStatus === 'suspended' ||
-        liveEmployee?.status === 'suspended' ||
-        user?.status === 'suspended' ||
-        liveEmployee?.is_suspended ||
-        user?.is_suspended ||
-        liveEmployee?.operational_status === 'Suspended' ||
-        user?.operational_status === 'Suspended'
-    );
-
-    const isTerminated = !isSuspended && Boolean(
-        Boolean(activeTermination) ||
-        currentStatus === 'terminated' ||
-        Boolean(disciplinaryState.isTerminated) ||
-        Boolean(liveEmployee?.is_terminated) ||
-        liveEmployee?.operational_status === 'Terminated' ||
-        Boolean(liveEmployee?.archived_at) ||
-        Boolean(user?.archived_at) ||
-        user?.operational_status === 'Terminated' ||
-        (currentStatus === 'inactive' && Boolean(liveEmployee?.archived_at || user?.archived_at || liveEmployee?.separation_type || user?.separation_type))
-    );
+        ? employeeDisciplinary.find(log => log.type === 'Suspension' && isActiveSanction(log))
+        : (disciplinaryState.isSuspended ? disciplinaryState.record : null);
+    const isTerminated = Boolean(activeTermination || user.is_terminated || user.archived_at ||
+        user.operational_status === 'Terminated' || ['terminated', 'separated', 'archived'].includes(currentStatus) ||
+        (currentStatus === 'inactive' && user.separation_type) || (!queryHasLoaded && disciplinaryState.isTerminated));
+    const isSuspended = !isTerminated && Boolean(activeSuspension || user.is_suspended ||
+        currentStatus === 'suspended' || user.operational_status === 'Suspended' || (!queryHasLoaded && disciplinaryState.isSuspended));
 
     // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
     const hasFaceBiometrics = Boolean(
@@ -682,20 +301,15 @@ const EmployeeDashboard = () => {
         disciplinaryLogs: employeeDisciplinary
     }), [isTerminated, isSuspended, currentStatus, user?.status, liveEmployee?.operational_status, user?.operational_status, employeeDisciplinary]);
 
-    // Sync disciplinary status to shared cache
     useEffect(() => {
-        if (!user?.id || !queryHasLoaded) return;
-        if (isTerminated) {
-            setDisciplinaryCache(user.id, { type: 'Termination', record: activeTermination || terminationRecord });
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        } else if (isSuspended) {
-            setDisciplinaryCache(user.id, { type: 'Suspension', record: activeSuspension });
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        } else {
-            clearDisciplinaryCache(user.id);
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        }
-    }, [user?.id, queryHasLoaded, isTerminated, isSuspended, activeTermination, activeSuspension]);
+        if (!user.id || !queryHasLoaded) return;
+        const type = isTerminated ? 'Termination' : isSuspended ? 'Suspension' : 'Clean';
+        const record = isTerminated ? activeTermination || terminationRecord || null : isSuspended ? activeSuspension || null : null;
+        const cached = getDisciplinaryCache(user.id);
+        if (cached.type === type && JSON.stringify(cached.record) === JSON.stringify(record)) return;
+        if (type === 'Clean') clearDisciplinaryCache(user.id);
+        else setDisciplinaryCache(user.id, { type, record });
+    }, [user.id, queryHasLoaded, isTerminated, isSuspended, activeTermination, activeSuspension, terminationRecord]);
 
     const suspensionEndDate = (() => {
         if (activeSuspension?.end_date) return activeSuspension.end_date;
@@ -724,6 +338,10 @@ const EmployeeDashboard = () => {
             toast.error('Leave requests cannot be filed while account is on disciplinary suspension.');
             return;
         }
+        if (isSubmittingLeave || dashboard.isError || !data) {
+            toast.error('Refresh your employee status before submitting a leave request.');
+            return;
+        }
         setIsSubmittingLeave(true);
         try {
             const res = await fetchWithAuth('/api/leaves', {
@@ -731,16 +349,16 @@ const EmployeeDashboard = () => {
                 body: JSON.stringify({ employee_id: user.id, ...leaveForm })
             });
             const data = await res.json();
-            if (data.success) {
+            if (res.ok && data.success) {
                 toast.success('Leave request submitted to HR!');
                 setShowLeaveModal(false);
                 setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
                 queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                queryClient.refetchQueries({ queryKey: ['employeeDashboard', user.id] });
+
             } else {
                 toast.error(data.error || 'Failed to submit leave.');
             }
-        } catch (error) {
+        } catch {
             toast.error('Network Error');
         } finally {
             setIsSubmittingLeave(false);
@@ -749,40 +367,33 @@ const EmployeeDashboard = () => {
 
     const [acknowledgingId, setAcknowledgingId] = useState(null);
 
-    const handleAcknowledgeSingle = async (infId) => {
+    const handleAcknowledgeSingle = async infId => {
+        if (acknowledgingId) return;
         setAcknowledgingId(infId);
         try {
-            const res = await fetchWithAuth(`/api/disciplinary/${infId}/acknowledge`, { method: 'PUT' });
-            if (res.ok) {
-                toast.success('Disciplinary notice acknowledged.');
-                queryClient.invalidateQueries(['employeeDashboard', user.id]);
-                queryClient.refetchQueries(['employeeDashboard', user.id]);
-            } else {
-                toast.error('Failed to acknowledge notice.');
-            }
-        } catch (err) {
-            toast.error('Network error acknowledging notice.');
-        } finally {
-            setAcknowledgingId(null);
-        }
+            const result = await acknowledgeDashboardNotices(fetchWithAuth, [infId]);
+            if (result.failed) toast.error('Failed to acknowledge notice.');
+            else toast.success('Disciplinary notice acknowledged.');
+            await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
+        } catch { toast.error('Network error acknowledging notice.'); }
+        finally { setAcknowledgingId(null); }
     };
 
     const handleAcknowledgeAll = async () => {
+        if (acknowledgingId || !infractions.length) return;
+        setAcknowledgingId('all');
         try {
-            await Promise.all(infractions.map(inf =>
-                fetchWithAuth(`/api/disciplinary/${inf.id}/acknowledge`, { method: 'PUT' })
-            ));
-            toast.success('All notices acknowledged.');
-            queryClient.invalidateQueries(['employeeDashboard', user.id]);
-            queryClient.refetchQueries(['employeeDashboard', user.id]);
-        } catch (err) {
-            toast.error('Failed to acknowledge notices.');
-        }
+            const result = await acknowledgeDashboardNotices(fetchWithAuth, infractions.map(infraction => infraction.id));
+            if (result.failed) toast.error(`${result.acknowledged} acknowledged; ${result.failed} failed. Retry the remaining notices.`);
+            else toast.success('All notices acknowledged.');
+            await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
+        } catch { toast.error('Failed to acknowledge notices.'); }
+        finally { setAcknowledgingId(null); }
     };
 
     const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
-    const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const formattedToday = new Date(now).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'long', month: 'short', day: 'numeric' });
 
     const photoUrl = user?.avatar_url
         ? user.avatar_url
@@ -794,13 +405,15 @@ const EmployeeDashboard = () => {
 
 
 
-    const handleLogout = () => {
-        performLogout('/login');
-    };
-
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 px-4 sm:px-6 font-sans">
 
+            {(dashboard.isPending || dashboard.isFetching || dashboard.isError || history.isError) && (
+                <div role={dashboard.isError || history.isError ? 'alert' : 'status'} aria-live="polite" className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <span>{dashboard.isError || history.isError ? 'Some employee records could not refresh. Previously loaded records may be out of date.' : dashboard.isPending ? 'Loading employee records…' : 'Updating employee records…'}</span>
+                    {(dashboard.isError || history.isError) && <button type="button" disabled={dashboard.isFetching || history.isFetching} onClick={refresh} className="font-semibold text-blue-700 disabled:opacity-50">Retry</button>}
+                </div>
+            )}
             {/* Disciplinary & Separation Alert Banners */}
             {isTerminated ? (
                 <div className="bg-slate-900 border border-danger/30 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -1862,7 +1475,7 @@ const EmployeeDashboard = () => {
 
 
             {/* Historical / Official Payslip Modal */}
-            {showPayslipModal && (latestPayroll || isPayHistoryLoading || allPayrolls.length > 0) && payslipView === 'history' && (
+            {showPayslipModal && payslipView === 'history' && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div
                         className="absolute inset-0 bg-slate-950/70 transition-opacity"
@@ -1992,6 +1605,10 @@ const EmployeeDashboard = () => {
                         {/* Statement List */}
                         <div className="overflow-y-auto p-3 sm:p-5 space-y-2.5 flex-1 min-h-[220px]">
                             {/* Loading State */}
+                            {history.isError && <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                                <span>Pay history could not refresh. Previously loaded statements may be out of date.</span>
+                                <button type="button" disabled={history.isFetching} onClick={() => history.refetch()} className="font-semibold text-blue-700 disabled:opacity-50">Retry</button>
+                            </div>}
                             {isPayHistoryLoading && allPayrolls.length === 0 && (
                                 <div className="space-y-2.5 animate-pulse py-4">
                                     {[1, 2, 3].map((n) => (
@@ -2010,7 +1627,7 @@ const EmployeeDashboard = () => {
                             )}
 
                             {/* Empty State */}
-                            {!isPayHistoryLoading && filteredPayrolls.length === 0 && (
+                            {!isPayHistoryLoading && !history.isError && filteredPayrolls.length === 0 && (
                                 <div className="py-12 px-4 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
                                     <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 mx-auto flex items-center justify-center text-lg mb-2">
                                         <i className="ti ti-file-search" />
@@ -2748,11 +2365,11 @@ const EmployeeDashboard = () => {
                                             {isPending && (
                                                 <div className="pt-1">
                                                     <button
-                                                        disabled={acknowledgingId === record.id}
+                                                        disabled={acknowledgingId !== null}
                                                         onClick={() => handleAcknowledgeSingle(record.id)}
                                                         className="w-full h-9 bg-slate-900 hover:bg-black text-white font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer"
                                                     >
-                                                        {acknowledgingId === record.id ? (
+                                                        {acknowledgingId === record.id || acknowledgingId === 'all' ? (
                                                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                                         ) : (
                                                             <>
@@ -2801,6 +2418,7 @@ const EmployeeDashboard = () => {
                             {infractions.length > 1 ? (
                                 <button
                                     onClick={handleAcknowledgeAll}
+                                    disabled={acknowledgingId !== null}
                                     className="h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md shadow-2xs transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                                 >
                                     <i className="ti ti-checks text-sm" />

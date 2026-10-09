@@ -4,7 +4,12 @@ export async function documentRequest(endpoint, options) {
     const response = await fetchWithAuth(endpoint, options);
     let data;
     try { data = await response.json(); }
-    catch { throw new Error(`Document service returned an invalid response (${response.status}).`); }
+    catch (error) {
+        if (error?.name === 'AbortError' || (options?.signal?.aborted && error === options.signal.reason)) {
+            throw error;
+        }
+        throw new Error(`Document service returned an invalid response (${response.status}).`, { cause: error });
+    }
     if (!response.ok || !data.success) {
         const error = new Error(data.message || data.error || 'Document request failed.');
         error.status = response.status;
