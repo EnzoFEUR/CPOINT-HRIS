@@ -33,3 +33,6 @@ docs/
 # Supabase CLI temp files
 supabase/.temp/
 .temp/
+
+# Local regression tests
+/backend/tests/

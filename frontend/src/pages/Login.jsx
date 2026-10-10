@@ -100,8 +100,8 @@ export default function Login() {
     const lastOtpClickRef = useRef(0);
 
     // Persistent 60s cooldown hook across page reloads and tab navigations
-    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
-        'login_2fa_' + (email.trim().toLowerCase() || 'global'),
+    const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
+        'dest_email_' + ((employeeData?.email || email).trim().toLowerCase() || 'global'),
         60
     );
 
@@ -483,8 +483,7 @@ export default function Login() {
                 throw new Error(data.error || 'Failed to dispatch verification code');
             }
 
-            // Start resend cooldown (shorter for mock testing)
-            startCooldown(data.cooldown || (isMock ? 5 : 60));
+            startCooldown(data.cooldown || 60);
 
             // Ensure generatedOtp is null so it never renders in the OTP enter screen
             setGeneratedOtp(null);
@@ -589,7 +588,7 @@ export default function Login() {
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
 
-            // Clear 2FA temporary session, cooldown, and purge stale profile caches
+            // Clear temporary verification state; the server resend limit remains active.
             try {
                 sessionStorage.removeItem('cpoint_login_2fa_session');
                 Object.keys(sessionStorage).forEach((key) => {
@@ -598,7 +597,6 @@ export default function Login() {
                     }
                 });
                 sessionStorage.removeItem('cpoint_my_profile_cache');
-                clearCooldown();
             } catch {}
 
             // Broadcast real-time authentication update to all open tabs

@@ -1,204 +1,53 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
-import { verifyToken } from '../middleware/authMiddleware.js';
+import { assertDocumentId, assertDocumentOwner, documentChanged, documentRoute, ensureWritableEmployee, findDocument, listDocuments, normalizeDocumentPath, requireDocumentAdmin, validateDocumentInput } from '../services/documentService.js';
 
-const router = express.Router();
-
-// GET /api/documents - Fetch documents (global vault or employee specific)
-router.get('/', verifyToken, async (req, res) => {
-  try {
-    const { employee_id, status, category } = req.query;
-
-    let query = supabase
-      .from('employee_documents')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (employee_id) query = query.eq('employee_id', employee_id);
-    if (status) query = query.eq('status', status);
-    if (category) query = query.eq('category', category);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return res.json({ success: true, data, documents: data });
-  } catch (err) {
-    console.error('Error fetching employee documents:', err);
-    return res.status(500).json({ success: false, error: err.message || 'Server error', message: err.message });
-  }
-});
-
-// POST /api/documents - Record metadata after Supabase Storage upload
-router.post('/', verifyToken, async (req, res) => {
-  try {
-    const { employee_id, category, title, file_name, file_path, file_size, file_type } = req.body || {};
-
-    if (!employee_id || !file_path) {
-      return res.status(400).json({ success: false, error: 'employee_id and file_path are required' });
-    }
-
-    // Verify employee separation status
-    const { data: emp, error: empErr } = await supabase
-  .from('employees')
-  .select('id, operational_status, is_terminated')
-  .eq('id', employee_id)
-  .single();
-
-if (empErr || !emp) {
-  return res.status(404).json({ success: false, error: 'Employee not found' });
+// Authentication is applied at the /api/documents mount in index.js.
+export function createDocumentRouter(client = supabase) {
+    const router = express.Router();
+    router.use((req, res, next) => {
+        res.set('Cache-Control', 'private, no-store');
+        if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
+        next();
+    });
+    router.get('/', documentRoute(async (req, res) => {
+        const result = await listDocuments(client, req.user, req.query);
+        res.json({ success: true, ...result, data: result.documents });
+    }));
+    const recordMetadata = documentRoute(async (req, res) => {
+        const body = req.body || {};
+        const metadata = validateDocumentInput({ ...body, title: body.title || body.file_name });
+        assertDocumentOwner(req.user, metadata.employee_id);
+        await ensureWritableEmployee(client, metadata.employee_id);
+        const filePath = normalizeDocumentPath(body.file_path, metadata.employee_id, client.supabaseUrl);
+        const { data, error } = await client.from('employee_documents').insert({ ...metadata, file_name: body.file_name || metadata.title, file_path: filePath, file_size: body.file_size || null, status: 'pending' }).select().single();
+        if (error) throw error;
+        documentChanged(client, data.employee_id, data.id, 'uploaded', req.user);
+        res.status(req.path === '/record' ? 201 : 200).json({ success: true, data, document: data });
+    });
+    router.post('/', recordMetadata);
+    router.post('/record', recordMetadata);
+    router.patch('/:id/status', requireDocumentAdmin, documentRoute(async (req, res) => {
+        assertDocumentId(req.params.id);
+        const { status, rejection_reason } = req.body || {};
+        if (!['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ success: false, message: 'Invalid document status.' });
+        if (rejection_reason && (typeof rejection_reason !== 'string' || rejection_reason.length > 1000)) return res.status(400).json({ success: false, message: 'Rejection reason must be at most 1000 characters.' });
+        const document = await findDocument(client, req.params.id);
+        const { data, error } = await client.from('employee_documents').update({ status, rejection_reason: status === 'rejected' ? rejection_reason?.trim() || 'Document does not meet requirements.' : null, reviewed_at: new Date().toISOString(), reviewed_by: req.user.id }).eq('id', document.id).select().single();
+        if (error) throw error;
+        documentChanged(client, data.employee_id, data.id, 'reviewed', req.user);
+        res.json({ success: true, data });
+    }));
+    router.delete('/:id', requireDocumentAdmin, documentRoute(async (req, res) => {
+        const document = await findDocument(client, req.params.id);
+        const path = normalizeDocumentPath(document.file_path, document.employee_id, client.supabaseUrl);
+        const { error: storageError } = await client.storage.from('documents').remove([path]);
+        if (storageError) throw storageError;
+        const { error } = await client.from('employee_documents').delete().eq('id', document.id);
+        if (error) throw error;
+        documentChanged(client, document.employee_id, document.id, 'deleted', req.user);
+        res.json({ success: true });
+    }));
+    return router;
 }
-if (emp.operational_status === 'Terminated' || emp.is_terminated) {
-  return res.status(403).json({ success: false, error: 'Cannot upload documents for a separated/terminated employee' });
-}
-
-    const { data, error } = await supabase
-      .from('employee_documents')
-      .insert({
-        employee_id,
-        category: category || 'Other',
-        title: title || file_name,
-        file_name,
-        file_path,
-        file_size: file_size || null,
-        file_type: file_type || null,
-        status: 'pending',
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return res.json({ success: true, data });
-  } catch (err) {
-    console.error('Error creating employee document record:', err);
-    return res.status(500).json({ success: false, error: err.message || 'Server error' });
-  }
-});
-
-// POST /api/documents/record - Save document metadata (legacy endpoint)
-router.post('/record', verifyToken, async (req, res) => {
-  try {
-    const { employee_id, title, category, file_name, file_path } = req.body;
-
-    if (!employee_id) {
-      return res.status(400).json({ success: false, message: 'employee_id is required.' });
-    }
-
-    const [
-      { data: employee, error: empErr },
-      { data: termLog }
-    ] = await Promise.all([
-      supabase
-        .from('employees')
-        .select('id, first_name, last_name, operational_status, is_terminated')
-        .eq('id', employee_id)
-        .single(),
-      supabase
-        .from('disciplinary_logs')
-        .select('id')
-        .eq('employee_id', employee_id)
-        .eq('type', 'Termination')
-        .limit(1)
-    ]);
-
-    if (empErr || !employee) {
-      return res.status(404).json({ success: false, message: 'Employee not found.' });
-    }
-
-    const isTerminated = 
-  employee.operational_status === 'Terminated' || 
-  employee.is_terminated || 
-  Boolean(termLog && termLog.length > 0);
-
-    if (isTerminated) {
-      return res.status(403).json({
-        success: false,
-        code: 'ACCOUNT_TERMINATED',
-        message: 'Document records cannot be added for separated or terminated employee accounts.'
-      });
-    }
-
-    const { data, error } = await supabase
-      .from('employee_documents')
-      .insert([{
-        employee_id,
-        title,
-        category,
-        file_name,
-        file_path
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Log to Audit Trail
-    await supabase.from('audit_logs').insert([{
-      causer_id: req.user?.id,
-      log_name: 'DOCUMENT_UPLOAD',
-      description: `Uploaded 201 document (${title}) for employee ID ${employee_id}`,
-      properties: { document_id: data.id, category }
-    }]);
-
-    return res.status(201).json({ success: true, document: data });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// PATCH /api/documents/:id/status - Approve or Reject a document
-router.patch('/:id/status', verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, rejection_reason, reviewed_by } = req.body;
-
-    if (!['approved', 'rejected', 'pending'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid document status.' });
-    }
-
-    const updateData = {
-      status,
-      rejection_reason: status === 'rejected' ? rejection_reason || 'Document does not meet requirements.' : null,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: reviewed_by || req.user?.id || null
-    };
-
-    const { data, error } = await supabase
-      .from('employee_documents')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Log to Audit Trail
-    await supabase.from('audit_logs').insert([{
-      causer_id: req.user?.id,
-      log_name: 'DOCUMENT_STATUS_UPDATE',
-      description: `Updated document status to ${status.toUpperCase()} for document ID ${id}`,
-      properties: { document_id: id, status, rejection_reason }
-    }]);
-
-    return res.json({ success: true, data });
-  } catch (err) {
-    console.error('Error updating document status:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Server error.' });
-  }
-});
-
-// DELETE /api/documents/:id - Delete document metadata
-router.delete('/:id', verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { error } = await supabase.from('employee_documents').delete().eq('id', id);
-    if (error) throw error;
-
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Error deleting employee document:', err);
-    return res.status(500).json({ success: false, error: err.message || 'Server error' });
-  }
-});
-
-export default router;
+export default createDocumentRouter();

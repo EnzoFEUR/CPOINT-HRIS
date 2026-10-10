@@ -88,6 +88,11 @@ export const Sidebar = ({ user, handleLogout }) => {
               <span className="ml-3 font-medium tracking-wide">My Portal</span>
             </Link>
 
+            <Link to="/employee/documents" className="flex items-center px-4 py-3.5 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800/30 transition-colors">
+              <i className="ti ti-folders text-xl" />
+              <span className="ml-3 font-medium tracking-wide">My Documents</span>
+            </Link>
+
             <Link
               to="/employee/qr"
               className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors mt-1 ${

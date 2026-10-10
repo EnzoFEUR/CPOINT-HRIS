@@ -27,7 +27,7 @@ export default function OtpVerificationModal({
 
     // Scoped cooldown key based on identity
     const cooldownKey = `modal_otp_${(email || 'global').toLowerCase().trim()}`;
-    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(cooldownKey, 60);
+    const { cooldown, isCooldown, startCooldown } = useOtpCooldown(`dest_email_${(email || 'global').toLowerCase().trim()}`, 60);
 
     // TOTP status detection
     const [hasTotp, setHasTotp] = useState(() => {
@@ -64,20 +64,30 @@ export default function OtpVerificationModal({
     const verifyLockRef = useRef(false);
     const lastSendClickRef = useRef(0);
 
-    // Live background verification of TOTP status when modal opens
+    // Restore this purpose's active code and the shared send limit when the modal opens.
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
 
-        const checkTotpStatus = async () => {
+        const checkOtpStatus = async () => {
             try {
                 const targetId = email || sessionUser?.id || sessionUser?.company_id;
                 if (!targetId) return;
-                const res = await fetch(`${API_BASE_URL}/api/auth/totp/status?identifier=${encodeURIComponent(targetId)}`);
+                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status?identifier=${encodeURIComponent(targetId)}&purpose=modal_stepup`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (isMounted && typeof data.enabled === 'boolean') {
-                        setHasTotp(Boolean(data.enabled));
+                    if (!isMounted || !data.success) return;
+                    if (typeof data.hasTotp === 'boolean') {
+                        setHasTotp(data.hasTotp);
+                    }
+                    if (data.isCooldown && data.cooldownRemaining > 0) {
+                        startCooldown(data.cooldownRemaining);
+                    }
+                    if (data.hasActiveOtp && data.remainingSeconds > 0) {
+                        setExpiryTimer(data.remainingSeconds);
+                        try {
+                            sessionStorage.setItem(`cpoint_modal_exp_${cooldownKey}`, String(Date.now() + data.remainingSeconds * 1000));
+                        } catch { /* The active code remains usable without browser storage. */ }
                     }
                 }
             } catch {
@@ -85,11 +95,11 @@ export default function OtpVerificationModal({
             }
         };
 
-        checkTotpStatus();
+        checkOtpStatus();
         return () => {
             isMounted = false;
         };
-    }, [isOpen, email, sessionUser]);
+    }, [isOpen, email, sessionUser, startCooldown, cooldownKey]);
 
     useEffect(() => {
         let timer;
@@ -202,8 +212,7 @@ export default function OtpVerificationModal({
                 throw new Error(data.error || 'Failed to dispatch email verification code.');
             }
 
-            // Start persistent cooldown (shorter for mock testing)
-            startCooldown(data.cooldown || (isMock ? 5 : 60));
+            startCooldown(data.cooldown || 60);
 
             // Persist code expiration timestamp
             const activeSeconds = data.expiresIn || 300;
@@ -312,7 +321,6 @@ export default function OtpVerificationModal({
 
                 try {
                     sessionStorage.removeItem(`cpoint_modal_exp_${cooldownKey}`);
-                    clearCooldown();
                 } catch {}
 
                 toast.success('Identity verified successfully');
@@ -333,7 +341,7 @@ export default function OtpVerificationModal({
             verifyLockRef.current = false;
             setIsVerifying(false);
         }
-    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, clearCooldown, onSuccess, onClose]);
+    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose]);
 
     const handleInputChange = (index, value) => {
         const cleanVal = value.replace(/\D/g, '');
