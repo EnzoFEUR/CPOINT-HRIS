@@ -37,14 +37,10 @@ const reconcileClientAttendance = ({ employee, attendances = [], leaves = [], ho
     const targetMonth = `${year}-${String(monthNum).padStart(2, '0')}`;
     const lastDayOfMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
 
-    let restDays = [0];
-    const dept = (employee?.department || '').toLowerCase();
+    // Everyone works Monday to Friday: Saturday (6) and Sunday (0) are rest days
+    let restDays = [0, 6];
     if (Array.isArray(employee?.rest_days) && employee.rest_days.length > 0) {
         restDays = employee.rest_days.map(Number);
-    } else if (dept.includes('office') || dept.includes('management') || dept.includes('hr')) {
-        restDays = [0, 6];
-    } else {
-        restDays = [0];
     }
 
     const attendanceMap = new Map();
@@ -228,6 +224,58 @@ const reconcileClientAttendance = ({ employee, attendances = [], leaves = [], ho
     };
 };
 
+// Company lateness rule (same as the kiosk scanner): call time is 8:00 AM with no grace period.
+// A punch is LATE as soon as it is after 8:00 AM; "minutes late" is measured from 8:00 AM.
+const CALL_TIME_MINUTES = 8 * 60;
+const LATE_AFTER_MINUTES = CALL_TIME_MINUTES;
+
+const manilaMinutesOf = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(d);
+    return Number(parts.find(p => p.type === 'hour').value) * 60 + Number(parts.find(p => p.type === 'minute').value);
+};
+
+// Re-derives Present/Late, minutes late and the late/on-time summary from the actual time-in,
+// so the calendar follows the rule above regardless of what the server or fallback returned.
+const applyLatenessRule = (data) => {
+    if (!data || !Array.isArray(data.days)) return data;
+    let daysLate = 0;
+    let daysOnTime = 0;
+    let totalLateMinutes = 0;
+
+    const days = data.days.map((d) => {
+        if (!d.time_in || (d.status !== 'PRESENT' && d.status !== 'LATE')) return d;
+        const mins = manilaMinutesOf(d.time_in);
+        if (mins === null) return d;
+        const isLate = mins > LATE_AFTER_MINUTES;
+        const minutesLate = isLate ? Math.max(0, mins - CALL_TIME_MINUTES) : 0;
+        if (isLate) { daysLate++; totalLateMinutes += minutesLate; } else { daysOnTime++; }
+        return {
+            ...d,
+            status: isLate ? 'LATE' : 'PRESENT',
+            status_label: isLate ? `Late (${minutesLate} mins)` : 'Present (On Time)',
+            minutes_late: minutesLate
+        };
+    });
+
+    const worked = daysLate + daysOnTime;
+    return {
+        ...data,
+        days,
+        summary: {
+            ...data.summary,
+            days_late: daysLate,
+            days_on_time: daysOnTime,
+            total_late_minutes: totalLateMinutes,
+            punctuality_rate_pct: worked > 0 ? Number(((daysOnTime / worked) * 100).toFixed(1)) : 100
+        }
+    };
+};
+
 export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isEmployeeView = false, className = '' }) {
     // Strictly restricted to administrative workforce view
     if (isEmployeeView) {
@@ -243,12 +291,35 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
         return `${y}-${m}`;
     }, []);
 
-    const [selectedMonth, setSelectedMonth] = useState(todayMonthStr);
+    // Deep link from the dashboard: ?filter=worked|late|absent|leave&month=YYYY-MM
+    // Read straight from the URL so this works wherever the calendar is mounted (no router hook needed)
+    const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const urlFilter = urlParams.get('filter');
+    const urlMonth = urlParams.get('month');
+    const validUrlFilter = ['worked', 'present', 'late', 'absent', 'leave'].includes(urlFilter) ? urlFilter : null;
+    const validUrlMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(urlMonth || '') ? urlMonth : null;
+
+    const [selectedMonth, setSelectedMonth] = useState(validUrlMonth || todayMonthStr);
     const [viewMode, setViewMode] = useState('grid');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState(validUrlFilter || 'all');
     const [selectedDayDetail, setSelectedDayDetail] = useState(null);
 
-    const hasCheckedActiveMonth = useRef(false);
+    // Don't let the "jump to latest month with records" auto-focus override a requested month
+    const hasCheckedActiveMonth = useRef(Boolean(validUrlMonth));
+    const rootRef = useRef(null);
+
+    // Re-apply when the link changes, and bring the audit into view
+    useEffect(() => {
+        if (validUrlMonth) {
+            hasCheckedActiveMonth.current = true;
+            setSelectedMonth(validUrlMonth);
+        }
+        if (validUrlFilter) setStatusFilter(validUrlFilter);
+        if (validUrlFilter || validUrlMonth) {
+            const t = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+            return () => clearTimeout(t);
+        }
+    }, [validUrlFilter, validUrlMonth]);
 
     const [year, monthNum] = useMemo(() => {
         const [y, m] = selectedMonth.split('-');
@@ -362,7 +433,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 const res = await fetchWithAuth(`/api/attendance/employee-monthly?employee_id=${activeEmpId}&month=${selectedMonth}`);
                 const json = await res.json();
                 if (res.ok && (json.success || json.status === 'success') && json.data) {
-                    return json.data;
+                    return applyLatenessRule(json.data);
                 }
             } catch (apiErr) {
                 console.warn('API monthly attendance note, falling back to direct Supabase query:', apiErr);
@@ -380,14 +451,14 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                 supabase.from('holidays').select('*').gte('date', startDate).lte('date', endDate)
             ]);
 
-            return reconcileClientAttendance({
+            return applyLatenessRule(reconcileClientAttendance({
                 employee: empRes.data,
                 attendances: attRes.data || [],
                 leaves: leavesRes.data || [],
                 holidays: holidaysRes.data || [],
                 year,
                 monthNum
-            });
+            }));
         },
         enabled: Boolean(activeEmpId),
         staleTime: 30_000,
@@ -452,9 +523,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
     const filteredDays = useMemo(() => {
         if (statusFilter === 'all') return allDays;
         if (statusFilter === 'present') return allDays.filter(d => d.status === 'PRESENT');
+        if (statusFilter === 'worked') return allDays.filter(d => d.status === 'PRESENT' || d.status === 'LATE');
         if (statusFilter === 'late') return allDays.filter(d => d.status === 'LATE');
         if (statusFilter === 'absent') return allDays.filter(d => d.status === 'ABSENT');
-        if (statusFilter === 'leave') return allDays.filter(d => d.status === 'APPROVED_LEAVE' || d.status === 'HOLIDAY');
+        if (statusFilter === 'leave') return allDays.filter(d => d.status === 'APPROVED_LEAVE' || d.status === 'HOLIDAY' || d.holiday);
         return allDays;
     }, [allDays, statusFilter]);
 
@@ -558,7 +630,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
     };
 
     return (
-        <div className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative ${className}`}>
+        <div ref={rootRef} className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative scroll-mt-4 ${className}`}>
             {/* Header Toolbar */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 pb-4 border-b border-slate-100">
                 <div className="flex items-start sm:items-center gap-3">
@@ -748,7 +820,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     type="button"
                     onClick={() => setStatusFilter('present')}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
-                        statusFilter === 'present'
+                        (statusFilter === 'present' || statusFilter === 'worked')
                             ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                             : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
                     }`}
@@ -824,9 +896,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             const theme = getStatusTheme(item);
                             const matchesFilter = statusFilter === 'all' || 
                                 (statusFilter === 'present' && item.status === 'PRESENT') ||
+                                (statusFilter === 'worked' && (item.status === 'PRESENT' || item.status === 'LATE')) ||
                                 (statusFilter === 'late' && item.status === 'LATE') ||
                                 (statusFilter === 'absent' && item.status === 'ABSENT') ||
-                                (statusFilter === 'leave' && (item.status === 'APPROVED_LEAVE' || item.status === 'HOLIDAY'));
+                                (statusFilter === 'leave' && (item.status === 'APPROVED_LEAVE' || item.status === 'HOLIDAY' || item.holiday));
 
                             return (
                                 <div

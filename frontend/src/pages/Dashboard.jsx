@@ -35,14 +35,39 @@ const formatDisplayName = (name) => {
     return name;
 };
 
+// Lateness rule (same as the kiosk): call time 8:00 AM Manila, no grace period -> late after 8:00 AM
+const LATE_AFTER_MINUTES = 8 * 60;
+const isLatePunch = (att) => {
+    if (!att?.time_in) return false;
+    const d = new Date(att.time_in);
+    if (Number.isNaN(d.getTime())) return false;
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d);
+    const mins = Number(parts.find(p => p.type === 'hour').value) * 60 + Number(parts.find(p => p.type === 'minute').value);
+    return mins > LATE_AFTER_MINUTES;
+};
+
 export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
     const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
     const [activeModal, setActiveModal] = useState(null); // 'present' | 'late' | null
     const [expandedRiskFlag, setExpandedRiskFlag] = useState(null); // index of expanded burnout row, or null
-    const [expandedDoleCheck, setExpandedDoleCheck] = useState(false); // whether the rest-day violations list is open
-    const [acknowledged, setAcknowledged] = useState({}); // client-only "seen" state, not persisted — key -> true
+    const [expandedDole, setExpandedDole] = useState(null); // 'rest' | 'holiday' | null
+    // Flags are auto-acknowledged when the admin opens the employee's attendance audit.
+    // Stored in this browser only (no database yet); a new occurrence gets a new flag id and resurfaces.
+    const [acknowledged, setAcknowledged] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('cpoint.acknowledgedFlags') || '{}'); } catch { return {}; }
+    });
+    const acknowledgeFlag = (id) => {
+        setAcknowledged(prev => {
+            const next = { ...prev, [id]: true };
+            try { localStorage.setItem('cpoint.acknowledgedFlags', JSON.stringify(next)); } catch { /* storage unavailable */ }
+            return next;
+        });
+    };
+    // Opens the employee's Monthly Work Schedule & Attendance Audit pre-filtered to the evidence
+    const auditPath = (item) =>
+        `/admin/employees/${item.employee_id}?filter=${item.filter}&month=${item.audit_month}`;
 
     // Overview data query with Dual-Layer API + Direct Supabase Fallback
     const { data: overviewData, isLoading } = useQuery({
@@ -121,7 +146,7 @@ export default function Dashboard() {
             attendances.forEach(att => {
                 if (att.date === todayStr) {
                     presentTodayCount++;
-                    if ((att.status || '').toLowerCase().includes('late')) {
+                    if (isLatePunch(att)) {
                         lateTodayCount++;
                     }
                     if (recentLogs.length < 5) {
@@ -267,7 +292,7 @@ export default function Dashboard() {
             department_needs_attention: late > 3 ? 'Production Floor' : 'None',
             key_insights: [
                 `Active operational capacity operating at ${rate}% across scheduled shifts.`,
-                late > 0 ? `${late} late arrival(s) logged against morning shift grace periods.` : 'High morning punctuality maintained across all departments.'
+                late > 0 ? `${late} late arrival(s) logged after the 8:00 AM call time.` : 'High morning punctuality maintained across all departments.'
             ],
             actionable_recommendations: [
                 'Continue monitoring gate scanner biometrics and active shift capacity.',
@@ -385,10 +410,12 @@ export default function Dashboard() {
 
     // Anomaly Risk Flags (memoized)
     const riskFlags = useMemo(() => {
-        const burnoutAlerts = anomalyData?.report?.burnout_risk_alerts || [];
-        const latePatterns = anomalyData?.report?.frequent_late_patterns || [];
-        return [...burnoutAlerts, ...latePatterns].slice(0, 3);
+        return anomalyData?.report?.risk_flags || [];
     }, [anomalyData]);
+    const activeFlagCount = riskFlags.filter(f => !acknowledged[f.id]).length;
+    const visibleFlags = [...riskFlags]
+        .sort((a, b) => Number(!!acknowledged[a.id]) - Number(!!acknowledged[b.id]))
+        .slice(0, 5);
 
     if (isLoading || !dashboardData) {
         return (
@@ -565,7 +592,7 @@ export default function Dashboard() {
                         {lateTodayCount}
                     </h3>
                     <span className="text-xs font-semibold text-warning-ink mt-2 flex items-center gap-1">
-                        <i className="ti ti-alert-triangle" /> Past grace period &middot; <span className="group-hover:underline">View list &rarr;</span>
+                        <i className="ti ti-alert-triangle" /> After 8:00 AM &middot; <span className="group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
 
@@ -631,17 +658,17 @@ export default function Dashboard() {
                             </h3>
                         </div>
                         <span className="px-2 py-0.5 bg-danger-subtle text-danger-ink text-[10px] font-bold uppercase rounded-md border border-danger/20">
-                            {isAnomalyLoading ? '...' : `${riskFlags.length} active flag${riskFlags.length === 1 ? '' : 's'}`}
+                            {isAnomalyLoading ? '...' : `${activeFlagCount} active flag${activeFlagCount === 1 ? '' : 's'}`}
                         </span>
                     </div>
 
                     <div className="space-y-2.5">
-                        {riskFlags.length > 0 ? riskFlags.map((flag, i) => {
-                            const key = `${flag.employee_name || i}-${flag.reason || flag.pattern || i}`;
+                        {visibleFlags.length > 0 ? visibleFlags.map((flag, i) => {
                             const isOpen = expandedRiskFlag === i;
-                            const isAck = !!acknowledged[key];
+                            const isAck = !!acknowledged[flag.id];
+                            const filterLabel = { worked: 'Days worked', absent: 'Absences', late: 'Late arrivals', leave: 'Holidays' }[flag.filter] || 'Attendance';
                             return (
-                                <div key={i} className={`rounded-md border transition-colors duration-100 ${isOpen ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+                                <div key={flag.id} className={`rounded-md border transition-colors duration-100 ${isOpen ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50'}`}>
                                     <button
                                         type="button"
                                         onClick={() => setExpandedRiskFlag(isOpen ? null : i)}
@@ -651,9 +678,7 @@ export default function Dashboard() {
                                             <i className={`ti ti-chevron-right text-slate-400 text-sm shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                                             <div className="min-w-0">
                                                 <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(flag.employee_name)}</p>
-                                                <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
-                                                    {flag.reason || flag.pattern || `${flag.department} • ${flag.late_count} late(s)`}
-                                                </p>
+                                                <p className="text-[10px] text-slate-500 font-medium uppercase truncate">{flag.reason}</p>
                                             </div>
                                         </div>
                                         <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 ${isAck ? 'bg-slate-100 text-slate-500 border-slate-300' : (RISK_STYLES[flag.severity] || RISK_STYLES.Low)}`}>
@@ -664,25 +689,16 @@ export default function Dashboard() {
                                     {isOpen && (
                                         <div className="px-3 pb-3 pt-0.5 space-y-2.5 border-t border-slate-100 mt-1">
                                             <p className="text-[11px] text-slate-500 font-medium pt-2.5">
-                                                {flag.department ? `${flag.department} · ` : ''}
-                                                {flag.reason || flag.pattern || 'Attendance issue flagged in the last 30 days.'}
+                                                {flag.department} · {flag.reason} ({flag.start_date} to {flag.end_date})
                                             </p>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
-                                                    className="h-8 px-2.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-100 cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                                                >
-                                                    <i className={`ti ${isAck ? 'ti-circle-check-filled text-ink' : 'ti-circle text-slate-400'}`} />
-                                                    {isAck ? 'Acknowledged' : 'Acknowledge'}
-                                                </button>
-                                                <Link
-                                                    to="/admin/attendance"
-                                                    className="h-8 px-2.5 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-100 cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                                                >
-                                                    <i className="ti ti-history text-slate-500" /> View attendance
-                                                </Link>
-                                            </div>
+                                            <Link
+                                                to={auditPath(flag)}
+                                                onClick={() => acknowledgeFlag(flag.id)}
+                                                className="h-8 px-2.5 w-fit bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-100 cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                            >
+                                                <i className="ti ti-calendar-search text-slate-500" /> Review in attendance audit
+                                                <span className="text-slate-400">· {filterLabel}</span>
+                                            </Link>
                                         </div>
                                     )}
                                 </div>
@@ -783,67 +799,60 @@ export default function Dashboard() {
                     <div className="space-y-2.5">
                         {doleCompliance ? (
                             <>
-                                <div className="border border-slate-200 rounded-md overflow-hidden">
-                                    <button
-                                        type="button"
-                                        onClick={() => setExpandedDoleCheck(prev => !prev)}
-                                        disabled={doleCompliance.restDay.violations.length === 0}
-                                        className={`w-full p-3 bg-slate-50 flex items-center justify-between text-xs text-left ${doleCompliance.restDay.violations.length > 0 ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'} transition-colors duration-100`}
-                                    >
-                                        <div className="flex items-center gap-2 font-semibold text-slate-700">
-                                            {doleCompliance.restDay.violations.length > 0 && (
-                                                <i className={`ti ti-chevron-right text-slate-400 text-sm transition-transform ${expandedDoleCheck ? 'rotate-90' : ''}`} />
-                                            )}
-                                            <i className={`ti ${doleCompliance.restDay.violations.length === 0 ? 'ti-circle-check-filled text-ink' : 'ti-alert-circle-filled text-ink'} text-base`} />
-                                            <span>{doleCompliance.restDay.label}</span>
-                                        </div>
-                                        <span className={`font-mono text-[11px] font-bold ${doleCompliance.restDay.violations.length === 0 ? 'text-ink' : 'text-ink'}`}>
-                                            {doleCompliance.restDay.status}
-                                        </span>
-                                    </button>
+                                {[
+                                    { key: 'rest', data: doleCompliance.restDay, items: doleCompliance.restDay.violations, okText: 'text-ink' },
+                                    { key: 'holiday', data: doleCompliance.holidayMultiplier, items: doleCompliance.holidayMultiplier.employees || [], okText: 'text-ink' },
+                                ].map(({ key, data, items }) => {
+                                    const hasItems = items.length > 0;
+                                    const isOpen = expandedDole === key;
+                                    return (
+                                        <div key={key} className="border border-slate-200 rounded-md overflow-hidden">
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedDole(isOpen ? null : key)}
+                                                disabled={!hasItems}
+                                                className={`w-full p-3 bg-slate-50 flex items-center justify-between text-xs text-left ${hasItems ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'} transition-colors duration-100`}
+                                            >
+                                                <div className="flex items-center gap-2 font-semibold text-slate-700">
+                                                    {hasItems && (
+                                                        <i className={`ti ti-chevron-right text-slate-400 text-sm transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                                                    )}
+                                                    <i className={`ti ${hasItems ? 'ti-alert-circle-filled' : 'ti-circle-check-filled'} text-ink text-base`} />
+                                                    <span>{data.label}</span>
+                                                </div>
+                                                <span className="font-mono text-[11px] font-bold text-ink">{data.status}</span>
+                                            </button>
 
-                                    {expandedDoleCheck && doleCompliance.restDay.violations.length > 0 && (
-                                        <div className="p-3 pt-2.5 space-y-2 border-t border-slate-200 bg-white">
-                                            {doleCompliance.restDay.violations.map((v) => {
-                                                const key = `dole-${v.employee_id}`;
-                                                const isAck = !!acknowledged[key];
-                                                return (
-                                                    <div key={v.employee_id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-between gap-2 flex-wrap">
-                                                        <div className="min-w-0">
-                                                            <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(v.name)}</p>
-                                                            <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
-                                                                {v.department} · {v.consecutive_days} consecutive days · through {v.streak_end_date}
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 shrink-0">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setAcknowledged(prev => ({ ...prev, [key]: !prev[key] }))}
-                                                                className={`h-7 px-2.5 rounded-md text-[10px] font-medium border cursor-pointer transition-colors duration-100 shadow-2xs ${isAck ? 'bg-surface-muted text-ink border-line' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
-                                                            >
-                                                                {isAck ? 'Acknowledged' : 'Acknowledge'}
-                                                            </button>
-                                                            <Link
-                                                                to="/admin/attendance"
-                                                                className="h-7 px-2.5 rounded-md text-[10px] font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors duration-100 shadow-2xs flex items-center gap-1"
-                                                            >
-                                                                <i className="ti ti-history text-slate-400" />
-                                                                <span>View logs</span>
-                                                            </Link>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                            {isOpen && hasItems && (
+                                                <div className="p-3 pt-2.5 space-y-2 border-t border-slate-200 bg-white">
+                                                    {items.map((v) => {
+                                                        const isAck = !!acknowledged[v.id];
+                                                        return (
+                                                            <div key={v.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-between gap-2 flex-wrap">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-xs font-bold text-slate-900 truncate">{formatDisplayName(v.name)}</p>
+                                                                    <p className="text-[10px] text-slate-500 font-medium uppercase truncate">
+                                                                        {key === 'rest'
+                                                                            ? `${v.department} · ${v.consecutive_days} consecutive days · through ${v.streak_end_date}`
+                                                                            : `${v.department} · worked holiday ${v.dates.join(', ')}`}
+                                                                    </p>
+                                                                </div>
+                                                                <Link
+                                                                    to={auditPath(v)}
+                                                                    onClick={() => acknowledgeFlag(v.id)}
+                                                                    className="h-7 px-2.5 rounded-md text-[10px] font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors duration-100 shadow-2xs flex items-center gap-1 shrink-0"
+                                                                >
+                                                                    <i className="ti ti-calendar-search text-slate-400" />
+                                                                    <span>{isAck ? 'Reviewed · Open again' : 'Review in attendance audit'}</span>
+                                                                </Link>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2 font-semibold text-slate-700">
-                                        <i className="ti ti-circle-check-filled text-ink text-base" />
-                                        <span>{doleCompliance.holidayMultiplier.label}</span>
-                                    </div>
-                                    <span className="font-mono text-[11px] font-bold text-ink">{doleCompliance.holidayMultiplier.status}</span>
-                                </div>
+                                    );
+                                })}
                             </>
                         ) : (
                             <p className="text-xs text-slate-400 font-medium py-6 text-center">Compliance data unavailable.</p>
@@ -932,10 +941,10 @@ export default function Dashboard() {
                                 </div>
                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
                                     log.status?.toLowerCase().includes('absent') ? 'bg-danger-subtle text-danger-ink border-danger/20' :
-                                    log.status?.includes('Late') ? 'bg-warning-subtle text-warning-ink border-warning/20' : 
+                                    isLatePunch(log) ? 'bg-warning-subtle text-warning-ink border-warning/20' : 
                                     'bg-slate-900 text-white border-slate-800'
                                 }`}>
-                                    {log.status}
+                                    {isLatePunch(log) ? 'Late' : (log.status?.toLowerCase().includes('late') ? 'Present' : log.status)}
                                 </span>
                             </div>
                         )) : (
@@ -964,7 +973,7 @@ export default function Dashboard() {
                                 <p className="text-xs text-slate-500 font-medium">
                                     {activeModal === 'present'
                                         ? `${presentTodayCount} of ${totalStaff} on-site · Shift start ${attendanceDetail?.shiftStart || '8:00 AM'}`
-                                        : `${lateTodayCount} clocked in past ${attendanceDetail?.shiftStart || '8:00 AM'}`}
+                                        : `${lateTodayCount} clocked in after ${attendanceDetail?.shiftStart || '8:00 AM'}`}
                                 </p>
                             </div>
                             <button
@@ -1022,11 +1031,11 @@ export default function Dashboard() {
                                                 </span>
                                             ) : (
                                                 <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border shrink-0 ${
-                                                    person.status?.toLowerCase().includes('late')
+                                                    person.isLate
                                                         ? 'bg-warning-subtle text-warning-ink border-warning/20'
                                                         : 'bg-slate-900 text-white border-slate-800'
                                                 }`}>
-                                                    {person.status || 'On time'}
+                                                    {person.isLate ? 'Late' : 'Present'}
                                                 </span>
                                             )}
                                         </div>

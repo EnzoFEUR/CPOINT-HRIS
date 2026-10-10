@@ -2,8 +2,13 @@ import { supabase } from '../supabaseClient.js';
 import { isWorkforceEmployee } from './workforce.js';
 
 const TIMEZONE = 'Asia/Manila';
-const CALL_TIME_HOUR = parseInt(process.env.CALL_TIME_HOUR, 10) ?? 8;
-const CALL_TIME_MINUTE = parseInt(process.env.CALL_TIME_MINUTE, 10) ?? 0;
+// NOTE: parseInt(undefined) is NaN, and `NaN ?? 8` stays NaN - so the defaults must be applied explicitly.
+const envInt = (value, fallback) => {
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? fallback : n;
+};
+const CALL_TIME_HOUR = envInt(process.env.CALL_TIME_HOUR, 8);
+const CALL_TIME_MINUTE = envInt(process.env.CALL_TIME_MINUTE, 0);
 
 /**
  * Format a Date object to YYYY-MM-DD in Asia/Manila timezone
@@ -131,19 +136,11 @@ export async function getEmployeeMonthlyAttendance({ employeeId, month }) {
     if (holidaysRes.error) throw new Error(`Database error fetching holidays: ${holidaysRes.error.message}`);
 
     // Determine Rest Days
-    // Defaults to [0] (Sunday) for standard manufacturing work schedule (Mon-Sat, 6-day week)
-    let restDays = [0];
-    const dept = (employee.department || '').toLowerCase();
-    const shiftText = (employee.shift || '').toLowerCase();
-
+    // Everyone works Monday to Friday: Saturday (6) and Sunday (0) are rest days.
+    // An explicit employee.rest_days array (if the column exists) still overrides this.
+    let restDays = [0, 6];
     if (Array.isArray(employee.rest_days) && employee.rest_days.length > 0) {
         restDays = employee.rest_days.map(Number);
-    } else if (dept.includes('office') || dept.includes('management') || dept.includes('hr')) {
-        // Corporate 5-day week: Sat (6) and Sun (0)
-        restDays = [0, 6];
-    } else {
-        // Production / Factory standard 6-day week: Sunday (0)
-        restDays = [0];
     }
 
     // Determine Hire Date
@@ -276,12 +273,13 @@ export async function getEmployeeMonthlyAttendance({ employeeId, month }) {
             const totalMinutes = hour * 60 + minute;
             const scheduledCallMinutes = CALL_TIME_HOUR * 60 + CALL_TIME_MINUTE;
 
+            // No grace period: anything after call time (8:00 AM) is late, measured in minutes from
+            // call time. The stored status text is not used.
             if (totalMinutes > scheduledCallMinutes) {
                 minutesLate = totalMinutes - scheduledCallMinutes;
             }
 
-            const rawStatus = (attendanceLog.status || '').toLowerCase();
-            const isMarkedLate = rawStatus.includes('late') || minutesLate > 0;
+            const isMarkedLate = minutesLate > 0;
 
             if (isMarkedLate) {
                 status = 'LATE';

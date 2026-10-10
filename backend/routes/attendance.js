@@ -16,9 +16,10 @@ const CONFIG = Object.freeze({
     ENROLLMENT_CONFIDENCE_MIN: parseFloat(process.env.ENROLLMENT_CONFIDENCE_MIN) || 0.60,
   },
   ATTENDANCE: {
-    GRACE_PERIOD_MINUTES: parseInt(process.env.GRACE_PERIOD_MINUTES, 10) || 120, // 2-Hour (120 mins) Grace Period
-    CALL_TIME_HOUR: parseInt(process.env.CALL_TIME_HOUR, 10) ?? 8,
-    CALL_TIME_MINUTE: parseInt(process.env.CALL_TIME_MINUTE, 10) ?? 0,
+    GRACE_PERIOD_MINUTES: Number.isNaN(parseInt(process.env.GRACE_PERIOD_MINUTES, 10)) ? 0 : parseInt(process.env.GRACE_PERIOD_MINUTES, 10), // No grace period: late right after call time
+    // parseInt(undefined) is NaN and `NaN ?? 8` stays NaN, so apply the defaults explicitly
+    CALL_TIME_HOUR: Number.isNaN(parseInt(process.env.CALL_TIME_HOUR, 10)) ? 8 : parseInt(process.env.CALL_TIME_HOUR, 10),
+    CALL_TIME_MINUTE: Number.isNaN(parseInt(process.env.CALL_TIME_MINUTE, 10)) ? 0 : parseInt(process.env.CALL_TIME_MINUTE, 10),
     TIMEZONE: process.env.TZ || 'Asia/Manila',
   },
   RATE_LIMITS: {

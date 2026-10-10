@@ -540,6 +540,19 @@ export default function Show() {
         return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+    // Status flags + disciplinary standing must be computed BEFORE the loading early-return
+    // below, otherwise useMemo runs on some renders and not others (hooks-order crash).
+    const isSuspended = employee?.operational_status === 'Suspended' || employee?.is_suspended || employee?.status === 'suspended';
+    const isTerminated = !isSuspended && (employee?.operational_status === 'Terminated' || employee?.is_terminated || employee?.status === 'terminated' || (Boolean(employee?.archived_at) && employee?.status !== 'active'));
+
+    const standing = useMemo(() => computeDisciplinaryStanding({
+        isTerminated,
+        isSuspended,
+        status: employee?.status,
+        operational_status: employee?.operational_status,
+        disciplinaryLogs
+    }), [isTerminated, isSuspended, employee?.status, employee?.operational_status, disciplinaryLogs]);
+
     // Unconditional hook declarations complete - now safe for conditional early return
     if (isLoading || !employee) {
         return (
@@ -561,16 +574,6 @@ export default function Show() {
         employee.hourly_rate ?? 
         (dailyRate ? dailyRate / 8 : 0)
     );
-    const isSuspended = employee.operational_status === 'Suspended' || employee.is_suspended || employee.status === 'suspended';
-    const isTerminated = !isSuspended && (employee.operational_status === 'Terminated' || employee.is_terminated || employee.status === 'terminated' || (Boolean(employee.archived_at) && employee.status !== 'active'));
-
-    const standing = useMemo(() => computeDisciplinaryStanding({
-        isTerminated,
-        isSuspended,
-        status: employee?.status,
-        operational_status: employee?.operational_status,
-        disciplinaryLogs
-    }), [isTerminated, isSuspended, employee?.status, employee?.operational_status, disciplinaryLogs]);
 
     // Termination cooldown: a separated employee stays visually flagged (grayed
     // out) but not yet finalized for this many days after their effective
