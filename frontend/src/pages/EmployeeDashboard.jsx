@@ -1,4 +1,4 @@
-import SilCashEarnings from '../components/SilCashEarnings';
+import { SilCashEarnings } from '../components/SilPaymentCard';
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
