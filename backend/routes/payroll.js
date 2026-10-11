@@ -1797,33 +1797,72 @@ router.post('/bulk-delete', async (req, res) => {
             return res.status(400).json({ error: `Invalid payroll ID format: ${invalidIds.join(', ')}` });
         }
 
-        const { error, count } = await supabase.from('payrolls').delete({ count: 'exact' }).in('id', ids);
-        if (error) throw error;
+        const actorId = req.user?.id || req.body?.admin_id || null;
+        const validActorId = actorId && isValidUUID(actorId) ? actorId : null;
+
+        const { data, error } = await supabase.rpc('delete_payroll_records_bulk', {
+            p_payroll_ids: ids,
+            p_actor_id: validActorId,
+        });
+
+        let deletedCount = ids.length;
+        if (error) {
+            console.error('delete_payroll_records_bulk RPC error:', error);
+            const { error: directError, count } = await supabase.from('payrolls').delete({ count: 'exact' }).in('id', ids);
+            if (directError) throw directError;
+            deletedCount = count ?? ids.length;
+        } else if (data && typeof data.deleted_count === 'number') {
+            deletedCount = data.deleted_count;
+        }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
         broadcastPayrollUpdate('PAYROLL_BULK_DELETED', { ids });
-        const deletedCount = count ?? ids.length;
         res.json({ success: true, deleted_count: deletedCount, message: `${deletedCount} payroll record(s) deleted successfully.` });
     } catch (err) {
-        res.status(err.code === '23503' ? 409 : 500).json({ error: err.code === '23503' ? 'This payslip contains a paid SIL cash-out and must be kept as a payment record.' : err.message });
+        console.error('bulk-delete payroll error:', err);
+        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        res.status(isConflict ? 409 : 500).json({
+            error: isConflict
+                ? 'This payslip is locked or contains linked records that prevent deletion.'
+                : err.message
+        });
     }
 });
 
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || id.length > 128) {
+        if (!id || !isValidUUID(id)) {
             return res.status(400).json({ status: 'error', code: 'INVALID_ID', message: 'Invalid Payroll ID format.' });
         }
 
-        const { error } = await supabase.from('payrolls').delete().eq('id', id);
-        if (error) throw error;
+        const actorId = req.user?.id || req.body?.admin_id || null;
+        const validActorId = actorId && isValidUUID(actorId) ? actorId : null;
+
+        const { data, error } = await supabase.rpc('delete_payroll_record', {
+            p_payroll_id: id,
+            p_actor_id: validActorId,
+        });
+
+        if (error) {
+            console.error('delete_payroll_record RPC error:', error);
+            const { error: directError } = await supabase.from('payrolls').delete().eq('id', id);
+            if (directError) throw directError;
+        } else if (data && data.success === false) {
+            return res.status(404).json({ status: 'error', code: 'NOT_FOUND', message: data.message || 'Payroll record not found.' });
+        }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
         broadcastPayrollUpdate('PAYROLL_DELETED', { id });
         res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
-        res.status(err.code === '23503' ? 409 : 500).json({ error: err.code === '23503' ? 'This payslip contains a paid SIL cash-out and must be kept as a payment record.' : err.message });
+        console.error('delete payroll error:', err);
+        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        res.status(isConflict ? 409 : 500).json({
+            error: isConflict
+                ? 'This payslip is locked or contains linked records that prevent deletion.'
+                : err.message
+        });
     }
 });
 
