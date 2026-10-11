@@ -53,6 +53,7 @@ export const isAttendanceExempt = (employee) => {
 export const isWorkforceEmployee = (employee) => {
     if (!employee) return false;
     if (!employee.company_id) return false;
+    if (employee.status && employee.status !== 'active') return false;
     const role = (employee.role || '').toLowerCase();
     if (role && role !== 'employee') return false;
     return !isAttendanceExempt(employee);

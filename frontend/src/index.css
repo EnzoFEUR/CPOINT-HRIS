@@ -213,3 +213,45 @@ img,
   border: 1px solid #1e293b;
   color: #f8fafc;
 }
+
+/* --- Enterprise Print & Payslip Document Isolation System --- */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm 8mm 10mm;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #root {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Universal hide for app chrome and interactive elements */
+  .no-print,
+  .print\:hidden,
+  aside,
+  header,
+  nav,
+  footer,
+  [data-print-hide] {
+    display: none !important;
+  }
+}

@@ -7,52 +7,61 @@ import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
 
-const SESSION_CACHE_KEY = 'cpoint_admin_daily_attendance_logs';
+const SESSION_CACHE_KEY = 'cpoint_admin_daily_attendance_logs_v2';
+
+const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 const Index = () => {
     const queryClient = useQueryClient();
 
-    // 0ms cold-start cache hydration
-    const [cachedLogs] = useState(() => {
+    // Clear old deprecated cache key if present
+    useEffect(() => {
         try {
-            const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch (_) {
-            return null;
-        }
-    });
-
-    const fetchAttendance = async () => {
-        const res = await fetchWithAuth('/api/attendance?limit=100');
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to fetch');
-        const logsData = data.data || data || [];
-        try {
-            sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(logsData));
+            sessionStorage.removeItem('cpoint_admin_daily_attendance_logs');
         } catch (_) {}
-        return logsData;
-    };
+    }, []);
 
-    const { data: logs = [], isLoading } = useQuery({
-        queryKey: ['adminAttendance'],
-        queryFn: fetchAttendance,
-        initialData: cachedLogs || undefined,
-        staleTime: 30000,
-        refetchOnWindowFocus: false,
-    });
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
 
-    // Resilient fallback directory for instant CP ID resolution
+    // Proof photo modal state
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [selectedImageType, setSelectedImageType] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Fetch active workforce employees directory for instant metadata resolution and accurate counts
     const { data: employeeList = [] } = useQuery({
         queryKey: ['adminEmployeesListForAttendance'],
         queryFn: async () => {
             const { data } = await supabase
                 .from('employees')
-                .select('id, company_id, first_name, last_name, role, department, job_title');
+                .select('id, company_id, first_name, last_name, role, department, job_title, status');
             return data || [];
         },
         staleTime: 120000,
         refetchOnWindowFocus: false,
     });
+
+    const isExemptOperator = useCallback((emp) => {
+        if (!emp) return false;
+        const r = (emp.role || '').toLowerCase().replace(/[\s_-]/g, '');
+        const dept = (emp.department || '').toLowerCase();
+        const title = (emp.job_title || emp.position || '').toLowerCase();
+        const status = (emp.status || 'active').toLowerCase();
+
+        if (status !== 'active') return true;
+
+        return (
+            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+            dept === 'security' || dept === 'administration' || dept === 'human resources' || dept === 'it' ||
+            title.includes('guard') || title.includes('security') || title.includes('administrator') || title.includes('admin')
+        );
+    }, []);
+
+    // Active operational workforce employees strictly separated from system operators
+    const activeWorkforceEmployees = useMemo(() => {
+        return (employeeList || []).filter(emp => !isExemptOperator(emp));
+    }, [employeeList, isExemptOperator]);
 
     const employeeMap = useMemo(() => {
         const map = new Map();
@@ -82,17 +91,34 @@ const Index = () => {
         return 'Unknown Worker';
     }, [resolveEmployee]);
 
-    const copyCpId = useCallback((e, id) => {
-        e.stopPropagation();
-        if (!id || id === 'N/A') return;
-        navigator.clipboard.writeText(id);
-        toast.success(`Copied CP ID: ${id}`, { id: 'copy-cpid' });
-    }, []);
+    // Query attendance data from backend
+    const fetchAttendance = async () => {
+        const params = new URLSearchParams();
+        params.append('date', getTodayDateString());
+        params.append('limit', '250');
+        params.append('refresh', 'true');
 
-    // Real-time synchronization on attendance, leaves, and employee table updates
+        const res = await fetchWithAuth(`/api/attendance?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch attendance');
+        const logsData = data.data || data || [];
+        return logsData;
+    };
+
+    const {
+        data: rawLogs = [],
+        isLoading
+    } = useQuery({
+        queryKey: ['adminAttendance', 'date', getTodayDateString(), 'all'],
+        queryFn: fetchAttendance,
+        staleTime: 15000,
+        refetchOnWindowFocus: false,
+    });
+
+    // Real-time WebSocket subscriptions on attendance, leaves, and employee changes
     useEffect(() => {
         const liveChannel = supabase
-            .channel('realtime_daily_attendance_logs')
+            .channel('realtime_admin_attendance_feed')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
             })
@@ -110,50 +136,71 @@ const Index = () => {
         };
     }, [queryClient]);
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
-    const [selectedImage, setSelectedImage] = useState(null);
-    const [selectedImageType, setSelectedImageType] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-
-    const isExemptOperator = (emp) => {
-        if (!emp) return false;
-        const r = (emp.role || '').toLowerCase().replace(/_/g, '');
-        const dept = (emp.department || '').toLowerCase();
-        const title = (emp.job_title || emp.position || '').toLowerCase();
-        return (
-            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
-            dept === 'security' || dept === 'administration' || dept === 'human resources' ||
-            title.includes('guard') || title.includes('security') || title.includes('administrator')
-        );
-    };
-
-    // Strictly filter out Admins, HR, and Security Guards from attendance tracking
-    const workforceLogs = useMemo(() => {
-        return (logs || []).filter(log => {
+    // Resilient client-side reconciliation: guarantees full workforce representation
+    const unifiedLogs = useMemo(() => {
+        // Filter out exempt technical staff and security guards
+        const validLogs = (rawLogs || []).filter(log => {
             const emp = resolveEmployee(log);
             return !isExemptOperator(emp);
         });
-    }, [logs, resolveEmployee]);
 
-    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-    const todaysCount = useMemo(() => {
-        return workforceLogs.filter(log => log.date === todayStr && !log.is_on_leave && !String(log.status).toLowerCase().includes('leave')).length;
-    }, [workforceLogs, todayStr]);
-    const todaysLeaveCount = useMemo(() => {
-        return workforceLogs.filter(log => log.date === todayStr && (log.is_on_leave || String(log.status).toLowerCase().includes('leave'))).length;
-    }, [workforceLogs, todayStr]);
+        // In historical mode ('all'), return straight chronological logs
+        // Ensure every active workforce member has a record.
+        const targetDate = getTodayDateString();
+        const deptWorkforce = activeWorkforceEmployees;
+
+        const logByEmpId = new Map();
+        validLogs.forEach(log => {
+            if (log.employee_id) {
+                logByEmpId.set(log.employee_id, log);
+            }
+        });
+
+        const isToday = targetDate === getTodayDateString();
+
+        return deptWorkforce.map(emp => {
+            const existing = logByEmpId.get(emp.id);
+            if (existing) {
+                return {
+                    ...existing,
+                    employees: existing.employees || emp
+                };
+            }
+
+            return {
+                id: `roster-${emp.id}-${targetDate}`,
+                employee_id: emp.id,
+                date: targetDate,
+                time_in: null,
+                time_out: null,
+                status: isToday ? 'Awaiting Clock-in' : 'Absent',
+                is_absent: !isToday,
+                is_awaiting: isToday,
+                employees: emp
+            };
+        });
+    }, [rawLogs, activeWorkforceEmployees, resolveEmployee, isExemptOperator]);
+
+    const filteredLogs = unifiedLogs;
+
+    // Pagination calculations
+    const totalItems = filteredLogs.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const paginatedLogs = filteredLogs.slice((safeCurrentPage - 1) * itemsPerPage, safeCurrentPage * itemsPerPage);
 
     const isLogOnLeave = (log) => Boolean(log.is_on_leave || String(log.status || '').toLowerCase().includes('leave'));
     const isLogPaidLeave = (log) => isLogOnLeave(log) && log.is_paid !== false && !String(log.status || '').toLowerCase().includes('unpaid');
+
     const getLogStatusVariant = (log) => {
         if (isLogOnLeave(log)) return isLogPaidLeave(log) ? 'paid_leave' : 'leave';
         const s = String(log.status || '').toLowerCase();
         if (s.includes('absent')) return 'absent';
         if (s.includes('late')) return 'late';
+        if (s.includes('awaiting')) return 'neutral';
         return 'present';
     };
+
     const getLogStatusLabel = (log) => {
         if (isLogOnLeave(log)) {
             if (log.leave_type) {
@@ -163,6 +210,13 @@ const Index = () => {
         }
         return log.status || 'Present';
     };
+
+    const copyCpId = useCallback((e, id) => {
+        e.stopPropagation();
+        if (!id || id === 'N/A') return;
+        navigator.clipboard.writeText(id);
+        toast.success(`Copied CP ID: ${id}`, { id: 'copy-cpid' });
+    }, []);
 
     const openImageModal = (imageUrl, type) => {
         if (!imageUrl) return;
@@ -186,83 +240,14 @@ const Index = () => {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isModalOpen]);
 
-    const filteredLogs = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        if (!q) return workforceLogs;
-
-        return workforceLogs.filter(log => {
-            const emp = resolveEmployee(log);
-            const name = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase() : '';
-            const cpId = (emp?.company_id || log.company_id || '').toLowerCase();
-            const rawEmpId = (log.employee_id || '').toLowerCase();
-            const dateStr = (log.date || '').toLowerCase();
-            const leaveTypeStr = (log.leave_type || '').toLowerCase();
-
-            return (
-                name.includes(q) ||
-                cpId.includes(q) ||
-                rawEmpId.includes(q) ||
-                dateStr.includes(q) ||
-                leaveTypeStr.includes(q)
-            );
-        });
-    }, [workforceLogs, searchQuery, resolveEmployee]);
-
-    const totalItems = filteredLogs.length;
-    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-    const safeCurrentPage = Math.min(currentPage, totalPages);
-    const paginatedLogs = filteredLogs.slice((safeCurrentPage - 1) * itemsPerPage, safeCurrentPage * itemsPerPage);
-
-    if (isLoading && !cachedLogs) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                <div className="w-10 h-10 border-3 border-slate-200 border-t-accent rounded-full animate-spin" />
-                <p className="text-slate-500 font-semibold tracking-wider uppercase text-xs">Loading attendance logs...</p>
-            </div>
-        );
-    }
-
     return (
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
-            <PageHeader
-                breadcrumbs={['Admin', 'Attendance', 'Attendance Logs']}
-                actions={
-                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's clock-ins:</span>
-                            <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
-                        </div>
-                        {todaysLeaveCount > 0 && (
-                            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">On Leave:</span>
-                                <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysLeaveCount}</span>
-                            </div>
-                        )}
-                    </div>
-                }
-            />
+            <PageHeader breadcrumbs={['Admin', 'Attendance', 'Daily Logs']} />
 
             <div className="space-y-4 sm:space-y-6">
-                {/* Search & Filter Bar */}
-                <div className="flex bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200">
-                    <div className="relative flex-1">
-                        <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
-                        <input 
-                            type="text" 
-                            placeholder="Search by employee name, CP ID (e.g. CP-2026-001), or date (YYYY-MM-DD)..." 
-                            value={searchQuery}
-                            onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="h-9 w-full pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent font-medium text-slate-800 transition-colors duration-100 placeholder:text-slate-400"
-                        />
-                    </div>
-                </div>
-
+                {/* Main Attendance List */}
                 <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
-                    
-                    {/* MOBILE LIST VIEW (Visible on phones only) */}
+                    {/* Mobile Card List View */}
                     <div className="block md:hidden divide-y divide-slate-100">
                         {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
                             const resolvedEmp = resolveEmployee(log);
@@ -270,18 +255,17 @@ const Index = () => {
                             const cpId = getEmployeeCpId(log);
 
                             return (
-                                <div 
-                                    key={`mobile-${log.id}`} 
-                                    className="p-4 space-y-3 hover:bg-slate-50/70 transition-colors"
-                                >
-                                    {/* Card Header: Employee Info + Date */}
+                                <div key={`mobile-${log.id}`} className="p-4 space-y-3 hover:bg-slate-50/70 transition-colors">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-center gap-3 min-w-0">
                                             <EmployeeAvatar employee={resolvedEmp} companyId={cpId} employeeId={log.employee_id} size="h-10 w-10" />
                                             <div className="min-w-0">
-                                                <p className="text-sm font-black text-slate-800 truncate">
-                                                    {fullName}
-                                                </p>
+                                                <div className="flex items-center gap-1.5">
+                                                    <p className="text-sm font-bold text-slate-800 truncate">{fullName}</p>
+                                                    <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border bg-slate-900 text-white border-slate-800">
+                                                        {resolvedEmp?.department || 'Staff'}
+                                                    </span>
+                                                </div>
                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                     <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">CP ID:</span>
                                                     <button
@@ -297,111 +281,73 @@ const Index = () => {
                                             </div>
                                         </div>
 
-                                    <div className="text-right shrink-0">
-                                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                            {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                        </span>
+                                        <div className="text-right shrink-0">
+                                            <span className="text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                                                {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
 
-                                {/* Card Timing Grid */}
-                                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-md border border-slate-200">
-                                    {/* Time In */}
-                                    <div className="flex items-center justify-between gap-2">
+                                    {/* Timing Grid */}
+                                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-md border border-slate-200">
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time In</p>
                                             {isLogOnLeave(log) ? (
-                                                <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2 py-0.5 rounded border border-accent/20">
+                                                <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                                     Excused
                                                 </span>
                                             ) : log.time_in ? (
-                                                <span className="font-mono text-xs font-bold text-ink">
+                                                <span className="font-mono text-xs font-bold text-slate-900">
                                                     {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             ) : (
-                                                <span className="font-mono text-xs text-slate-300">--:--</span>
+                                                <span className="font-mono text-xs text-slate-400">--:--</span>
                                             )}
                                         </div>
-                                        {log.time_in_photo && (
-                                            <button 
-                                                onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In Proof')}
-                                                onContextMenu={(e) => e.preventDefault()}
-                                                className="w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs shrink-0 select-none transition-colors duration-100 hover:border-slate-300"
-                                            >
-                                                <img 
-                                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
-                                                    onContextMenu={(e) => e.preventDefault()}
-                                                    draggable={false}
-                                                    className="w-full h-full object-cover pointer-events-none select-none" 
-                                                    alt="Proof" 
-                                                />
-                                            </button>
-                                        )}
-                                    </div>
 
-                                    {/* Time Out */}
-                                    <div className="flex items-center justify-between gap-2 border-l border-slate-200 pl-2">
-                                        <div>
+                                        <div className="border-l border-slate-200 pl-2">
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time Out</p>
                                             {isLogOnLeave(log) ? (
-                                                <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                                                    Approved Leave
+                                                <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                                    Leave
                                                 </span>
                                             ) : log.time_out ? (
-                                                <span className="font-mono text-xs font-bold text-slate-700">
+                                                <span className="font-mono text-xs font-bold text-slate-900">
                                                     {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
-                                            ) : log.date === new Date().toISOString().split('T')[0] ? (
-                                                <span className="text-[10px] font-black text-warning-ink uppercase tracking-wider">
+                                            ) : log.date === getTodayDateString() ? (
+                                                <span className="text-[10px] font-bold text-warning-ink uppercase tracking-wider">
                                                     Active
                                                 </span>
                                             ) : (
-                                                <span className="text-[9px] font-black text-danger-ink uppercase tracking-wider">
-                                                    Missed
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                                    --:--
                                                 </span>
                                             )}
                                         </div>
-                                        {log.time_out_photo && (
-                                            <button 
-                                                onClick={() => openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out Proof')}
-                                                onContextMenu={(e) => e.preventDefault()}
-                                                className="w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs shrink-0 select-none transition-colors duration-100 hover:border-slate-300"
-                                            >
-                                                <img 
-                                                    src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
-                                                    onContextMenu={(e) => e.preventDefault()}
-                                                    draggable={false}
-                                                    className="w-full h-full object-cover pointer-events-none select-none" 
-                                                    alt="Proof" 
-                                                />
-                                            </button>
-                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-1">
+                                        <Badge variant={getLogStatusVariant(log)}>
+                                            {getLogStatusLabel(log)}
+                                        </Badge>
                                     </div>
                                 </div>
-
-                                {/* Card Footer: Status */}
-                                <div className="flex items-center justify-between pt-1">
-                                    <Badge 
-                                        variant={getLogStatusVariant(log)}
-                                    >
-                                        {getLogStatusLabel(log)}
-                                    </Badge>
-                                </div>
-                            </div>
-                        );
-                    }) : (
+                            );
+                        }) : (
                             <div className="p-8 text-center text-slate-400">
-                                <p className="text-xs font-bold">No attendance logs found for this date</p>
+                                <p className="text-xs font-bold">No workforce attendance records found</p>
                             </div>
                         )}
                     </div>
 
-                    {/* DESKTOP TABLE VIEW (Visible on tablet & desktop) */}
-                    <div className="hidden md:block overflow-x-auto no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto no-scrollbar">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
                                 <tr>
                                     <th className="px-6 py-3.5">Employee</th>
+                                    <th className="px-6 py-3.5">Department</th>
                                     <th className="px-6 py-3.5">Date</th>
                                     <th className="px-6 py-3.5 text-center">Time In</th>
                                     <th className="px-6 py-3.5 text-center">Time Out</th>
@@ -413,9 +359,11 @@ const Index = () => {
                                     const resolvedEmp = resolveEmployee(log);
                                     const fullName = getEmployeeFullName(log);
                                     const cpId = getEmployeeCpId(log);
+                                    const dept = resolvedEmp?.department || 'Staff';
 
                                     return (
                                         <tr key={log.id} className="hover:bg-slate-50/70 transition-colors duration-100">
+                                            {/* Worker Column */}
                                             <td className="px-6 py-3.5">
                                                 <div className="flex items-center gap-3">
                                                     <EmployeeAvatar employee={resolvedEmp} companyId={cpId} employeeId={log.employee_id} size="h-10 w-10" />
@@ -439,13 +387,20 @@ const Index = () => {
                                                 </div>
                                             </td>
 
+                                            {/* Department Column */}
+                                            <td className="px-6 py-3.5">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-900 text-white border border-slate-800">
+                                                    {dept}
+                                                </span>
+                                            </td>
+
                                             {/* Date Column */}
                                             <td className="px-6 py-3.5">
                                                 <p className="text-sm font-medium text-slate-600 font-mono tabular-nums">
                                                     {new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                 </p>
                                             </td>
-                                            
+
                                             {/* Time In Column */}
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
@@ -454,24 +409,25 @@ const Index = () => {
                                                             Excused
                                                         </span>
                                                     ) : log.time_in ? (
-                                                        <span className="font-mono text-xs font-semibold text-ink bg-surface-muted px-2.5 py-0.5 rounded border border-line tabular-nums">
+                                                        <span className="font-mono text-xs font-semibold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
                                                             {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs text-slate-300 font-mono">--:--</span>
+                                                        <span className="text-xs text-slate-400 font-mono">--:--</span>
                                                     )}
                                                     {log.time_in_photo && (
-                                                        <button 
+                                                        <button
                                                             onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`, 'Time In'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
-                                                            className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                            className="relative w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in select-none"
+                                                            title="Inspect punch verification proof"
                                                         >
-                                                            <img 
-                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`} 
+                                                            <img
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_in_photo}`}
                                                                 onContextMenu={(e) => e.preventDefault()}
                                                                 draggable={false}
-                                                                className="w-full h-full object-cover pointer-events-none select-none" 
-                                                                alt="Proof" 
+                                                                className="w-full h-full object-cover pointer-events-none select-none"
+                                                                alt="Proof"
                                                             />
                                                         </button>
                                                     )}
@@ -486,30 +442,29 @@ const Index = () => {
                                                             Approved Leave
                                                         </span>
                                                     ) : log.time_out ? (
-                                                        <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
+                                                        <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
                                                             {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
-                                                    ) : log.date === new Date().toISOString().split('T')[0] ? (
+                                                    ) : log.date === getTodayDateString() ? (
                                                         <span className="bg-warning-subtle text-warning-ink border border-warning/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                             Active
                                                         </span>
                                                     ) : (
-                                                        <span className="bg-danger-subtle text-danger-ink border border-danger/20 px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
-                                                            Missed clock-out
-                                                        </span>
+                                                        <span className="text-xs text-slate-400 font-mono">--:--</span>
                                                     )}
                                                     {log.time_out_photo && (
-                                                        <button 
+                                                        <button
                                                             onClick={(e) => { e.stopPropagation(); openImageModal(`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`, 'Time Out'); }}
                                                             onContextMenu={(e) => e.preventDefault()}
-                                                            className="relative w-9 h-9 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in group/img select-none"
+                                                            className="relative w-8 h-8 rounded-md overflow-hidden border border-slate-200 shadow-2xs hover:border-accent transition-colors duration-100 cursor-zoom-in select-none"
+                                                            title="Inspect punch verification proof"
                                                         >
-                                                            <img 
-                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`} 
+                                                            <img
+                                                                src={`https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${log.time_out_photo}`}
                                                                 onContextMenu={(e) => e.preventDefault()}
                                                                 draggable={false}
-                                                                className="w-full h-full object-cover pointer-events-none select-none" 
-                                                                alt="Proof" 
+                                                                className="w-full h-full object-cover pointer-events-none select-none"
+                                                                alt="Proof"
                                                             />
                                                         </button>
                                                     )}
@@ -518,9 +473,7 @@ const Index = () => {
 
                                             {/* Status Column */}
                                             <td className="px-6 py-3.5 text-center">
-                                                <Badge 
-                                                    variant={getLogStatusVariant(log)}
-                                                >
+                                                <Badge variant={getLogStatusVariant(log)}>
                                                     {getLogStatusLabel(log)}
                                                 </Badge>
                                             </td>
@@ -528,13 +481,13 @@ const Index = () => {
                                     );
                                 }) : (
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-20 text-center">
+                                        <td colSpan="6" className="px-6 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
-                                                <div className="w-16 h-16 bg-slate-50 rounded-lg flex items-center justify-center mb-4 border border-slate-200">
-                                                    <i className="ti ti-ghost text-3xl text-slate-400" />
+                                                <div className="w-12 h-12 bg-slate-50 rounded-lg flex items-center justify-center mb-3 border border-slate-200">
+                                                    <i className="ti ti-clipboard-list text-2xl text-slate-400" />
                                                 </div>
-                                                <p className="text-base font-bold text-slate-800 tracking-tight">No attendance logs found</p>
-                                                <p className="text-xs text-slate-500 mt-1 max-w-sm">No attendance logs found for this date.</p>
+                                                <p className="text-sm font-bold text-slate-800">No attendance records found</p>
+                                                <p className="text-xs text-slate-500 mt-1">Try adjusting the department filter or date range.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -543,30 +496,30 @@ const Index = () => {
                         </table>
                     </div>
 
-                    {/* PAGINATION BAR */}
-                    <div className="px-4 sm:px-8 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
+                    {/* Pagination Bar */}
+                    <div className="px-4 sm:px-6 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-semibold">
                         <div>
                             {totalItems > 0 ? (
                                 <span>Showing <span className="text-slate-800 font-semibold">{(safeCurrentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-800 font-semibold">{Math.min(safeCurrentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-800 font-semibold">{totalItems}</span></span>
                             ) : (
-                                <span>Showing <span className="text-slate-800 font-semibold">0</span> of <span className="text-slate-800 font-semibold">0</span></span>
+                                <span>Showing 0 of 0</span>
                             )}
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <button 
+                            <button
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={safeCurrentPage <= 1}
                                 className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
                             >
                                 <i className="ti ti-chevron-left text-sm" /> Prev
                             </button>
-                            
-                            <span className="h-8 px-3 flex items-center justify-center bg-white border border-slate-200 rounded-md text-slate-800 font-semibold text-xs">
+
+                            <span className="h-8 px-3 flex items-center justify-center bg-white border border-slate-200 rounded-md text-slate-800 font-semibold text-xs font-mono">
                                 {safeCurrentPage} / {totalPages}
                             </span>
 
-                            <button 
+                            <button
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={safeCurrentPage >= totalPages}
                                 className="h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 shadow-2xs flex items-center gap-1.5"
@@ -578,56 +531,49 @@ const Index = () => {
                 </div>
             </div>
 
-            {/* Image modal */}
-            
-                {isModalOpen && selectedImage && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <div 
-                            className="absolute inset-0 bg-slate-950/70"
-                            onClick={closeImageModal}
-                        />
-                        <div 
-                            className="relative bg-white rounded-lg p-5 w-full max-w-lg shadow-xl border border-slate-200"
-                        >
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-800 tracking-wide flex items-center gap-1.5">
-                                        <i className="ti ti-camera text-accent text-base" />
-                                        <span>{selectedImageType} Verification Capture</span>
-                                    </h3>
-                                    <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[340px]">
-                                        {selectedImage.split('/').pop()}
-                                    </p>
-                                </div>
-                                <button 
-                                    onClick={closeImageModal}
-                                    title="Close Preview (Esc)"
-                                    className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
-                                >
-                                    <i className="ti ti-x text-base font-semibold" />
-                                </button>
+            {/* Verification Proof Image Modal */}
+            {isModalOpen && selectedImage && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-950/70"
+                        onClick={closeImageModal}
+                    />
+                    <div className="relative bg-white rounded-lg p-5 w-full max-w-lg shadow-xl border border-slate-200">
+                        <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 tracking-wide flex items-center gap-1.5">
+                                    <i className="ti ti-camera text-accent text-base" />
+                                    <span>{selectedImageType} Verification Capture</span>
+                                </h3>
+                                <p className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[340px]">
+                                    {selectedImage.split('/').pop()}
+                                </p>
                             </div>
-
-                            {/* Image Container with subtle rounding & anti-save protections */}
-                            <div 
-                                onContextMenu={(e) => e.preventDefault()}
-                                className="bg-slate-900/5 rounded-md overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
+                            <button
+                                onClick={closeImageModal}
+                                title="Close Preview (Esc)"
+                                className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer"
                             >
-                                <img 
-                                    key={selectedImage} 
-                                    src={selectedImage} 
-                                    onContextMenu={(e) => e.preventDefault()}
-                                    draggable={false}
-                                    alt="Verification" 
-                                    className="w-full h-auto object-contain max-h-[65vh] rounded-md pointer-events-none select-none" 
-                                />
-                            </div>
+                                <i className="ti ti-x text-base font-semibold" />
+                            </button>
+                        </div>
+
+                        <div
+                            onContextMenu={(e) => e.preventDefault()}
+                            className="bg-slate-900/5 rounded-md overflow-hidden flex justify-center min-h-[200px] border border-slate-200 select-none"
+                        >
+                            <img
+                                key={selectedImage}
+                                src={selectedImage}
+                                onContextMenu={(e) => e.preventDefault()}
+                                draggable={false}
+                                alt="Verification Proof"
+                                className="w-full h-auto object-contain max-h-[65vh] rounded-md pointer-events-none select-none"
+                            />
                         </div>
                     </div>
-                )}
-            
-
+                </div>
+            )}
         </div>
     );
 };

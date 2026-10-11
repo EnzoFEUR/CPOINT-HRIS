@@ -334,19 +334,28 @@ const sendError = (res, err, reqId) => {
 router.get(
   '/',
   checkVerifiedManagerOrOwnership,
-  (req, res, next) => req.query.payroll_preview === 'true' ? next() : attendanceCache(req, res, next),
+  (req, res, next) => {
+    if (req.query.refresh === 'true' || req.query.payroll_preview === 'true') {
+      invalidateCache('/api/attendance');
+      return next();
+    }
+    return attendanceCache(req, res, next);
+  },
   asyncHandler(async (req, res) => {
     const { reqId } = req;
-    const { employee_id, start_date, end_date, page = '1', limit = '50' } = req.query;
+    const { employee_id, start_date, end_date, date, department, roster, page = '1', limit = '100' } = req.query;
 
     // Validate pagination
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const limitNum = Math.min(250, Math.max(1, parseInt(limit, 10) || 100));
     const offset = (pageNum - 1) * limitNum;
 
     // Validate filters
     if (employee_id && !isValidUUID(employee_id)) {
       throw new ValidationError('Invalid employee_id format. Expected UUID.');
+    }
+    if (date && !isValidISODate(date)) {
+      throw new ValidationError('Invalid date. Expected YYYY-MM-DD.');
     }
     if (start_date && !isValidISODate(start_date)) {
       throw new ValidationError('Invalid start_date. Expected YYYY-MM-DD.');
@@ -355,13 +364,130 @@ router.get(
       throw new ValidationError('Invalid end_date. Expected YYYY-MM-DD.');
     }
 
+    // Daily workforce roster mode (when date is specified or roster=true without date range)
+    if ((date || roster === 'true') && !start_date && !end_date) {
+      const targetDate = date || getTodayString();
+      const [allEmpsRes, dailyLogsRes, dailyLeavesRes] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('id, company_id, first_name, last_name, role, department, job_title, status'),
+        supabase
+          .from('attendances')
+          .select('*, employees:employee_id(*)')
+          .eq('date', targetDate),
+        supabase
+          .from('leave_requests')
+          .select('id, employee_id, start_date, end_date, type, status, notes, credit_pool, requested_pay_type, employees:employee_id(*)')
+          .eq('status', 'Approved')
+          .lte('start_date', targetDate)
+          .gte('end_date', targetDate)
+      ]);
+
+      if (allEmpsRes.error) throw new AppError(`Database error: ${allEmpsRes.error.message}`, 500, 'DB_ERROR');
+      if (dailyLogsRes.error) throw new AppError(`Database error: ${dailyLogsRes.error.message}`, 500, 'DB_ERROR');
+
+      let activeWorkforce = (allEmpsRes.data || []).filter(e => isWorkforceEmployee(e));
+      if (department && department.toLowerCase() !== 'all') {
+        activeWorkforce = activeWorkforce.filter(e => e.department?.toLowerCase() === department.toLowerCase());
+      }
+      if (employee_id) {
+        activeWorkforce = activeWorkforce.filter(e => e.id === employee_id);
+      }
+
+      const attMap = new Map();
+      (dailyLogsRes.data || []).forEach(a => attMap.set(a.employee_id, a));
+
+      const leaveMap = new Map();
+      (dailyLeavesRes.data || []).forEach(l => leaveMap.set(l.employee_id, l));
+
+      const isToday = targetDate === getTodayString();
+
+      const reconciledList = activeWorkforce.map(emp => {
+        const punch = attMap.get(emp.id);
+        const leave = leaveMap.get(emp.id);
+
+        if (punch) {
+          const isOnLeave = punch.status === 'On Leave' || Boolean(leave);
+          if (isOnLeave) {
+            const isPaid = leave
+              ? (leave.requested_pay_type === 'with_pay' || leave.credit_pool === 'sil' || !/\[PAY_TYPE:WITHOUT_PAY\]|\[UNPAID\]/i.test(leave.notes || ''))
+              : !/unpaid/i.test(punch.status || '');
+            return {
+              ...punch,
+              is_on_leave: true,
+              status: isPaid ? 'Paid Leave' : 'On Leave',
+              leave_type: leave?.type || 'Leave',
+              is_paid: isPaid,
+              leave_pay_type: isPaid ? 'with_pay' : 'without_pay',
+              notes: punch.notes || leave?.notes || null,
+              employees: punch.employees || emp
+            };
+          }
+          return {
+            ...punch,
+            employees: punch.employees || emp
+          };
+        }
+
+        if (leave) {
+          const isPaid = (leave.requested_pay_type === 'with_pay' || leave.credit_pool === 'sil' || !/\[PAY_TYPE:WITHOUT_PAY\]|\[UNPAID\]/i.test(leave.notes || ''));
+          return {
+            id: `leave-${leave.id}-${targetDate}`,
+            employee_id: emp.id,
+            date: targetDate,
+            time_in: null,
+            time_out: null,
+            status: isPaid ? 'Paid Leave' : 'On Leave',
+            is_on_leave: true,
+            leave_type: leave.type || 'Leave',
+            is_paid: isPaid,
+            leave_pay_type: isPaid ? 'with_pay' : 'without_pay',
+            employees: emp,
+            notes: leave.notes || null,
+            created_at: leave.created_at || new Date().toISOString()
+          };
+        }
+
+        return {
+          id: `roster-${emp.id}-${targetDate}`,
+          employee_id: emp.id,
+          date: targetDate,
+          time_in: null,
+          time_out: null,
+          status: isToday ? 'Awaiting Clock-in' : 'Absent',
+          is_absent: !isToday,
+          is_awaiting: isToday,
+          employees: emp,
+          created_at: new Date().toISOString()
+        };
+      });
+
+      logger.info(reqId, 'Daily attendance roster fetched', { date: targetDate, count: reconciledList.length, department });
+
+      return res.json({
+        status: 'success',
+        data: reconciledList,
+        meta: {
+          workPolicy: WORK_POLICY,
+          date: targetDate,
+          department: department || 'All',
+          total: reconciledList.length,
+          page: 1,
+          limit: reconciledList.length,
+          totalPages: 1
+        }
+      });
+    }
+
     let query = supabase
       .from('attendances')
       .select('*, employees:employee_id(*)', { count: 'exact' })
+      .order('date', { ascending: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limitNum - 1);
 
     if (employee_id) query = query.eq('employee_id', employee_id);
+    if (date) query = query.eq('date', date);
     if (start_date && end_date) {
       query = query.gte('date', start_date).lte('date', end_date);
     } else if (start_date) {
@@ -383,7 +509,10 @@ router.get(
       ip_address: req.ip,
     }).catch(err => logger.error(reqId, 'Background audit log failed', { error: err.message }));
 
-    const baseList = (data || []).filter(log => !log.employees || isWorkforceEmployee(log.employees));
+    let baseList = (data || []).filter(log => !log.employees || isWorkforceEmployee(log.employees));
+    if (department && department.toLowerCase() !== 'all') {
+      baseList = baseList.filter(log => log.employees?.department?.toLowerCase() === department.toLowerCase());
+    }
 
     // Parallel fetch matching approved leave requests to reconcile and enrich leave statuses
     const empIds = [...new Set(baseList.map(l => l.employee_id).filter(Boolean))];
@@ -915,6 +1044,32 @@ router.get(
           employees: l.employees,
           notes: l.notes,
           created_at: l.created_at || new Date().toISOString()
+        });
+      }
+    });
+
+    // Reconcile all active workforce employees who have neither punches nor approved leaves on this date
+    const { data: allCalendarEmps } = await supabase
+      .from('employees')
+      .select('id, company_id, first_name, last_name, role, department, job_title, status');
+
+    const activeWorkforce = (allCalendarEmps || []).filter(e => isWorkforceEmployee(e));
+    const isToday = date === getTodayString();
+
+    activeWorkforce.forEach(emp => {
+      if (!existingEmpIds.has(emp.id)) {
+        existingEmpIds.add(emp.id);
+        reconciledDailyLogs.push({
+          id: `roster-${emp.id}-${date}`,
+          employee_id: emp.id,
+          date,
+          time_in: null,
+          time_out: null,
+          status: isToday ? 'Awaiting Clock-in' : 'Absent',
+          is_absent: !isToday,
+          is_awaiting: isToday,
+          employees: emp,
+          created_at: new Date().toISOString()
         });
       }
     });

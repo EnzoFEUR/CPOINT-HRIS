@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 
@@ -153,13 +154,14 @@ export const MobileNav = ({
       </div>
 
       {/* More apps sheet modal */}
-      {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+      {sidebarOpen && createPortal(
+        <div className="lg:hidden fixed inset-0 z-[100] flex items-end justify-center p-0 overflow-hidden">
           <div
-            className="absolute inset-0 bg-slate-950/70"
+            className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
             onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
           />
-          <div className="relative w-full max-w-lg bg-slate-900 border-t border-slate-800 rounded-t-lg p-5 text-white shadow-xl z-10 max-h-[85vh] overflow-y-auto touch-scroll pb-24">
+          <div className="relative z-10 w-full max-w-lg bg-slate-900 border-t border-slate-800 rounded-t-lg p-5 text-white shadow-2xl max-h-[85vh] overflow-y-auto touch-scroll pb-24">
             {/* Drag Pill Handle */}
             <div className="w-12 h-1 bg-slate-700/80 rounded-full mx-auto mb-4" />
 
@@ -372,7 +374,8 @@ export const MobileNav = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

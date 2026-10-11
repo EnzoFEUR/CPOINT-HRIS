@@ -1,5 +1,9 @@
 import { SilCashEarnings } from '../components/SilPaymentCard';
+import OfficialPayslipDocument from '../components/OfficialPayslipDocument';
+import OfficialRemunerationHistoryDocument from '../components/OfficialRemunerationHistoryDocument';
+import { printHtmlElement } from '../utils/printDocument';
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
@@ -170,6 +174,37 @@ const EmployeeDashboard = () => {
         return allPayrolls.findIndex((p) => p.id === currentPayslip.id);
     }, [allPayrolls, currentPayslip]);
 
+    const [autoPrintPayslipId, setAutoPrintPayslipId] = useState(null);
+
+    useEffect(() => {
+        if (autoPrintPayslipId && payslipView === 'detail' && currentPayslip?.id === autoPrintPayslipId) {
+            const timer = setTimeout(() => {
+                const emp = currentPayslip.employees || liveEmployee || user;
+                const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Employee' : 'Employee';
+                const companyId = emp?.company_id || (emp?.id ? `CP-${String(emp.id).substring(0, 8).toUpperCase()}` : 'CP-N/A');
+                const sanitizedEmp = fullName.replace(/[^a-zA-Z0-9]/g, '_');
+                const startStr = dayjs(currentPayslip.period_start).format('YYYYMMDD');
+                const endStr = dayjs(currentPayslip.period_end).format('YYYYMMDD');
+                const docTitle = `Payslip_${companyId}_${sanitizedEmp}_${startStr}_to_${endStr}`;
+                printHtmlElement('official-payslip-document', docTitle);
+                setAutoPrintPayslipId(null);
+            }, 120);
+            return () => clearTimeout(timer);
+        }
+    }, [autoPrintPayslipId, payslipView, currentPayslip, liveEmployee, user]);
+
+    // Lock body scroll when any dashboard modal is active to eliminate background bounce and gaps
+    useEffect(() => {
+        const isModalOpen = Boolean(showQrModal || showPayslipModal || showInfractionsModal);
+        if (isModalOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
+    }, [showQrModal, showPayslipModal, showInfractionsModal]);
+
     // Pay history filter (year / month / search query). 
     const [filterYear, setFilterYear] = useState('all');
     const [filterMonth, setFilterMonth] = useState('all');
@@ -235,6 +270,15 @@ const EmployeeDashboard = () => {
             avgNet
         };
     }, [filteredPayrolls]);
+
+    const handlePrintHistoryStatement = () => {
+        const sanitizedEmp = (user?.name || 'Employee').replace(/[^a-zA-Z0-9]/g, '_');
+        const companyId = user?.company_id || (user?.id ? `CP-${String(user.id).substring(0, 8).toUpperCase()}` : 'CP-RECORD');
+        const yearStr = filterYear !== 'all' ? filterYear : dayjs().format('YYYY');
+        const docTitle = `Remuneration_Statement_${companyId}_${sanitizedEmp}_${yearStr}`;
+
+        printHtmlElement('official-remuneration-history-document', docTitle);
+    };
 
     const isFactoryWorker = (user?.department || '').toLowerCase().includes('factory') ||
         (user?.shift || '').toLowerCase().includes('factory');
@@ -385,12 +429,6 @@ const EmployeeDashboard = () => {
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 px-4 sm:px-6 font-sans">
 
-            {(dashboard.isPending || dashboard.isFetching || dashboard.isError || history.isError) && (
-                <div role={dashboard.isError || history.isError ? 'alert' : 'status'} aria-live="polite" className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    <span>{dashboard.isError || history.isError ? 'Some employee records could not refresh. Previously loaded records may be out of date.' : dashboard.isPending ? 'Loading employee records…' : 'Updating employee records…'}</span>
-                    {(dashboard.isError || history.isError) && <button type="button" disabled={dashboard.isFetching || history.isFetching} onClick={refresh} className="font-semibold text-accent disabled:opacity-50">Retry</button>}
-                </div>
-            )}
             {/* Disciplinary & Separation Alert Banners */}
             {isTerminated ? (
                 <div className="bg-slate-900 border border-danger/30 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -452,7 +490,7 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
             ) : infractions.length > 0 ? (
-                <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
                         <div className="w-10 h-10 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
                             <i className="ti ti-shield-alert text-xl" />
@@ -479,7 +517,7 @@ const EmployeeDashboard = () => {
 
             {/* Biometrics Incomplete Callout Banner */}
             {!hasFaceBiometrics && !isTerminated && !isSuspended && (
-                <div className="bg-warning-subtle border border-warning/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-warning-subtle border border-warning/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
                         <div className="w-10 h-10 rounded-md bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0 text-warning-ink">
                             <i className="ti ti-scan-eye text-xl animate-pulse" />
@@ -504,7 +542,7 @@ const EmployeeDashboard = () => {
                 </div>
             )}
 
-            <div className="space-y-5 sm:space-y-8">
+            <div className="space-y-5 sm:space-y-8 print:hidden">
 
                 {/* Welcome header with Profile & Logout */}
                 <div className="flex items-start justify-between gap-4 pt-2 sm:pt-4">
@@ -1376,14 +1414,15 @@ const EmployeeDashboard = () => {
             </div>
 
             {/* QR modal */}
-            {showQrModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {showQrModal && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
                     <div
-                        className="absolute inset-0 bg-slate-950/70"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowQrModal(false)}
+                        aria-hidden="true"
                     />
                     <div
-                        className="relative bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-xl border border-slate-200"
+                        className="relative z-10 bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-2xl border border-slate-200 my-auto"
                     >
                         {isTerminated ? (
                             <div>
@@ -1468,18 +1507,20 @@ const EmployeeDashboard = () => {
                             Close
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
 
             {/* Historical / Official Payslip Modal */}
-            {showPayslipModal && payslipView === 'history' && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            {showPayslipModal && payslipView === 'history' && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden overflow-hidden">
                     <div
-                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowPayslipModal(false)}
+                        aria-hidden="true"
                     />
-                    <div className="relative bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border border-slate-200 text-left">
+                    <div className="relative z-10 bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border border-slate-200 text-left my-0 sm:my-auto">
                         {/* Modal Header */}
                         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
                             <div className="flex items-center gap-3">
@@ -1494,13 +1535,27 @@ const EmployeeDashboard = () => {
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setShowPayslipModal(false)}
-                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
-                                title="Close Modal"
-                            >
-                                <i className="ti ti-x text-lg" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {allPayrolls.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintHistoryStatement}
+                                        className="h-8.5 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                                        title="Print or export complete remuneration ledger statement to PDF"
+                                    >
+                                        <i className="ti ti-printer text-xs" />
+                                        <span className="hidden sm:inline">Print / Export PDF</span>
+                                        <span className="sm:hidden">Print PDF</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShowPayslipModal(false)}
+                                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                                    title="Close Modal"
+                                >
+                                    <i className="ti ti-x text-lg" />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Financial Ledger Summary Ribbon */}
@@ -1729,8 +1784,24 @@ const EmployeeDashboard = () => {
                                                         {formatCurrency(financials.netPay)}
                                                     </span>
                                                 </div>
-                                                <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                                                    <i className="ti ti-chevron-right text-sm" />
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedPayslipId(p.id);
+                                                            setAutoPrintPayslipId(p.id);
+                                                            setPayslipView('detail');
+                                                        }}
+                                                        className="h-8 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                        title="Print or export payslip to PDF"
+                                                    >
+                                                        <i className="ti ti-printer text-xs" />
+                                                        <span className="hidden sm:inline">Print / PDF</span>
+                                                    </button>
+                                                    <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                                                        <i className="ti ti-chevron-right text-sm" />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1752,7 +1823,8 @@ const EmployeeDashboard = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {showPayslipModal && currentPayslip && payslipView === 'detail' && (() => {
@@ -1765,405 +1837,42 @@ const EmployeeDashboard = () => {
                 const periodEnd = activePayroll.period_end ? dayjs(activePayroll.period_end).format('MMM DD, YYYY') : 'N/A';
                 const paymentDate = activePayroll.created_at ? dayjs(activePayroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
 
-                return (
-                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        {/* Print styles for payslip isolation */}
-                        <style>{`
-                            @media print {
-                                body * { visibility: hidden !important; }
-                                #employee-payslip-modal, #employee-payslip-modal * { visibility: visible !important; }
-                                #employee-payslip-modal {
-                                    position: fixed !important;
-                                    left: 0 !important;
-                                    top: 0 !important;
-                                    width: 100% !important;
-                                    height: auto !important;
-                                    margin: 0 !important;
-                                    padding: 0 !important;
-                                    box-shadow: none !important;
-                                    border: none !important;
-                                }
-                                .no-print { display: none !important; }
-                            }
-                        `}</style>
-
+                return createPortal(
+                    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 print:static print:inset-auto print:p-0 print:m-0 print:block print:w-full print:h-auto print:max-h-none print:overflow-visible overflow-hidden">
                         <div
-                            className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                            className="payslip-modal-backdrop fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity print:hidden"
                             onClick={() => setShowPayslipModal(false)}
+                            aria-hidden="true"
                         />
 
                         <div
                             id="employee-payslip-modal"
-                            className="relative bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border-t sm:border border-slate-200 text-left print:border-none print:shadow-none print:h-auto print:max-h-none print:rounded-none"
+                            className="relative z-10 bg-white rounded-t-2xl sm:rounded-lg w-full max-w-4xl overflow-hidden shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border-t sm:border border-slate-200 text-left print:border-none print:shadow-none print:h-auto print:max-h-none print:rounded-none print:w-full print:max-w-none print:overflow-visible print:block print:p-0 my-0 sm:my-auto"
                         >
-                            {/* Top Navigation & Action Strip */}
-                            <div className="no-print px-3 sm:px-6 py-2 sm:py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-1.5 sm:gap-2 text-xs shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => setPayslipView('history')}
-                                    className="inline-flex items-center gap-1 sm:gap-1.5 font-semibold text-slate-700 hover:text-slate-900 transition-colors py-1 px-1.5 sm:px-2.5 -ml-1 sm:-ml-2 rounded-md hover:bg-slate-200/70 cursor-pointer text-xs"
-                                >
-                                    <i className="ti ti-arrow-left text-sm" />
-                                    <span className="hidden xs:inline sm:inline">Back to </span>
-                                    <span>History</span>
-                                </button>
-                                <div className="flex items-center gap-1 sm:gap-2">
-                                    {allPayrolls.length > 1 && currentPayslipIndex !== -1 && (
-                                        <div className="flex items-center gap-0.5 sm:gap-1 bg-white border border-slate-200 rounded-md p-0.5 shadow-2xs">
-                                            <button
-                                                type="button"
-                                                disabled={currentPayslipIndex >= allPayrolls.length - 1}
-                                                onClick={() => {
-                                                    const olderP = allPayrolls[currentPayslipIndex + 1];
-                                                    if (olderP) setSelectedPayslipId(olderP.id);
-                                                }}
-                                                title="Older statement"
-                                                className="p-1 text-slate-600 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-slate-100 transition cursor-pointer"
-                                            >
-                                                <i className="ti ti-chevron-left text-xs" />
-                                            </button>
-                                            <span className="px-1.5 sm:px-2 text-[10px] sm:text-[11px] font-mono font-medium text-slate-600 select-none">
-                                                {currentPayslipIndex + 1}/{allPayrolls.length}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                disabled={currentPayslipIndex <= 0}
-                                                onClick={() => {
-                                                    const newerP = allPayrolls[currentPayslipIndex - 1];
-                                                    if (newerP) setSelectedPayslipId(newerP.id);
-                                                }}
-                                                title="Newer statement"
-                                                className="p-1 text-slate-600 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-slate-100 transition cursor-pointer"
-                                            >
-                                                <i className="ti ti-chevron-right text-xs" />
-                                            </button>
-                                        </div>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPayslipModal(false)}
-                                        className="p-1 sm:p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition cursor-pointer"
-                                        title="Close"
-                                    >
-                                        <i className="ti ti-x text-base" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* 1. Header: Corporate Letterhead */}
-                            <div className="p-3.5 sm:p-6 bg-white border-b border-slate-200 print:bg-transparent shrink-0">
-                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2.5 sm:gap-3">
-                                            <picture className="shrink-0">
-                                                <source srcSet="/logo-icon-dark.webp" type="image/webp" />
-                                                <img
-                                                    src="/logo-icon-dark.png"
-                                                    alt="C-Point"
-                                                    width="36"
-                                                    height="36"
-                                                    loading="eager"
-                                                    decoding="sync"
-                                                    className="w-8 h-8 sm:w-9 sm:h-9 object-contain shrink-0"
-                                                    onError={(e) => {
-                                                        e.currentTarget.onerror = null;
-                                                        e.currentTarget.src = '/logo-icon.png';
-                                                    }}
-                                                />
-                                            </picture>
-                                            <div className="min-w-0">
-                                                <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none uppercase truncate">C-POINT HRIS</h1>
-                                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide mt-0.5 truncate">Manufacturing &amp; Human Capital Operations</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center sm:items-end justify-between sm:justify-start gap-2 sm:gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
-                                        <div className="sm:text-right">
-                                            <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Confidential Document</span>
-                                            <h2 className="text-xs sm:text-base font-black text-slate-900 tracking-tight leading-tight">
-                                                {isTerminated ? 'SEPARATION PAYSLIP' : 'EMPLOYEE PAYSLIP'}
-                                            </h2>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 sm:mt-1 sm:justify-end">
-                                            <span className="font-mono text-[10px] sm:text-[11px] font-semibold text-slate-700 bg-slate-100 px-1.5 sm:px-2 py-0.5 rounded border border-slate-200">
-                                                #{voucherId}
-                                            </span>
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase bg-surface-muted text-ink border border-line">
-                                                {activePayroll.status || 'Released'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 2. Telemetry Strip */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 border-b border-slate-200 bg-slate-50/75 text-xs divide-y-0 sm:divide-y-0 sm:divide-x divide-slate-200 shrink-0">
-                                <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 sm:px-4 border-b sm:border-b-0 border-slate-200">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Pay Period</span>
-                                    <span className="font-semibold text-slate-800 block text-xs">
-                                        {periodStart} – {periodEnd}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 p-2.5 sm:p-3 sm:px-4 border-r sm:border-r-0 border-slate-200">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Payment Date</span>
-                                    <span className="font-semibold text-slate-800 block text-xs">
-                                        {paymentDate}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 p-2.5 sm:p-3 sm:px-4">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Currency</span>
-                                    <span className="font-semibold text-slate-800 block text-xs font-mono">
-                                        PHP (₱)
-                                    </span>
-                                </div>
-                            </div>
-
-
-                            {/* 3. Employee Profile & Statutory Identifiers */}
-                            <div className="p-3 sm:p-5 border-b border-slate-200 bg-white shrink-0">
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-center">
-                                    <div className="sm:col-span-6 flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                        <EmployeeAvatar
-                                            employee={emp}
-                                            size="h-9 w-9 sm:h-10 sm:w-10"
-                                            rounded="rounded-md"
-                                            border="border border-slate-200"
-                                            shadow="shadow-2xs"
-                                            theme="auto"
-                                        />
-                                        <div className="min-w-0 flex-1">
-                                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Employee Details</span>
-                                            <h3 className="text-xs sm:text-base font-bold text-slate-900 leading-snug truncate">
-                                                {fullName}
-                                            </h3>
-                                            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 truncate">
-                                                <span className="font-mono font-semibold text-slate-700">{emp?.company_id || 'ID N/A'}</span>
-                                                {' • '}
-                                                <span>{emp?.job_title || emp?.role || 'Staff'}</span>
-                                                {' • '}
-                                                <span className="text-slate-600">{emp?.department || 'Operations'}</span>
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="sm:col-span-6 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-4">
-                                        <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Mandatory Statutory Identifiers</span>
-                                        <div className="grid grid-cols-2 gap-x-2 sm:gap-x-3 gap-y-1 text-xs">
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">TIN:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.tin || 'Not Provided'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">SSS:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.sss_no || 'Recorded'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">PhilHealth:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.philhealth_no || 'Recorded'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">Pag-IBIG:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.pagibig_no || 'Recorded'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 4. Scrollable Ledger Body */}
-                            <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 text-left">
-                                {/* Holiday Pay Callout if present */}
-                                {financials.hasHolidayPay && (
-                                    <div className="border border-warning/20 bg-warning-subtle/50 rounded-md p-3">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <i className="ti ti-calendar-event text-ink text-xs" />
-                                                <h4 className="text-[11px] font-bold text-ink uppercase tracking-wider">DOLE Holiday Premium Compensation</h4>
-                                            </div>
-                                            <span className="font-mono font-bold text-ink text-xs">
-                                                +{formatCurrency(financials.holidayPay)}
-                                            </span>
-                                        </div>
-                                        <div className="divide-y divide-warning/20 border-t border-warning/60 pt-1 text-xs">
-                                            {financials.paidHolidayItems.map((item, idx) => (
-                                                <div key={item.date || idx} className="py-1 flex items-center justify-between text-slate-700 text-[11px]">
-                                                    <span>
-                                                        <span className="font-semibold">{dayjs(item.date).format('MMM DD, YYYY')}</span> – {item.holidayName || HOLIDAY_LABELS[item.holidayType] || 'Holiday'}
-                                                        <span className="text-slate-400 ml-1">({item.worked ? `Worked • ${(Number(item.multiplier || 1) * 100).toFixed(0)}%` : 'Unworked • Paid'})</span>
-                                                    </span>
-                                                    <span className="font-mono font-semibold text-success-ink">
-                                                        +{formatCurrency(item.pay)}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Dual-Ledger Corporate Table */}
-                                <div className="border border-slate-200 rounded-md overflow-hidden">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-
-                                        {/* LEFT: EARNINGS */}
-                                        <div className="flex flex-col justify-between">
-                                            <div>
-                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
-                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <i className="ti ti-cash text-slate-500 text-xs" />
-                                                        <span>Earnings (Gross)</span>
-                                                    </h4>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
-                                                </div>
-
-                                                <div className="p-3.5 space-y-2 text-xs">
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 block">Basic Pay</span>
-                                                            <span className="text-[10px] text-slate-400">Regular Salary Cutoff</span>
-                                                        </div>
-                                                        <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">
-                                                            {formatCurrency(financials.basicPay)}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 block">Overtime Pay</span>
-                                                            <span className="text-[10px] text-slate-400">Approved Premium Hours</span>
-                                                        </div>
-                                                        <span className={`font-mono font-semibold text-xs sm:text-sm ${financials.overtimePay > 0 ? 'text-ink' : 'text-slate-400'}`}>
-                                                            {financials.overtimePay > 0 ? '+' : ''}{formatCurrency(financials.overtimePay)}
-                                                        </span>
-                                                    </div>
-
-                                                    {financials.paidLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Paid leave{financials.paidLeaveInBasic ? ' (included in basic pay)' : ''}</span><span>{formatCurrency(financials.paidLeavePay)}</span></div>}
-                                                    <SilCashEarnings payroll={activePayroll} />
-                                                    {financials.otherLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Other statutory leave pay</span><span>{formatCurrency(financials.otherLeavePay)}</span></div>}
-                                                    {financials.maternityPay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Maternity differential</span><span>{formatCurrency(financials.maternityPay)}</span></div>}
-                                                    {financials.hasHolidayPay && (
-                                                        <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                            <div>
-                                                                <span className="font-semibold text-slate-800 block">Holiday Premium</span>
-                                                                <span className="text-[10px] text-slate-400">DOLE Statutory Premium</span>
-                                                            </div>
-                                                            <span className="font-mono font-semibold text-ink text-xs sm:text-sm">
-                                                                +{formatCurrency(financials.holidayPay)}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="text-[11px] font-bold uppercase text-slate-700 tracking-wide">Gross Earnings</span>
-                                                <span className="font-mono font-bold text-slate-900 text-sm">
-                                                    {formatCurrency(financials.grossEarnings)}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* RIGHT: DEDUCTIONS */}
-                                        <div className="flex flex-col justify-between">
-                                            <div>
-                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
-                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <i className="ti ti-receipt-tax text-slate-500 text-xs" />
-                                                        <span>Deductions &amp; Withholdings</span>
-                                                    </h4>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
-                                                </div>
-
-                                                <div className="p-3.5 space-y-2 text-xs">
-                                                    {financials.deductionsList.length > 0 ? (
-                                                        financials.deductionsList.map((ded, index) => {
-                                                            let percentageDisplay = null;
-                                                            if (financials.grossEarnings > 0 && ded.amount > 0) {
-                                                                const percentage = ((ded.amount / financials.grossEarnings) * 100).toFixed(1);
-                                                                percentageDisplay = (
-                                                                    <span className="text-[9px] font-mono text-danger-ink bg-danger-subtle px-1 py-0.2 rounded border border-danger/20 ml-1.5">
-                                                                        {percentage}%
-                                                                    </span>
-                                                                );
-                                                            }
-
-                                                            return (
-                                                                <div key={index} className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                                    <div className="flex items-center">
-                                                                        <span className="font-semibold text-slate-800">{ded.name}</span>
-                                                                        {percentageDisplay}
-                                                                    </div>
-                                                                    <span className="font-mono font-semibold text-danger-ink text-xs sm:text-sm">
-                                                                        -{formatCurrency(ded.amount)}
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })
-                                                    ) : (
-                                                        <div className="py-4 text-center text-slate-400 text-xs">
-                                                            No deductions recorded for this cutoff.
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="text-[11px] font-bold uppercase text-ink tracking-wide">Total Deductions</span>
-                                                <span className="font-mono font-bold text-danger-ink text-sm">
-                                                    -{formatCurrency(financials.totalDeductions)}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
-
-                                {/* 5. Executive Net Take-Home Pay Settlement Strip */}
-                                <div className="border border-slate-900 bg-slate-900 text-white rounded-md p-3.5 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs print:bg-transparent print:text-slate-900 print:border-2 print:border-slate-900">
-                                    <div className="min-w-0">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block print:text-slate-600">Net Take-Home Pay</span>
-                                        <div className="flex items-baseline gap-2 mt-0.5">
-                                            <span className="text-xl sm:text-3xl font-black font-mono tracking-tight text-white print:text-slate-900 break-words">
-                                                {formatCurrency(financials.netPay)}
-                                            </span>
-                                        </div>
-                                        <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1 block font-mono print:text-slate-600 break-words leading-relaxed">
-                                            Net Calculation: {formatCurrency(financials.grossEarnings)} (Gross) – {formatCurrency(financials.totalDeductions)} (Deductions)
-                                        </span>
-                                    </div>
-
-                                    <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800 w-full sm:w-auto">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-slate-700">Account Settlement</span>
-                                        <span className="text-xs text-slate-300 print:text-slate-700 font-medium mt-0.5 block">Official Remuneration Voucher</span>
-                                    </div>
-                                </div>
-
-
-                                <p className="text-[10px] text-slate-400 leading-relaxed border-t border-slate-200/80 pt-3">
-                                    <strong>DOLE Compliance Note:</strong> This statement is an official certificate of compensation prepared under Philippine Labor Standards (DOLE DO 147-15). All statutory withholdings for SSS, PhilHealth, Pag-IBIG, and Bureau of Internal Revenue (BIR) taxes are computed and remitted on behalf of the employee.
-                                </p>
-                            </div>
-
-                            {/* 6. Footer Actions */}
-                            <div className="no-print p-3 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => window.print()}
-                                    className="h-9 px-3.5 sm:px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
-                                >
-                                    <i className="ti ti-printer text-sm" />
-                                    <span>Print / Export PDF</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPayslipModal(false)}
-                                    className="h-9 px-5 sm:px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer shadow-2xs"
-                                >
-                                    Close
-                                </button>
+                            <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-6 print:overflow-visible print:p-0 print:h-auto print:max-h-none">
+                                <OfficialPayslipDocument
+                                    payroll={activePayroll}
+                                    employee={emp}
+                                    variant="employee"
+                                    onBack={() => setPayslipView('history')}
+                                    onClose={() => setShowPayslipModal(false)}
+                                    pagination={allPayrolls.length > 1 && currentPayslipIndex !== -1 ? {
+                                        currentIndex: currentPayslipIndex,
+                                        totalCount: allPayrolls.length,
+                                        onPrev: () => {
+                                            const olderP = allPayrolls[currentPayslipIndex + 1];
+                                            if (olderP) setSelectedPayslipId(olderP.id);
+                                        },
+                                        onNext: () => {
+                                            const newerP = allPayrolls[currentPayslipIndex - 1];
+                                            if (newerP) setSelectedPayslipId(newerP.id);
+                                        }
+                                    } : undefined}
+                                />
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 );
             })()}
 
@@ -2184,13 +1893,14 @@ const EmployeeDashboard = () => {
             />
 
             {/* Disciplinary Notices Modal */}
-            {showInfractionsModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
+            {showInfractionsModal && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
                     <div
-                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
+                        aria-hidden="true"
                     />
-                    <div className="relative bg-white rounded-lg w-full max-w-xl overflow-hidden shadow-xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">
+                    <div className="relative z-10 bg-white rounded-lg w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col my-auto">
                         {/* Header */}
                         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
                             <div className="flex items-center gap-3">
@@ -2356,9 +2066,20 @@ const EmployeeDashboard = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
+            {/* Official Remuneration History Document (Isolated Print & PDF Export Target) */}
+            <div className="hidden print:block" aria-hidden="true">
+                <OfficialRemunerationHistoryDocument
+                    employee={liveEmployee || user}
+                    payrolls={filteredPayrolls.length > 0 ? filteredPayrolls : allPayrolls}
+                    filterYear={filterYear}
+                    filterMonth={filterMonth}
+                    summary={payHistorySummary}
+                />
+            </div>
 
         </div>
     );

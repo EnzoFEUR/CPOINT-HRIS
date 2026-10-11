@@ -3,6 +3,7 @@ import React from 'react';
 const BADGE_VARIANTS = {
     present: 'bg-slate-900 text-white border-slate-800',
     success: 'bg-success-subtle text-success-ink border-success/20',
+    approved: 'bg-success-subtle text-success-ink border-success/20',
     late: 'bg-warning-subtle text-warning-ink border-warning/20',
     warning: 'bg-warning-subtle text-warning-ink border-warning/20',
     needs_review: 'bg-warning-subtle text-warning-ink border-warning/20',
@@ -10,6 +11,8 @@ const BADGE_VARIANTS = {
     absent: 'bg-danger-subtle text-danger-ink border-danger/20',
     danger: 'bg-danger-subtle text-danger-ink border-danger/20',
     destructive: 'bg-danger-subtle text-danger-ink border-danger/20',
+    rejected: 'bg-danger-subtle text-danger-ink border-danger/20',
+    cancelled: 'bg-slate-100 text-slate-700 border-slate-200',
     active: 'bg-accent-subtle text-accent-strong border-accent/20',
     info: 'bg-accent-subtle text-accent-strong border-accent/20',
     inactive: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -35,6 +38,7 @@ const BADGE_VARIANTS = {
 const DOT_COLORS = {
     present: 'bg-slate-400',
     success: 'bg-success',
+    approved: 'bg-success',
     late: 'bg-warning',
     warning: 'bg-warning',
     needs_review: 'bg-warning',
@@ -42,6 +46,8 @@ const DOT_COLORS = {
     absent: 'bg-danger',
     danger: 'bg-danger',
     destructive: 'bg-danger',
+    rejected: 'bg-danger',
+    cancelled: 'bg-slate-400',
     active: 'bg-accent',
     info: 'bg-accent',
     inactive: 'bg-slate-500',

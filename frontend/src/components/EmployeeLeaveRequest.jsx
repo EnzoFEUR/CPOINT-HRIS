@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { getUser } from '../routes/guards';
@@ -149,11 +150,27 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
             if (busy.current) await refreshRequests();
         } finally { busy.current = false; setSaving(false); }
     };
+
+    useEffect(() => {
+        if (!open) return;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [open]);
+
     if (!open) return null;
     const requestClose = () => { if (!busy.current) onClose(); };
-    return <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
-        <div className="absolute inset-0 bg-slate-950/70" onClick={requestClose} aria-hidden="true" />
-        <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="employee-leave-title" tabIndex={-1} className="relative w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6 overflow-visible">
+
+    return createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div
+                className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
+                onClick={requestClose}
+                aria-hidden="true"
+            />
+            <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="employee-leave-title" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6 overflow-visible my-auto">
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
@@ -313,5 +330,7 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                 </div>
             </form>
         </div>
-    </div>;
+    </div>,
+    document.body
+    );
 }
