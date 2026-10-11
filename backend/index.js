@@ -10,7 +10,7 @@ import { supabase } from './supabaseClient.js';
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import payrollRoutes from './routes/payroll.js';
-import leaveRoutes from './routes/leaves.js';
+import leaveRoutes, { createLeaveCreditsRouter } from './routes/leaves.js';
 import dashboardRoutes from './routes/dashboard.js';
 import profileRoutes from './routes/profile.js';
 import auditLogRoutes from './routes/auditLogs.js';
@@ -27,7 +27,7 @@ import documentRouter from './routes/document.js';
 
 // Middleware & Utilities
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
-import { verifyToken, checkRole, checkAdminOrOwnership } from './middleware/authMiddleware.js';
+import { verifyToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
 import './cron/attendanceJobs.js';
 
@@ -68,10 +68,11 @@ app.use(removeExposedHeaders);
 
 // Mount Authenticated Routes
 app.use('/api/documents', verifyToken, documentRouter);
-app.use('/api/employees', verifyToken, checkAdminOrOwnership, employeeRoutes);
+app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
-app.use('/api/payroll', verifyToken, checkAdminOrOwnership, payrollRoutes);
-app.use('/api/leaves', verifyToken, checkAdminOrOwnership, leaveRoutes);
+app.use('/api/payroll', verifyToken, checkVerifiedManagerOrOwnership, payrollRoutes);
+app.use('/api/leaves', verifyToken, leaveRoutes);
+app.use('/api/leave-credits', verifyToken, createLeaveCreditsRouter());
 app.use('/api/dashboard', verifyToken, dashboardRoutes);
 app.use('/api/disciplinary', verifyToken, disciplinaryRoutes);
 app.use('/api/profile', verifyToken, profileRoutes);

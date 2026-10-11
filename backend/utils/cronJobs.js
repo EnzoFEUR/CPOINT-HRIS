@@ -1,8 +1,21 @@
 import cron from 'node-cron';
 import { supabase } from '../supabaseClient.js';
+import { isMissingCreditSchema } from '../routes/leaves.js';
 
 // Background cron jobs
 export const startCronJobs = () => {
+    cron.schedule('* * * * *', async () => {
+        try {
+            const { error } = await supabase.rpc('accrue_due_sil_credits');
+            if (error && !isMissingCreditSchema(error)) console.error('[cron] SIL accrual failed:', error.code || 'UNKNOWN');
+        } catch (error) { console.error('[cron] SIL accrual failed:', error.code || 'UNKNOWN'); }
+    }, { timezone: 'Asia/Manila', noOverlap: true });
+    cron.schedule('*/5 * * * *', async () => {
+        try {
+            const { error } = await supabase.rpc('review_due_sil_obligations');
+            if (error && !isMissingCreditSchema(error)) console.error('[cron] SIL obligation review failed:', error.code || 'UNKNOWN');
+        } catch (error) { console.error('[cron] SIL obligation review failed:', error.code || 'UNKNOWN'); }
+    }, { timezone: 'Asia/Manila', noOverlap: true });
     // Delete notifications older than 90 days every midnight
     cron.schedule('0 0 * * *', async () => {
         try {

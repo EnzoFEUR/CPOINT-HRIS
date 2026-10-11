@@ -1,424 +1,152 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { SilCashEarnings } from '../components/SilPaymentCard';
+import OfficialPayslipDocument from '../components/OfficialPayslipDocument';
+import OfficialRemunerationHistoryDocument from '../components/OfficialRemunerationHistoryDocument';
+import { printHtmlElement } from '../utils/printDocument';
+import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
 import toast from 'react-hot-toast';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { getShoeRoleDetails, parseProductionGroup } from '../utils/factoryRoles';
-import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding';
+import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding';
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
-import { isSecurity, isAdmin } from '../routes/guards';
-import { performLogout } from '../utils/authSession';
+import { getUser, isSecurity, isAdmin } from '../routes/guards';
+import useEmployeeDashboard from '../utils/useEmployeeDashboard';
+import LeaveCreditsPanel from '../components/LeaveCreditsPanel';
+import EmployeeLeaveRequest from '../components/EmployeeLeaveRequest';
+import MyRequestsModal from '../components/MyRequestsModal';
+import useEmployeeLeaveCredits from '../utils/useEmployeeLeaveCredits';
+import { getEmployeeLeaveStatus } from '../../../shared/leaveRequests.mjs';
+import { acknowledgeDashboardNotices, createDashboardRefresh, getDashboardPayrolls, targetsDashboardEmployee } from '../utils/employeeDashboardData';
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
-    const storedUser = (() => {
-        try {
-            const raw = localStorage.getItem('user');
-            return (raw && raw !== 'undefined') ? JSON.parse(raw) : { name: 'Loading...', id: '', department: 'Team Member' };
-        } catch {
-            return { name: 'Loading...', id: '', department: 'Team Member' };
-        }
-    })();
-    const [user, setUser] = useState(storedUser);
-
-    // Initial disciplinary state from cache
-    const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(storedUser?.id));
-
-    // Modals
+    const [storedUser] = useState(() => getUser() || { name: 'Loading...', id: '', department: 'Team Member' });
+    const enabled = Boolean(storedUser.id) && !isSecurity(storedUser) && !isAdmin(storedUser);
+    const { dashboard, history, refresh } = useEmployeeDashboard(storedUser.id, enabled);
+    const data = dashboard.data;
+    const payHistoryData = history.data;
+    const isPayHistoryLoading = history.isLoading;
+    const liveEmployee = data?.employee || data?.shiftData?.[0] || null;
+    const user = useMemo(() => liveEmployee ? {
+        ...storedUser, ...liveEmployee,
+        name: [liveEmployee.first_name, liveEmployee.last_name].filter(Boolean).join(' ') || storedUser.name,
+    } : storedUser, [storedUser, liveEmployee]);
+    const [disciplinaryState, setDisciplinaryState] = useState(() => getDisciplinaryCache(storedUser.id));
+    const [now, setNow] = useState(() => Date.now());
     const [showQrModal, setShowQrModal] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [showMyRequestsModal, setShowMyRequestsModal] = useState(false);
+    const leaveCredits = useEmployeeLeaveCredits(user.id);
+    const cashRequests = leaveCredits.data?.cash_out_requests || [];
+    const cashEvents = leaveCredits.data?.cash_events || [];
     const [showPayslipModal, setShowPayslipModal] = useState(false);
-    const [showInfractionsModal, setShowInfractionsModal] = useState(false);
+    const [showInfractionsModal, setShowInfractionsModal] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('view') === 'disciplinary' || params.get('tab') === 'disciplinary';
+    });
     const [showLatestPayMasked, setShowLatestPayMasked] = useState(false);
 
-    // Leave Form State
-    const [leaveForm, setLeaveForm] = useState({
-        leave_type: 'Sick Leave',
-        start_date: '',
-        end_date: '',
-        reason: ''
-    });
-    const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
-
     useEffect(() => {
-        if (isSecurity(storedUser)) {
-            window.location.replace('/scanner');
-        } else if (isAdmin(storedUser)) {
-            window.location.replace('/');
-        }
+        if (isSecurity(storedUser)) window.location.replace('/scanner');
+        else if (isAdmin(storedUser)) window.location.replace('/');
     }, [storedUser]);
 
-    const fetchDashboardData = async (userId) => {
-        try {
-            const res = await fetchWithAuth(`/api/dashboard/employee/${userId}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json && (json.attendanceData !== undefined || json.leaveData !== undefined)) {
-                    return json;
-                }
-            }
-        } catch (err) {
-            console.warn('[DASHBOARD] BFF endpoint unavailable, falling back to direct parallel fetch:', err);
-        }
-
-        // Fallback fetch
-        const [attRes, payRes, discRes, leaveRes] = await Promise.allSettled([
-            fetchWithAuth(`/api/attendance?employee_id=${userId}`),
-            fetchWithAuth(`/api/payroll?employee_id=${userId}&limit=12`),
-            fetchWithAuth(`/api/disciplinary?employee_id=${userId}`),
-            fetchWithAuth(`/api/leaves?employee_id=${userId}`)
-        ]);
-
-        const attendanceData = attRes.status === 'fulfilled' && attRes.value.ok ? await attRes.value.json() : [];
-        const payrollData = payRes.status === 'fulfilled' && payRes.value.ok ? await payRes.value.json() : [];
-        const discData = discRes.status === 'fulfilled' && discRes.value.ok ? await discRes.value.json() : [];
-        const leaveData = leaveRes.status === 'fulfilled' && leaveRes.value.ok ? await leaveRes.value.json() : [];
-
-        return { attendanceData, payrollData, discData, leaveData };
-    };
-
-    const getCachedDashboard = (userId) => {
-        if (!userId) return undefined;
-        try {
-            const cached = sessionStorage.getItem(`cpoint_emp_dash_${userId}`);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (parsed && (parsed.attendanceData || parsed.payrollData)) {
-                    return parsed;
-                }
-            }
-        } catch (_) { }
-        return undefined;
-    };
-
-    const { data, isLoading } = useQuery({
-        queryKey: ['employeeDashboard', user.id],
-        queryFn: () => fetchDashboardData(user.id),
-        initialData: () => getCachedDashboard(user.id),
-        enabled: !!user.id && user.role !== 'security',
-        staleTime: 60_000,
-        refetchOnWindowFocus: false,
-    });
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 60000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
-        if (data && user?.id && (data.attendanceData || data.payrollData)) {
-            try {
-                sessionStorage.setItem(`cpoint_emp_dash_${user.id}`, JSON.stringify(data));
-            } catch (_) { }
-        }
-    }, [data, user?.id]);
+        if (!liveEmployee) return;
+        try {
+            const saved = getUser();
+            if (saved?.id === user.id) {
+                const updated = { ...saved, ...liveEmployee, name: user.name };
+                const serialized = JSON.stringify(updated);
+                if (serialized !== JSON.stringify(saved)) localStorage.setItem('user', serialized);
+            }
+        } catch { /* The server profile still renders when browser storage is unavailable. */ }
+    }, [liveEmployee, user.id, user.name]);
 
-    // Real-time synchronization
     useEffect(() => {
-        if (!user?.id) return;
-
-        const channel = supabase
-            .channel(`employee-live-dashboard-${user.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, (payload) => {
-                if (!payload?.new?.employee_id || String(payload?.new?.employee_id) === String(user.id) || String(payload?.old?.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_CREATED' }, ({ payload }) => {
-                if (!payload?.employee_id || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                    toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
+        if (!enabled) return;
+        let disposed = false;
+        const scheduled = createDashboardRefresh(refresh);
+        const onPayroll = event => ({ payload }) => {
+            if (disposed || !targetsDashboardEmployee(payload, storedUser.id)) return;
+            scheduled.refresh(true);
+            if (['PAYROLL_CREATED', 'PAYROLL_BATCH_DISTRIBUTED'].includes(event) &&
+                (payload?.employee_id || Array.isArray(payload?.employee_ids))) {
                 toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-            })
-            .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_BULK_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-            })
-            .subscribe();
-
-        const broadcastBus = supabase
-            .channel(`dashboard-disciplinary-sync-${user.id}`)
-            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    if (payload?.type === 'Suspension') {
-                        const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-                        setDisciplinaryCache(user.id, statusObj);
-                        setDisciplinaryState(statusObj);
-                        setUser(prev => ({
-                            ...prev,
-                            status: 'suspended',
-                            is_active: false,
-                            is_suspended: true,
-                            is_terminated: false,
-                            operational_status: 'Suspended'
-                        }));
-                        setShowInfractionsModal(true);
-                    } else if (payload?.type === 'Termination') {
-                        const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-                        setDisciplinaryCache(user.id, statusObj);
-                        setDisciplinaryState(statusObj);
-                        setUser(prev => ({
-                            ...prev,
-                            status: 'inactive',
-                            is_active: false,
-                            is_suspended: false,
-                            is_terminated: true,
-                            operational_status: 'Terminated',
-                            archived_at: payload.archived_at || new Date().toISOString(),
-                            separation_reason: payload.reason
-                        }));
-                    } else if (payload?.type === 'Warning') {
-                        setShowInfractionsModal(true);
-                    }
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'suspended',
-                        is_active: false,
-                        is_suspended: true,
-                        is_terminated: false,
-                        operational_status: 'Suspended'
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Operational Hold: Your account has been placed on temporary disciplinary suspension.', {
-                        id: 'susp-live-alert',
-                        duration: 8000
-                    });
-                    setShowInfractionsModal(true);
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-                    setDisciplinaryCache(user.id, statusObj);
-                    setDisciplinaryState(statusObj);
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'inactive',
-                        is_active: false,
-                        is_suspended: false,
-                        is_terminated: true,
-                        operational_status: 'Terminated',
-                        archived_at: payload.archived_at || new Date().toISOString(),
-                        separation_reason: payload.reason
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Account Separated: Your status has been updated to Separated / Pending Archive.', {
-                        id: 'term-live-alert',
-                        duration: 8000
-                    });
-                }
-            })
-            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Disciplinary decision overturned. Good standing restored.', { id: 'disc-ot-alert' });
-                }
-            })
-            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Disciplinary action resolved. Access restored.', { id: 'disc-res-alert' });
-                }
-            })
-            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
-                if (!payload || payload.employee_id === user.id) {
-                    clearDisciplinaryCache(user.id);
-                    setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-                    setUser(prev => ({
-                        ...prev,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        is_terminated: false,
-                        operational_status: 'Active',
-                        archived_at: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Account fully restored to active status.', { id: 'emp-rest-alert' });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRIC_EXEMPTION_UPDATED' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Medical Grace protocol status updated');
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRICS_REGISTERED' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    setUser(prev => ({
-                        ...prev,
-                        has_registered_biometrics: true,
-                        biometric_baseline_path: payload?.biometric_baseline_path || prev?.biometric_baseline_path
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.success('Face Biometrics Registered! Turnstile QR pass activated.', { id: 'bio-dash-toast' });
-                }
-            })
-            .on('broadcast', { event: 'BIOMETRICS_RESET' }, ({ payload }) => {
-                if (!payload || String(payload.employee_id) === String(user.id)) {
-                    setUser(prev => ({
-                        ...prev,
-                        has_registered_biometrics: false,
-                        biometric_baseline_path: null
-                    }));
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                    toast.error('Face Biometrics Reset: Please re-enroll in Biometric Setup.', { id: 'bio-dash-toast' });
-                }
-            })
-            .subscribe();
-
-        const payrollSyncBus = supabase
-            .channel(`payroll-emp-sync-${user.id}`)
-            .on('broadcast', { event: 'PAYROLL_CREATED' }, ({ payload }) => {
-                if (!payload?.employee_id || String(payload.employee_id) === String(user.id)) {
-                    queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                    queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-                    toast.success('Your latest payslip has been distributed!', { id: 'emp-payslip-alert' });
-                }
-            })
-            .on('broadcast', { event: 'PAYROLL_BATCH_DISTRIBUTED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_UPDATED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .on('broadcast', { event: 'PAYROLL_BULK_DELETED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['employeePayHistory', user.id], refetchType: 'active' });
-            })
-            .subscribe();
-
-        const handleRefresh = () => {
-            queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-        };
-        const handleOpenDisciplinary = () => {
-            setShowInfractionsModal(true);
-        };
-
-        window.addEventListener('refresh_dashboard', handleRefresh);
-        window.addEventListener('open_disciplinary_modal', handleOpenDisciplinary);
-
-        const handleDisciplinarySync = (e) => {
-            if (!user?.id || e.detail?.userId === user.id) {
-                setDisciplinaryState(getDisciplinaryCache(user?.id));
             }
         };
-        window.addEventListener('hris_disciplinary_sync', handleDisciplinarySync);
-
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('view') === 'disciplinary' || params.get('tab') === 'disciplinary') {
-            setShowInfractionsModal(true);
-        }
-
-        return () => {
-            supabase.removeChannel(channel);
-            supabase.removeChannel(broadcastBus);
-            supabase.removeChannel(payrollSyncBus);
-            window.removeEventListener('refresh_dashboard', handleRefresh);
-            window.removeEventListener('open_disciplinary_modal', handleOpenDisciplinary);
-            window.removeEventListener('hris_disciplinary_sync', handleDisciplinarySync);
+        const alerts = {
+            EMPLOYEE_SUSPENDED: ['error', 'Operational Hold: Your account has been placed on temporary disciplinary suspension.', 'susp-live-alert'],
+            EMPLOYEE_TERMINATED: ['error', 'Account Separated: Your status has been updated to Separated / Pending Archive.', 'term-live-alert'],
+            DISCIPLINARY_OVERTURNED: ['success', 'Disciplinary decision overturned. Good standing restored.', 'disc-ot-alert'],
+            DISCIPLINARY_RESOLVED: ['success', 'Disciplinary action resolved. Access restored.', 'disc-res-alert'],
+            EMPLOYEE_RESTORED: ['success', 'Account fully restored to active status.', 'emp-rest-alert'],
+            BIOMETRIC_EXEMPTION_UPDATED: ['success', 'Medical Grace protocol status updated', 'medical-dash-toast'],
+            BIOMETRICS_REGISTERED: ['success', 'Face Biometrics Registered! Turnstile QR pass activated.', 'bio-dash-toast'],
+            BIOMETRICS_RESET: ['error', 'Face Biometrics Reset: Please re-enroll in Biometric Setup.', 'bio-dash-toast'],
         };
-    }, [user?.id, queryClient]);
+        const onEmployeeEvent = event => ({ payload }) => {
+            if (disposed || !targetsDashboardEmployee(payload, storedUser.id)) return;
+            // Broadcasts announce changes; authenticated reads determine account/QR permissions.
+            scheduled.refresh();
+            if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && ['Suspension', 'Warning'].includes(payload?.type))) setShowInfractionsModal(true);
+            const alert = alerts[event];
+            if (alert) toast[alert[0]](alert[1], { id: alert[2], duration: 8000 });
+        };
+        const onSubscribe = status => { if (status === 'SUBSCRIBED') scheduled.refresh(true); };
+        const channel = supabase.channel(`employee-live-dashboard-${storedUser.id}`);
+        for (const table of ['attendances', 'leave_requests', 'payrolls', 'disciplinary_logs', 'employees']) {
+            const column = table === 'employees' ? 'id' : 'employee_id';
+            channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `${column}=eq.${storedUser.id}` }, payload => {
+                if (targetsDashboardEmployee(payload, storedUser.id, column)) scheduled.refresh(table === 'payrolls');
+            });
+        }
+        // shortcut: unscoped payroll deletions reconcile by polling; target employee topics for immediate updates.
+        for (const event of ['PAYROLL_CREATED', 'PAYROLL_BATCH_DISTRIBUTED', 'PAYROLL_UPDATED', 'PAYROLL_DELETED', 'PAYROLL_BULK_DELETED']) {
+            channel.on('broadcast', { event }, onPayroll(event));
+        }
+        channel.on('broadcast', { event: 'LEAVE_STATUS_UPDATED' }, ({ payload }) => {
+            if (!disposed && targetsDashboardEmployee(payload, storedUser.id)) scheduled.refresh();
+        });
+        const disciplinaryBus = supabase.channel(`dashboard-disciplinary-sync-${storedUser.id}`);
+        for (const event of ['DISCIPLINARY_CREATED', 'DISCIPLINARY_STATUS_UPDATED', 'DISCIPLINARY_DELETED', ...Object.keys(alerts)]) {
+            channel.on('broadcast', { event }, onEmployeeEvent(event));
+            disciplinaryBus.on('broadcast', { event }, onEmployeeEvent(event));
+        }
+        channel.subscribe(onSubscribe);
+        disciplinaryBus.subscribe(onSubscribe);
+        const openDisciplinary = () => setShowInfractionsModal(true);
+        const refreshAll = () => scheduled.refresh(true);
+        const syncDisciplinary = event => {
+            if (event.detail?.userId === storedUser.id) setDisciplinaryState(getDisciplinaryCache(storedUser.id));
+        };
+        window.addEventListener('refresh_dashboard', refreshAll);
+        window.addEventListener('open_disciplinary_modal', openDisciplinary);
+        window.addEventListener('hris_disciplinary_sync', syncDisciplinary);
+        return () => {
+            disposed = true;
+            scheduled.cancel();
+            for (const subscription of [channel, disciplinaryBus]) supabase.removeChannel(subscription);
+            window.removeEventListener('refresh_dashboard', refreshAll);
+            window.removeEventListener('open_disciplinary_modal', openDisciplinary);
+            window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
+        };
+    }, [enabled, storedUser.id, refresh]);
 
-    // Derived state
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
-
-    // Full pay history. The dashboard endpoint may return only the latest payslip,
-    // so the complete list is fetched separately and merged below with 0ms cache-first rendering.
-    const { data: payHistoryData, isLoading: isPayHistoryLoading } = useQuery({
-        queryKey: ['employeePayHistory', user.id],
-        queryFn: async () => {
-            const res = await fetchWithAuth(`/api/payroll?employee_id=${user.id}&limit=100`);
-            if (!res.ok) throw new Error('Failed to load pay history');
-            return res.json();
-        },
-        enabled: !!user.id && user.role !== 'security',
-        initialData: () => {
-            try {
-                const cached = sessionStorage.getItem(`cpoint_emp_pay_history_${user.id}`);
-                return cached ? JSON.parse(cached) : undefined;
-            } catch {
-                return undefined;
-            }
-        },
-        placeholderData: (prev) => prev,
-        staleTime: 60_000,
-        gcTime: 300_000,
-        refetchOnWindowFocus: false,
-    });
-
-    // Save pay history cache into sessionStorage for instantaneous cold-start hydration
-    useEffect(() => {
-        if (payHistoryData && user?.id) {
-            try {
-                sessionStorage.setItem(`cpoint_emp_pay_history_${user.id}`, JSON.stringify(payHistoryData));
-            } catch (_) { }
-        }
-    }, [payHistoryData, user?.id]);
 
     // Global keyboard listener for accessible ESC dismissal of all modals
     useEffect(() => {
@@ -426,7 +154,6 @@ const EmployeeDashboard = () => {
             if (e.key === 'Escape') {
                 setShowPayslipModal(false);
                 setShowQrModal(false);
-                setShowLeaveModal(false);
                 setShowInfractionsModal(false);
             }
         };
@@ -434,27 +161,7 @@ const EmployeeDashboard = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Merged, de-duplicated, and sorted newest first so the dashboard card shows the newest payslip
-    const allPayrolls = useMemo(() => {
-        const toList = (raw) => {
-            const v = raw?.data || raw || [];
-            return Array.isArray(v) ? v : (v?.id ? [v] : []);
-        };
-        const merged = new Map();
-        [...toList(data?.payrollData), ...toList(payHistoryData)].forEach((p) => {
-            if (!p) return;
-            const key = p.id || `${p.period_start}_${p.period_end}`;
-            merged.set(key, { ...(merged.get(key) || {}), ...p });
-        });
-        const time = (v) => {
-            const t = new Date(v || 0).getTime();
-            return Number.isNaN(t) ? 0 : t;
-        };
-        return Array.from(merged.values()).sort((a, b) =>
-            (time(b.period_end || b.period_start) - time(a.period_end || a.period_start)) ||
-            (time(b.created_at) - time(a.created_at))
-        );
-    }, [data, payHistoryData]);
+    const allPayrolls = useMemo(() => getDashboardPayrolls(data?.payrollData, payHistoryData), [data?.payrollData, payHistoryData]);
     const latestPayroll = allPayrolls.length > 0 ? allPayrolls[0] : null;
     const [payslipView, setPayslipView] = useState('history'); // 'history' | 'detail'
     const [selectedPayslipId, setSelectedPayslipId] = useState(null);
@@ -466,6 +173,37 @@ const EmployeeDashboard = () => {
         if (!currentPayslip) return -1;
         return allPayrolls.findIndex((p) => p.id === currentPayslip.id);
     }, [allPayrolls, currentPayslip]);
+
+    const [autoPrintPayslipId, setAutoPrintPayslipId] = useState(null);
+
+    useEffect(() => {
+        if (autoPrintPayslipId && payslipView === 'detail' && currentPayslip?.id === autoPrintPayslipId) {
+            const timer = setTimeout(() => {
+                const emp = currentPayslip.employees || liveEmployee || user;
+                const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || 'Employee' : 'Employee';
+                const companyId = emp?.company_id || (emp?.id ? `CP-${String(emp.id).substring(0, 8).toUpperCase()}` : 'CP-N/A');
+                const sanitizedEmp = fullName.replace(/[^a-zA-Z0-9]/g, '_');
+                const startStr = dayjs(currentPayslip.period_start).format('YYYYMMDD');
+                const endStr = dayjs(currentPayslip.period_end).format('YYYYMMDD');
+                const docTitle = `Payslip_${companyId}_${sanitizedEmp}_${startStr}_to_${endStr}`;
+                printHtmlElement('official-payslip-document', docTitle);
+                setAutoPrintPayslipId(null);
+            }, 120);
+            return () => clearTimeout(timer);
+        }
+    }, [autoPrintPayslipId, payslipView, currentPayslip, liveEmployee, user]);
+
+    // Lock body scroll when any dashboard modal is active to eliminate background bounce and gaps
+    useEffect(() => {
+        const isModalOpen = Boolean(showQrModal || showPayslipModal || showInfractionsModal);
+        if (isModalOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
+    }, [showQrModal, showPayslipModal, showInfractionsModal]);
 
     // Pay history filter (year / month / search query). 
     const [filterYear, setFilterYear] = useState('all');
@@ -533,6 +271,15 @@ const EmployeeDashboard = () => {
         };
     }, [filteredPayrolls]);
 
+    const handlePrintHistoryStatement = () => {
+        const sanitizedEmp = (user?.name || 'Employee').replace(/[^a-zA-Z0-9]/g, '_');
+        const companyId = user?.company_id || (user?.id ? `CP-${String(user.id).substring(0, 8).toUpperCase()}` : 'CP-RECORD');
+        const yearStr = filterYear !== 'all' ? filterYear : dayjs().format('YYYY');
+        const docTitle = `Remuneration_Statement_${companyId}_${sanitizedEmp}_${yearStr}`;
+
+        printHtmlElement('official-remuneration-history-document', docTitle);
+    };
+
     const isFactoryWorker = (user?.department || '').toLowerCase().includes('factory') ||
         (user?.shift || '').toLowerCase().includes('factory');
     const shoeRole = isFactoryWorker ? getShoeRoleDetails(user?.job_title) : null;
@@ -541,59 +288,7 @@ const EmployeeDashboard = () => {
     const workerSchedule = isFactoryWorker ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM';
     const overtimePolicy = isFactoryWorker ? 'Strict Shift · No Overtime' : 'Extended Shift · OT Eligible';
 
-    // Live employee data
-    const liveEmployee = data?.employee || (data?.shiftData && data?.shiftData[0]) || null;
-    const currentStatus = (liveEmployee?.status || user?.status || 'active').toLowerCase();
-    const currentIsActive = liveEmployee?.is_active !== undefined ? liveEmployee.is_active : (user?.is_active !== undefined ? user.is_active : true);
-
-    // Sync live employee status, biometrics, separation details, and medical exemption to user state and localStorage
-    useEffect(() => {
-        if (liveEmployee && (
-            (liveEmployee.status && liveEmployee.status !== user?.status) ||
-            liveEmployee.is_active !== user?.is_active ||
-            liveEmployee.medical_record_url !== user?.medical_record_url ||
-            liveEmployee.has_registered_biometrics !== user?.has_registered_biometrics ||
-            liveEmployee.archived_at !== user?.archived_at ||
-            liveEmployee.separation_date !== user?.separation_date ||
-            liveEmployee.operational_status !== user?.operational_status ||
-            liveEmployee.is_suspended !== user?.is_suspended ||
-            liveEmployee.is_terminated !== user?.is_terminated
-        )) {
-            setUser(prev => ({
-                ...prev,
-                status: liveEmployee.status || prev?.status,
-                is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : prev?.is_active,
-                medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : prev?.medical_record_url,
-                has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : prev?.has_registered_biometrics,
-                archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : prev?.archived_at,
-                separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : prev?.separation_date,
-                separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : prev?.separation_type,
-                separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : prev?.separation_reason,
-                separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : prev?.separation_notes,
-                operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : prev?.operational_status,
-                is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : prev?.is_suspended,
-                is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : prev?.is_terminated
-            }));
-            try {
-                const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({
-                    ...stored,
-                    status: liveEmployee.status || stored?.status,
-                    is_active: liveEmployee.is_active !== undefined ? liveEmployee.is_active : stored?.is_active,
-                    medical_record_url: liveEmployee.medical_record_url !== undefined ? liveEmployee.medical_record_url : stored?.medical_record_url,
-                    has_registered_biometrics: liveEmployee.has_registered_biometrics !== undefined ? liveEmployee.has_registered_biometrics : stored?.has_registered_biometrics,
-                    archived_at: liveEmployee.archived_at !== undefined ? liveEmployee.archived_at : stored?.archived_at,
-                    separation_date: liveEmployee.separation_date !== undefined ? liveEmployee.separation_date : stored?.separation_date,
-                    separation_type: liveEmployee.separation_type !== undefined ? liveEmployee.separation_type : stored?.separation_type,
-                    separation_reason: liveEmployee.separation_reason !== undefined ? liveEmployee.separation_reason : stored?.separation_reason,
-                    separation_notes: liveEmployee.separation_notes !== undefined ? liveEmployee.separation_notes : stored?.separation_notes,
-                    operational_status: liveEmployee.operational_status !== undefined ? liveEmployee.operational_status : stored?.operational_status,
-                    is_suspended: liveEmployee.is_suspended !== undefined ? liveEmployee.is_suspended : stored?.is_suspended,
-                    is_terminated: liveEmployee.is_terminated !== undefined ? liveEmployee.is_terminated : stored?.is_terminated
-                }));
-            } catch (e) { }
-        }
-    }, [liveEmployee]);
+    const currentStatus = String(user.status || 'active').trim().toLowerCase();
 
     // Medical grace protocol state
     const medicalExemption = useMemo(() => {
@@ -612,55 +307,37 @@ const EmployeeDashboard = () => {
 
     const isMedicalExempt = useMemo(() => {
         if (!medicalExemption?.expires_at) return false;
-        return new Date(medicalExemption.expires_at).getTime() > Date.now();
-    }, [medicalExemption]);
+        return new Date(medicalExemption.expires_at).getTime() > now;
+    }, [medicalExemption, now]);
 
     const daysRemaining = useMemo(() => {
         if (!isMedicalExempt || !medicalExemption?.expires_at) return 0;
-        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-    }, [isMedicalExempt, medicalExemption]);
+        return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - now) / (1000 * 60 * 60 * 24)));
+    }, [isMedicalExempt, medicalExemption, now]);
 
     const rawDisc = data?.discData?.data || data?.discData;
-    const queryHasLoaded = data !== undefined && rawDisc !== undefined;
-    const discData = Array.isArray(rawDisc) ? rawDisc : [];
-    const employeeDisciplinary = discData.filter(log => String(log.employee_id) === String(user?.id));
+    const queryHasLoaded = Array.isArray(rawDisc);
+    const employeeDisciplinary = useMemo(() => {
+        const logs = data?.discData?.data || data?.discData || [];
+        return Array.isArray(logs) ? logs.filter(log => String(log.employee_id) === String(user.id)) : [];
+    }, [data?.discData, user.id]);
     const infractions = employeeDisciplinary.filter(log => log.status === 'Active');
     const unresolvedInfractions = employeeDisciplinary.filter(log => log.status !== 'Resolved');
-
-    // Check for active termination record (exclude resolved and overturned)
-    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && log.status !== 'Resolved' && log.status !== 'Overturned');
-    const activeTermination = queryHasLoaded
-        ? terminationRecord
-        : (disciplinaryState.isTerminated ? (disciplinaryState.record || { type: 'Termination', reason: 'Account separated' }) : null);
-
+    const isActiveSanction = log => !isExoneratedOrCleared(log) && !['resolved', 'overturned', 'dismissed', 'cleared', 'cancelled', 'closed'].includes(String(log.status || '').toLowerCase());
+    const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && isActiveSanction(log));
+    const activeTermination = queryHasLoaded ? terminationRecord : (disciplinaryState.isTerminated ? disciplinaryState.record : null);
     const activeSuspension = queryHasLoaded
-        ? employeeDisciplinary.find(log => log.type === 'Suspension' && log.status !== 'Resolved' && log.status !== 'Overturned')
-        : (disciplinaryState.isSuspended ? (disciplinaryState.record || { type: 'Suspension', reason: 'Operational access temporarily suspended' }) : null);
+        ? employeeDisciplinary.find(log => log.type === 'Suspension' && isActiveSanction(log))
+        : (disciplinaryState.isSuspended ? disciplinaryState.record : null);
+    const isTerminated = Boolean(activeTermination || user.is_terminated || user.archived_at ||
+        user.operational_status === 'Terminated' || ['terminated', 'separated', 'archived'].includes(currentStatus) ||
+        (currentStatus === 'inactive' && user.separation_type) || (!queryHasLoaded && disciplinaryState.isTerminated));
+    const isSuspended = !isTerminated && Boolean(activeSuspension || user.is_suspended ||
+        currentStatus === 'suspended' || user.operational_status === 'Suspended' || (!queryHasLoaded && disciplinaryState.isSuspended));
 
-    // Invariant: Suspension and Termination are strictly mutually exclusive.
-    const isSuspended = !Boolean(activeTermination) && Boolean(
-        activeSuspension ||
-        disciplinaryState.isSuspended ||
-        currentStatus === 'suspended' ||
-        liveEmployee?.status === 'suspended' ||
-        user?.status === 'suspended' ||
-        liveEmployee?.is_suspended ||
-        user?.is_suspended ||
-        liveEmployee?.operational_status === 'Suspended' ||
-        user?.operational_status === 'Suspended'
-    );
-
-    const isTerminated = !isSuspended && Boolean(
-        Boolean(activeTermination) ||
-        currentStatus === 'terminated' ||
-        Boolean(disciplinaryState.isTerminated) ||
-        Boolean(liveEmployee?.is_terminated) ||
-        liveEmployee?.operational_status === 'Terminated' ||
-        Boolean(liveEmployee?.archived_at) ||
-        Boolean(user?.archived_at) ||
-        user?.operational_status === 'Terminated' ||
-        (currentStatus === 'inactive' && Boolean(liveEmployee?.archived_at || user?.archived_at || liveEmployee?.separation_type || user?.separation_type))
-    );
+    const leaveBlockedReason = isTerminated || user.is_active === false || ['inactive', 'resigned', 'separated', 'terminated'].includes(currentStatus)
+        ? 'Leave requests are disabled for separated or inactive accounts.'
+        : isSuspended ? 'Leave requests are disabled while your account is suspended.' : '';
 
     // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
     const hasFaceBiometrics = Boolean(
@@ -682,20 +359,15 @@ const EmployeeDashboard = () => {
         disciplinaryLogs: employeeDisciplinary
     }), [isTerminated, isSuspended, currentStatus, user?.status, liveEmployee?.operational_status, user?.operational_status, employeeDisciplinary]);
 
-    // Sync disciplinary status to shared cache
     useEffect(() => {
-        if (!user?.id || !queryHasLoaded) return;
-        if (isTerminated) {
-            setDisciplinaryCache(user.id, { type: 'Termination', record: activeTermination || terminationRecord });
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        } else if (isSuspended) {
-            setDisciplinaryCache(user.id, { type: 'Suspension', record: activeSuspension });
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        } else {
-            clearDisciplinaryCache(user.id);
-            setDisciplinaryState(getDisciplinaryCache(user.id));
-        }
-    }, [user?.id, queryHasLoaded, isTerminated, isSuspended, activeTermination, activeSuspension]);
+        if (!user.id || !queryHasLoaded) return;
+        const type = isTerminated ? 'Termination' : isSuspended ? 'Suspension' : 'Clean';
+        const record = isTerminated ? activeTermination || terminationRecord || null : isSuspended ? activeSuspension || null : null;
+        const cached = getDisciplinaryCache(user.id);
+        if (cached.type === type && JSON.stringify(cached.record) === JSON.stringify(record)) return;
+        if (type === 'Clean') clearDisciplinaryCache(user.id);
+        else setDisciplinaryCache(user.id, { type, record });
+    }, [user.id, queryHasLoaded, isTerminated, isSuspended, activeTermination, activeSuspension, terminationRecord]);
 
     const suspensionEndDate = (() => {
         if (activeSuspension?.end_date) return activeSuspension.end_date;
@@ -714,75 +386,35 @@ const EmployeeDashboard = () => {
     const rawLeaves = data?.leaveData?.data || data?.leaveData || [];
     const myLeaves = Array.isArray(rawLeaves) ? rawLeaves.slice(0, 5) : [];
 
-    const handleLeaveSubmit = async (e) => {
-        e.preventDefault();
-        if (isTerminated) {
-            toast.error('Leave requests are disabled for separated accounts.');
-            return;
-        }
-        if (isSuspended) {
-            toast.error('Leave requests cannot be filed while account is on disciplinary suspension.');
-            return;
-        }
-        setIsSubmittingLeave(true);
-        try {
-            const res = await fetchWithAuth('/api/leaves', {
-                method: 'POST',
-                body: JSON.stringify({ employee_id: user.id, ...leaveForm })
-            });
-            const data = await res.json();
-            if (data.success) {
-                toast.success('Leave request submitted to HR!');
-                setShowLeaveModal(false);
-                setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-                queryClient.refetchQueries({ queryKey: ['employeeDashboard', user.id] });
-            } else {
-                toast.error(data.error || 'Failed to submit leave.');
-            }
-        } catch (error) {
-            toast.error('Network Error');
-        } finally {
-            setIsSubmittingLeave(false);
-        }
-    };
-
     const [acknowledgingId, setAcknowledgingId] = useState(null);
 
-    const handleAcknowledgeSingle = async (infId) => {
+    const handleAcknowledgeSingle = async infId => {
+        if (acknowledgingId) return;
         setAcknowledgingId(infId);
         try {
-            const res = await fetchWithAuth(`/api/disciplinary/${infId}/acknowledge`, { method: 'PUT' });
-            if (res.ok) {
-                toast.success('Disciplinary notice acknowledged.');
-                queryClient.invalidateQueries(['employeeDashboard', user.id]);
-                queryClient.refetchQueries(['employeeDashboard', user.id]);
-            } else {
-                toast.error('Failed to acknowledge notice.');
-            }
-        } catch (err) {
-            toast.error('Network error acknowledging notice.');
-        } finally {
-            setAcknowledgingId(null);
-        }
+            const result = await acknowledgeDashboardNotices(fetchWithAuth, [infId]);
+            if (result.failed) toast.error('Failed to acknowledge notice.');
+            else toast.success('Disciplinary notice acknowledged.');
+            await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
+        } catch { toast.error('Network error acknowledging notice.'); }
+        finally { setAcknowledgingId(null); }
     };
 
     const handleAcknowledgeAll = async () => {
+        if (acknowledgingId || !infractions.length) return;
+        setAcknowledgingId('all');
         try {
-            await Promise.all(infractions.map(inf =>
-                fetchWithAuth(`/api/disciplinary/${inf.id}/acknowledge`, { method: 'PUT' })
-            ));
-            toast.success('All notices acknowledged.');
-            queryClient.invalidateQueries(['employeeDashboard', user.id]);
-            queryClient.refetchQueries(['employeeDashboard', user.id]);
-        } catch (err) {
-            toast.error('Failed to acknowledge notices.');
-        }
+            const result = await acknowledgeDashboardNotices(fetchWithAuth, infractions.map(infraction => infraction.id));
+            if (result.failed) toast.error(`${result.acknowledged} acknowledged; ${result.failed} failed. Retry the remaining notices.`);
+            else toast.success('All notices acknowledged.');
+            await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
+        } catch { toast.error('Failed to acknowledge notices.'); }
+        finally { setAcknowledgingId(null); }
     };
 
     const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
-    const formattedToday = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const formattedToday = new Date(now).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'long', month: 'short', day: 'numeric' });
 
     const photoUrl = user?.avatar_url
         ? user.avatar_url
@@ -793,10 +425,6 @@ const EmployeeDashboard = () => {
             : null;
 
 
-
-    const handleLogout = () => {
-        performLogout('/login');
-    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-24 px-4 sm:px-6 font-sans">
@@ -862,7 +490,7 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
             ) : infractions.length > 0 ? (
-                <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 sm:p-5 text-white shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
                         <div className="w-10 h-10 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
                             <i className="ti ti-shield-alert text-xl" />
@@ -889,7 +517,7 @@ const EmployeeDashboard = () => {
 
             {/* Biometrics Incomplete Callout Banner */}
             {!hasFaceBiometrics && !isTerminated && !isSuspended && (
-                <div className="bg-warning-subtle border border-warning/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="bg-warning-subtle border border-warning/90 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
                     <div className="flex items-center gap-3.5">
                         <div className="w-10 h-10 rounded-md bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0 text-warning-ink">
                             <i className="ti ti-scan-eye text-xl animate-pulse" />
@@ -914,7 +542,7 @@ const EmployeeDashboard = () => {
                 </div>
             )}
 
-            <div className="space-y-5 sm:space-y-8">
+            <div className="space-y-5 sm:space-y-8 print:hidden">
 
                 {/* Welcome header with Profile & Logout */}
                 <div className="flex items-start justify-between gap-4 pt-2 sm:pt-4">
@@ -1121,7 +749,9 @@ const EmployeeDashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
 
                     {/* Leave request */}
-                    <div
+                    <button
+                        type="button"
+                        disabled={!data || dashboard.isError || Boolean(leaveBlockedReason)}
                         onClick={() => {
                             if (isTerminated) {
                                 toast.error('Leave requests are disabled for separated accounts.');
@@ -1133,7 +763,7 @@ const EmployeeDashboard = () => {
                             }
                             setShowLeaveModal(true);
                         }}
-                        className={`bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${isTerminated || isSuspended
+                        className={`text-left disabled:opacity-65 bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${isTerminated || isSuspended
                             ? 'opacity-65 cursor-not-allowed border-slate-200 bg-slate-50/50'
                             : 'border-slate-200 cursor-pointer'
                             } flex items-center justify-between select-none`}
@@ -1155,25 +785,43 @@ const EmployeeDashboard = () => {
                         <div className="w-8 h-8 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
                             <i className={`ti ${isTerminated || isSuspended ? 'ti-lock text-sm' : 'ti-plus text-base'}`} />
                         </div>
-                    </div>
+                    </button>
 
-                    {/* Leave overview */}
-                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-2xs border border-slate-200 flex items-center justify-between select-none">
+                    {/* Leave balance and cash-out request */}
+                    <LeaveCreditsPanel key={user.id} employeeId={user.id} employee={user} />
+
+                    {/* Leave overview & request ledger */}
+                    <button
+                        type="button"
+                        onClick={() => setShowMyRequestsModal(true)}
+                        className="sm:col-span-2 bg-white hover:bg-slate-50/90 active:scale-[0.99] transition-all rounded-lg p-4 sm:p-6 shadow-2xs border border-slate-200 flex items-center justify-between text-left group cursor-pointer"
+                        aria-label="Open my applications and requests"
+                    >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-900 group-hover:bg-slate-800 text-white border border-slate-800 flex items-center justify-center text-2xl sm:text-3xl shrink-0 transition-colors shadow-2xs">
                                 <i className="ti ti-clipboard-check" />
                             </div>
                             <div>
-                                <h3 className="text-base sm:text-lg font-black text-slate-800">My Requests</h3>
-                                <p className="text-slate-500 text-xs font-medium mt-0.5">
-                                    {myLeaves.length} recent application(s)
-                                </p>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-slate-800 transition-colors">
+                                        My Requests
+                                    </h3>
+                                </div>
                             </div>
                         </div>
-                        <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-                            {myLeaves.filter(l => l.status === 'Pending').length} Pending
-                        </span>
-                    </div>
+                        <div className="flex items-center gap-3">
+                            {(rawLeaves.filter(l => l.status === 'Pending').length + cashRequests.filter(c => c.status === 'requested').length) > 0 ? (
+                                <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-900 text-white border border-slate-800 rounded-md shadow-2xs">
+                                    {(rawLeaves.filter(l => l.status === 'Pending').length + cashRequests.filter(c => c.status === 'requested').length)} Pending
+                                </span>
+                            ) : (
+                                <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-md text-slate-700">
+                                    All Up to Date
+                                </span>
+                            )}
+                            <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all text-base" />
+                        </div>
+                    </button>
                 </div>
 
                 {/* Medical Grace Protocol Status Card */}
@@ -1738,6 +1386,7 @@ const EmployeeDashboard = () => {
                         <div className="space-y-4">
                             {myLeaves.length > 0 ? myLeaves.slice(0, 4).map((leave) => {
                                 const statusColors = {
+                                    'New': 'bg-warning-subtle text-warning-ink',
                                     'Pending': 'bg-warning-subtle text-warning-ink',
                                     'Approved': 'bg-surface-muted text-ink',
                                     'Rejected': 'bg-danger-subtle text-danger-ink'
@@ -1751,7 +1400,7 @@ const EmployeeDashboard = () => {
                                             </p>
                                         </div>
                                         <span className={`px-2.5 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
-                                            {leave.status}
+                                            {getEmployeeLeaveStatus(leave)}
                                         </span>
                                     </div>
                                 );
@@ -1765,14 +1414,15 @@ const EmployeeDashboard = () => {
             </div>
 
             {/* QR modal */}
-            {showQrModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {showQrModal && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
                     <div
-                        className="absolute inset-0 bg-slate-950/70"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowQrModal(false)}
+                        aria-hidden="true"
                     />
                     <div
-                        className="relative bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-xl border border-slate-200"
+                        className="relative z-10 bg-white rounded-lg p-6 sm:p-8 w-full max-w-sm text-center shadow-2xl border border-slate-200 my-auto"
                     >
                         {isTerminated ? (
                             <div>
@@ -1857,18 +1507,20 @@ const EmployeeDashboard = () => {
                             Close
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
 
             {/* Historical / Official Payslip Modal */}
-            {showPayslipModal && (latestPayroll || isPayHistoryLoading || allPayrolls.length > 0) && payslipView === 'history' && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            {showPayslipModal && payslipView === 'history' && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden overflow-hidden">
                     <div
-                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowPayslipModal(false)}
+                        aria-hidden="true"
                     />
-                    <div className="relative bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border border-slate-200 text-left">
+                    <div className="relative z-10 bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border border-slate-200 text-left my-0 sm:my-auto">
                         {/* Modal Header */}
                         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
                             <div className="flex items-center gap-3">
@@ -1883,13 +1535,27 @@ const EmployeeDashboard = () => {
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setShowPayslipModal(false)}
-                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
-                                title="Close Modal"
-                            >
-                                <i className="ti ti-x text-lg" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {allPayrolls.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintHistoryStatement}
+                                        className="h-8.5 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                                        title="Print or export complete remuneration ledger statement to PDF"
+                                    >
+                                        <i className="ti ti-printer text-xs" />
+                                        <span className="hidden sm:inline">Print / Export PDF</span>
+                                        <span className="sm:hidden">Print PDF</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShowPayslipModal(false)}
+                                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                                    title="Close Modal"
+                                >
+                                    <i className="ti ti-x text-lg" />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Financial Ledger Summary Ribbon */}
@@ -1992,6 +1658,10 @@ const EmployeeDashboard = () => {
                         {/* Statement List */}
                         <div className="overflow-y-auto p-3 sm:p-5 space-y-2.5 flex-1 min-h-[220px]">
                             {/* Loading State */}
+                            {history.isError && <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                                <span>Pay history could not refresh. Previously loaded statements may be out of date.</span>
+                                <button type="button" disabled={history.isFetching} onClick={() => history.refetch()} className="font-semibold text-accent disabled:opacity-50">Retry</button>
+                            </div>}
                             {isPayHistoryLoading && allPayrolls.length === 0 && (
                                 <div className="space-y-2.5 animate-pulse py-4">
                                     {[1, 2, 3].map((n) => (
@@ -2010,7 +1680,7 @@ const EmployeeDashboard = () => {
                             )}
 
                             {/* Empty State */}
-                            {!isPayHistoryLoading && filteredPayrolls.length === 0 && (
+                            {!isPayHistoryLoading && !history.isError && filteredPayrolls.length === 0 && (
                                 <div className="py-12 px-4 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
                                     <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 mx-auto flex items-center justify-center text-lg mb-2">
                                         <i className="ti ti-file-search" />
@@ -2114,8 +1784,24 @@ const EmployeeDashboard = () => {
                                                         {formatCurrency(financials.netPay)}
                                                     </span>
                                                 </div>
-                                                <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                                                    <i className="ti ti-chevron-right text-sm" />
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedPayslipId(p.id);
+                                                            setAutoPrintPayslipId(p.id);
+                                                            setPayslipView('detail');
+                                                        }}
+                                                        className="h-8 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                        title="Print or export payslip to PDF"
+                                                    >
+                                                        <i className="ti ti-printer text-xs" />
+                                                        <span className="hidden sm:inline">Print / PDF</span>
+                                                    </button>
+                                                    <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                                                        <i className="ti ti-chevron-right text-sm" />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -2137,7 +1823,8 @@ const EmployeeDashboard = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {showPayslipModal && currentPayslip && payslipView === 'detail' && (() => {
@@ -2150,499 +1837,70 @@ const EmployeeDashboard = () => {
                 const periodEnd = activePayroll.period_end ? dayjs(activePayroll.period_end).format('MMM DD, YYYY') : 'N/A';
                 const paymentDate = activePayroll.created_at ? dayjs(activePayroll.created_at).format('MMM DD, YYYY') : dayjs().format('MMM DD, YYYY');
 
-                return (
-                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        {/* Print styles for payslip isolation */}
-                        <style>{`
-                            @media print {
-                                body * { visibility: hidden !important; }
-                                #employee-payslip-modal, #employee-payslip-modal * { visibility: visible !important; }
-                                #employee-payslip-modal {
-                                    position: fixed !important;
-                                    left: 0 !important;
-                                    top: 0 !important;
-                                    width: 100% !important;
-                                    height: auto !important;
-                                    margin: 0 !important;
-                                    padding: 0 !important;
-                                    box-shadow: none !important;
-                                    border: none !important;
-                                }
-                                .no-print { display: none !important; }
-                            }
-                        `}</style>
-
+                return createPortal(
+                    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 print:static print:inset-auto print:p-0 print:m-0 print:block print:w-full print:h-auto print:max-h-none print:overflow-visible overflow-hidden">
                         <div
-                            className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                            className="payslip-modal-backdrop fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity print:hidden"
                             onClick={() => setShowPayslipModal(false)}
+                            aria-hidden="true"
                         />
 
                         <div
                             id="employee-payslip-modal"
-                            className="relative bg-white rounded-t-2xl sm:rounded-lg w-full max-w-2xl overflow-hidden shadow-xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border-t sm:border border-slate-200 text-left print:border-none print:shadow-none print:h-auto print:max-h-none print:rounded-none"
+                            className="relative z-10 bg-white rounded-t-2xl sm:rounded-lg w-full max-w-4xl overflow-hidden shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col border-t sm:border border-slate-200 text-left print:border-none print:shadow-none print:h-auto print:max-h-none print:rounded-none print:w-full print:max-w-none print:overflow-visible print:block print:p-0 my-0 sm:my-auto"
                         >
-                            {/* Top Navigation & Action Strip */}
-                            <div className="no-print px-3 sm:px-6 py-2 sm:py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-1.5 sm:gap-2 text-xs shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => setPayslipView('history')}
-                                    className="inline-flex items-center gap-1 sm:gap-1.5 font-semibold text-slate-700 hover:text-slate-900 transition-colors py-1 px-1.5 sm:px-2.5 -ml-1 sm:-ml-2 rounded-md hover:bg-slate-200/70 cursor-pointer text-xs"
-                                >
-                                    <i className="ti ti-arrow-left text-sm" />
-                                    <span className="hidden xs:inline sm:inline">Back to </span>
-                                    <span>History</span>
-                                </button>
-                                <div className="flex items-center gap-1 sm:gap-2">
-                                    {allPayrolls.length > 1 && currentPayslipIndex !== -1 && (
-                                        <div className="flex items-center gap-0.5 sm:gap-1 bg-white border border-slate-200 rounded-md p-0.5 shadow-2xs">
-                                            <button
-                                                type="button"
-                                                disabled={currentPayslipIndex >= allPayrolls.length - 1}
-                                                onClick={() => {
-                                                    const olderP = allPayrolls[currentPayslipIndex + 1];
-                                                    if (olderP) setSelectedPayslipId(olderP.id);
-                                                }}
-                                                title="Older statement"
-                                                className="p-1 text-slate-600 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-slate-100 transition cursor-pointer"
-                                            >
-                                                <i className="ti ti-chevron-left text-xs" />
-                                            </button>
-                                            <span className="px-1.5 sm:px-2 text-[10px] sm:text-[11px] font-mono font-medium text-slate-600 select-none">
-                                                {currentPayslipIndex + 1}/{allPayrolls.length}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                disabled={currentPayslipIndex <= 0}
-                                                onClick={() => {
-                                                    const newerP = allPayrolls[currentPayslipIndex - 1];
-                                                    if (newerP) setSelectedPayslipId(newerP.id);
-                                                }}
-                                                title="Newer statement"
-                                                className="p-1 text-slate-600 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-slate-100 transition cursor-pointer"
-                                            >
-                                                <i className="ti ti-chevron-right text-xs" />
-                                            </button>
-                                        </div>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPayslipModal(false)}
-                                        className="p-1 sm:p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition cursor-pointer"
-                                        title="Close"
-                                    >
-                                        <i className="ti ti-x text-base" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* 1. Header: Corporate Letterhead */}
-                            <div className="p-3.5 sm:p-6 bg-white border-b border-slate-200 print:bg-transparent shrink-0">
-                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2.5 sm:gap-3">
-                                            <picture className="shrink-0">
-                                                <source srcSet="/logo-icon-dark.webp" type="image/webp" />
-                                                <img
-                                                    src="/logo-icon-dark.png"
-                                                    alt="C-Point"
-                                                    width="36"
-                                                    height="36"
-                                                    loading="eager"
-                                                    decoding="sync"
-                                                    className="w-8 h-8 sm:w-9 sm:h-9 object-contain shrink-0"
-                                                    onError={(e) => {
-                                                        e.currentTarget.onerror = null;
-                                                        e.currentTarget.src = '/logo-icon.png';
-                                                    }}
-                                                />
-                                            </picture>
-                                            <div className="min-w-0">
-                                                <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none uppercase truncate">C-POINT HRIS</h1>
-                                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide mt-0.5 truncate">Manufacturing &amp; Human Capital Operations</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center sm:items-end justify-between sm:justify-start gap-2 sm:gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
-                                        <div className="sm:text-right">
-                                            <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Confidential Document</span>
-                                            <h2 className="text-xs sm:text-base font-black text-slate-900 tracking-tight leading-tight">
-                                                {isTerminated ? 'SEPARATION PAYSLIP' : 'EMPLOYEE PAYSLIP'}
-                                            </h2>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 sm:mt-1 sm:justify-end">
-                                            <span className="font-mono text-[10px] sm:text-[11px] font-semibold text-slate-700 bg-slate-100 px-1.5 sm:px-2 py-0.5 rounded border border-slate-200">
-                                                #{voucherId}
-                                            </span>
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase bg-surface-muted text-ink border border-line">
-                                                {activePayroll.status || 'Released'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 2. Telemetry Strip */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 border-b border-slate-200 bg-slate-50/75 text-xs divide-y-0 sm:divide-y-0 sm:divide-x divide-slate-200 shrink-0">
-                                <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 sm:px-4 border-b sm:border-b-0 border-slate-200">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Pay Period</span>
-                                    <span className="font-semibold text-slate-800 block text-xs">
-                                        {periodStart} – {periodEnd}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 p-2.5 sm:p-3 sm:px-4 border-r sm:border-r-0 border-slate-200">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Payment Date</span>
-                                    <span className="font-semibold text-slate-800 block text-xs">
-                                        {paymentDate}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 p-2.5 sm:p-3 sm:px-4">
-                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Currency</span>
-                                    <span className="font-semibold text-slate-800 block text-xs font-mono">
-                                        PHP (₱)
-                                    </span>
-                                </div>
-                            </div>
-
-
-                            {/* 3. Employee Profile & Statutory Identifiers */}
-                            <div className="p-3 sm:p-5 border-b border-slate-200 bg-white shrink-0">
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-center">
-                                    <div className="sm:col-span-6 flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                        <EmployeeAvatar
-                                            employee={emp}
-                                            size="h-9 w-9 sm:h-10 sm:w-10"
-                                            rounded="rounded-md"
-                                            border="border border-slate-200"
-                                            shadow="shadow-2xs"
-                                            theme="emerald"
-                                        />
-                                        <div className="min-w-0 flex-1">
-                                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Employee Details</span>
-                                            <h3 className="text-xs sm:text-base font-bold text-slate-900 leading-snug truncate">
-                                                {fullName}
-                                            </h3>
-                                            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 truncate">
-                                                <span className="font-mono font-semibold text-slate-700">{emp?.company_id || 'ID N/A'}</span>
-                                                {' • '}
-                                                <span>{emp?.job_title || emp?.role || 'Staff'}</span>
-                                                {' • '}
-                                                <span className="text-slate-600">{emp?.department || 'Operations'}</span>
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="sm:col-span-6 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-4">
-                                        <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Mandatory Statutory Identifiers</span>
-                                        <div className="grid grid-cols-2 gap-x-2 sm:gap-x-3 gap-y-1 text-xs">
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">TIN:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.tin || 'Not Provided'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">SSS:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.sss_no || 'Recorded'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">PhilHealth:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.philhealth_no || 'Recorded'}</span>
-                                            </div>
-                                            <div className="truncate">
-                                                <span className="text-slate-400 text-[9px] sm:text-[10px]">Pag-IBIG:</span>{' '}
-                                                <span className="font-mono font-semibold text-slate-700 text-[10px] sm:text-[11px]">{emp?.pagibig_no || 'Recorded'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 4. Scrollable Ledger Body */}
-                            <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 text-left">
-                                {/* Holiday Pay Callout if present */}
-                                {financials.hasHolidayPay && (
-                                    <div className="border border-warning/20 bg-warning-subtle/50 rounded-md p-3">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <i className="ti ti-calendar-event text-ink text-xs" />
-                                                <h4 className="text-[11px] font-bold text-ink uppercase tracking-wider">DOLE Holiday Premium Compensation</h4>
-                                            </div>
-                                            <span className="font-mono font-bold text-ink text-xs">
-                                                +{formatCurrency(financials.holidayPay)}
-                                            </span>
-                                        </div>
-                                        <div className="divide-y divide-warning/20 border-t border-warning/60 pt-1 text-xs">
-                                            {financials.paidHolidayItems.map((item, idx) => (
-                                                <div key={item.date || idx} className="py-1 flex items-center justify-between text-slate-700 text-[11px]">
-                                                    <span>
-                                                        <span className="font-semibold">{dayjs(item.date).format('MMM DD, YYYY')}</span> – {item.holidayName || HOLIDAY_LABELS[item.holidayType] || 'Holiday'}
-                                                        <span className="text-slate-400 ml-1">({item.worked ? `Worked • ${(Number(item.multiplier || 1) * 100).toFixed(0)}%` : 'Unworked • Paid'})</span>
-                                                    </span>
-                                                    <span className="font-mono font-semibold text-success-ink">
-                                                        +{formatCurrency(item.pay)}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Dual-Ledger Corporate Table */}
-                                <div className="border border-slate-200 rounded-md overflow-hidden">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-
-                                        {/* LEFT: EARNINGS */}
-                                        <div className="flex flex-col justify-between">
-                                            <div>
-                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
-                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <i className="ti ti-cash text-slate-500 text-xs" />
-                                                        <span>Earnings (Gross)</span>
-                                                    </h4>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
-                                                </div>
-
-                                                <div className="p-3.5 space-y-2 text-xs">
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 block">Basic Pay</span>
-                                                            <span className="text-[10px] text-slate-400">Regular Salary Cutoff</span>
-                                                        </div>
-                                                        <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">
-                                                            {formatCurrency(financials.basicPay)}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 block">Overtime Pay</span>
-                                                            <span className="text-[10px] text-slate-400">Approved Premium Hours</span>
-                                                        </div>
-                                                        <span className={`font-mono font-semibold text-xs sm:text-sm ${financials.overtimePay > 0 ? 'text-ink' : 'text-slate-400'}`}>
-                                                            {financials.overtimePay > 0 ? '+' : ''}{formatCurrency(financials.overtimePay)}
-                                                        </span>
-                                                    </div>
-
-                                                    {financials.hasHolidayPay && (
-                                                        <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                            <div>
-                                                                <span className="font-semibold text-slate-800 block">Holiday Premium</span>
-                                                                <span className="text-[10px] text-slate-400">DOLE Statutory Premium</span>
-                                                            </div>
-                                                            <span className="font-mono font-semibold text-ink text-xs sm:text-sm">
-                                                                +{formatCurrency(financials.holidayPay)}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="text-[11px] font-bold uppercase text-slate-700 tracking-wide">Gross Earnings</span>
-                                                <span className="font-mono font-bold text-slate-900 text-sm">
-                                                    {formatCurrency(financials.grossEarnings)}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* RIGHT: DEDUCTIONS */}
-                                        <div className="flex flex-col justify-between">
-                                            <div>
-                                                <div className="bg-slate-100/75 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
-                                                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <i className="ti ti-receipt-tax text-slate-500 text-xs" />
-                                                        <span>Deductions &amp; Withholdings</span>
-                                                    </h4>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
-                                                </div>
-
-                                                <div className="p-3.5 space-y-2 text-xs">
-                                                    {financials.deductionsList.length > 0 ? (
-                                                        financials.deductionsList.map((ded, index) => {
-                                                            let percentageDisplay = null;
-                                                            if (financials.grossEarnings > 0 && ded.amount > 0) {
-                                                                const percentage = ((ded.amount / financials.grossEarnings) * 100).toFixed(1);
-                                                                percentageDisplay = (
-                                                                    <span className="text-[9px] font-mono text-danger-ink bg-danger-subtle px-1 py-0.2 rounded border border-danger/20 ml-1.5">
-                                                                        {percentage}%
-                                                                    </span>
-                                                                );
-                                                            }
-
-                                                            return (
-                                                                <div key={index} className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                                    <div className="flex items-center">
-                                                                        <span className="font-semibold text-slate-800">{ded.name}</span>
-                                                                        {percentageDisplay}
-                                                                    </div>
-                                                                    <span className="font-mono font-semibold text-danger-ink text-xs sm:text-sm">
-                                                                        -{formatCurrency(ded.amount)}
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })
-                                                    ) : (
-                                                        <div className="py-4 text-center text-slate-400 text-xs">
-                                                            No deductions recorded for this cutoff.
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-slate-50 px-3.5 py-2.5 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="text-[11px] font-bold uppercase text-ink tracking-wide">Total Deductions</span>
-                                                <span className="font-mono font-bold text-danger-ink text-sm">
-                                                    -{formatCurrency(financials.totalDeductions)}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
-
-                                {/* 5. Executive Net Take-Home Pay Settlement Strip */}
-                                <div className="border border-slate-900 bg-slate-900 text-white rounded-md p-3.5 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs print:bg-transparent print:text-slate-900 print:border-2 print:border-slate-900">
-                                    <div className="min-w-0">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block print:text-slate-600">Net Take-Home Pay</span>
-                                        <div className="flex items-baseline gap-2 mt-0.5">
-                                            <span className="text-xl sm:text-3xl font-black font-mono tracking-tight text-white print:text-slate-900 break-words">
-                                                {formatCurrency(financials.netPay)}
-                                            </span>
-                                        </div>
-                                        <span className="text-[10px] sm:text-[11px] text-slate-400 mt-1 block font-mono print:text-slate-600 break-words leading-relaxed">
-                                            Net Calculation: {formatCurrency(financials.grossEarnings)} (Gross) – {formatCurrency(financials.totalDeductions)} (Deductions)
-                                        </span>
-                                    </div>
-
-                                    <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800 w-full sm:w-auto">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-slate-700">Account Settlement</span>
-                                        <span className="text-xs text-slate-300 print:text-slate-700 font-medium mt-0.5 block">Official Remuneration Voucher</span>
-                                    </div>
-                                </div>
-
-
-                                <p className="text-[10px] text-slate-400 leading-relaxed border-t border-slate-200/80 pt-3">
-                                    <strong>DOLE Compliance Note:</strong> This statement is an official certificate of compensation prepared under Philippine Labor Standards (DOLE DO 147-15). All statutory withholdings for SSS, PhilHealth, Pag-IBIG, and Bureau of Internal Revenue (BIR) taxes are computed and remitted on behalf of the employee.
-                                </p>
-                            </div>
-
-                            {/* 6. Footer Actions */}
-                            <div className="no-print p-3 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => window.print()}
-                                    className="h-9 px-3.5 sm:px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium rounded-md text-xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer shadow-2xs"
-                                >
-                                    <i className="ti ti-printer text-sm" />
-                                    <span>Print / Export PDF</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPayslipModal(false)}
-                                    className="h-9 px-5 sm:px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-md text-xs transition-colors duration-100 cursor-pointer shadow-2xs"
-                                >
-                                    Close
-                                </button>
+                            <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-6 print:overflow-visible print:p-0 print:h-auto print:max-h-none">
+                                <OfficialPayslipDocument
+                                    payroll={activePayroll}
+                                    employee={emp}
+                                    variant="employee"
+                                    onBack={() => setPayslipView('history')}
+                                    onClose={() => setShowPayslipModal(false)}
+                                    pagination={allPayrolls.length > 1 && currentPayslipIndex !== -1 ? {
+                                        currentIndex: currentPayslipIndex,
+                                        totalCount: allPayrolls.length,
+                                        onPrev: () => {
+                                            const olderP = allPayrolls[currentPayslipIndex + 1];
+                                            if (olderP) setSelectedPayslipId(olderP.id);
+                                        },
+                                        onNext: () => {
+                                            const newerP = allPayrolls[currentPayslipIndex - 1];
+                                            if (newerP) setSelectedPayslipId(newerP.id);
+                                        }
+                                    } : undefined}
+                                />
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 );
             })()}
 
 
-            {/* Leave request modal */}
-            {showLeaveModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-slate-950/70"
-                        onClick={() => setShowLeaveModal(false)}
-                    />
-                    <div
-                        className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl border border-slate-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
-                    >
-                        <div className="flex justify-between items-center mb-5 sm:mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-md bg-accent-subtle border border-accent/20 text-accent flex items-center justify-center text-xl">
-                                    <i className="ti ti-plane-departure" />
-                                </div>
-                                <h2 className="text-lg sm:text-xl font-bold text-slate-800">Time Off Request</h2>
-                            </div>
-                            <button
-                                onClick={() => setShowLeaveModal(false)}
-                                className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors duration-100"
-                            >
-                                <i className="ti ti-x text-base" />
-                            </button>
-                        </div>
+            <EmployeeLeaveRequest key={user.id} open={showLeaveModal} employee={user}
+                statusReady={Boolean(data) && !dashboard.isError}
+                blockedReason={leaveBlockedReason}
+                onClose={() => setShowLeaveModal(false)} />
 
-                        <form onSubmit={handleLeaveSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Leave Type</label>
-                                <select
-                                    value={leaveForm.leave_type}
-                                    onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
-                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 appearance-none"
-                                >
-                                    <option>Sick Leave</option>
-                                    <option>Vacation / PTO</option>
-                                    <option>Maternity/Paternity</option>
-                                    <option>Emergency Leave</option>
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">First Day</label>
-                                    <input
-                                        type="date" required
-                                        value={leaveForm.start_date}
-                                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Last Day</label>
-                                    <input
-                                        type="date" required
-                                        value={leaveForm.end_date}
-                                        onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Reason for Absence</label>
-                                <textarea
-                                    required rows="3"
-                                    value={leaveForm.reason}
-                                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 resize-none"
-                                    placeholder="State purpose of leave request..."
-                                />
-                            </div>
-
-                            <div className="pt-2">
-                                <button
-                                    disabled={isSubmittingLeave}
-                                    type="submit"
-                                    className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium rounded-md shadow-2xs text-xs sm:text-sm disabled:opacity-50 flex justify-center items-center gap-2 transition-colors duration-100 cursor-pointer"
-                                >
-                                    {isSubmittingLeave ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Submit Request'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <MyRequestsModal
+                key={`my-requests-${user.id}`}
+                open={showMyRequestsModal}
+                onClose={() => setShowMyRequestsModal(false)}
+                leaves={rawLeaves}
+                cashRequests={cashRequests}
+                cashEvents={cashEvents}
+                onRequestNewLeave={() => setShowLeaveModal(true)}
+            />
 
             {/* Disciplinary Notices Modal */}
-            {showInfractionsModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
+            {showInfractionsModal && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
                     <div
-                        className="absolute inset-0 bg-slate-950/70 transition-opacity"
+                        className="fixed inset-0 w-screen h-screen min-h-[100dvh] bg-slate-950/75 backdrop-blur-xs transition-opacity"
                         onClick={() => setShowInfractionsModal(false)}
+                        aria-hidden="true"
                     />
-                    <div className="relative bg-white rounded-lg w-full max-w-xl overflow-hidden shadow-xl border border-slate-200 z-10 max-h-[90vh] flex flex-col">
+                    <div className="relative z-10 bg-white rounded-lg w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col my-auto">
                         {/* Header */}
                         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
                             <div className="flex items-center gap-3">
@@ -2673,15 +1931,6 @@ const EmployeeDashboard = () => {
                                                     ? 'Disciplinary & Policy Notices'
                                                     : 'Compliance & Personnel Standing'}
                                     </h2>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        {isTerminated
-                                            ? `Official Separation Record (${employeeDisciplinary.length} memos on file)`
-                                            : isSuspended
-                                                ? 'Active Suspension Order & History'
-                                                : unresolvedInfractions.length > 0
-                                                    ? 'Action Required · Official HR Records'
-                                                    : `Official Personnel File · ${standing.badgeLabel}`}
-                                    </p>
                                 </div>
                             </div>
                             <button
@@ -2748,11 +1997,11 @@ const EmployeeDashboard = () => {
                                             {isPending && (
                                                 <div className="pt-1">
                                                     <button
-                                                        disabled={acknowledgingId === record.id}
+                                                        disabled={acknowledgingId !== null}
                                                         onClick={() => handleAcknowledgeSingle(record.id)}
                                                         className="w-full h-9 bg-slate-900 hover:bg-black text-white font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer"
                                                     >
-                                                        {acknowledgingId === record.id ? (
+                                                        {acknowledgingId === record.id || acknowledgingId === 'all' ? (
                                                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                                         ) : (
                                                             <>
@@ -2801,6 +2050,7 @@ const EmployeeDashboard = () => {
                             {infractions.length > 1 ? (
                                 <button
                                     onClick={handleAcknowledgeAll}
+                                    disabled={acknowledgingId !== null}
                                     className="h-9 px-4 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-md shadow-2xs transition-colors duration-100 cursor-pointer flex items-center gap-1.5"
                                 >
                                     <i className="ti ti-checks text-sm" />
@@ -2816,9 +2066,20 @@ const EmployeeDashboard = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
+            {/* Official Remuneration History Document (Isolated Print & PDF Export Target) */}
+            <div className="hidden print:block" aria-hidden="true">
+                <OfficialRemunerationHistoryDocument
+                    employee={liveEmployee || user}
+                    payrolls={filteredPayrolls.length > 0 ? filteredPayrolls : allPayrolls}
+                    filterYear={filterYear}
+                    filterMonth={filterMonth}
+                    summary={payHistorySummary}
+                />
+            </div>
 
         </div>
     );

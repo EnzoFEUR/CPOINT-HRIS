@@ -30,6 +30,9 @@ docs/
 *plan*.md
 *guide*.md
 
-# Supabase CLI temp files
-supabase/.temp/
+# Supabase CLI temp files, migrations & local SQL scripts
+supabase/
 .temp/
+
+# Local regression tests
+/backend/tests/

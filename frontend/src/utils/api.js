@@ -9,8 +9,10 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PRO
  */
 export const fetchWithAuth = async (endpoint, options = {}) => {
     try {
+        options.signal?.throwIfAborted();
         // 1. Get the current active session token from Supabase
         const { data: { session } } = await supabase.auth.getSession();
+        options.signal?.throwIfAborted();
         const token = session?.access_token;
 
         // 2. Prepare headers with injected token & conditional Content-Type
@@ -36,7 +38,7 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
         // 5. Global Error Handling for Unauthorized access
         if (response.status === 401) {
             console.error('[API_INTERCEPTOR] 401 Unauthorized. Session expired or missing token.');
-            try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
+            try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* Continue local cleanup if sign-out fails. */ }
             localStorage.removeItem('user');
             try {
                 Object.keys(sessionStorage).forEach((key) => {
@@ -44,7 +46,7 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
                         sessionStorage.removeItem(key);
                     }
                 });
-            } catch (_) {}
+            } catch { /* Storage restrictions must not prevent the login redirect. */ }
             
             // Only redirect if not already on the login page
             if (window.location.pathname !== '/login') {
@@ -56,6 +58,10 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
 
         return response;
     } catch (error) {
+        // Superseded queries and unmounted views cancel requests intentionally.
+        if (error?.name === 'AbortError' || (options.signal?.aborted && error === options.signal.reason)) {
+            throw error;
+        }
         console.error('[API_INTERCEPTOR] Network Request Failed:', error);
         throw error;
     }

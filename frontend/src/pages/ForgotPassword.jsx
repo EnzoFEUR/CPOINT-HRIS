@@ -24,15 +24,14 @@ export default function ForgotPassword() {
   const hasUserSelectedMethodRef = useRef(false);
   const navigate = useNavigate();
 
-  // Enterprise persistent OTP cooldown hook (persists across page reloads/navigation)
-  const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(
-    'forgot_pwd_' + (email.trim().toLowerCase() || 'global'),
-    60
-  );
-
   // Real-time workplace account verification
   const [accountStatus, setAccountStatus] = useState(null); // null | 'checking' | 'verified' | 'not_found' | 'no_email' | 'inactive'
   const [accountInfo, setAccountInfo] = useState(null);
+
+  const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
+    'dest_email_' + ((accountInfo?.email || email).trim().toLowerCase() || 'global'),
+    60
+  );
 
   // Real-time low-latency workplace account existence check (<15ms)
   useEffect(() => {
@@ -161,7 +160,7 @@ export default function ForgotPassword() {
       forgotSendLockRef.current = false;
       try {
         const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
-        if (saved.email && saved.email === email.trim().toLowerCase()) {
+        if (saved.email && saved.email === email.trim().toLowerCase() && expiryTimer > 0) {
           toast.success('Resuming verification with your active code');
           setStep(2);
           return;
@@ -352,8 +351,8 @@ export default function ForgotPassword() {
     setError(null);
     setOtp(['', '', '', '', '', '']);
 
-    // If an Email OTP was already dispatched and is currently in cooldown or session
-    if (cooldown > 0) {
+    // Only resume a recovery code; a login or step-up cooldown does not imply one exists.
+    if (expiryTimer > 0) {
       setMethod('email');
       try {
         const saved = JSON.parse(sessionStorage.getItem('cpoint_forgot_pwd_session') || '{}');
@@ -461,7 +460,6 @@ export default function ForgotPassword() {
       }
 
       toast.success('Identity verified. Redirecting to password reset...');
-      clearCooldown();
       try {
         sessionStorage.removeItem('cpoint_forgot_pwd_session');
         sessionStorage.removeItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`);

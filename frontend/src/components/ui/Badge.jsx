@@ -3,11 +3,16 @@ import React from 'react';
 const BADGE_VARIANTS = {
     present: 'bg-slate-900 text-white border-slate-800',
     success: 'bg-success-subtle text-success-ink border-success/20',
+    approved: 'bg-success-subtle text-success-ink border-success/20',
     late: 'bg-warning-subtle text-warning-ink border-warning/20',
     warning: 'bg-warning-subtle text-warning-ink border-warning/20',
+    needs_review: 'bg-warning-subtle text-warning-ink border-warning/20',
+    pending: 'bg-warning-subtle text-warning-ink border-warning/20',
     absent: 'bg-danger-subtle text-danger-ink border-danger/20',
     danger: 'bg-danger-subtle text-danger-ink border-danger/20',
     destructive: 'bg-danger-subtle text-danger-ink border-danger/20',
+    rejected: 'bg-danger-subtle text-danger-ink border-danger/20',
+    cancelled: 'bg-slate-100 text-slate-700 border-slate-200',
     active: 'bg-accent-subtle text-accent-strong border-accent/20',
     info: 'bg-accent-subtle text-accent-strong border-accent/20',
     inactive: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -20,21 +25,29 @@ const BADGE_VARIANTS = {
     resolved: 'bg-slate-100 text-slate-700 border-slate-200',
     cleared: 'bg-success-subtle text-success-ink border-success/20',
     overturned: 'bg-success-subtle text-success-ink border-success/20',
-    dismissed: 'bg-accent-subtle text-accent border-accent/20',
+    dismissed: 'bg-surface-muted text-ink border-line',
     grace: 'bg-warning-subtle text-warning-ink border-warning/20',
-    pakyawan: 'bg-accent-subtle text-accent border-accent/20',
-    purple: 'bg-accent-subtle text-accent border-accent/20',
-    teal: 'bg-surface-muted text-ink border-line'
+    pakyawan: 'bg-surface-muted text-ink border-line',
+    purple: 'bg-surface-muted text-ink border-line',
+    teal: 'bg-surface-muted text-ink border-line',
+    leave: 'bg-surface-muted text-ink border-line',
+    paid_leave: 'bg-surface-muted text-ink border-line',
+    unpaid_leave: 'bg-slate-100 text-slate-700 border-slate-200'
 };
 
 const DOT_COLORS = {
     present: 'bg-slate-400',
     success: 'bg-success',
+    approved: 'bg-success',
     late: 'bg-warning',
     warning: 'bg-warning',
+    needs_review: 'bg-warning',
+    pending: 'bg-warning',
     absent: 'bg-danger',
     danger: 'bg-danger',
     destructive: 'bg-danger',
+    rejected: 'bg-danger',
+    cancelled: 'bg-slate-400',
     active: 'bg-accent',
     info: 'bg-accent',
     inactive: 'bg-slate-500',
@@ -47,11 +60,14 @@ const DOT_COLORS = {
     resolved: 'bg-slate-500',
     cleared: 'bg-success',
     overturned: 'bg-success',
-    dismissed: 'bg-accent',
+    dismissed: 'bg-ink-subtle',
     grace: 'bg-warning',
-    pakyawan: 'bg-accent',
-    purple: 'bg-accent',
-    teal: 'bg-ink-subtle'
+    pakyawan: 'bg-ink-subtle',
+    purple: 'bg-ink-subtle',
+    teal: 'bg-ink-subtle',
+    leave: 'bg-slate-500',
+    paid_leave: 'bg-slate-500',
+    unpaid_leave: 'bg-slate-400'
 };
 
 export const Badge = ({ 

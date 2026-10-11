@@ -10,6 +10,7 @@ import ActionMenu from '../../../components/ui/ActionMenu';
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import bannerCover from '../../../assets/employee-cover.jpg';
 import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
+import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 
 const formatAuthorizer = (authorizer, role) => {
@@ -334,6 +335,19 @@ export default function Show() {
     // Memoized disciplinary logs
     const disciplinaryLogs = useMemo(() => Array.isArray(employee?.disciplinary_logs) ? employee.disciplinary_logs : [], [employee?.disciplinary_logs]);
 
+    const employeeStatus = employee?.status;
+    const operationalStatus = employee?.operational_status;
+    const isSuspended = operationalStatus === 'Suspended' || employee?.is_suspended || employeeStatus === 'suspended';
+    const isTerminated = !isSuspended && (operationalStatus === 'Terminated' || employee?.is_terminated || employeeStatus === 'terminated' || (Boolean(employee?.archived_at) && employeeStatus !== 'active'));
+
+    const standing = useMemo(() => computeDisciplinaryStanding({
+        isTerminated,
+        isSuspended,
+        status: employeeStatus,
+        operational_status: operationalStatus,
+        disciplinaryLogs
+    }), [isTerminated, isSuspended, employeeStatus, operationalStatus, disciplinaryLogs]);
+
     // Parse Medical Exemption and Biometric Metadata
     const medicalExemption = useMemo(() => {
         if (!employee?.medical_record_url) return null;
@@ -372,6 +386,7 @@ export default function Show() {
             .channel(`admin-live-employee-${id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${id}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs', filter: `employee_id=eq.${id}` }, handleSync)
+            .on('broadcast', { event: 'EMPLOYEE_UPDATED' }, handleSync)
             .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleSync)
             .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleSync)
@@ -530,9 +545,9 @@ export default function Show() {
         }
     };
 
-    const formatDate = (dateString) => {
+    const formatDate = (dateString, dateOnly = false) => {
         if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', ...(dateOnly ? { timeZone: 'UTC' } : {}) });
     };
 
     const formatDateTime = (dateString) => {
@@ -561,17 +576,6 @@ export default function Show() {
         employee.hourly_rate ?? 
         (dailyRate ? dailyRate / 8 : 0)
     );
-    const isSuspended = employee.operational_status === 'Suspended' || employee.is_suspended || employee.status === 'suspended';
-    const isTerminated = !isSuspended && (employee.operational_status === 'Terminated' || employee.is_terminated || employee.status === 'terminated' || (Boolean(employee.archived_at) && employee.status !== 'active'));
-
-    const standing = useMemo(() => computeDisciplinaryStanding({
-        isTerminated,
-        isSuspended,
-        status: employee?.status,
-        operational_status: employee?.operational_status,
-        disciplinaryLogs
-    }), [isTerminated, isSuspended, employee?.status, employee?.operational_status, disciplinaryLogs]);
-
     // Termination cooldown: a separated employee stays visually flagged (grayed
     // out) but not yet finalized for this many days after their effective
     // separation date - a reversible window before the record is treated as
@@ -1157,8 +1161,8 @@ export default function Show() {
 
                             <div className="grid grid-cols-2 gap-4 text-[11px] pt-1">
                                 <div>
-                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Date Joined</p>
-                                    <p className="font-semibold text-slate-700">{formatDate(employee.created_at)}</p>
+                                    <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Date hired</p>
+                                    <p className="font-semibold text-slate-700">{formatDate(employee.date_hired, true)}</p>
                                 </div>
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-0.5 text-[10px]">Last Updated</p>
@@ -1170,6 +1174,8 @@ export default function Show() {
                 </div>
 
                 {/* Monthly Work Days & Attendance Audit Section */}
+                <LeaveCreditsPanel key={employee.id} employeeId={employee.id} employee={employee} manage />
+
                 <MonthlyWorkCalendar
                     employeeId={employee?.id || id}
                     employeeName={employee?.name || `${employee?.first_name || ''} ${employee?.last_name || ''}`}

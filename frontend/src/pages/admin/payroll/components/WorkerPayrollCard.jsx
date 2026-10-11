@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import EmployeeAvatar from '../../../../components/EmployeeAvatar';
 
 const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplier }) => {
-    if (!workerData) return null;
     const [isExpanded, setIsExpanded] = useState(false);
+    if (!workerData) return null;
 
     return (
         <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2.5 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col justify-between">
@@ -83,6 +83,9 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                 </div>
             </div>
 
+            {workerData.paidLeavePay > 0 && <p className="text-xs text-slate-600">Paid leave: PHP {workerData.paidLeavePay.toFixed(2)}</p>}
+            {workerData.silCashPay > 0 && <p className="text-xs text-slate-600">SIL cash payout: PHP {workerData.silCashPay.toFixed(2)}</p>}
+            {workerData.lateMinutes > 0 && <p className="text-xs text-danger-ink">Tardiness: {workerData.lateMinutes} min beyond grace - PHP {workerData.lateDeduction.toFixed(2)}</p>}
             {/* Deductions & Net Pay */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                 <div>

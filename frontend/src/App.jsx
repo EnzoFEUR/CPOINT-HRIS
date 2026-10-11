@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -29,7 +29,6 @@ const AuthFallback = (
 );
 
 // Lazy Loaded Core Flow Pages (Code-Split for sub-second initial loads)
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 const EmployeeDashboard = lazy(() => import('./pages/EmployeeDashboard'));
 const Scanner = lazy(() => import('./pages/Scanner'));
 
@@ -62,7 +61,6 @@ const ArchivedEmployeeProfile = lazy(() => import('./pages/admin/archive/Archive
 
 // Employee Portal Flow
 const MyQr = lazy(() => import('./pages/employee/MyQr'));
-const EmployeeScanner = lazy(() => import('./pages/employee/Scanner'));
 const MyProfile = lazy(() => import('./pages/employee/MyProfile'));
 
 function App() {
@@ -180,6 +178,7 @@ function App() {
           <Route path="/employee/qr" element={<ProtectedRoute allowedRoles={['employee']}><MyQr /></ProtectedRoute>} />
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
           <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee']}><MyProfile /></ProtectedRoute>} />
+          <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
           <Route path="/profile" element={<MyProfile />} />
         </Route>
       </Routes>

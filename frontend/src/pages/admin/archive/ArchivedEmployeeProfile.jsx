@@ -76,8 +76,12 @@ function docIcon(name = '') {
 
 function StatCard({ icon, label, children, tone = 'slate' }) {
   const tones = {
-    slate: 'bg-slate-100 text-slate-600',
-    emerald: 'bg-surface-muted text-ink',
+    slate: 'bg-surface-muted text-ink-muted',
+    success: 'bg-success-subtle text-success-ink',
+    warning: 'bg-warning-subtle text-warning-ink',
+    accent: 'bg-accent-subtle text-accent',
+    danger: 'bg-danger-subtle text-danger-ink',
+    emerald: 'bg-success-subtle text-success-ink',
     amber: 'bg-warning-subtle text-warning-ink',
     blue: 'bg-accent-subtle text-accent',
     rose: 'bg-danger-subtle text-danger-ink',
@@ -241,8 +245,8 @@ export default function ArchivedEmployeeProfile() {
   const clearanceInfo = useMemo(() => {
     if (!employee) return null;
     return employee.clearance_cleared
-      ? { label: 'Cleared', tone: 'emerald', icon: 'ti-circle-check' }
-      : { label: 'Pending Clearance', tone: 'amber', icon: 'ti-clock' };
+      ? { label: 'Cleared', tone: 'success', icon: 'ti-circle-check' }
+      : { label: 'Pending Clearance', tone: 'warning', icon: 'ti-clock' };
   }, [employee]);
 
   if (loading) return <SkeletonBlock />;
@@ -392,7 +396,7 @@ export default function ArchivedEmployeeProfile() {
         <StatCard icon="ti-briefcase" label="Position">
           {employee.position || employee.job_title || 'Not on file'}
         </StatCard>
-        <StatCard icon="ti-calendar-off" label="Separation Date" tone="rose">
+        <StatCard icon="ti-calendar-off" label="Separation Date" tone="danger">
           {formatDate(employee.separation_date) || 'Not on file'}
         </StatCard>
         <StatCard icon={clearanceInfo.icon} label="Clearance Status" tone={clearanceInfo.tone}>
@@ -500,6 +504,10 @@ export default function ArchivedEmployeeProfile() {
               </div>
 
               <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 text-xs">
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Date hired</span>
+                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{formatDate(employee.date_hired, { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }) || 'Not on file'}</span>
+                </div>
                 <div>
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Department</span>
                   <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{employee.department || 'Not on file'}</span>

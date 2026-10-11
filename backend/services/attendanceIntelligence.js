@@ -100,12 +100,12 @@ export function computeAttendanceSignals(records, empMap = null) {
         .slice(0, 10);
 
     // Monday/Friday absenteeism proxy: compare Mon/Fri clock-in frequency against the
-    // employee's own Tue/Wed/Thu/Sat baseline (6-day work week per the DOLE rules above).
+    // employee's own Tue/Wed/Thu baseline under the company five-day workweek.
     // Only flagged with a reasonable sample size to avoid noise on short histories.
     const monday_friday_patterns = employees
         .filter(e => e.totalDays >= 8)
         .map(e => {
-            const baseline = (e.dowCounts[2] + e.dowCounts[3] + e.dowCounts[4] + e.dowCounts[6]) / 4;
+            const baseline = (e.dowCounts[2] + e.dowCounts[3] + e.dowCounts[4]) / 3;
             if (baseline < 1) return null;
             const mondayRatio = e.dowCounts[1] / baseline;
             const fridayRatio = e.dowCounts[5] / baseline;

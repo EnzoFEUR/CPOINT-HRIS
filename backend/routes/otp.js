@@ -11,8 +11,7 @@ router.get('/status', async (req, res) => {
         const { identifier, email, phone, purpose = 'login_2fa' } = req.query;
         const rawTarget = identifier || email || phone;
         const scopedTarget = `${purpose}_${rawTarget}`.toLowerCase().trim();
-        const active = getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
-        const cooldown = checkOtpCooldown(scopedTarget);
+        let targetEmail = rawTarget;
 
         let hasTotp = false;
         if (rawTarget) {
@@ -21,8 +20,12 @@ router.get('/status', async (req, res) => {
 
             let authUser = null;
             if (isUuid) {
-                const { data: authData } = await supabase.auth.admin.getUserById(clean);
-                if (authData?.user) authUser = authData.user;
+                const { data: authData, error: authError } = await supabase.auth.admin.getUserById(clean);
+                if (authError && authError.status !== 404) throw authError;
+                if (authData?.user) {
+                    authUser = authData.user;
+                    targetEmail = authUser.email || targetEmail;
+                }
             }
 
             if (!authUser) {
@@ -36,10 +39,13 @@ router.get('/status', async (req, res) => {
                     empQuery = empQuery.or(`email.ilike.${clean},company_id.ilike.${clean}`);
                 }
 
-                const { data: emp } = await empQuery.maybeSingle();
+                const { data: emp, error: employeeError } = await empQuery.maybeSingle();
+                if (employeeError) throw employeeError;
                 if (emp) {
+                    targetEmail = emp.email || targetEmail;
                     const targetId = emp.auth_user_id || emp.id;
-                    const { data: authData } = await supabase.auth.admin.getUserById(targetId);
+                    const { data: authData, error: authError } = await supabase.auth.admin.getUserById(targetId);
+                    if (authError && authError.status !== 404) throw authError;
                     if (authData?.user) authUser = authData.user;
                 }
             }
@@ -49,6 +55,12 @@ router.get('/status', async (req, res) => {
                 hasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
             }
         }
+
+        const emailScope = `${purpose}_${targetEmail}`.toLowerCase().trim();
+        const active = getActiveOtp(emailScope) || getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
+        const cooldown = [emailScope, scopedTarget, `dest_email_${String(targetEmail || '').toLowerCase().trim()}`]
+            .map(key => checkOtpCooldown(key))
+            .reduce((longest, current) => current.remainingSeconds > longest.remainingSeconds ? current : longest);
 
         res.json({
             success: true,
@@ -61,7 +73,7 @@ router.get('/status', async (req, res) => {
         });
     } catch {
         res.json({
-            success: true,
+            success: false,
             hasActiveOtp: false,
             method: null,
             remainingSeconds: 0,
@@ -158,7 +170,7 @@ router.post('/send', async (req, res) => {
             const errorMsg = lock.reason === 'in_flight'
                 ? 'A verification code is already being dispatched to your account. Please wait a moment.'
                 : `Please wait ${lock.remainingSeconds}s before requesting a new verification code.`;
-            return res.status(429).json({
+            return res.set('Retry-After', String(lock.remainingSeconds)).status(429).json({
                 success: false,
                 error: errorMsg,
                 retry_after: lock.remainingSeconds
@@ -201,7 +213,7 @@ router.post('/send', async (req, res) => {
                     : `Verification code sent via ${method === 'sms' ? 'SMS' : 'Email'}`,
                 method,
                 purpose,
-                cooldown: isMock ? 5 : 60,
+                cooldown: checkOtpCooldown(identifier).remainingSeconds,
                 isMock,
                 simulated: isSimulated,
                 previewCode,

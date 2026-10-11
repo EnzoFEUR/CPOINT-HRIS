@@ -1,3 +1,4 @@
+import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -43,6 +44,7 @@ export default function Edit() {
 
     const [gender, setGender] = useState(cachedEmp?.gender || '');
     const [birthDate, setBirthDate] = useState(cachedEmp?.birth_date ? String(cachedEmp.birth_date).split('T')[0] : '');
+    const [hireDate, setHireDate] = useState(cachedEmp?.date_hired?.slice(0, 10) || '');
     const [address, setAddress] = useState(cachedEmp?.address || '');
 
     const maxBirthDate = useMemo(() => {
@@ -116,6 +118,7 @@ export default function Edit() {
                 if (data.success || data.data) {
                     const emp = data.data || data;
                     setEmployee(emp);
+                    setHireDate(emp.date_hired?.slice(0, 10) || '');
                     if (emp.department) setDepartment(emp.department);
 
                     const craftMatch = getShoeRoleDetails(emp.job_title);
@@ -299,6 +302,7 @@ export default function Edit() {
             last_name: data.last_name,
             gender: gender || null,
             birth_date: birthDate || null,
+            ...(hireDate !== (employee?.date_hired?.slice(0, 10) || '') ? { date_hired: hireDate } : {}),
             address: (address || '').trim() || null,
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
@@ -336,6 +340,11 @@ export default function Edit() {
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
                 queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
                 queryClient.invalidateQueries({ queryKey: ['productionGroups'] });
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', id] });
+                queryClient.invalidateQueries({ queryKey: ['adminLeaves'] });
+                queryClient.invalidateQueries({ queryKey: ['employeeMonthlyAttendance', id] });
+                queryClient.invalidateQueries({ predicate: query => ['employeeLeaveCredits', 'leaveCreditPreview', 'employeeLeaveRequestSchedule', 'employeeLeaveRequestPreview'].includes(query.queryKey[0]) && query.queryKey[2] === id });
 
                 toast.success('Profile updated successfully!');
                 navigate(`/admin/employees/${id}`);
@@ -518,6 +527,11 @@ export default function Edit() {
                                     onChange={(e) => setBirthDate(e.target.value)}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
                                 />
+                            </div>
+
+                            <div>
+                                <label htmlFor="date-hired" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date hired</label>
+                                <input id="date-hired" name="date_hired" type="date" required={Boolean(employee?.date_hired)} max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
                             </div>
 
                             <div className="md:col-span-2">

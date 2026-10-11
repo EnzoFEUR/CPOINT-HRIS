@@ -1,3 +1,4 @@
+import { DEFAULT_REST_DAYS, getEmployeeRestDays, getWorkPolicy, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.js';
@@ -5,9 +6,10 @@ import { cacheResponse } from '../middleware/cacheMiddleware.js';
 import { Brain } from '../services/geminiBrain.js';
 import { computeAttendanceSignals } from '../services/attendanceIntelligence.js';
 import { isWorkforceEmployee, isAttendanceExempt, applyWorkforceFilter } from '../utils/workforce.js';
-import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
+import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
+const WORK_POLICY = getWorkPolicy(process.env);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const toDateStr = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -194,8 +196,8 @@ function computeDoleComplianceFromRecords(records, empMap = new Map()) {
 /**
  * Weekly pay cycle: Monday through Sunday. Workers here are paid weekly (not
  * semi-monthly), so the forecaster projects a single work-week at a time instead
- * of a 1-15 / 16-end cutoff. Working days within the week exclude Sunday only
- * (6-day work week), matching the DOLE rest-day rule above.
+ * of a 1-15 / 16-end cutoff. Working days within the week exclude Saturday and Sunday
+ * under the company workweek confirmed by HR.
  */
 function getCutoffRange(refDate = new Date()) {
     const day = refDate.getDay(); // 0 = Sun ... 6 = Sat
@@ -211,12 +213,12 @@ function getCutoffRange(refDate = new Date()) {
     return { start, end, label };
 }
 
-function countWorkingDays(start, end) {
+function countWorkingDays(start, end, restDays = DEFAULT_REST_DAYS) {
     if (end < start) return 0;
     let count = 0;
     const cursor = new Date(start);
     while (cursor <= end) {
-        if (cursor.getDay() !== 0) count++;
+        if (!restDays.includes(cursor.getDay())) count++;
         cursor.setDate(cursor.getDate() + 1);
     }
     return count;
@@ -227,7 +229,7 @@ function countWorkingDays(start, end) {
  * Strictly computes payroll projections for active workforce employees (role === 'employee').
  * Guards, Admins, and HR personnel are completely excluded from headcount, compensation, and department breakdowns.
  */
-function computePayrollForecastFromData(employees, attendances) {
+export function computePayrollForecastFromData(employees, attendances) {
     const today = new Date();
     const { start, end, label } = getCutoffRange(today);
     const startStr = toDateStr(start);
@@ -276,8 +278,11 @@ function computePayrollForecastFromData(employees, attendances) {
             empActual += rStatus.includes('holiday') ? dailyRate * 2 : dailyRate;
         });
 
-        const attendanceRate = elapsedWorkingDays > 0 ? Math.min(1, records.length / elapsedWorkingDays) : 1;
-        const empProjectedRemaining = remainingWorkingDays * dailyRate * attendanceRate;
+        const restDays = getEmployeeRestDays(emp);
+        const elapsedForEmployee = countWorkingDays(start, elapsedEnd, restDays);
+        const remainingForEmployee = countWorkingDays(start, end, restDays) - elapsedForEmployee;
+        const attendanceRate = elapsedForEmployee > 0 ? Math.min(1, records.length / elapsedForEmployee) : 1;
+        const empProjectedRemaining = remainingForEmployee * dailyRate * attendanceRate;
 
         actualPayToDate += empActual;
         projectedRemainingPay += empProjectedRemaining;
@@ -342,7 +347,7 @@ async function computePayrollForecast() {
     const [{ data: rawEmployees, error: empErr }, { data: attendance, error: attErr }] = await Promise.all([
         supabase
             .from('employees')
-            .select('id, department, role, job_title, daily_rate, hourly_rate, shift, status, company_id')
+            .select('*')
             .not('company_id', 'is', null)
             .eq('role', 'employee'),
         supabase
@@ -378,7 +383,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status, job_title')
+                    .select('*')
             ),
             supabase
                 .from('attendances')
@@ -635,124 +640,115 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
 });
 
 // Composite Employee Dashboard BFF Endpoint
-router.get('/employee/:id', checkAdminOrOwnership, cacheResponse(15), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
+export function createEmployeeDashboardHandler(client = supabase) {
+    return async (req, res) => {
+        res.set('Cache-Control', 'private, no-store');
+        try {
+            const { id } = req.params;
+            const thirtyDaysAgo = toDateStr(new Date(Date.now() - 30 * DAY_MS));
 
-        // Fetch employee attendance, latest payroll, profile, infractions, and leaves in parallel
-        const [
-            { data: attendanceData, error: attErr },
-            { data: payrollData, error: payErr },
-            { data: employee, error: empErr },
-            { data: discData, error: discErr },
-            { data: leaveData, error: leaveErr }
-        ] = await Promise.all([
-            supabase
-                .from('attendances')
-                .select('*')
-                .eq('employee_id', id)
-                .gte('date', thirtyDaysAgo)
-                .order('created_at', { ascending: false })
-                .limit(20),
-            supabase
-                .from('payrolls')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle(),
-            supabase
-                .from('employees')
-                .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics, archived_at, separation_date, separation_type, separation_reason, separation_notes, created_at, updated_at')
-                .eq('id', id)
-                .single(),
-            supabase
-                .from('disciplinary_logs')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(50),
-            supabase
-                .from('leave_requests')
-                .select('*')
-                .eq('employee_id', id)
-                .order('created_at', { ascending: false })
-                .limit(10)
-        ]);
+            // Fetch employee attendance, latest payroll, profile, infractions, and leaves in parallel
+            const [
+                { data: attendanceData, error: attErr },
+                { data: payrollData, error: payErr },
+                { data: employee, error: empErr },
+                { data: discData, error: discErr },
+                { data: leaveData, error: leaveErr }
+            ] = await Promise.all([
+                client
+                    .from('attendances')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .gte('date', thirtyDaysAgo)
+                    .order('created_at', { ascending: false })
+                    .limit(20),
+                client
+                    .from('payrolls')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle(),
+                client
+                    .from('employees')
+                    .select('id, first_name, last_name, company_id, shift, department, job_title, status, is_active, biometric_baseline_path, daily_rate, hourly_rate, medical_record_url, has_registered_biometrics, archived_at, separation_date, separation_type, separation_reason, separation_notes, created_at, updated_at')
+                    .eq('id', id)
+                    .maybeSingle(),
+                client
+                    .from('disciplinary_logs')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(50),
+                client
+                    .from('leave_requests')
+                    .select('*')
+                    .eq('employee_id', id)
+                    .order('created_at', { ascending: false })
+                    .limit(10)
+            ]);
 
-        if (attErr) throw attErr;
-        if (payErr) throw payErr;
-        if (empErr) throw empErr;
+            if (attErr) throw attErr;
+            if (payErr) throw payErr;
+            if (empErr) throw empErr;
+            if (discErr) throw discErr;
+            if (leaveErr) throw leaveErr;
+            if (!employee) return res.status(404).json({ error: 'Employee record not found.', code: 'EMPLOYEE_NOT_FOUND' });
 
-        let employeeObj = employee ? { ...employee } : null;
-        if (employeeObj) {
-            const termLog = (discData || []).find(l => {
-                if (l.type !== 'Termination') return false;
-                const s = (l.status || '').toLowerCase();
-                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+            let employeeObj = employee ? { ...employee } : null;
+            if (employeeObj) {
+                const termLog = (discData || []).find(l => {
+                    if (l.type !== 'Termination' || isExoneratedOrCleared(l)) return false;
+                    const s = (l.status || '').toLowerCase();
+                    return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+                });
+                const suspLog = (discData || []).find(l => {
+                    if (l.type !== 'Suspension' || isExoneratedOrCleared(l)) return false;
+                    const s = (l.status || '').toLowerCase();
+                    return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
+                });
+
+                // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
+                const status = String(employeeObj.status || '').toLowerCase();
+                const isTerm = Boolean(
+                    ['terminated', 'separated', 'archived'].includes(status) ||
+                    Boolean(termLog) ||
+                    Boolean(employeeObj.archived_at)
+                );
+                const isSusp = !isTerm && (status === 'suspended' || Boolean(suspLog));
+
+                employeeObj.is_suspended = isSusp;
+                employeeObj.is_terminated = isTerm;
+                employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
+
+                const standing = computeDisciplinaryStanding({
+                    isTerminated: isTerm,
+                    isSuspended: isSusp,
+                    status: employeeObj.status,
+                    operational_status: employeeObj.operational_status,
+                    disciplinaryLogs: discData || []
+                });
+                employeeObj.disciplinary_standing = standing;
+                employeeObj.past_suspensions_count = standing.served_suspensions_count;
+                employeeObj.served_suspensions_count = standing.served_suspensions_count;
+                employeeObj.cleared_suspensions_count = standing.cleared_suspensions_count;
+            }
+
+            res.json({
+                attendanceData: attendanceData || [],
+                payrollData: payrollData || null,
+                shiftData: employeeObj ? [{ ...employeeObj }] : [],
+                employee: employeeObj,
+                discData: discData || [],
+                leaveData: leaveData || []
             });
-            const suspLog = (discData || []).find(l => {
-                if (l.type !== 'Suspension') return false;
-                const s = (l.status || '').toLowerCase();
-                return s !== 'resolved' && s !== 'overturned' && s !== 'dismissed' && s !== 'cancelled' && s !== 'closed';
-            });
-
-            // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
-            const isSusp = (employeeObj.status === 'suspended' || Boolean(suspLog)) && !Boolean(termLog);
-            const isTerm = !isSusp && Boolean(
-                employeeObj.status === 'terminated' ||
-                Boolean(termLog) ||
-                (employeeObj.archived_at !== null && employeeObj.status !== 'active')
-            );
-
-            employeeObj.is_suspended = isSusp;
-            employeeObj.is_terminated = isTerm;
-            employeeObj.operational_status = isSusp ? 'Suspended' : (isTerm ? 'Terminated' : 'Active');
-
-            const standing = computeDisciplinaryStanding({
-                isTerminated: isTerm,
-                isSuspended: isSusp,
-                status: employeeObj.status,
-                operational_status: employeeObj.operational_status,
-                disciplinaryLogs: discData || []
-            });
-            employeeObj.disciplinary_standing = standing;
-            employeeObj.past_suspensions_count = standing.served_suspensions_count;
-            employeeObj.served_suspensions_count = standing.served_suspensions_count;
-            employeeObj.cleared_suspensions_count = standing.cleared_suspensions_count;
+        } catch (err) {
+            console.error('[DASHBOARD_ROUTE] Employee dashboard error:', err.message);
+            res.status(500).json({ error: 'Employee dashboard unavailable. Please try again.' });
         }
-
-        res.json({
-            attendanceData: attendanceData || [],
-            payrollData: payrollData || null,
-            shiftData: employeeObj ? [{ ...employeeObj }] : [],
-            employee: employeeObj,
-            discData: discData || [],
-            leaveData: leaveData || []
-        });
-    } catch (err) {
-        console.error('[DASHBOARD_ROUTE] Employee dashboard error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-const SHIFT_START_HOUR = 8; // Company-wide shift start: 8:00 AM (Asia/Manila)
-
-/**
- * Wall-clock minutes-past-shift-start for a given ISO timestamp, in Asia/Manila time.
- * Returns null if timeInIso is missing.
- */
-function computeLateMinutes(timeInIso) {
-    if (!timeInIso) return null;
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false
-    }).formatToParts(new Date(timeInIso));
-    const hour = Number(parts.find(p => p.type === 'hour').value);
-    const minute = Number(parts.find(p => p.type === 'minute').value);
-    const minutesSinceMidnight = hour * 60 + minute;
-    return Math.max(0, minutesSinceMidnight - SHIFT_START_HOUR * 60);
+    };
 }
+router.get('/employee/:id', checkAdminOrOwnership, createEmployeeDashboardHandler());
 
 function formatLateLabel(minutes) {
     if (minutes === null) return 'N/A';
@@ -778,7 +774,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, first_name, last_name, department, shift, role, job_title, company_id')
+                    .select('*')
             )
         ]);
 
@@ -795,7 +791,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             const emp = empMap.get(att.employee_id);
             if (!emp) return; // Strictly ignore non-workforce system operators
 
-            const lateMinutes = computeLateMinutes(att.time_in);
+            const lateMinutes = att.time_in ? getChargeableLateMinutes(att, WORK_POLICY, getEmployeeRestDays(emp)) : null;
             const entry = {
                 id: att.id,
                 employee_id: att.employee_id,
