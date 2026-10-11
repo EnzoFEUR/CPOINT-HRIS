@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import SilPaymentCard from '../../../components/SilPaymentCard';
+import { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -137,6 +138,7 @@ export default function PayrollShow() {
     const {
         grossEarnings,
         holidayPay,
+        paidLeavePay, paidLeaveInBasic, otherLeavePay, maternityPay,
         paidHolidayItems,
         hasHolidayPay,
         deductionsList,
@@ -174,6 +176,7 @@ export default function PayrollShow() {
                 </div>
             </div>
 
+            <SilPaymentCard variant="confirm" payroll={payroll} />
             {/* Official Payslip Document */}
             <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
 
@@ -359,6 +362,10 @@ export default function PayrollShow() {
                                             </span>
                                         </div>
 
+                                        {paidLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Paid leave{paidLeaveInBasic ? ' (included in basic pay)' : ''}</span><span>PHP {paidLeavePay.toFixed(2)}</span></div>}
+                                        <SilPaymentCard variant="earnings" payroll={payroll} />
+                                        {otherLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Other statutory leave pay</span><span>PHP {otherLeavePay.toFixed(2)}</span></div>}
+                                        {maternityPay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Maternity differential</span><span>PHP {maternityPay.toFixed(2)}</span></div>}
                                         {hasHolidayPay && (
                                             <div className="flex justify-between items-center py-1 border-b border-slate-100">
                                                 <div>

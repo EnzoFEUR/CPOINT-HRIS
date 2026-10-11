@@ -25,7 +25,7 @@ const calculateGrossPay = (payroll) => {
     const holiday = toSafeNumber(payroll.holiday_pay);
     const leave = toSafeNumber(payroll.leave_pay);
     const matDiff = toSafeNumber(payroll.maternity_salary_differential);
-    return basic + ot + holiday + leave + matDiff;
+    return basic + ot + holiday + leave + matDiff + (payroll.paid_leave_in_basic ? 0 : toSafeNumber(payroll.paid_leave_pay)) + toSafeNumber(payroll.sil_cash_pay);
 };
 
 const isFactoryDept = (dept) => (dept || '').toLowerCase().includes('factory');
@@ -279,6 +279,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <span className="font-bold text-slate-900 text-sm">
                             ₱{payroll._gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
+                        {payroll.sil_cash_pay > 0 && <span className="text-[10px] font-semibold text-accent">SIL cash: PHP {toSafeNumber(payroll.sil_cash_pay).toFixed(2)}</span>}
                         {payroll.overtime_pay > 0 && (
                             <span className="text-[10px] font-semibold text-accent font-sans mt-0.5">
                                 +₱{toSafeNumber(payroll.overtime_pay).toFixed(2)} OT

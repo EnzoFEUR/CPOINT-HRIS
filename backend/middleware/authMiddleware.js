@@ -30,6 +30,12 @@ export const clearAuthUserCache = () => {
     authUserCache.flushAll();
 };
 
+export const hasVerifiedEmployeeIdentity = (user, employee) => Boolean(user?.id && employee?.id && (
+    employee.id === user.id || employee.auth_user_id === user.id ||
+    (!employee.auth_user_id && user.email_confirmed_at && typeof user.email === 'string' && employee.email?.toLowerCase() === user.email.toLowerCase())
+));
+export const hasVerifiedEmployeeRole = (user, employee) => Boolean(employee?.role && hasVerifiedEmployeeIdentity(user, employee));
+
 export const verifyToken = async (req, res, next) => {
     // Whitelist public scanner routes (Tablet doesn't have a user session)
     const publicRoutes = ['/verify-qr', '/scan'];
@@ -78,7 +84,7 @@ export const verifyToken = async (req, res, next) => {
         const { data: empByEmail } = await supabase
             .from('employees')
             .select(EMP_FIELDS)
-            .ilike('email', user.email)
+            .ilike('email', user.email.replace(/[\\%_]/g, '\\$&'))
             .maybeSingle();
         employee = empByEmail;
     }
@@ -89,7 +95,9 @@ export const verifyToken = async (req, res, next) => {
     const resolvedUser = { 
         ...user, 
         ...(employee || {}),
-        role: resolvedRole
+        role: resolvedRole,
+        employee_identity_verified: hasVerifiedEmployeeIdentity(user, employee),
+        role_verified: hasVerifiedEmployeeRole(user, employee)
     };
 
     // Enterprise Security: Revoke access immediately for separated or deactivated accounts
@@ -123,10 +131,7 @@ export const checkRole = (requiredRole) => {
     };
 };
 
-export const checkAdminOrOwnership = (req, res, next) => {
-    // Admins have full access
-    if (req.user && req.user.role === 'admin') return next();
-    
+const checkOwnership = (req, res, next) => {
     // For non-admins, determine the target ID from params or query or body safely
     const targetId = req.params?.id || req.query?.employee_id || req.body?.employee_id;
     const matchesSelf = targetId && (
@@ -141,6 +146,19 @@ export const checkAdminOrOwnership = (req, res, next) => {
     }
     
     next();
+};
+
+export const checkAdminOrOwnership = (req, res, next) => {
+    if (req.user?.role === 'admin') return next();
+    return checkOwnership(req, res, next);
+};
+
+export const hasVerifiedManagerRole = user => user?.role_verified === true && user?.employee_identity_verified === true && user.is_active !== false && !user.archived_at && !['inactive', 'terminated', 'resigned', 'separated', 'suspended'].includes(String(user.status || '').toLowerCase()) && ['admin', 'superadmin', 'hr'].includes(user.role);
+
+export const checkVerifiedManagerOrOwnership = (req, res, next) => {
+    if (hasVerifiedManagerRole(req.user)) return next();
+    if (req.user?.employee_identity_verified !== true) return res.status(403).json({ error: 'Verified employee identity is required.' });
+    return checkOwnership(req, res, next);
 };
 
 export const forcePasswordChange = (req, res, next) => {

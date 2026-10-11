@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../../supabaseClient'; // Adjust path if needed
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 
 const DEFAULT_SETTINGS = {
@@ -23,11 +23,12 @@ const FOCUS_STYLES = {
 
 const FieldInput = ({ label, name, value, onChange, focusColor = 'blue', ...props }) => (
     <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1.5">{label}</label>
+        <label htmlFor={name} className="block text-xs font-medium text-slate-700 mb-1.5">{label}</label>
         <input
             type="number"
             inputMode="decimal"
             min="0"
+            id={name}
             name={name}
             value={value ?? ''}
             onChange={onChange}
@@ -40,13 +41,10 @@ const FieldInput = ({ label, name, value, onChange, focusColor = 'blue', ...prop
 export default function StatutorySettings({ onBack }) {
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [fetching, setFetching] = useState(true);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-
-    useEffect(() => {
-        fetchSettings();
-    }, []);
 
     const getCleanErrorMessage = (err) => {
         if (!err) return "An unexpected error occurred while processing your request.";
@@ -61,27 +59,22 @@ export default function StatutorySettings({ onBack }) {
         return "Unable to update statutory rates right now. Please try again later.";
     };
 
-    const fetchSettings = async () => {
-        try {
-            setFetching(true);
-            const { data, error } = await supabase
-                .from('statutory_settings')
-                .select('*')
-                .limit(1)
-                .maybeSingle();
-
-            if (error) throw error;
-
-            if (data) {
-                setSettings(data);
-            }
-        } catch (err) {
-            console.error("Database fetch error:", err);
-            setErrorMessage("Unable to load current statutory settings. Default values are shown.");
-        } finally {
-            setFetching(false);
-        }
-    };
+    useEffect(() => {
+        let stopped = false;
+        const controller = new AbortController();
+        const load = async () => {
+            try {
+                const response = await fetchWithAuth('/api/payroll/statutory-settings', { signal: controller.signal });
+                const data = await response.json();
+                if (!response.ok || data.error) throw new Error(data.error || 'Unable to load settings.');
+                if (!stopped) { setSettings(previous => ({ ...previous, ...data })); setSettingsLoaded(true); }
+            } catch (error) {
+                if (!stopped && error.name !== 'AbortError') setErrorMessage('Unable to load current statutory settings. Refresh before saving.');
+            } finally { if (!stopped) setFetching(false); }
+        };
+        load();
+        return () => { stopped = true; controller.abort(); };
+    }, []);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -102,6 +95,7 @@ export default function StatutorySettings({ onBack }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!settingsLoaded || loading) return;
         setErrorMessage('');
         setSuccessMessage('');
 
@@ -138,25 +132,8 @@ export default function StatutorySettings({ onBack }) {
             });
 
             const data = await response.json();
-            if (!response.ok || data.error) {
-                // Graceful fallback to direct Supabase update if backend route is unavailable
-                let error;
-                if (settings.id) {
-                    ({ error } = await supabase
-                        .from('statutory_settings')
-                        .update(payload)
-                        .eq('id', settings.id));
-                } else {
-                    const { data: inserted, error: insErr } = await supabase
-                        .from('statutory_settings')
-                        .insert([payload])
-                        .select()
-                        .single();
-                    error = insErr;
-                    if (inserted) setSettings(inserted);
-                }
-                if (error) throw error;
-            }
+            if (!response.ok || data.error) throw new Error(data.error || 'Unable to save settings.');
+            if (data.data) setSettings(previous => ({ ...previous, ...data.data }));
 
             setSuccessMessage("Changes saved");
             setTimeout(() => setSuccessMessage(''), 4000);
@@ -239,6 +216,32 @@ export default function StatutorySettings({ onBack }) {
                     </button>
                 </div>
             )}
+            {/* Service Incentive Leave (SIL) Compliance Banner */}
+            <div className="bg-white rounded-lg p-4 sm:p-5 shadow-2xs border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                    <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0 border border-accent/20">
+                        <i className="ti ti-calendar-event text-lg" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800">Looking for Service Incentive Leave (SIL)?</h3>
+                            <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                DOLE Art. 95
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                            Statutory leave policies, cash conversion rules, and annual reviews are now managed under Leave Approvals.
+                        </p>
+                    </div>
+                </div>
+                <Link
+                    to="/admin/leaves?tab=sil-policy"
+                    className="inline-flex items-center gap-1.5 h-8 px-3.5 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md shadow-2xs transition-colors shrink-0"
+                >
+                    <span>Manage SIL Policy</span>
+                    <i className="ti ti-arrow-right text-xs" />
+                </Link>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 {/* SSS Contributions Card */}
@@ -295,7 +298,7 @@ export default function StatutorySettings({ onBack }) {
                 <div className="flex justify-end pt-3 sticky bottom-0 sm:static bg-white border-t border-slate-200 sm:border-0 sm:bg-transparent pb-3 sm:pb-0 -mx-3 px-3 sm:mx-0 sm:px-0">
                     <button
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || !settingsLoaded}
                         className="w-full sm:w-auto h-9 px-6 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                     >
                         {loading && (

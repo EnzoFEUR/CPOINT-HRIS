@@ -54,7 +54,12 @@ export const parsePayrollFinancials = (payroll) => {
     const paidHolidayItems = holidayBreakdown.filter((h) => Number(h?.pay) > 0);
     const hasHolidayPay = holidayPay > 0 && paidHolidayItems.length > 0;
 
-    const grossEarnings = basicPay + overtimePay + holidayPay;
+    const paidLeavePay = Number(payroll.paid_leave_pay || 0);
+    const paidLeaveInBasic = payroll.paid_leave_in_basic === true;
+    const silCashPay = Number(payroll.sil_cash_pay || 0);
+    const otherLeavePay = Number(payroll.leave_pay || 0);
+    const maternityPay = Number(payroll.maternity_salary_differential || 0);
+    const grossEarnings = basicPay + overtimePay + holidayPay + (paidLeaveInBasic ? 0 : paidLeavePay) + silCashPay + otherLeavePay + maternityPay;
 
     // Deductions Parser
     const deductionsMap = new Map();
@@ -96,7 +101,7 @@ export const parsePayrollFinancials = (payroll) => {
 
     // 2. Parse string remarks using Regex
     if (payroll.remarks) {
-        const deductionRegex = /(SSS|PhilHealth|Pag-IBIG|PagIBIG|HDMF|IBIG|Tax|Withholding Tax|Late|Tardiness|Absence|Undertime):\s*₱?\s*([\d,]+(?:\.\d+)?)/gi;
+        const deductionRegex = /(SSS|PhilHealth|Pag-IBIG|PagIBIG|HDMF|IBIG|Tax|Withholding Tax|Late|Tardiness|Absence|Undertime):\s*(?:\u20b1|\u00e2\u201a\u00b1|PHP)?\s*([\d,]+(?:\.\d+)?)/gi;
         let match;
         while ((match = deductionRegex.exec(payroll.remarks)) !== null) {
             setDeduction(match[1], match[2]);
@@ -158,6 +163,11 @@ export const parsePayrollFinancials = (payroll) => {
         holidayPay,
         paidHolidayItems,
         hasHolidayPay,
+        paidLeavePay,
+        paidLeaveInBasic,
+        silCashPay,
+        otherLeavePay,
+        maternityPay,
         grossEarnings,
         deductionsList,
         totalDeductions,

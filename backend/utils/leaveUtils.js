@@ -1,8 +1,9 @@
 import { supabase } from '../supabaseClient.js';
+import { getLeaveOverlapDays } from '../../shared/leavePolicy.js';
 
 /**
  * Calculates approved leave days (paid vs unpaid) for an employee in a given date range.
- * Fully compliant with DOLE Labor Code:
+ * Existing paid/unpaid classification; credited leave uses approved working dates.
  * - Paid Leaves (LWP): Vacation, Sick, SIL, etc. with pay credits.
  * - Unpaid Leaves (LWOP / Absent): Absence days to be deducted from basic pay.
  *
@@ -29,7 +30,7 @@ import { supabase } from '../supabaseClient.js';
  *   }>
  * }>}
  */
-export async function getLeaveSummaryForPeriod({ employeeId, periodStart, periodEnd }) {
+export async function getLeaveSummaryForPeriod({ employeeId, periodStart, periodEnd }, client = supabase) {
     if (!employeeId || !periodStart || !periodEnd) {
         return {
             employee_id: employeeId,
@@ -42,7 +43,7 @@ export async function getLeaveSummaryForPeriod({ employeeId, periodStart, period
         };
     }
 
-    const { data: rawLeaves, error } = await supabase
+    const { data: rawLeaves, error } = await client
         .from('leave_requests')
         .select('*')
         .eq('employee_id', employeeId)
@@ -51,18 +52,13 @@ export async function getLeaveSummaryForPeriod({ employeeId, periodStart, period
         .gte('end_date', periodStart);
 
     if (error) {
-        console.error('Error fetching approved leaves:', error);
-        return {
-            employee_id: employeeId,
-            period_start: periodStart,
-            period_end: periodEnd,
-            paid_leave_days: 0,
-            unpaid_leave_days: 0,
-            total_leave_days: 0,
-            leaves: []
-        };
+        throw new Error('Unable to retrieve approved leave. Payroll calculation must be retried.', { cause: error });
     }
 
+    return summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, periodEnd });
+}
+
+export function summarizeApprovedLeaves(rawLeaves, { employeeId, periodStart, periodEnd }) {
     let paidDays = 0;
     let unpaidDays = 0;
     const leaveItems = [];
@@ -72,7 +68,7 @@ export async function getLeaveSummaryForPeriod({ employeeId, periodStart, period
         const oEnd = leave.end_date < periodEnd ? leave.end_date : periodEnd;
 
         if (oStart <= oEnd) {
-            const days = Math.round((new Date(oEnd) - new Date(oStart)) / (1000 * 60 * 60 * 24)) + 1;
+            const days = getLeaveOverlapDays(leave, periodStart, periodEnd);
             const rawNotes = leave.notes || '';
             const isUnpaid = /\[PAY_TYPE:WITHOUT_PAY\]/i.test(rawNotes) || /\[UNPAID\]/i.test(rawNotes);
             const isPaid = !isUnpaid;
@@ -95,6 +91,9 @@ export async function getLeaveSummaryForPeriod({ employeeId, periodStart, period
                 overlap_days: days,
                 start_date: leave.start_date,
                 end_date: leave.end_date,
+                requested_pay_type: leave.requested_pay_type || null,
+                credit_pool: leave.credit_pool || null,
+                credit_dates: leave.credit_dates || null,
                 notes: cleanNotes
             });
         }

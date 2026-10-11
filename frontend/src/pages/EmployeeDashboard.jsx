@@ -1,3 +1,4 @@
+import SilCashEarnings from '../components/SilCashEarnings';
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from '../components/QRCode';
@@ -13,6 +14,11 @@ import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/dis
 import { HOLIDAY_LABELS, parsePayrollFinancials, formatCurrency } from '../utils/payslipUtils';
 import { getUser, isSecurity, isAdmin } from '../routes/guards';
 import useEmployeeDashboard from '../utils/useEmployeeDashboard';
+import LeaveCreditsPanel from '../components/LeaveCreditsPanel';
+import EmployeeLeaveRequest from '../components/EmployeeLeaveRequest';
+import MyRequestsModal from '../components/MyRequestsModal';
+import useEmployeeLeaveCredits from '../utils/useEmployeeLeaveCredits';
+import { getEmployeeLeaveStatus } from '../../../shared/leaveRequests.mjs';
 import { acknowledgeDashboardNotices, createDashboardRefresh, getDashboardPayrolls, targetsDashboardEmployee } from '../utils/employeeDashboardData';
 
 const EmployeeDashboard = () => {
@@ -32,14 +38,16 @@ const EmployeeDashboard = () => {
     const [now, setNow] = useState(() => Date.now());
     const [showQrModal, setShowQrModal] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [showMyRequestsModal, setShowMyRequestsModal] = useState(false);
+    const leaveCredits = useEmployeeLeaveCredits(user.id);
+    const cashRequests = leaveCredits.data?.cash_out_requests || [];
+    const cashEvents = leaveCredits.data?.cash_events || [];
     const [showPayslipModal, setShowPayslipModal] = useState(false);
     const [showInfractionsModal, setShowInfractionsModal] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         return params.get('view') === 'disciplinary' || params.get('tab') === 'disciplinary';
     });
     const [showLatestPayMasked, setShowLatestPayMasked] = useState(false);
-    const [leaveForm, setLeaveForm] = useState({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-    const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
     useEffect(() => {
         if (isSecurity(storedUser)) window.location.replace('/scanner');
@@ -105,6 +113,9 @@ const EmployeeDashboard = () => {
         for (const event of ['PAYROLL_CREATED', 'PAYROLL_BATCH_DISTRIBUTED', 'PAYROLL_UPDATED', 'PAYROLL_DELETED', 'PAYROLL_BULK_DELETED']) {
             channel.on('broadcast', { event }, onPayroll(event));
         }
+        channel.on('broadcast', { event: 'LEAVE_STATUS_UPDATED' }, ({ payload }) => {
+            if (!disposed && targetsDashboardEmployee(payload, storedUser.id)) scheduled.refresh();
+        });
         const disciplinaryBus = supabase.channel(`dashboard-disciplinary-sync-${storedUser.id}`);
         for (const event of ['DISCIPLINARY_CREATED', 'DISCIPLINARY_STATUS_UPDATED', 'DISCIPLINARY_DELETED', ...Object.keys(alerts)]) {
             channel.on('broadcast', { event }, onEmployeeEvent(event));
@@ -139,7 +150,6 @@ const EmployeeDashboard = () => {
             if (e.key === 'Escape') {
                 setShowPayslipModal(false);
                 setShowQrModal(false);
-                setShowLeaveModal(false);
                 setShowInfractionsModal(false);
             }
         };
@@ -234,7 +244,7 @@ const EmployeeDashboard = () => {
     const workerSchedule = isFactoryWorker ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM';
     const overtimePolicy = isFactoryWorker ? 'Strict Shift · No Overtime' : 'Extended Shift · OT Eligible';
 
-    const currentStatus = String(user.status || 'active').toLowerCase();
+    const currentStatus = String(user.status || 'active').trim().toLowerCase();
 
     // Medical grace protocol state
     const medicalExemption = useMemo(() => {
@@ -280,6 +290,10 @@ const EmployeeDashboard = () => {
         (currentStatus === 'inactive' && user.separation_type) || (!queryHasLoaded && disciplinaryState.isTerminated));
     const isSuspended = !isTerminated && Boolean(activeSuspension || user.is_suspended ||
         currentStatus === 'suspended' || user.operational_status === 'Suspended' || (!queryHasLoaded && disciplinaryState.isSuspended));
+
+    const leaveBlockedReason = isTerminated || user.is_active === false || ['inactive', 'resigned', 'separated', 'terminated'].includes(currentStatus)
+        ? 'Leave requests are disabled for separated or inactive accounts.'
+        : isSuspended ? 'Leave requests are disabled while your account is suspended.' : '';
 
     // Biometric Enrollment Requirement: QR code ONLY appears when face biometrics are enrolled
     const hasFaceBiometrics = Boolean(
@@ -327,43 +341,6 @@ const EmployeeDashboard = () => {
 
     const rawLeaves = data?.leaveData?.data || data?.leaveData || [];
     const myLeaves = Array.isArray(rawLeaves) ? rawLeaves.slice(0, 5) : [];
-
-    const handleLeaveSubmit = async (e) => {
-        e.preventDefault();
-        if (isTerminated) {
-            toast.error('Leave requests are disabled for separated accounts.');
-            return;
-        }
-        if (isSuspended) {
-            toast.error('Leave requests cannot be filed while account is on disciplinary suspension.');
-            return;
-        }
-        if (isSubmittingLeave || dashboard.isError || !data) {
-            toast.error('Refresh your employee status before submitting a leave request.');
-            return;
-        }
-        setIsSubmittingLeave(true);
-        try {
-            const res = await fetchWithAuth('/api/leaves', {
-                method: 'POST',
-                body: JSON.stringify({ employee_id: user.id, ...leaveForm })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                toast.success('Leave request submitted to HR!');
-                setShowLeaveModal(false);
-                setLeaveForm({ leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '' });
-                queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id] });
-
-            } else {
-                toast.error(data.error || 'Failed to submit leave.');
-            }
-        } catch {
-            toast.error('Network Error');
-        } finally {
-            setIsSubmittingLeave(false);
-        }
-    };
 
     const [acknowledgingId, setAcknowledgingId] = useState(null);
 
@@ -734,7 +711,9 @@ const EmployeeDashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
 
                     {/* Leave request */}
-                    <div
+                    <button
+                        type="button"
+                        disabled={!data || dashboard.isError || Boolean(leaveBlockedReason)}
                         onClick={() => {
                             if (isTerminated) {
                                 toast.error('Leave requests are disabled for separated accounts.');
@@ -746,7 +725,7 @@ const EmployeeDashboard = () => {
                             }
                             setShowLeaveModal(true);
                         }}
-                        className={`bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${isTerminated || isSuspended
+                        className={`text-left disabled:opacity-65 bg-white rounded-lg p-4 sm:p-6 shadow-2xs border ${isTerminated || isSuspended
                             ? 'opacity-65 cursor-not-allowed border-slate-200 bg-slate-50/50'
                             : 'border-slate-200 cursor-pointer'
                             } flex items-center justify-between select-none`}
@@ -768,25 +747,43 @@ const EmployeeDashboard = () => {
                         <div className="w-8 h-8 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
                             <i className={`ti ${isTerminated || isSuspended ? 'ti-lock text-sm' : 'ti-plus text-base'}`} />
                         </div>
-                    </div>
+                    </button>
 
-                    {/* Leave overview */}
-                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-2xs border border-slate-200 flex items-center justify-between select-none">
+                    {/* Leave balance and cash-out request */}
+                    <LeaveCreditsPanel key={user.id} employeeId={user.id} employee={user} />
+
+                    {/* Leave overview & request ledger */}
+                    <button
+                        type="button"
+                        onClick={() => setShowMyRequestsModal(true)}
+                        className="sm:col-span-2 bg-white hover:bg-slate-50/90 active:scale-[0.99] transition-all rounded-lg p-4 sm:p-6 shadow-2xs border border-slate-200 flex items-center justify-between text-left group cursor-pointer"
+                        aria-label="Open my applications and requests"
+                    >
                         <div className="flex items-center gap-4 sm:gap-5">
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 text-2xl sm:text-3xl shrink-0">
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md bg-slate-900 group-hover:bg-slate-800 text-white border border-slate-800 flex items-center justify-center text-2xl sm:text-3xl shrink-0 transition-colors shadow-2xs">
                                 <i className="ti ti-clipboard-check" />
                             </div>
                             <div>
-                                <h3 className="text-base sm:text-lg font-black text-slate-800">My Requests</h3>
-                                <p className="text-slate-500 text-xs font-medium mt-0.5">
-                                    {myLeaves.length} recent application(s)
-                                </p>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-slate-800 transition-colors">
+                                        My Requests
+                                    </h3>
+                                </div>
                             </div>
                         </div>
-                        <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-                            {myLeaves.filter(l => l.status === 'Pending').length} Pending
-                        </span>
-                    </div>
+                        <div className="flex items-center gap-3">
+                            {(rawLeaves.filter(l => l.status === 'Pending').length + cashRequests.filter(c => c.status === 'requested').length) > 0 ? (
+                                <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-900 text-white border border-slate-800 rounded-md shadow-2xs">
+                                    {(rawLeaves.filter(l => l.status === 'Pending').length + cashRequests.filter(c => c.status === 'requested').length)} Pending
+                                </span>
+                            ) : (
+                                <span className="text-xs font-bold font-mono px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-md text-slate-700">
+                                    All Up to Date
+                                </span>
+                            )}
+                            <i className="ti ti-chevron-right text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all text-base" />
+                        </div>
+                    </button>
                 </div>
 
                 {/* Medical Grace Protocol Status Card */}
@@ -1351,6 +1348,7 @@ const EmployeeDashboard = () => {
                         <div className="space-y-4">
                             {myLeaves.length > 0 ? myLeaves.slice(0, 4).map((leave) => {
                                 const statusColors = {
+                                    'New': 'bg-warning-subtle text-warning-ink',
                                     'Pending': 'bg-warning-subtle text-warning-ink',
                                     'Approved': 'bg-surface-muted text-ink',
                                     'Rejected': 'bg-danger-subtle text-danger-ink'
@@ -1364,7 +1362,7 @@ const EmployeeDashboard = () => {
                                             </p>
                                         </div>
                                         <span className={`px-2.5 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
-                                            {leave.status}
+                                            {getEmployeeLeaveStatus(leave)}
                                         </span>
                                     </div>
                                 );
@@ -2039,6 +2037,10 @@ const EmployeeDashboard = () => {
                                                         </span>
                                                     </div>
 
+                                                    {financials.paidLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Paid leave{financials.paidLeaveInBasic ? ' (included in basic pay)' : ''}</span><span>{formatCurrency(financials.paidLeavePay)}</span></div>}
+                                                    <SilCashEarnings payroll={activePayroll} />
+                                                    {financials.otherLeavePay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Other statutory leave pay</span><span>{formatCurrency(financials.otherLeavePay)}</span></div>}
+                                                    {financials.maternityPay > 0 && <div className="flex justify-between py-1 text-xs text-slate-700"><span>Maternity differential</span><span>{formatCurrency(financials.maternityPay)}</span></div>}
                                                     {financials.hasHolidayPay && (
                                                         <div className="flex justify-between items-center py-1 border-b border-slate-100">
                                                             <div>
@@ -2166,91 +2168,20 @@ const EmployeeDashboard = () => {
             })()}
 
 
-            {/* Leave request modal */}
-            {showLeaveModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-slate-950/70"
-                        onClick={() => setShowLeaveModal(false)}
-                    />
-                    <div
-                        className="relative bg-white rounded-lg w-full max-w-md overflow-hidden shadow-xl border border-slate-200 p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
-                    >
-                        <div className="flex justify-between items-center mb-5 sm:mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-md bg-accent-subtle border border-accent/20 text-accent flex items-center justify-center text-xl">
-                                    <i className="ti ti-plane-departure" />
-                                </div>
-                                <h2 className="text-lg sm:text-xl font-bold text-slate-800">Time Off Request</h2>
-                            </div>
-                            <button
-                                onClick={() => setShowLeaveModal(false)}
-                                className="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors duration-100"
-                            >
-                                <i className="ti ti-x text-base" />
-                            </button>
-                        </div>
+            <EmployeeLeaveRequest key={user.id} open={showLeaveModal} employee={user}
+                statusReady={Boolean(data) && !dashboard.isError}
+                blockedReason={leaveBlockedReason}
+                onClose={() => setShowLeaveModal(false)} />
 
-                        <form onSubmit={handleLeaveSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Leave Type</label>
-                                <select
-                                    value={leaveForm.leave_type}
-                                    onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
-                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 appearance-none"
-                                >
-                                    <option>Sick Leave</option>
-                                    <option>Vacation / PTO</option>
-                                    <option>Maternity/Paternity</option>
-                                    <option>Emergency Leave</option>
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">First Day</label>
-                                    <input
-                                        type="date" required
-                                        value={leaveForm.start_date}
-                                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Last Day</label>
-                                    <input
-                                        type="date" required
-                                        value={leaveForm.end_date}
-                                        onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
-                                        className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1.5">Reason for Absence</label>
-                                <textarea
-                                    required rows="3"
-                                    value={leaveForm.reason}
-                                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 font-medium text-slate-700 text-xs sm:text-sm transition-colors duration-100 resize-none"
-                                    placeholder="State purpose of leave request..."
-                                />
-                            </div>
-
-                            <div className="pt-2">
-                                <button
-                                    disabled={isSubmittingLeave}
-                                    type="submit"
-                                    className="w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium rounded-md shadow-2xs text-xs sm:text-sm disabled:opacity-50 flex justify-center items-center gap-2 transition-colors duration-100 cursor-pointer"
-                                >
-                                    {isSubmittingLeave ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Submit Request'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <MyRequestsModal
+                key={`my-requests-${user.id}`}
+                open={showMyRequestsModal}
+                onClose={() => setShowMyRequestsModal(false)}
+                leaves={rawLeaves}
+                cashRequests={cashRequests}
+                cashEvents={cashEvents}
+                onRequestNewLeave={() => setShowLeaveModal(true)}
+            />
 
             {/* Disciplinary Notices Modal */}
             {showInfractionsModal && (
@@ -2290,15 +2221,6 @@ const EmployeeDashboard = () => {
                                                     ? 'Disciplinary & Policy Notices'
                                                     : 'Compliance & Personnel Standing'}
                                     </h2>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        {isTerminated
-                                            ? `Official Separation Record (${employeeDisciplinary.length} memos on file)`
-                                            : isSuspended
-                                                ? 'Active Suspension Order & History'
-                                                : unresolvedInfractions.length > 0
-                                                    ? 'Action Required · Official HR Records'
-                                                    : `Official Personnel File · ${standing.badgeLabel}`}
-                                    </p>
                                 </div>
                             </div>
                             <button

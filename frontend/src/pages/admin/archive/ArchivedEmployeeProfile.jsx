@@ -501,6 +501,10 @@ export default function ArchivedEmployeeProfile() {
 
               <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 text-xs">
                 <div>
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Date hired</span>
+                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{formatDate(employee.date_hired, { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }) || 'Not on file'}</span>
+                </div>
+                <div>
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Department</span>
                   <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{employee.department || 'Not on file'}</span>
                 </div>

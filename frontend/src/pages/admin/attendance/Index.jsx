@@ -89,11 +89,14 @@ const Index = () => {
         toast.success(`Copied CP ID: ${id}`, { id: 'copy-cpid' });
     }, []);
 
-    // Real-time synchronization on attendance & employee table updates
+    // Real-time synchronization on attendance, leaves, and employee table updates
     useEffect(() => {
         const liveChannel = supabase
             .channel('realtime_daily_attendance_logs')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminAttendance'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
@@ -136,8 +139,30 @@ const Index = () => {
 
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     const todaysCount = useMemo(() => {
-        return workforceLogs.filter(log => log.date === todayStr).length;
+        return workforceLogs.filter(log => log.date === todayStr && !log.is_on_leave && !String(log.status).toLowerCase().includes('leave')).length;
     }, [workforceLogs, todayStr]);
+    const todaysLeaveCount = useMemo(() => {
+        return workforceLogs.filter(log => log.date === todayStr && (log.is_on_leave || String(log.status).toLowerCase().includes('leave'))).length;
+    }, [workforceLogs, todayStr]);
+
+    const isLogOnLeave = (log) => Boolean(log.is_on_leave || String(log.status || '').toLowerCase().includes('leave'));
+    const isLogPaidLeave = (log) => isLogOnLeave(log) && log.is_paid !== false && !String(log.status || '').toLowerCase().includes('unpaid');
+    const getLogStatusVariant = (log) => {
+        if (isLogOnLeave(log)) return isLogPaidLeave(log) ? 'paid_leave' : 'leave';
+        const s = String(log.status || '').toLowerCase();
+        if (s.includes('absent')) return 'absent';
+        if (s.includes('late')) return 'late';
+        return 'present';
+    };
+    const getLogStatusLabel = (log) => {
+        if (isLogOnLeave(log)) {
+            if (log.leave_type) {
+                return `${log.leave_type} (${isLogPaidLeave(log) ? 'Paid' : 'Unpaid'})`;
+            }
+            return isLogPaidLeave(log) ? 'Paid Leave' : 'On Leave';
+        }
+        return log.status || 'Present';
+    };
 
     const openImageModal = (imageUrl, type) => {
         if (!imageUrl) return;
@@ -171,12 +196,14 @@ const Index = () => {
             const cpId = (emp?.company_id || log.company_id || '').toLowerCase();
             const rawEmpId = (log.employee_id || '').toLowerCase();
             const dateStr = (log.date || '').toLowerCase();
+            const leaveTypeStr = (log.leave_type || '').toLowerCase();
 
             return (
                 name.includes(q) ||
                 cpId.includes(q) ||
                 rawEmpId.includes(q) ||
-                dateStr.includes(q)
+                dateStr.includes(q) ||
+                leaveTypeStr.includes(q)
             );
         });
     }, [workforceLogs, searchQuery, resolveEmployee]);
@@ -200,9 +227,17 @@ const Index = () => {
             <PageHeader
                 breadcrumbs={['Admin', 'Attendance', 'Attendance Logs']}
                 actions={
-                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
-                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's clock-ins:</span>
-                        <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's clock-ins:</span>
+                            <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
+                        </div>
+                        {todaysLeaveCount > 0 && (
+                            <div className="flex items-center gap-2 bg-sky-50 border border-sky-200/80 px-3.5 py-2 rounded-lg">
+                                <span className="text-xs font-semibold text-sky-600 uppercase tracking-wider">On Leave:</span>
+                                <span className="font-mono text-sm font-bold text-sky-800 tabular-nums">{todaysLeaveCount}</span>
+                            </div>
+                        )}
                     </div>
                 }
             />
@@ -275,9 +310,17 @@ const Index = () => {
                                     <div className="flex items-center justify-between gap-2">
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time In</p>
-                                            <span className="font-mono text-xs font-bold text-ink">
-                                                {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
+                                            {isLogOnLeave(log) ? (
+                                                <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/60">
+                                                    Excused
+                                                </span>
+                                            ) : log.time_in ? (
+                                                <span className="font-mono text-xs font-bold text-ink">
+                                                    {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            ) : (
+                                                <span className="font-mono text-xs text-slate-300">--:--</span>
+                                            )}
                                         </div>
                                         {log.time_in_photo && (
                                             <button 
@@ -300,7 +343,11 @@ const Index = () => {
                                     <div className="flex items-center justify-between gap-2 border-l border-slate-200 pl-2">
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time Out</p>
-                                            {log.time_out ? (
+                                            {isLogOnLeave(log) ? (
+                                                <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/60">
+                                                    Approved Leave
+                                                </span>
+                                            ) : log.time_out ? (
                                                 <span className="font-mono text-xs font-bold text-slate-700">
                                                     {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
@@ -335,13 +382,10 @@ const Index = () => {
                                 {/* Card Footer: Status */}
                                 <div className="flex items-center justify-between pt-1">
                                     <Badge 
-                                        variant={
-                                            log.status?.toLowerCase().includes('absent') ? 'absent' :
-                                            log.status?.toLowerCase().includes('late') ? 'late' : 
-                                            'present'
-                                        }
+                                        variant={getLogStatusVariant(log)}
+                                        withDot={isLogOnLeave(log)}
                                     >
-                                        {log.status}
+                                        {getLogStatusLabel(log)}
                                     </Badge>
                                 </div>
                             </div>
@@ -406,7 +450,11 @@ const Index = () => {
                                             {/* Time In Column */}
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
-                                                    {log.time_in ? (
+                                                    {isLogOnLeave(log) ? (
+                                                        <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded border border-sky-200/60 tabular-nums">
+                                                            Excused
+                                                        </span>
+                                                    ) : log.time_in ? (
                                                         <span className="font-mono text-xs font-semibold text-ink bg-surface-muted px-2.5 py-0.5 rounded border border-line tabular-nums">
                                                             {new Date(log.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
@@ -434,7 +482,11 @@ const Index = () => {
                                             {/* Time Out Column */}
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
-                                                    {log.time_out ? (
+                                                    {isLogOnLeave(log) ? (
+                                                        <span className="bg-sky-50 text-sky-700 border border-sky-200/60 px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                            Approved Leave
+                                                        </span>
+                                                    ) : log.time_out ? (
                                                         <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
                                                             {new Date(log.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
@@ -468,13 +520,10 @@ const Index = () => {
                                             {/* Status Column */}
                                             <td className="px-6 py-3.5 text-center">
                                                 <Badge 
-                                                    variant={
-                                                        log.status?.toLowerCase().includes('absent') ? 'absent' :
-                                                        log.status?.toLowerCase().includes('late') ? 'late' : 
-                                                        'present'
-                                                    }
+                                                    variant={getLogStatusVariant(log)}
+                                                    withDot={isLogOnLeave(log)}
                                                 >
-                                                    {log.status}
+                                                    {getLogStatusLabel(log)}
                                                 </Badge>
                                             </td>
                                         </tr>

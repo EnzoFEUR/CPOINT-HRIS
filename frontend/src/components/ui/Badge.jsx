@@ -24,7 +24,10 @@ const BADGE_VARIANTS = {
     grace: 'bg-warning-subtle text-warning-ink border-warning/20',
     pakyawan: 'bg-accent-subtle text-accent border-accent/20',
     purple: 'bg-accent-subtle text-accent border-accent/20',
-    teal: 'bg-surface-muted text-ink border-line'
+    teal: 'bg-surface-muted text-ink border-line',
+    leave: 'bg-sky-50 text-sky-700 border-sky-200/80',
+    paid_leave: 'bg-sky-50 text-sky-700 border-sky-200/80',
+    unpaid_leave: 'bg-amber-50 text-amber-700 border-amber-200/80'
 };
 
 const DOT_COLORS = {
@@ -51,7 +54,10 @@ const DOT_COLORS = {
     grace: 'bg-warning',
     pakyawan: 'bg-accent',
     purple: 'bg-accent',
-    teal: 'bg-ink-subtle'
+    teal: 'bg-ink-subtle',
+    leave: 'bg-sky-500',
+    paid_leave: 'bg-sky-500',
+    unpaid_leave: 'bg-amber-500'
 };
 
 export const Badge = ({ 

@@ -114,6 +114,9 @@ const Calendar = () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['attendanceCalendar'] });
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['attendanceCalendar'] });
+            })
             .subscribe();
 
         return () => {
@@ -207,14 +210,25 @@ const Calendar = () => {
         return (calendarData?.dailyLogs || []).filter(log => !isExemptOperator(log.employees));
     }, [calendarData?.dailyLogs]);
 
+    const isLeaveLog = (log) => Boolean(log.is_on_leave || String(log.status || '').toLowerCase().includes('leave'));
+    const isAbsentLog = (log) => !isLeaveLog(log) && String(log.status || '').toLowerCase() === 'absent';
+    const isLateLog = (log) => !isLeaveLog(log) && String(log.status || '').toLowerCase() === 'late';
+    const isOnTimeLog = (log) => !isLeaveLog(log) && String(log.status || '').toLowerCase() === 'present';
+
     // Chronological logs
     const sortedLogs = useMemo(() => {
-        return [...dailyLogs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
+        return [...dailyLogs].sort((a, b) => {
+            if (a.time_in && b.time_in) return new Date(a.time_in) - new Date(b.time_in);
+            if (a.time_in) return -1;
+            if (b.time_in) return 1;
+            return 0;
+        });
     }, [dailyLogs]);
 
-    const totalAbsent = sortedLogs.filter(log => String(log.status).toLowerCase() === 'absent').length;
-    const totalLate = sortedLogs.filter(log => String(log.status).toLowerCase() === 'late').length;
-    const onTime = sortedLogs.filter(log => String(log.status).toLowerCase() === 'present').length;
+    const totalAbsent = sortedLogs.filter(isAbsentLog).length;
+    const totalLate = sortedLogs.filter(isLateLog).length;
+    const onTime = sortedLogs.filter(isOnTimeLog).length;
+    const totalOnLeave = sortedLogs.filter(isLeaveLog).length;
 
     const showInitialLoading = isLoading && !calendarData;
 
@@ -228,7 +242,7 @@ const Calendar = () => {
                 
                 {/* Left Side: Stats & Calendar Picker */}
                 <div className="xl:col-span-1 space-y-4 sm:space-y-6">
-                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
                             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                                 <i className="ti ti-thumb-up text-ink text-sm"></i> On Time
@@ -251,6 +265,14 @@ const Calendar = () => {
                             </span>
                             <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-danger-ink tabular-nums">
                                 {totalAbsent}
+                            </span>
+                        </div>
+                        <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
+                            <span className="text-[11px] font-semibold text-sky-600 uppercase tracking-wider flex items-center gap-1">
+                                <i className="ti ti-calendar-event text-sky-600 text-sm"></i> On Leave
+                            </span>
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-sky-700 tabular-nums">
+                                {totalOnLeave}
                             </span>
                         </div>
                     </div>
@@ -314,9 +336,10 @@ const Calendar = () => {
                                 
                                     {sortedLogs.map((log, idx) => {
                                         const fullName = log.employees ? `${log.employees.first_name} ${log.employees.last_name}` : 'Unknown Worker';
-                                        const statusStr = String(log.status || '').toLowerCase();
-                                        const isAbsent = statusStr === 'absent';
-                                        const isLate = statusStr === 'late';
+                                        const isLeave = isLeaveLog(log);
+                                        const isPaidLeave = isLeave && (log.is_paid !== false && !String(log.status || '').toLowerCase().includes('unpaid'));
+                                        const isAbsent = isAbsentLog(log);
+                                        const isLate = isLateLog(log);
 
                                         return (
                                             <div 
@@ -324,7 +347,7 @@ const Calendar = () => {
                                                 className="relative group"
                                             >
                                                 <div className={`absolute -left-[25px] sm:-left-[39px] top-6 h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full border-2 border-white shadow-2xs ${
-                                                    isAbsent ? 'bg-danger' : isLate ? 'bg-warning' : 'bg-slate-900'
+                                                    isLeave ? 'bg-sky-500 ring-2 ring-sky-200' : isAbsent ? 'bg-danger' : isLate ? 'bg-warning' : 'bg-slate-900'
                                                 }`}></div>
                                                 
                                                 <div className="bg-white rounded-lg p-3.5 sm:p-5 border border-slate-200 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center">
@@ -336,7 +359,12 @@ const Calendar = () => {
                                                     
                                                     <div className="flex-1 w-full min-w-0">
                                                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
-                                                            {isAbsent ? (
+                                                            {isLeave ? (
+                                                                <span className="font-mono font-medium text-sky-700 bg-sky-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-sky-200/80 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
+                                                                    <i className="ti ti-calendar-event text-sky-600 text-xs sm:text-sm"></i>
+                                                                    {log.leave_type || 'Leave'} ({isPaidLeave ? 'Paid' : 'Unpaid'})
+                                                                </span>
+                                                            ) : isAbsent ? (
                                                                 <span className="font-mono font-bold text-danger-ink bg-danger-subtle px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-danger/20 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
                                                                     <i className="ti ti-user-x text-danger-ink text-xs sm:text-sm"></i>
                                                                     No clock-in recorded (Absent)
@@ -373,7 +401,11 @@ const Calendar = () => {
                                                     </div>
 
                                                     <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
-                                                        {isAbsent ? (
+                                                        {isLeave ? (
+                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-sky-50 text-sky-700 border border-sky-200/80 text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-2xs">
+                                                                <i className="ti ti-calendar-event text-sm"></i> {isPaidLeave ? 'Paid Leave' : 'On Leave'}
+                                                            </span>
+                                                        ) : isAbsent ? (
                                                              <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-danger-subtle text-danger-ink text-xs font-semibold uppercase tracking-wider border border-danger/20 flex items-center justify-center gap-1.5 shadow-2xs">
                                                                 <i className="ti ti-user-x text-sm"></i> Absent
                                                             </span>

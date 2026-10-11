@@ -1,3 +1,4 @@
+import { DEFAULT_REST_DAYS, getEmployeeRestDays, getWorkPolicy, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.js';
@@ -8,6 +9,7 @@ import { isWorkforceEmployee, isAttendanceExempt, applyWorkforceFilter } from '.
 import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
+const WORK_POLICY = getWorkPolicy(process.env);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const toDateStr = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -194,8 +196,8 @@ function computeDoleComplianceFromRecords(records, empMap = new Map()) {
 /**
  * Weekly pay cycle: Monday through Sunday. Workers here are paid weekly (not
  * semi-monthly), so the forecaster projects a single work-week at a time instead
- * of a 1-15 / 16-end cutoff. Working days within the week exclude Sunday only
- * (6-day work week), matching the DOLE rest-day rule above.
+ * of a 1-15 / 16-end cutoff. Working days within the week exclude Saturday and Sunday
+ * under the company workweek confirmed by HR.
  */
 function getCutoffRange(refDate = new Date()) {
     const day = refDate.getDay(); // 0 = Sun ... 6 = Sat
@@ -211,12 +213,12 @@ function getCutoffRange(refDate = new Date()) {
     return { start, end, label };
 }
 
-function countWorkingDays(start, end) {
+function countWorkingDays(start, end, restDays = DEFAULT_REST_DAYS) {
     if (end < start) return 0;
     let count = 0;
     const cursor = new Date(start);
     while (cursor <= end) {
-        if (cursor.getDay() !== 0) count++;
+        if (!restDays.includes(cursor.getDay())) count++;
         cursor.setDate(cursor.getDate() + 1);
     }
     return count;
@@ -227,7 +229,7 @@ function countWorkingDays(start, end) {
  * Strictly computes payroll projections for active workforce employees (role === 'employee').
  * Guards, Admins, and HR personnel are completely excluded from headcount, compensation, and department breakdowns.
  */
-function computePayrollForecastFromData(employees, attendances) {
+export function computePayrollForecastFromData(employees, attendances) {
     const today = new Date();
     const { start, end, label } = getCutoffRange(today);
     const startStr = toDateStr(start);
@@ -276,8 +278,11 @@ function computePayrollForecastFromData(employees, attendances) {
             empActual += rStatus.includes('holiday') ? dailyRate * 2 : dailyRate;
         });
 
-        const attendanceRate = elapsedWorkingDays > 0 ? Math.min(1, records.length / elapsedWorkingDays) : 1;
-        const empProjectedRemaining = remainingWorkingDays * dailyRate * attendanceRate;
+        const restDays = getEmployeeRestDays(emp);
+        const elapsedForEmployee = countWorkingDays(start, elapsedEnd, restDays);
+        const remainingForEmployee = countWorkingDays(start, end, restDays) - elapsedForEmployee;
+        const attendanceRate = elapsedForEmployee > 0 ? Math.min(1, records.length / elapsedForEmployee) : 1;
+        const empProjectedRemaining = remainingForEmployee * dailyRate * attendanceRate;
 
         actualPayToDate += empActual;
         projectedRemainingPay += empProjectedRemaining;
@@ -342,7 +347,7 @@ async function computePayrollForecast() {
     const [{ data: rawEmployees, error: empErr }, { data: attendance, error: attErr }] = await Promise.all([
         supabase
             .from('employees')
-            .select('id, department, role, job_title, daily_rate, hourly_rate, shift, status, company_id')
+            .select('*')
             .not('company_id', 'is', null)
             .eq('role', 'employee'),
         supabase
@@ -378,7 +383,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status, job_title')
+                    .select('*')
             ),
             supabase
                 .from('attendances')
@@ -745,23 +750,6 @@ export function createEmployeeDashboardHandler(client = supabase) {
 }
 router.get('/employee/:id', checkAdminOrOwnership, createEmployeeDashboardHandler());
 
-const SHIFT_START_HOUR = 8; // Company-wide shift start: 8:00 AM (Asia/Manila)
-
-/**
- * Wall-clock minutes-past-shift-start for a given ISO timestamp, in Asia/Manila time.
- * Returns null if timeInIso is missing.
- */
-function computeLateMinutes(timeInIso) {
-    if (!timeInIso) return null;
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false
-    }).formatToParts(new Date(timeInIso));
-    const hour = Number(parts.find(p => p.type === 'hour').value);
-    const minute = Number(parts.find(p => p.type === 'minute').value);
-    const minutesSinceMidnight = hour * 60 + minute;
-    return Math.max(0, minutesSinceMidnight - SHIFT_START_HOUR * 60);
-}
-
 function formatLateLabel(minutes) {
     if (minutes === null) return 'N/A';
     if (minutes <= 0) return 'On time';
@@ -786,7 +774,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, first_name, last_name, department, shift, role, job_title')
+                    .select('*')
             )
         ]);
 
@@ -803,7 +791,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
             const emp = empMap.get(att.employee_id);
             if (!emp) return; // Strictly ignore non-workforce system operators
 
-            const lateMinutes = computeLateMinutes(att.time_in);
+            const lateMinutes = att.time_in ? getChargeableLateMinutes(att, WORK_POLICY, getEmployeeRestDays(emp)) : null;
             const entry = {
                 id: att.id,
                 employee_id: att.employee_id,

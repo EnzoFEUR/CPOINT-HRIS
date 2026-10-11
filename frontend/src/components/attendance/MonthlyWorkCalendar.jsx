@@ -1,4 +1,6 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { getManilaWorkDate } from '../../../../shared/workPolicy.mjs';
+import { getAttendanceMonthRange, reconcileMonthlyAttendance } from '../../../../shared/monthlyAttendance.mjs';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
@@ -10,324 +12,73 @@ const MONTH_NAMES = [
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-// Format ISO string to 12-hour hh:mm A
-const formatTime = (isoString) => {
-    if (!isoString) return null;
-    try {
-        const d = new Date(isoString);
-        if (isNaN(d.getTime())) return null;
-        return new Intl.DateTimeFormat('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        }).format(d);
-    } catch {
-        return null;
-    }
-};
+export default function MonthlyWorkCalendar(props) {
+    return <EmployeeMonthlyWorkCalendar key={props.employeeId} {...props} />;
+}
 
-// Reconcile raw Supabase records directly on client as resilient fallback
-const reconcileClientAttendance = ({ employee, attendances = [], leaves = [], holidays = [], year, monthNum }) => {
-    const todayStr = new Intl.DateTimeFormat('en-CA', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(new Date());
-
-    const targetMonth = `${year}-${String(monthNum).padStart(2, '0')}`;
-    const lastDayOfMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
-
-    let restDays = [0];
-    const dept = (employee?.department || '').toLowerCase();
-    if (Array.isArray(employee?.rest_days) && employee.rest_days.length > 0) {
-        restDays = employee.rest_days.map(Number);
-    } else if (dept.includes('office') || dept.includes('management') || dept.includes('hr')) {
-        restDays = [0, 6];
-    } else {
-        restDays = [0];
-    }
-
-    const attendanceMap = new Map();
-    attendances.forEach(a => {
-        if (a?.date) attendanceMap.set(a.date, a);
-    });
-
-    const holidayMap = new Map();
-    holidays.forEach(h => {
-        if (h?.date) holidayMap.set(h.date, h);
-    });
-
-    const getLeaveForDate = (dStr) => {
-        for (const l of leaves) {
-            if (dStr >= l.start_date && dStr <= l.end_date) {
-                const isUnpaid = /\[PAY_TYPE:WITHOUT_PAY\]/i.test(l.notes || '') || /\[UNPAID\]/i.test(l.notes || '');
-                return {
-                    id: l.id,
-                    type: l.type || 'Leave',
-                    is_paid: !isUnpaid,
-                    notes: (l.notes || '').replace(/\[PAY_TYPE:[^\]]+\]/gi, '').replace(/\[(PAID|UNPAID)\]/gi, '').trim()
-                };
-            }
-        }
-        return null;
-    };
-
-    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    let expectedWorkDays = 0;
-    let daysPresent = 0;
-    let daysOnTime = 0;
-    let daysLate = 0;
-    let totalLateMinutes = 0;
-    let daysAbsent = 0;
-    let approvedLeaveDays = 0;
-    let restDayCount = 0;
-    let holidayCount = 0;
-
-    const days = [];
-
-    for (let dayNum = 1; dayNum <= lastDayOfMonth; dayNum++) {
-        const dayStr = String(dayNum).padStart(2, '0');
-        const currentDateStr = `${targetMonth}-${dayStr}`;
-        const dateObj = new Date(Date.UTC(year, monthNum - 1, dayNum));
-        const dayOfWeek = dateObj.getUTCDay();
-
-        const isRestDay = restDays.includes(dayOfWeek);
-        const holidayData = holidayMap.get(currentDateStr) || null;
-        const leaveData = getLeaveForDate(currentDateStr);
-        const attLog = attendanceMap.get(currentDateStr) || null;
-
-        const isToday = currentDateStr === todayStr;
-        const isPast = currentDateStr < todayStr;
-        const isFuture = currentDateStr > todayStr;
-
-        let status = 'SCHEDULED';
-        let statusLabel = 'Scheduled Work Day';
-        let minutesLate = 0;
-        let hoursWorked = null;
-        let reason = null;
-
-        if (attLog?.time_in && attLog?.time_out) {
-            const inT = new Date(attLog.time_in).getTime();
-            const outT = new Date(attLog.time_out).getTime();
-            if (outT > inT) hoursWorked = Number(((outT - inT) / (1000 * 60 * 60)).toFixed(2));
-        }
-
-        if (attLog && attLog.time_in) {
-            const inDate = new Date(attLog.time_in);
-            const inH = inDate.getHours();
-            const inM = inDate.getMinutes();
-            const totMin = inH * 60 + inM;
-            const callMin = 8 * 60; // 08:00 AM
-
-            if (totMin > callMin) {
-                minutesLate = totMin - callMin;
-            }
-
-            const rawSt = (attLog.status || '').toLowerCase();
-            const isLate = rawSt.includes('late') || minutesLate > 0;
-
-            if (isLate) {
-                status = 'LATE';
-                statusLabel = `Late (${minutesLate} mins)`;
-                daysLate++;
-                totalLateMinutes += minutesLate;
-            } else {
-                status = 'PRESENT';
-                statusLabel = 'Present (On Time)';
-                daysOnTime++;
-            }
-            daysPresent++;
-            if (!isRestDay && !holidayData) expectedWorkDays++;
-        } else if (leaveData) {
-            status = isFuture ? 'FUTURE_LEAVE' : 'APPROVED_LEAVE';
-            statusLabel = `${leaveData.type} (${leaveData.is_paid ? 'Paid' : 'Unpaid'})`;
-            reason = leaveData.notes;
-            if (!isFuture) approvedLeaveDays++;
-            if (!isRestDay && !holidayData) expectedWorkDays++;
-        } else if (holidayData) {
-            status = isFuture ? 'FUTURE_HOLIDAY' : 'HOLIDAY';
-            statusLabel = holidayData.name;
-            reason = holidayData.name;
-            if (!isFuture) holidayCount++;
-        } else if (isRestDay) {
-            status = isFuture ? 'FUTURE_REST_DAY' : 'REST_DAY';
-            statusLabel = `${DAY_NAMES[dayOfWeek]} Rest Day`;
-            if (!isFuture) restDayCount++;
-        } else if (isToday) {
-            status = 'AWAITING_PUNCH';
-            statusLabel = 'Today · In Progress';
-            expectedWorkDays++;
-        } else if (isFuture) {
-            status = 'SCHEDULED';
-            statusLabel = 'Scheduled Work Day';
-            expectedWorkDays++;
-        } else {
-            status = 'ABSENT';
-            statusLabel = 'Unexcused Absence';
-            reason = 'No attendance punch or approved leave recorded';
-            daysAbsent++;
-            expectedWorkDays++;
-        }
-
-        days.push({
-            date: currentDateStr,
-            day_number: dayNum,
-            day_of_week: dayOfWeek,
-            day_name: DAY_NAMES_SHORT[dayOfWeek],
-            full_day_name: DAY_NAMES[dayOfWeek],
-            is_work_day: !isRestDay && !holidayData,
-            is_today: isToday,
-            is_past: isPast,
-            is_future: isFuture,
-            status,
-            status_label: statusLabel,
-            reason,
-            time_in: attLog?.time_in || null,
-            time_out: attLog?.time_out || null,
-            time_in_formatted: formatTime(attLog?.time_in),
-            time_out_formatted: formatTime(attLog?.time_out),
-            minutes_late: minutesLate,
-            hours_worked: hoursWorked,
-            time_in_photo: attLog?.time_in_photo || null,
-            time_out_photo: attLog?.time_out_photo || null,
-            leave: leaveData,
-            holiday: holidayData
-        });
-    }
-
-    const eligiblePastDays = daysPresent + daysAbsent;
-    const attendanceRatePct = eligiblePastDays > 0 ? Number(((daysPresent / eligiblePastDays) * 100).toFixed(1)) : 100.0;
-    const punctualityRatePct = daysPresent > 0 ? Number(((daysOnTime / daysPresent) * 100).toFixed(1)) : 100.0;
-
-    return {
-        employee: {
-            id: employee?.id,
-            company_id: employee?.company_id,
-            name: `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim(),
-            shift: employee?.shift || 'Factory Standard (08:00 AM - 05:00 PM)',
-            rest_days: restDays
-        },
-        month: targetMonth,
-        summary: {
-            total_calendar_days: lastDayOfMonth,
-            expected_work_days: expectedWorkDays,
-            days_present: daysPresent,
-            days_on_time: daysOnTime,
-            days_late: daysLate,
-            total_late_minutes: totalLateMinutes,
-            days_absent: daysAbsent,
-            approved_leaves: approvedLeaveDays,
-            rest_days: restDayCount,
-            holidays: holidayCount,
-            attendance_rate_pct: attendanceRatePct,
-            punctuality_rate_pct: punctualityRatePct
-        },
-        days
-    };
-};
-
-export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isEmployeeView = false, className = '' }) {
-    // Strictly restricted to administrative workforce view
-    if (isEmployeeView) {
-        return null;
-    }
-
+function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className = '', isEmployeeView = false }) {
     const queryClient = useQueryClient();
-
-    const todayMonthStr = useMemo(() => {
-        const d = new Date();
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        return `${y}-${m}`;
-    }, []);
-
+    const todayMonthStr = getManilaWorkDate().slice(0, 7);
     const [selectedMonth, setSelectedMonth] = useState(todayMonthStr);
     const [viewMode, setViewMode] = useState('grid');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [selectedDayDetail, setSelectedDayDetail] = useState(null);
-
+    const [selectedDayDate, setSelectedDayDate] = useState(null);
+    const setSelectedDayDetail = day => setSelectedDayDate(day?.date || null);
     const hasCheckedActiveMonth = useRef(false);
-
-    const [year, monthNum] = useMemo(() => {
-        const [y, m] = selectedMonth.split('-');
-        return [parseInt(y, 10), parseInt(m, 10)];
-    }, [selectedMonth]);
-
-    // Resilient UUID resolution (handles both UUID and company_id)
-    const [resolvedUuid, setResolvedUuid] = useState(() => {
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(employeeId || '').trim());
-        return isUUID ? employeeId : null;
+    const dayDialog = useRef(null);
+    const [year, monthNum] = selectedMonth.split('-').map(Number);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(employeeId || '').trim());
+    const { data: resolvedEmployee, isLoading: isResolving, error: resolutionError } = useQuery({
+        queryKey: ['monthlyEmployeeId', employeeId],
+        enabled: Boolean(employeeId) && !isUuid,
+        queryFn: async ({ signal }) => {
+            const { data, error } = await supabase.from('employees').select('id')
+                .ilike('company_id', String(employeeId).trim().replace(/[\\%_]/g, '\\$&'))
+                .abortSignal(signal).maybeSingle();
+            signal.throwIfAborted();
+            if (error || !data?.id) throw new Error(error?.message || 'Employee not found.');
+            return data;
+        },
+        staleTime: 300_000,
     });
-
-    useEffect(() => {
-        if (!employeeId) return;
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(employeeId).trim());
-        if (isUUID) {
-            setResolvedUuid(employeeId);
-            return;
-        }
-        supabase
-            .from('employees')
-            .select('id')
-            .ilike('company_id', employeeId)
-            .maybeSingle()
-            .then(({ data }) => {
-                if (data?.id) setResolvedUuid(data.id);
-            });
-    }, [employeeId]);
-
-    const activeEmpId = resolvedUuid || employeeId;
-
+    const activeEmpId = isUuid ? String(employeeId).trim() : resolvedEmployee?.id;
     const monthLabel = `${MONTH_NAMES[monthNum - 1]} ${year}`;
 
-    // Auto-focus latest active month from Supabase if current month has zero records
+    // Preserve latest-active-month navigation without allowing an old read to override a new selection.
     useEffect(() => {
-        if (!activeEmpId || hasCheckedActiveMonth.current) return;
-
+        if (isEmployeeView || !activeEmpId || hasCheckedActiveMonth.current) return;
+        const controller = new AbortController();
         const syncLatestMonth = async () => {
             try {
-                // Check if current month has attendances
-                const startDate = `${selectedMonth}-01`;
-                const endDate = `${selectedMonth}-31`;
-
-                const { count } = await supabase
-                    .from('attendances')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('employee_id', activeEmpId)
-                    .gte('date', startDate)
-                    .lte('date', endDate);
-
+                const { startDate, endDate } = getAttendanceMonthRange(selectedMonth);
+                const { count, error } = await supabase.from('attendances')
+                    .select('id', { count: 'exact', head: true }).eq('employee_id', activeEmpId)
+                    .gte('date', startDate).lte('date', endDate).abortSignal(controller.signal);
+                if (error) throw error;
                 if (count === 0) {
-                    // Find latest month with attendance records
-                    const { data: latestRecord } = await supabase
-                        .from('attendances')
-                        .select('date')
-                        .eq('employee_id', activeEmpId)
-                        .order('date', { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
-
-                    if (latestRecord?.date) {
+                    const { data, error: latestError } = await supabase.from('attendances').select('date')
+                        .eq('employee_id', activeEmpId).order('date', { ascending: false }).limit(1)
+                        .abortSignal(controller.signal).maybeSingle();
+                    if (latestError) throw latestError;
+                    if (!controller.signal.aborted && !hasCheckedActiveMonth.current && data?.date) {
                         hasCheckedActiveMonth.current = true;
-                        const activeMonth = latestRecord.date.substring(0, 7);
-                        setSelectedMonth(activeMonth);
+                        setSelectedMonth(data.date.slice(0, 7));
                     }
-                } else {
-                    hasCheckedActiveMonth.current = true;
                 }
-            } catch (err) {
-                console.warn('Auto-detect active month note:', err);
+            } catch (error) {
+                if (!controller.signal.aborted) console.warn('Auto-detect active month:', error.message);
+            } finally {
+                if (!controller.signal.aborted) hasCheckedActiveMonth.current = true;
             }
         };
-
         syncLatestMonth();
-    }, [activeEmpId, selectedMonth]);
+        return () => controller.abort();
+    }, [activeEmpId, selectedMonth, isEmployeeView]);
 
     // Month Navigation
     const handlePrevMonth = () => {
         hasCheckedActiveMonth.current = true;
+        setSelectedDayDate(null);
         let prevM = monthNum - 1;
         let prevY = year;
         if (prevM < 1) {
@@ -339,6 +90,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
 
     const handleNextMonth = () => {
         hasCheckedActiveMonth.current = true;
+        setSelectedDayDate(null);
         let nextM = monthNum + 1;
         let nextY = year;
         if (nextM > 12) {
@@ -350,75 +102,89 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
 
     const handleJumpToCurrentMonth = () => {
         hasCheckedActiveMonth.current = true;
+        setSelectedDayDate(null);
         setSelectedMonth(todayMonthStr);
     };
 
-    // Query Monthly Attendance (API with direct Supabase fallback)
-    const { data: monthlyData, isLoading, isFetching } = useQuery({
+    // The backend and direct fallback use the same employee schedule reconciliation.
+    const { data: monthlyData, isLoading: isMonthlyLoading, isFetching, error: queryError } = useQuery({
         queryKey: ['employeeMonthlyAttendance', activeEmpId, selectedMonth],
-        queryFn: async () => {
-            // 1. Try Backend Reconciled Endpoint
+        queryFn: async ({ signal }) => {
             try {
-                const res = await fetchWithAuth(`/api/attendance/employee-monthly?employee_id=${activeEmpId}&month=${selectedMonth}`);
+                const res = await fetchWithAuth(`/api/attendance/employee-monthly?employee_id=${activeEmpId}&month=${selectedMonth}&refresh=true`, { signal });
                 const json = await res.json();
+                signal.throwIfAborted();
+                if ([400, 401, 403, 404].includes(res.status)) {
+                    throw Object.assign(new Error(json.message || json.error?.message || 'Monthly attendance access denied.'), { status: res.status });
+                }
                 if (res.ok && (json.success || json.status === 'success') && json.data) {
+                    if (json.data.employee?.id !== activeEmpId || json.data.month !== selectedMonth) throw new Error('Monthly attendance response does not match the selected employee and month.');
                     return json.data;
                 }
-            } catch (apiErr) {
-                console.warn('API monthly attendance note, falling back to direct Supabase query:', apiErr);
+            } catch (error) {
+                signal.throwIfAborted();
+                if ([400, 401, 403, 404].includes(error.status) || error.message === 'Unauthorized') throw error;
+                console.warn('Monthly API unavailable; reading verified Supabase records:', error.message);
             }
-
-            // 2. Resilient Direct Supabase Query (matches /admin/attendance and /admin/attendance/calendar)
-            const startDate = `${selectedMonth}-01`;
-            const lastDay = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
-            const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
-
-            const [empRes, attRes, leavesRes, holidaysRes] = await Promise.all([
-                supabase.from('employees').select('*').eq('id', activeEmpId).maybeSingle(),
-                supabase.from('attendances').select('*').eq('employee_id', activeEmpId).gte('date', startDate).lte('date', endDate).order('time_in', { ascending: true }),
-                supabase.from('leave_requests').select('*').eq('employee_id', activeEmpId).eq('status', 'Approved').lte('start_date', endDate).gte('end_date', startDate),
-                supabase.from('holidays').select('*').gte('date', startDate).lte('date', endDate)
+            signal.throwIfAborted();
+            const { startDate, endDate } = getAttendanceMonthRange(selectedMonth);
+            const [empRes, attRes, leavesRes, holidaysRes, policy] = await Promise.all([
+                supabase.from('employees').select('*').eq('id', activeEmpId).abortSignal(signal).maybeSingle(),
+                supabase.from('attendances').select('*', { count: 'exact' }).eq('employee_id', activeEmpId).gte('date', startDate).lte('date', endDate).order('time_in', { ascending: true }).abortSignal(signal),
+                supabase.from('leave_requests').select('*', { count: 'exact' }).eq('employee_id', activeEmpId).eq('status', 'Approved').lte('start_date', endDate).gte('end_date', startDate).abortSignal(signal),
+                supabase.from('holidays').select('*', { count: 'exact' }).gte('date', startDate).lte('date', endDate).abortSignal(signal),
+                fetchWithAuth(`/api/attendance?employee_id=${activeEmpId}&limit=1&payroll_preview=true`, { signal }).then(async response => response.ok ? (await response.json()).meta?.workPolicy : null).catch(() => null),
             ]);
-
-            return reconcileClientAttendance({
-                employee: empRes.data,
-                attendances: attRes.data || [],
-                leaves: leavesRes.data || [],
-                holidays: holidaysRes.data || [],
-                year,
-                monthNum
-            });
+            signal.throwIfAborted();
+            const workPolicy = policy || queryClient.getQueryData(['employeeMonthlyAttendance', activeEmpId, selectedMonth])?.workPolicy;
+            if (!workPolicy) throw new Error('Attendance policy cannot be verified. Retry when the backend is available.');
+            const readError = [empRes, attRes, leavesRes, holidaysRes].find(result => result.error)?.error;
+            if (readError || empRes.data?.id !== activeEmpId) throw new Error(readError?.message || 'Employee attendance records are unavailable.');
+            for (const result of [attRes, leavesRes, holidaysRes]) {
+                if (!Array.isArray(result.data) || result.count !== result.data.length) throw new Error('Monthly attendance records are incomplete. Retry after HR reconciles the data.');
+            }
+            return reconcileMonthlyAttendance({ employee: empRes.data, attendances: attRes.data, leaves: leavesRes.data, holidays: holidaysRes.data, month: selectedMonth, workPolicy });
         },
         enabled: Boolean(activeEmpId),
         staleTime: 30_000,
         gcTime: 300_000,
-        placeholderData: (previousData) => previousData
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
+        refetchInterval: 60_000,
+        refetchIntervalInBackground: false,
     });
+    const isLoading = isResolving || isMonthlyLoading;
+    const monthlyError = resolutionError || queryError;
 
-    // Real-time Supabase synchronization
     useEffect(() => {
         if (!activeEmpId) return;
-
+        let refreshTimer;
         const handleSync = () => {
-            queryClient.invalidateQueries({ queryKey: ['employeeMonthlyAttendance', activeEmpId] });
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['employeeMonthlyAttendance', activeEmpId] });
+            }, 150);
         };
-
-        const channel = supabase
-            .channel(`monthly-attendance-live-${activeEmpId}`)
+        const channel = supabase.channel(`monthly-attendance-live-${activeEmpId}`)
+            .on('broadcast', { event: 'EMPLOYEE_UPDATED' }, handleSync)
+            .on('broadcast', { event: 'LEAVE_STATUS_UPDATED' }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: `employee_id=eq.${activeEmpId}` }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: `id=eq.${activeEmpId}` }, handleSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'holidays' }, handleSync)
-            .subscribe();
-
+            .subscribe(status => { if (status === 'SUBSCRIBED') handleSync(); });
         return () => {
+            clearTimeout(refreshTimer);
             supabase.removeChannel(channel);
         };
     }, [activeEmpId, queryClient]);
 
     const summary = monthlyData?.summary || {
-        total_calendar_days: 30,
+        total_calendar_days: getAttendanceMonthRange(selectedMonth).totalDays,
         expected_work_days: 0,
         days_present: 0,
+        scheduled_days_present: 0,
         days_on_time: 0,
         days_late: 0,
         total_late_minutes: 0,
@@ -431,6 +197,25 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
     };
 
     const allDays = useMemo(() => monthlyData?.days || [], [monthlyData]);
+    const selectedDayDetail = allDays.find(day => day.date === selectedDayDate) || null;
+    useEffect(() => {
+        if (!selectedDayDate) return;
+        const opener = document.activeElement;
+        dayDialog.current?.querySelector('button')?.focus();
+        const onKeyDown = event => {
+            if (event.key === 'Escape') { event.preventDefault(); setSelectedDayDate(null); }
+            if (event.key !== 'Tab') return;
+            const buttons = dayDialog.current?.querySelectorAll('button');
+            const first = buttons?.[0], last = buttons?.[buttons.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => { document.removeEventListener('keydown', onKeyDown); if (opener?.isConnected) opener.focus(); };
+    }, [selectedDayDate]);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const leaveHolidayStatuses = ['APPROVED_LEAVE', 'FUTURE_LEAVE', 'HOLIDAY', 'FUTURE_HOLIDAY'];
+    const leaveHolidayCount = allDays.filter(day => leaveHolidayStatuses.includes(day.status)).length;
 
     // Calendar Grid alignment (Monday = 0 ... Sunday = 6)
     const calendarGrid = useMemo(() => {
@@ -454,7 +239,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
         if (statusFilter === 'present') return allDays.filter(d => d.status === 'PRESENT');
         if (statusFilter === 'late') return allDays.filter(d => d.status === 'LATE');
         if (statusFilter === 'absent') return allDays.filter(d => d.status === 'ABSENT');
-        if (statusFilter === 'leave') return allDays.filter(d => d.status === 'APPROVED_LEAVE' || d.status === 'HOLIDAY');
+        if (statusFilter === 'leave') return allDays.filter(d => ['APPROVED_LEAVE', 'FUTURE_LEAVE', 'HOLIDAY', 'FUTURE_HOLIDAY'].includes(d.status));
         return allDays;
     }, [allDays, statusFilter]);
 
@@ -559,6 +344,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
 
     return (
         <div className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative ${className}`}>
+            {monthlyError && <p role="alert" className="mb-3 rounded-md bg-danger-subtle p-3 text-sm text-danger-ink">{monthlyError.message} Showing the last verified view where available.</p>}
             {/* Header Toolbar */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 pb-4 border-b border-slate-100">
                 <div className="flex items-start sm:items-center gap-3">
@@ -567,7 +353,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     </div>
                     <div>
                         <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                            Monthly Work Schedule &amp; Attendance Audit
+                            {isEmployeeView ? 'Work calendar' : 'Monthly Work Schedule & Attendance Audit'}
                         </h3>
                     </div>
                 </div>
@@ -612,7 +398,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     )}
 
                     {/* View Switcher: Grid vs Table */}
-                    <div className="inline-flex items-center bg-slate-100 rounded-md p-0.5 border border-slate-200">
+                    {!isEmployeeView && <div className="inline-flex items-center bg-slate-100 rounded-md p-0.5 border border-slate-200">
                         <button
                             type="button"
                             onClick={() => setViewMode('grid')}
@@ -639,12 +425,12 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             <i className="ti ti-list text-sm" />
                             <span>Timeline</span>
                         </button>
-                    </div>
+                    </div>}
                 </div>
             </div>
 
             {/* KPI Metric Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {monthlyData && !isEmployeeView && <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {/* Expected Work */}
                 <div className="bg-slate-50/70 p-3 sm:p-3.5 rounded-md border border-slate-200 flex flex-col justify-between">
                     <div className="flex items-center justify-between text-slate-500">
@@ -670,12 +456,12 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     </div>
                     <div className="mt-2 flex items-baseline gap-1.5">
                         <span className="text-xl sm:text-2xl font-bold font-mono text-ink tabular-nums">
-                            {summary.days_present}
+                            {summary.scheduled_days_present}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">/ {summary.expected_work_days}</span>
+                        <span className="text-[10px] text-slate-400 font-medium">/ {summary.expected_work_days} scheduled</span>
                     </div>
                     <div className="mt-1 text-[10px] font-semibold text-ink">
-                        {summary.days_on_time} on-time ({summary.attendance_rate_pct}%)
+                        {summary.days_present} total attended; {summary.attendance_rate_pct}% attendance
                     </div>
                 </div>
 
@@ -729,10 +515,10 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         Authorized by HR
                     </div>
                 </div>
-            </div>
+            </div>}
 
             {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 sm:flex-wrap no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {!isEmployeeView && <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 sm:flex-wrap no-scrollbar [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
                     type="button"
                     onClick={() => setStatusFilter('all')}
@@ -786,9 +572,9 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                             : 'bg-white text-accent hover:bg-accent-subtle border-accent/20'
                     }`}
                 >
-                    Leaves &amp; Holidays ({summary.approved_leaves + summary.holidays})
+                    Leaves &amp; Holidays ({leaveHolidayCount})
                 </button>
-            </div>
+            </div>}
 
             {/* View Container */}
             {isLoading ? (
@@ -796,16 +582,17 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     <div className="inline-block animate-spin text-slate-600 mb-3">
                         <i className="ti ti-loader-2 text-2xl" />
                     </div>
-                    <p className="text-sm font-semibold text-slate-700">Reconciling monthly work days &amp; attendance...</p>
-                    <p className="text-xs text-slate-400 mt-1">Synchronizing live records from database</p>
+                    <p className="text-sm font-semibold text-slate-700">Loading calendar...</p>
                 </div>
+            ) : !monthlyData ? (
+                <p className="rounded-md border border-slate-200 p-8 text-center text-sm text-slate-500">Calendar unavailable. Please try again.</p>
             ) : viewMode === 'grid' ? (
                 /* 7-Column Calendar Grid View */
                 <div className="border border-slate-200 rounded-md overflow-hidden bg-white shadow-2xs">
                     {/* Weekday Header */}
                     <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider py-2">
                         {WEEKDAYS.map((wd, idx) => (
-                            <div key={wd} className={idx >= 5 ? 'text-slate-400' : 'text-slate-600'}>
+                            <div key={wd} className={monthlyData?.employee?.rest_days.includes((idx + 1) % 7) ? 'text-slate-400' : 'text-slate-600'}>
                                 <span className="sm:hidden">{wd[0]}</span>
                                 <span className="hidden sm:inline">{wd}</span>
                             </div>
@@ -817,7 +604,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         {calendarGrid.map((item) => {
                             if (item.isBlank) {
                                 return (
-                                    <div key={item.key} className="min-h-[56px] sm:min-h-[105px] bg-slate-50/40" />
+                                    <div key={item.key} className={`min-h-[56px] ${isEmployeeView ? 'sm:min-h-[76px]' : 'sm:min-h-[105px]'} bg-slate-50/40`} />
                                 );
                             }
 
@@ -826,13 +613,15 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 (statusFilter === 'present' && item.status === 'PRESENT') ||
                                 (statusFilter === 'late' && item.status === 'LATE') ||
                                 (statusFilter === 'absent' && item.status === 'ABSENT') ||
-                                (statusFilter === 'leave' && (item.status === 'APPROVED_LEAVE' || item.status === 'HOLIDAY'));
+                                (statusFilter === 'leave' && leaveHolidayStatuses.includes(item.status));
 
                             return (
-                                <div
+                                <button
+                                    type="button"
                                     key={item.key}
+                                    aria-label={`${item.date}: ${item.status_label}`}
                                     onClick={() => setSelectedDayDetail(item)}
-                                    className={`min-h-[56px] sm:min-h-[105px] p-1 sm:p-2 transition-all cursor-pointer relative group flex flex-col justify-between hover:bg-slate-50/80 active:scale-[0.98] ${
+                                    className={`min-w-0 text-left min-h-[56px] ${isEmployeeView ? 'sm:min-h-[76px]' : 'sm:min-h-[105px]'} p-1 sm:p-2 transition-all cursor-pointer relative group flex flex-col justify-between hover:bg-slate-50/80 active:scale-[0.98] ${
                                         theme.cardBorder
                                     } ${theme.cardHighlight} ${
                                         matchesFilter ? 'opacity-100' : 'opacity-35 hover:opacity-100'
@@ -876,7 +665,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
 
                                             {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (
                                                 <div className="text-[10px] font-semibold text-accent bg-accent-subtle px-1.5 py-0.5 rounded border border-accent/70 truncate" title={item.status_label}>
-                                                    {item.leave?.type || 'Leave'}
+                                                    On leave
                                                 </div>
                                             )}
 
@@ -924,7 +713,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                             )}
                                             {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (
                                                 <span className="text-[8px] font-bold text-accent bg-accent-subtle border border-accent/30 rounded px-1 py-0.5 truncate block text-center leading-none">
-                                                    Lve
+                                                    Leave
                                                 </span>
                                             )}
                                             {(item.status === 'HOLIDAY' || item.status === 'FUTURE_HOLIDAY') && (
@@ -949,7 +738,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                     <div className="hidden sm:block text-[9px] text-slate-400 font-mono truncate">
                                         {item.time_out_formatted ? `Out: ${item.time_out_formatted}` : item.hours_worked ? `${item.hours_worked} hrs` : ''}
                                     </div>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
@@ -957,7 +746,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                     {/* Mobile Tap Guide */}
                     <div className="sm:hidden px-3 py-2 text-center text-[10px] text-slate-400 border-t border-slate-100 bg-slate-50/50 flex items-center justify-center gap-1.5">
                         <i className="ti ti-hand-click text-xs text-slate-400" />
-                        <span>Tap any date to inspect full biometric audit record</span>
+                        <span>Select a date for details</span>
                     </div>
                 </div>
             ) : (
@@ -1121,7 +910,8 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                         className="absolute inset-0"
                         onClick={() => setSelectedDayDetail(null)}
                     />
-                    <div 
+                    <div
+                        ref={dayDialog} role="dialog" aria-modal="true" aria-labelledby="calendar-day-title"
                         className="relative bg-white rounded-lg max-w-lg w-full p-5 sm:p-6 shadow-xl border border-slate-200 z-10 text-left space-y-4 max-h-[92vh] overflow-y-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -1132,7 +922,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                     <i className={`ti ${getStatusTheme(selectedDayDetail).icon} text-lg`} />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-semibold text-slate-900">
+                                    <h3 id="calendar-day-title" className="text-base font-semibold text-slate-900">
                                         {selectedDayDetail.full_day_name}, {selectedDayDetail.date}
                                     </h3>
                                 </div>
@@ -1141,7 +931,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 type="button"
                                 onClick={() => setSelectedDayDetail(null)}
                                 className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-md hover:bg-slate-100 cursor-pointer"
-                                title="Close"
+                                title="Close" aria-label="Close day details"
                             >
                                 <i className="ti ti-x text-lg" />
                             </button>
@@ -1162,6 +952,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 </span>
                             </div>
 
+                            {(!isEmployeeView || !selectedDayDetail.leave || selectedDayDetail.time_in) && <>
                             <div className="grid grid-cols-2 gap-3 text-xs">
                                 <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Call Time</span>
@@ -1196,6 +987,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
                                 </div>
                             </div>
 
+                            </>}
                             {selectedDayDetail.time_in_photo && (
                                 <div className="space-y-1.5">
                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -1217,7 +1009,7 @@ export default function MonthlyWorkCalendar({ employeeId, employeeName = '', isE
 
                             {selectedDayDetail.reason && (
                                 <div className="p-3 bg-slate-50 rounded-md border border-slate-200 text-xs text-slate-700">
-                                    <span className="font-semibold text-slate-900">Audit Classification Note: </span>
+                                    <span className="font-semibold text-slate-900">Note: </span>
                                     {selectedDayDetail.reason}
                                 </div>
                             )}

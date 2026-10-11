@@ -264,6 +264,34 @@ export const MobileNav = ({
                       <p className="text-[9px] text-slate-400 truncate">Workforce roster</p>
                     </div>
                   </Link>
+
+                  <Link
+                    to="/admin/leaves?tab=cashouts"
+                    onClick={() => setSidebarOpen(false)}
+                    className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
+                      <i className="ti ti-cash text-lg" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">SIL Cash-Outs</p>
+                      <p className="text-[9px] text-slate-400 truncate">Encashment queue</p>
+                    </div>
+                  </Link>
+
+                  <Link
+                    to="/admin/leaves?tab=sil-policy"
+                    onClick={() => setSidebarOpen(false)}
+                    className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-md bg-slate-700/40 text-slate-300 flex items-center justify-center shrink-0">
+                      <i className="ti ti-shield-check text-lg" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">Statutory Policy</p>
+                      <p className="text-[9px] text-slate-400 truncate">SIL conversion rules</p>
+                    </div>
+                  </Link>
                 </>
               ) : (
                 <>

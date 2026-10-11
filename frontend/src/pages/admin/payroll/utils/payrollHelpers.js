@@ -1,4 +1,20 @@
 
+import { fetchWithAuth } from '../../../../utils/api';
+
+export async function loadPayrollAttendance(employeeId, startDate, endDate, signal) {
+    const logs = [];
+    let workPolicy;
+    for (let page = 1; ; page++) {
+        const response = await fetchWithAuth(`/api/attendance?employee_id=${employeeId}&start_date=${startDate}&end_date=${endDate}&limit=100&page=${page}&payroll_preview=true`, { signal });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || body.error || 'Cannot load payroll attendance.');
+        if (!Array.isArray(body.data) || !body.meta?.workPolicy || !Number.isInteger(body.meta.totalPages) || body.meta.totalPages < 0) throw new Error('Payroll attendance policy is unavailable. Restart or update the backend.');
+        logs.push(...body.data);
+        workPolicy = body.meta.workPolicy;
+        if (page >= body.meta.totalPages) return { logs, workPolicy };
+    }
+}
+
 export const HOLIDAY_TYPES = Object.freeze({
     REGULAR: 'regular',
     SPECIAL_NON_WORKING: 'special_non_working',

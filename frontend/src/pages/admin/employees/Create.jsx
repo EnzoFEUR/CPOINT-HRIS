@@ -1,3 +1,4 @@
+import { getManilaWorkDate } from '../../../../../shared/workPolicy.mjs';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -23,6 +24,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [lastName, setLastName] = useState(defaultValues.last_name || '');
     const [gender, setGender] = useState(defaultValues.gender || '');
     const [birthDate, setBirthDate] = useState(defaultValues.birth_date || '');
+    const [hireDate, setHireDate] = useState(defaultValues.date_hired || '');
     const [address, setAddress] = useState(defaultValues.address || '');
 
     const maxBirthDate = useMemo(() => {
@@ -192,6 +194,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setSelectedCraft('Sapatero (Lapat/Swelas)');
         setGender('');
         setBirthDate('');
+        setHireDate('');
         setAddress('');
         const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
         setSelectedGroupId(defaultLine?.id || '');
@@ -212,6 +215,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
         data.phone = phoneCheck.cleanPhone;
         data.gender = gender || null;
         data.birth_date = birthDate || null;
+        data.date_hired = hireDate;
         data.address = (address || '').trim() || null;
 
         const isFactory = department === 'Factory';
@@ -491,6 +495,11 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     onChange={(e) => setBirthDate(e.target.value)}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
                                 />
+                            </div>
+
+                            <div>
+                                <label htmlFor="date-hired" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date hired</label>
+                                <input id="date-hired" name="date_hired" type="date" required max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
                             </div>
 
                             <div className="md:col-span-2">

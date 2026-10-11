@@ -1,17 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../supabaseClient';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import sidebarCover from '../assets/sidebar-cover.jpg';
 
 export const Sidebar = ({ user, handleLogout }) => {
   const location = useLocation();
+  const queryClient = useQueryClient();
+
   const isAttendanceActive = location.pathname.includes('/admin/attendance');
   const [attendanceDropdownOpen, setAttendanceDropdownOpen] = useState(isAttendanceActive);
 
-  const adminNavItems = [
+  const isLeavesPath = location.pathname.startsWith('/admin/leaves');
+  const [leavesDropdownOpen, setLeavesDropdownOpen] = useState(isLeavesPath);
+
+  useEffect(() => {
+    if (isLeavesPath) {
+      setLeavesDropdownOpen(true);
+    }
+  }, [isLeavesPath]);
+
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get('tab') || 'requests';
+  const isApprovalsActive = isLeavesPath && (!searchParams.get('tab') || currentTab === 'requests');
+  const isCashoutsActive = isLeavesPath && (currentTab === 'cashouts' || currentTab === 'cashout');
+  const isPolicyActive = isLeavesPath && currentTab === 'sil-policy';
+
+  // Enterprise real-time count badges (<5ms head count, zero payload)
+  const { data: leaveCounts = { pendingLeaves: 0, pendingCash: 0 } } = useQuery({
+    queryKey: ['sidebarLeaveCounts'],
+    queryFn: async () => {
+      try {
+        const [leavesRes, cashRes] = await Promise.all([
+          supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'Pending'),
+          supabase.from('sil_cash_out_requests').select('*', { count: 'exact', head: true }).in('status', ['requested', 'needs_correction'])
+        ]);
+        return {
+          pendingLeaves: leavesRes.count || 0,
+          pendingCash: cashRes.count || 0
+        };
+      } catch {
+        return { pendingLeaves: 0, pendingCash: 0 };
+      }
+    },
+    enabled: Boolean(isAdmin(user)),
+    staleTime: 30000,
+    refetchOnWindowFocus: true
+  });
+
+  // Real-time synchronization for leave requests & cash-outs
+  useEffect(() => {
+    if (!isAdmin(user)) return;
+    const channel = supabase.channel('realtime:sidebar-leaves-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['sidebarLeaveCounts'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_cash_out_requests' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['sidebarLeaveCounts'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, user]);
+
+  const totalPendingLeaves = (leaveCounts?.pendingLeaves || 0) + (leaveCounts?.pendingCash || 0);
+
+  const topAdminNavItems = [
     { route: '/admin/employees', icon: 'ti-users-group', label: 'Employees' },
-    { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' },
-    { route: '/admin/leaves', icon: 'ti-plane-departure', label: 'Leave Approvals' },
+    { route: '/admin/payroll', icon: 'ti-wallet', label: 'Payroll Ledger' }
+  ];
+
+  const bottomAdminNavItems = [
     { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
     { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
   ];
@@ -159,15 +221,117 @@ export const Sidebar = ({ user, handleLogout }) => {
               )}
             </div>
 
-            {/* Nav links */}
-            {adminNavItems.map(item => (
+            {/* Top workspace items: Employees, Payroll Ledger */}
+            {topAdminNavItems.map(item => (
               <Link
                 key={item.label}
                 to={item.route}
                 className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
                   location.pathname.startsWith(item.route)
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <i className={`ti ${item.icon} text-xl`}></i>
+                <span className="ml-3 font-medium tracking-wide">{item.label}</span>
+              </Link>
+            ))}
+
+            {/* Leave Requests Submenu Dropdown */}
+            <div className="space-y-1 mt-1">
+              <button
+                type="button"
+                onClick={() => setLeavesDropdownOpen(!leavesDropdownOpen)}
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl cursor-pointer transition-colors ${
+                  isLeavesPath ? 'bg-slate-800/50 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }`}
+              >
+                <div className="flex items-center min-w-0">
+                  <i className={`ti ti-plane-departure text-xl shrink-0 ${isLeavesPath ? 'text-blue-400' : ''}`}></i>
+                  <span className="ml-3 font-medium tracking-wide truncate">Leave Requests</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {totalPendingLeaves > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 tabular-nums">
+                      {totalPendingLeaves}
+                    </span>
+                  )}
+                  <i className={`ti ti-chevron-down text-sm transition-transform duration-200 ${leavesDropdownOpen ? 'rotate-180' : ''}`}></i>
+                </div>
+              </button>
+
+              {leavesDropdownOpen && (
+                <div className="flex flex-col gap-1 pl-4 pr-2 pt-1">
+                  <Link
+                    to="/admin/leaves"
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-colors ${
+                      isApprovalsActive
+                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center min-w-0">
+                      <i className="ti ti-calendar text-lg shrink-0"></i>
+                      <span className="ml-3 text-sm font-medium truncate">Leave Approvals</span>
+                    </div>
+                    {(leaveCounts?.pendingLeaves || 0) > 0 && (
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
+                        isApprovalsActive
+                          ? 'bg-white/20 text-white'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {leaveCounts.pendingLeaves}
+                      </span>
+                    )}
+                  </Link>
+
+                  <Link
+                    to="/admin/leaves?tab=cashouts"
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-colors ${
+                      isCashoutsActive
+                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center min-w-0">
+                      <i className="ti ti-cash text-lg shrink-0"></i>
+                      <span className="ml-3 text-sm font-medium truncate">SIL Cash-Outs</span>
+                    </div>
+                    {(leaveCounts?.pendingCash || 0) > 0 && (
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
+                        isCashoutsActive
+                          ? 'bg-white/20 text-white'
+                          : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      }`}>
+                        {leaveCounts.pendingCash}
+                      </span>
+                    )}
+                  </Link>
+
+                  <Link
+                    to="/admin/leaves?tab=sil-policy"
+                    className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
+                      isPolicyActive
+                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <i className="ti ti-shield-check text-lg shrink-0"></i>
+                    <span className="ml-3 text-sm font-medium truncate">Statutory SIL Policy</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom workspace items: Disciplinary, Audit Trail */}
+            {bottomAdminNavItems.map(item => (
+              <Link
+                key={item.label}
+                to={item.route}
+                className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
+                  location.pathname.startsWith(item.route)
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
                 <i className={`ti ${item.icon} text-xl`}></i>
