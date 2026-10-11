@@ -161,7 +161,14 @@ export function createLeaveCreditsRouter(client = supabase, notify = createNotif
         try {
             const from = (page - 1) * limit;
             const to = from + limit - 1;
-            const { data, error, count } = await client.from('sil_obligations').select('*, employees:employee_id(first_name,last_name,company_id)', { count: 'exact' }).neq('status', 'settled').order('checked_at', { ascending: false }).order('id').range(from, to);
+            const { data, error, count } = await client
+                .from('sil_obligations')
+                .select('*, employees:employee_id!inner(first_name,last_name,company_id,department,role)', { count: 'exact' })
+                .not('employees.role', 'in', '("admin","superadmin","security")')
+                .neq('status', 'settled')
+                .order('checked_at', { ascending: false })
+                .order('id')
+                .range(from, to);
             if (error) throw error;
             res.json({ success: true, data: data || [], count: count || 0 });
         } catch (error) { sendCreditError(res, error); }

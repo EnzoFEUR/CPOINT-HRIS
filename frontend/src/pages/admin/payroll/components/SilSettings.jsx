@@ -74,34 +74,51 @@ export default function SilSettings() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_conversion_settings' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['silConversionSettings'] });
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_cash_out_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['silObligations'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_leave_credit_ledger' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['silObligations'] });
+            })
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, [canManage, queryClient]);
 
-    const rawObligations = obligations.data?.data || [];
-    const totalCount = rawObligations.length;
-    const annualCount = rawObligations.filter(i => i.kind === 'annual').length;
-    const separationCount = rawObligations.filter(i => i.kind === 'separation').length;
+    const validObligations = useMemo(() => {
+        return (obligations.data?.data || []).filter(item => {
+            const role = (item.employees?.role || '').toLowerCase();
+            const dept = (item.employees?.department || '').toLowerCase();
+            if (['admin', 'superadmin', 'security'].includes(role)) return false;
+            if (dept.includes('admin') || dept.includes('security')) return false;
+            return true;
+        });
+    }, [obligations.data?.data]);
+
+    const totalCount = validObligations.length;
+    const annualCount = validObligations.filter(i => i.kind === 'annual').length;
+    const separationCount = validObligations.filter(i => i.kind === 'separation').length;
 
     const filteredObligations = useMemo(() => {
-        if (!searchQuery.trim()) return [];
-        return rawObligations.filter(item => {
+        return validObligations.filter(item => {
             if (kindFilter !== 'all' && item.kind !== kindFilter) return false;
+            if (!searchQuery.trim()) return true;
             const term = searchQuery.toLowerCase().trim();
             const first = (item.employees?.first_name || '').toLowerCase();
             const last = (item.employees?.last_name || '').toLowerCase();
             const companyId = (item.employees?.company_id || '').toLowerCase();
+            const dept = (item.employees?.department || '').toLowerCase();
             const fullName = `${first} ${last}`;
             const reverseName = `${last} ${first}`;
             return (
                 last.includes(term) ||
                 first.includes(term) ||
                 companyId.includes(term) ||
+                dept.includes(term) ||
                 fullName.includes(term) ||
                 reverseName.includes(term)
             );
         });
-    }, [rawObligations, kindFilter, searchQuery]);
+    }, [validObligations, kindFilter, searchQuery]);
 
     const submit = async event => {
         event.preventDefault();
@@ -375,18 +392,18 @@ export default function SilSettings() {
                             onClick={() => setKindFilter('annual')}
                             className={`h-8 px-3 rounded-md text-xs font-semibold transition-colors ${
                                 kindFilter === 'annual'
-                                    ? 'bg-accent text-white shadow-2xs'
+                                    ? 'bg-slate-900 text-white shadow-2xs'
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
                             }`}
                         >
-                            Annual SIL ({annualCount})
+                            Annual Milestone ({annualCount})
                         </button>
                         <button
                             type="button"
                             onClick={() => setKindFilter('separation')}
                             className={`h-8 px-3 rounded-md text-xs font-semibold transition-colors ${
                                 kindFilter === 'separation'
-                                    ? 'bg-amber-600 text-white shadow-2xs'
+                                    ? 'bg-slate-900 text-white shadow-2xs'
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
                             }`}
                         >
@@ -414,32 +431,22 @@ export default function SilSettings() {
                         <p className="text-xs font-semibold text-slate-700">All SIL obligations up to date</p>
                         <p className="text-[11px] text-slate-400 mt-0.5">No outstanding annual anniversary encashments or separation reviews required at this time.</p>
                     </div>
-                ) : !searchQuery.trim() ? (
-                    <div className="py-4 px-4 bg-slate-50/60 border border-slate-100 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-slate-500">
-                        <div className="flex items-center gap-2">
-                            <i className="ti ti-search text-slate-400 text-sm" />
-                            <span>Type an employee name or ID above to inspect annual milestone or separation obligations.</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="font-semibold text-slate-700 bg-white border border-slate-200/80 px-2 py-0.5 rounded text-[11px]">
-                                {totalCount} {totalCount === 1 ? 'record' : 'records'} in queue
-                            </span>
-                        </div>
-                    </div>
                 ) : filteredObligations.length === 0 ? (
                     <div className="py-6 text-center bg-slate-50/80 rounded-lg border border-slate-100">
                         <i className="ti ti-search text-xl text-slate-400 mb-1 inline-block" />
                         <p className="text-xs font-semibold text-slate-700">No matching employees found</p>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                            No pending obligations match &ldquo;{searchQuery}&rdquo;.
+                            {searchQuery ? `No pending obligations match "${searchQuery}".` : 'No obligations in this category.'}
                         </p>
-                        <button
-                            type="button"
-                            onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
-                            className="mt-2 text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
-                        >
-                            Clear search
-                        </button>
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
+                                className="mt-2 text-xs font-semibold text-accent hover:text-accent-hover transition-colors"
+                            >
+                                Clear search
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
@@ -447,6 +454,7 @@ export default function SilSettings() {
                             const first = item.employees?.first_name || '';
                             const last = item.employees?.last_name || '';
                             const companyId = item.employees?.company_id || 'ID Pending';
+                            const dept = item.employees?.department;
                             const initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || 'EM';
                             const isSeparation = item.kind === 'separation';
 
@@ -468,29 +476,46 @@ export default function SilSettings() {
                                                 <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
                                                     {companyId}
                                                 </span>
+                                                {dept && (
+                                                    <span className="text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200/50">
+                                                        {dept}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
                                                 <span>Period end: <span className="font-mono text-slate-600 font-medium">{item.period_end || 'Needs review'}</span></span>
                                                 {item.note && <span className="text-slate-300">&bull;</span>}
-                                                {item.note && <span className="truncate max-w-[200px] text-slate-500">{item.note}</span>}
+                                                {item.note && <span className="truncate max-w-[280px] text-slate-500">{item.note}</span>}
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Right: Review Badge, Days & Action */}
-                                    <div className="flex items-center justify-between md:justify-end gap-3 shrink-0">
-                                        {/* Review Type Pill */}
+                                    {/* Right: Status Badges, Days & Action */}
+                                    <div className="flex items-center justify-between md:justify-end gap-2.5 shrink-0">
+                                        {/* Obligation Status Badge */}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            item.status === 'available'
+                                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/60'
+                                                : item.status === 'cashout_pending'
+                                                ? 'bg-sky-50 text-sky-800 border border-sky-200/60'
+                                                : 'bg-amber-50 text-amber-800 border border-amber-200/60'
+                                        }`}>
+                                            <i className={`ti ${item.status === 'available' ? 'ti-check' : item.status === 'cashout_pending' ? 'ti-clock' : 'ti-alert-circle'} text-xs`} />
+                                            <span>{item.status === 'available' ? 'Available' : item.status === 'cashout_pending' ? 'Pending' : 'Needs Review'}</span>
+                                        </span>
+
+                                        {/* Category Badge */}
                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                             isSeparation
                                                 ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
-                                                : 'bg-sky-50 text-sky-800 border border-sky-200/60'
+                                                : 'bg-slate-100 text-slate-700 border border-slate-200/60'
                                         }`}>
                                             <i className={`ti ${isSeparation ? 'ti-user-x' : 'ti-calendar-event'} text-xs`} />
                                             <span>{isSeparation ? 'Final Pay' : 'Annual SIL'}</span>
                                         </span>
 
                                         {/* Recorded Days & Proportional */}
-                                        <div className="text-right">
+                                        <div className="text-right min-w-[70px]">
                                             <div className="text-xs font-bold text-slate-800 tabular-nums">
                                                 {Number(item.recorded_days)} days
                                             </div>
@@ -504,7 +529,7 @@ export default function SilSettings() {
                                         {/* Action Button */}
                                         <Link
                                             to={`/admin/employees/${item.employee_id}`}
-                                            className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-semibold text-accent hover:text-accent-hover bg-accent-subtle/50 hover:bg-accent-subtle rounded-md border border-accent/20 transition-colors"
+                                            className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-md border border-slate-200 transition-colors shadow-2xs"
                                         >
                                             <span>Review</span>
                                             <i className="ti ti-chevron-right text-xs" />
