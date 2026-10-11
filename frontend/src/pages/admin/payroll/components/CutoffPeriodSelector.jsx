@@ -1,22 +1,15 @@
 import React from 'react';
 import { formatReadableDate } from '../utils/payrollHelpers';
 
-const CUTOFF_MODE_META = {
-    '7day': { label: '7 Days', hint: 'Mon\u2013Sun', badge: '7-Day Lock' },
-    '5day': { label: '5 Days', hint: 'Mon\u2013Fri', badge: '5-Day Lock' }
-};
-
 const CutoffPeriodSelector = ({
     periodStart,
     periodEnd,
     handleStartDateChange,
     activePreset,
-    cutoffMode,
-    handleCutoffModeChange,
     periodDaysCount,
     isInvalidDateRange,
     isRangeTooLong = false,
-    maxCutoffDays = 7
+    maxCutoffDays = 5
 }) => {
     return (
         <div className="bg-slate-50 p-4 sm:p-5 rounded-lg border border-slate-200 space-y-4 mb-6">
@@ -32,28 +25,9 @@ const CutoffPeriodSelector = ({
 
                 {activePreset === 'custom' && (
                     <span className="text-[10px] sm:text-[11px] font-bold text-warning-ink bg-warning-subtle border border-warning/20 px-2.5 py-1 rounded-md shrink-0 flex items-center gap-1 shadow-2xs">
-                        <i className="ti ti-edit"></i> {CUTOFF_MODE_META[cutoffMode]?.badge || 'Custom'}
+                        <i className="ti ti-edit"></i> 5-Day Lock
                     </span>
                 )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
-                <div className="inline-flex bg-slate-200/60 rounded-md p-1 gap-1 w-full sm:w-auto">
-                    {Object.entries(CUTOFF_MODE_META).map(([key, meta]) => (
-                        <button
-                            key={key}
-                            type="button"
-                            onClick={() => handleCutoffModeChange(key)}
-                            title={meta.hint}
-                            className={`flex-1 sm:flex-none h-8 px-3.5 rounded-md text-xs font-semibold transition-colors duration-100 cursor-pointer flex items-center justify-center ${cutoffMode === key
-                                ? 'bg-white text-accent shadow-2xs'
-                                : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                        >
-                            {meta.label}
-                        </button>
-                    ))}
-                </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -91,7 +65,7 @@ const CutoffPeriodSelector = ({
                         value={periodEnd}
                         readOnly
                         disabled
-                        title={`Locked to start date + ${CUTOFF_MODE_META[cutoffMode]?.hint}.`}
+                        title="Locked to start date + 4 days (Mon\u2013Fri work week)."
                         className="w-full h-9 px-3 font-medium rounded-md border outline-none text-xs sm:text-sm bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                     />
                 </div>

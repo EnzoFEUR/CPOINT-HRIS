@@ -76,6 +76,15 @@ export default function FactoryPiece({
         return activeComputedRows.reduce((sum, r) => sum + r.totalPrice, 0);
     }, [activeComputedRows, selectedGroup]);
 
+    // Rows (processes) of the selected group that have no workers assigned.
+    // Saving is blocked until every row has at least one worker.
+    const rowsWithoutWorkers = useMemo(() => {
+        if (!selectedGroup) return [];
+        return activeComputedRows.filter(r => r.effectiveAssignedIds.length === 0);
+    }, [activeComputedRows, selectedGroup]);
+    const hasEmptyRows = rowsWithoutWorkers.length > 0;
+    const [saveError, setSaveError] = useState('');
+
     const [isOpAssignModalOpen, setIsOpAssignModalOpen] = useState(false);
     const [currentOpRowId, setCurrentOpRowId] = useState(null);
     const [opWorkerSearch, setOpWorkerSearch] = useState('');
@@ -103,6 +112,22 @@ export default function FactoryPiece({
             e.stopPropagation();
         }
 
+        if (hasEmptyRows) {
+            const names = rowsWithoutWorkers.map(r => r.operation || 'Unnamed process').join(', ');
+            setSaveError(`Assign at least 1 worker to: ${names}`);
+            return;
+        }
+
+        // Other groups edited in this session: only rows explicitly cleared are known to be empty
+        const emptyOtherGroup = Object.entries(draftsRef.current).find(([grp, rows]) =>
+            grp !== selectedGroup && Array.isArray(rows) && rows.some(r => r.isExplicitlyEmpty)
+        );
+        if (emptyOtherGroup) {
+            setSaveError(`${emptyOtherGroup[0]} has a process with no workers. Open that group and assign workers first.`);
+            return;
+        }
+        setSaveError('');
+
         const drafts = { ...draftsRef.current };
         if (selectedGroup) {
             drafts[selectedGroup] = localRows;
@@ -120,6 +145,10 @@ export default function FactoryPiece({
 
         draftsRef.current = {};
     };
+
+    useEffect(() => {
+        if (!hasEmptyRows) setSaveError('');
+    }, [hasEmptyRows]);
 
     // Close on Escape key without saving
     useEffect(() => {
@@ -376,7 +405,7 @@ export default function FactoryPiece({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-xs">
                                         {activeComputedRows.map((row) => (
-                                            <tr key={row.id} className="hover:bg-slate-50 transition-colors duration-100">
+                                            <tr key={row.id} className={`transition-colors duration-100 ${row.effectiveAssignedIds.length === 0 ? 'bg-danger-subtle/40' : 'hover:bg-slate-50'}`}>
                                                 <td className="p-2.5 font-bold text-slate-800">
                                                     <input
                                                         type="text"
@@ -422,7 +451,7 @@ export default function FactoryPiece({
                                                     <button
                                                         type="button"
                                                         onClick={() => openOpWorkerModal(row.id)}
-                                                        className="h-7 px-2.5 bg-accent-subtle hover:bg-accent-subtle text-accent text-xs font-semibold rounded-md border border-accent/20 transition-colors duration-100 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                                        className={`h-7 px-2.5 text-xs font-semibold rounded-md border transition-colors duration-100 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap ${row.effectiveAssignedIds.length === 0 ? 'bg-danger-subtle text-danger-ink border-danger/30' : 'bg-accent-subtle hover:bg-accent-subtle text-accent border-accent/20'}`}
                                                     >
                                                         <i className="ti ti-users" />
                                                         <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -451,7 +480,7 @@ export default function FactoryPiece({
                                 {activeComputedRows.map((row, idx) => (
                                     <div
                                         key={row.id}
-                                        className="bg-white rounded-lg border border-slate-200 p-4 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col justify-between space-y-3 relative"
+                                        className={`bg-white rounded-lg border p-4 shadow-2xs transition-colors duration-100 flex flex-col justify-between space-y-3 relative ${row.effectiveAssignedIds.length === 0 ? 'border-danger/40' : 'border-slate-200 hover:border-slate-300'}`}
                                     >
                                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                                             <span className="text-[10px] font-bold uppercase text-accent bg-accent-subtle px-2 py-0.5 rounded-md">
@@ -527,7 +556,7 @@ export default function FactoryPiece({
                                             <button
                                                 type="button"
                                                 onClick={() => openOpWorkerModal(row.id)}
-                                                className="h-7 px-2.5 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                                className={`h-7 px-2.5 text-white text-xs font-semibold rounded-md transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs ${row.effectiveAssignedIds.length === 0 ? 'bg-danger hover:bg-danger' : 'bg-accent hover:bg-accent-hover'}`}
                                             >
                                                 <i className="ti ti-users" />
                                                 <span>{row.effectiveAssignedIds.length} Workers</span>
@@ -563,7 +592,15 @@ export default function FactoryPiece({
                 </div>
 
                 {/* Modal Footer */}
-                <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-end gap-3">
+                <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-end gap-3 flex-wrap">
+                    {(saveError || hasEmptyRows) && (
+                        <p role="alert" className="mr-auto text-[11px] sm:text-xs font-semibold text-danger-ink flex items-center gap-1.5">
+                            <i className="ti ti-alert-circle text-sm shrink-0" />
+                            <span>
+                                {saveError || `${rowsWithoutWorkers.length} process${rowsWithoutWorkers.length > 1 ? 'es have' : ' has'} no workers. Assign at least 1 worker to save.`}
+                            </span>
+                        </p>
+                    )}
                     <button
                         type="button"
                         onClick={handleClose}
@@ -574,7 +611,8 @@ export default function FactoryPiece({
                     <button
                         type="button"
                         onClick={handleSaveAndClose}
-                        className="h-9 px-4 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer"
+                        disabled={hasEmptyRows}
+                        className="h-9 px-4 bg-accent hover:bg-accent-hover text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 flex items-center gap-2 cursor-pointer disabled:bg-slate-300 disabled:hover:bg-slate-300 disabled:cursor-not-allowed"
                     >
                         <i className="ti ti-device-floppy text-base" />
                         <span>Save &amp; Close Log</span>
