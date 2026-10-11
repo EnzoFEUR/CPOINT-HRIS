@@ -555,6 +555,8 @@ export default function Show() {
         return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+
+
     // Unconditional hook declarations complete - now safe for conditional early return
     if (isLoading || !employee) {
         return (
@@ -576,6 +578,7 @@ export default function Show() {
         employee.hourly_rate ?? 
         (dailyRate ? dailyRate / 8 : 0)
     );
+
     // Termination cooldown: a separated employee stays visually flagged (grayed
     // out) but not yet finalized for this many days after their effective
     // separation date - a reversible window before the record is treated as

@@ -19,13 +19,32 @@ export default function MonthlyWorkCalendar(props) {
 function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className = '', isEmployeeView = false }) {
     const queryClient = useQueryClient();
     const todayMonthStr = getManilaWorkDate().slice(0, 7);
-    const [selectedMonth, setSelectedMonth] = useState(todayMonthStr);
+    const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const urlFilter = urlParams.get('filter');
+    const urlMonth = urlParams.get('month');
+    const validUrlFilter = ['worked', 'present', 'late', 'absent', 'leave'].includes(urlFilter) ? urlFilter : null;
+    const validUrlMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(urlMonth || '') ? urlMonth : null;
+
+    const [selectedMonth, setSelectedMonth] = useState(validUrlMonth || todayMonthStr);
     const [viewMode, setViewMode] = useState('grid');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState(validUrlFilter || 'all');
     const [selectedDayDate, setSelectedDayDate] = useState(null);
     const setSelectedDayDetail = day => setSelectedDayDate(day?.date || null);
-    const hasCheckedActiveMonth = useRef(false);
+    const hasCheckedActiveMonth = useRef(Boolean(validUrlMonth));
     const dayDialog = useRef(null);
+    const rootRef = useRef(null);
+
+    useEffect(() => {
+        if (validUrlMonth) {
+            hasCheckedActiveMonth.current = true;
+            setSelectedMonth(validUrlMonth);
+        }
+        if (validUrlFilter) setStatusFilter(validUrlFilter);
+        if (validUrlFilter || validUrlMonth) {
+            const t = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+            return () => clearTimeout(t);
+        }
+    }, [validUrlFilter, validUrlMonth]);
     const [year, monthNum] = selectedMonth.split('-').map(Number);
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(employeeId || '').trim());
     const { data: resolvedEmployee, isLoading: isResolving, error: resolutionError } = useQuery({
@@ -237,6 +256,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
     const filteredDays = useMemo(() => {
         if (statusFilter === 'all') return allDays;
         if (statusFilter === 'present') return allDays.filter(d => d.status === 'PRESENT');
+        if (statusFilter === 'worked') return allDays.filter(d => d.status === 'PRESENT' || d.status === 'LATE');
         if (statusFilter === 'late') return allDays.filter(d => d.status === 'LATE');
         if (statusFilter === 'absent') return allDays.filter(d => d.status === 'ABSENT');
         if (statusFilter === 'leave') return allDays.filter(d => ['APPROVED_LEAVE', 'FUTURE_LEAVE', 'HOLIDAY', 'FUTURE_HOLIDAY'].includes(d.status));
@@ -343,7 +363,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
     };
 
     return (
-        <div className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative ${className}`}>
+        <div ref={rootRef} className={`bg-white rounded-lg shadow-2xs border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 relative scroll-mt-4 ${className}`}>
             {monthlyError && <p role="alert" className="mb-3 rounded-md bg-danger-subtle p-3 text-sm text-danger-ink">{monthlyError.message} Showing the last verified view where available.</p>}
             {/* Header Toolbar */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 pb-4 border-b border-slate-100">
@@ -534,7 +554,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                     type="button"
                     onClick={() => setStatusFilter('present')}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
-                        statusFilter === 'present'
+                        (statusFilter === 'present' || statusFilter === 'worked')
                             ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                             : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
                     }`}
@@ -611,6 +631,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                             const theme = getStatusTheme(item);
                             const matchesFilter = statusFilter === 'all' || 
                                 (statusFilter === 'present' && item.status === 'PRESENT') ||
+                                (statusFilter === 'worked' && (item.status === 'PRESENT' || item.status === 'LATE')) ||
                                 (statusFilter === 'late' && item.status === 'LATE') ||
                                 (statusFilter === 'absent' && item.status === 'ABSENT') ||
                                 (statusFilter === 'leave' && leaveHolidayStatuses.includes(item.status));
