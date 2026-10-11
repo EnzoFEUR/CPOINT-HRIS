@@ -505,11 +505,7 @@ export default function SilSettings() {
                                         </span>
 
                                         {/* Category Badge */}
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            isSeparation
-                                                ? 'bg-warning-subtle text-warning-ink border border-warning/20'
-                                                : 'bg-slate-100 text-slate-700 border border-slate-200/60'
-                                        }`}>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200/60">
                                             <i className={`ti ${isSeparation ? 'ti-user-x' : 'ti-calendar-event'} text-xs`} />
                                             <span>{isSeparation ? 'Final Pay' : 'Annual SIL'}</span>
                                         </span>

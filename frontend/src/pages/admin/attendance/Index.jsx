@@ -233,9 +233,9 @@ const Index = () => {
                             <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
                         </div>
                         {todaysLeaveCount > 0 && (
-                            <div className="flex items-center gap-2 bg-accent-subtle border border-accent/20 px-3.5 py-2 rounded-lg">
-                                <span className="text-xs font-semibold text-accent uppercase tracking-wider">On Leave:</span>
-                                <span className="font-mono text-sm font-bold text-accent tabular-nums">{todaysLeaveCount}</span>
+                            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-lg">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">On Leave:</span>
+                                <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysLeaveCount}</span>
                             </div>
                         )}
                     </div>
@@ -344,7 +344,7 @@ const Index = () => {
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time Out</p>
                                             {isLogOnLeave(log) ? (
-                                                <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2 py-0.5 rounded border border-accent/20">
+                                                <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                                     Approved Leave
                                                 </span>
                                             ) : log.time_out ? (
@@ -383,7 +383,6 @@ const Index = () => {
                                 <div className="flex items-center justify-between pt-1">
                                     <Badge 
                                         variant={getLogStatusVariant(log)}
-                                        withDot={isLogOnLeave(log)}
                                     >
                                         {getLogStatusLabel(log)}
                                     </Badge>
@@ -451,7 +450,7 @@ const Index = () => {
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
                                                     {isLogOnLeave(log) ? (
-                                                        <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2.5 py-0.5 rounded border border-accent/20 tabular-nums">
+                                                        <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 tabular-nums">
                                                             Excused
                                                         </span>
                                                     ) : log.time_in ? (
@@ -483,7 +482,7 @@ const Index = () => {
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
                                                     {isLogOnLeave(log) ? (
-                                                        <span className="bg-accent-subtle text-accent border border-accent/20 px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                        <span className="bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                             Approved Leave
                                                         </span>
                                                     ) : log.time_out ? (
@@ -521,7 +520,6 @@ const Index = () => {
                                             <td className="px-6 py-3.5 text-center">
                                                 <Badge 
                                                     variant={getLogStatusVariant(log)}
-                                                    withDot={isLogOnLeave(log)}
                                                 >
                                                     {getLogStatusLabel(log)}
                                                 </Badge>

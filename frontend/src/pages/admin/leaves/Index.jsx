@@ -17,7 +17,7 @@ function RequestedPayBadge({ leave }) {
     const label = paid ? 'Paid' : unpaid ? 'Unpaid' : 'Not recorded';
     const description = paid ? 'Employee requested paid leave' : unpaid ? 'Employee requested unpaid leave' : 'Employee payment choice not recorded';
     return <span aria-label={description} title={description} className={`inline-flex whitespace-nowrap rounded-md border px-2.5 py-1 text-[10px] font-bold ${paid
-        ? 'border-accent/20 bg-accent-subtle text-accent'
+        ? 'border-line bg-surface-muted text-ink'
         : unpaid ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-slate-200 bg-white text-slate-500'}`}>
         {label}
     </span>;
@@ -605,10 +605,10 @@ export default function LeavesIndex() {
                                     {leave.status === 'Approved' && (
                                         <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md border flex items-center shrink-0 ${
                                             leave.pay_type === 'without_pay' || leave.is_paid === false
-                                                ? 'bg-warning-subtle text-warning-ink border-warning/20'
+                                                ? 'bg-slate-100 text-slate-700 border-slate-200'
                                                 : 'bg-surface-muted text-ink border-line'
                                         }`}>
-                                            {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • Paid'}
+                                            {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved (Unpaid)' : 'Approved (Paid)'}
                                         </span>
                                     )}
                                     {leave.status === 'Rejected' && (
@@ -741,10 +741,10 @@ export default function LeavesIndex() {
                                             {leave.status === 'Approved' && (
                                                 <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border flex w-max items-center mx-auto ${
                                                     leave.pay_type === 'without_pay' || leave.is_paid === false
-                                                        ? 'bg-warning-subtle text-warning-ink border-warning/20 shadow-2xs'
+                                                        ? 'bg-slate-100 text-slate-700 border-slate-200 shadow-2xs'
                                                         : 'bg-surface-muted text-ink border-line shadow-2xs'
                                                 }`}>
-                                                    {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved • Unpaid' : 'Approved • With Pay'}
+                                                    {leave.pay_type === 'without_pay' || leave.is_paid === false ? 'Approved (Unpaid)' : 'Approved (With Pay)'}
                                                 </span>
                                             )}
                                             {leave.status === 'Rejected' && (
@@ -868,7 +868,7 @@ export default function LeavesIndex() {
                                                 {approvalModalLeave.employees ? `${approvalModalLeave.employees.first_name} ${approvalModalLeave.employees.last_name}` : 'Employee'}
                                             </p>
                                             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                                                {approvalModalLeave.employees?.department} &bull; {approvalModalLeave.type}
+                                                {approvalModalLeave.employees?.department} / {approvalModalLeave.type}
                                             </p>
                                         </div>
                                     </div>

@@ -5,6 +5,8 @@ const BADGE_VARIANTS = {
     success: 'bg-success-subtle text-success-ink border-success/20',
     late: 'bg-warning-subtle text-warning-ink border-warning/20',
     warning: 'bg-warning-subtle text-warning-ink border-warning/20',
+    needs_review: 'bg-warning-subtle text-warning-ink border-warning/20',
+    pending: 'bg-warning-subtle text-warning-ink border-warning/20',
     absent: 'bg-danger-subtle text-danger-ink border-danger/20',
     danger: 'bg-danger-subtle text-danger-ink border-danger/20',
     destructive: 'bg-danger-subtle text-danger-ink border-danger/20',
@@ -20,14 +22,14 @@ const BADGE_VARIANTS = {
     resolved: 'bg-slate-100 text-slate-700 border-slate-200',
     cleared: 'bg-success-subtle text-success-ink border-success/20',
     overturned: 'bg-success-subtle text-success-ink border-success/20',
-    dismissed: 'bg-accent-subtle text-accent border-accent/20',
+    dismissed: 'bg-surface-muted text-ink border-line',
     grace: 'bg-warning-subtle text-warning-ink border-warning/20',
-    pakyawan: 'bg-accent-subtle text-accent border-accent/20',
-    purple: 'bg-accent-subtle text-accent border-accent/20',
+    pakyawan: 'bg-surface-muted text-ink border-line',
+    purple: 'bg-surface-muted text-ink border-line',
     teal: 'bg-surface-muted text-ink border-line',
-    leave: 'bg-accent-subtle text-accent border-accent/20',
-    paid_leave: 'bg-accent-subtle text-accent border-accent/20',
-    unpaid_leave: 'bg-warning-subtle text-warning-ink border-warning/20'
+    leave: 'bg-surface-muted text-ink border-line',
+    paid_leave: 'bg-surface-muted text-ink border-line',
+    unpaid_leave: 'bg-slate-100 text-slate-700 border-slate-200'
 };
 
 const DOT_COLORS = {
@@ -35,6 +37,8 @@ const DOT_COLORS = {
     success: 'bg-success',
     late: 'bg-warning',
     warning: 'bg-warning',
+    needs_review: 'bg-warning',
+    pending: 'bg-warning',
     absent: 'bg-danger',
     danger: 'bg-danger',
     destructive: 'bg-danger',
@@ -50,14 +54,14 @@ const DOT_COLORS = {
     resolved: 'bg-slate-500',
     cleared: 'bg-success',
     overturned: 'bg-success',
-    dismissed: 'bg-accent',
+    dismissed: 'bg-ink-subtle',
     grace: 'bg-warning',
-    pakyawan: 'bg-accent',
-    purple: 'bg-accent',
+    pakyawan: 'bg-ink-subtle',
+    purple: 'bg-ink-subtle',
     teal: 'bg-ink-subtle',
-    leave: 'bg-accent',
-    paid_leave: 'bg-accent',
-    unpaid_leave: 'bg-warning'
+    leave: 'bg-slate-500',
+    paid_leave: 'bg-slate-500',
+    unpaid_leave: 'bg-slate-400'
 };
 
 export const Badge = ({ 
