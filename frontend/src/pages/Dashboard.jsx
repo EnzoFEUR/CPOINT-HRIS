@@ -6,10 +6,7 @@ import { fetchWithAuth } from '../utils/api';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import {
     RefreshCw,
-    Loader2,
-    Lightbulb,
-    Target,
-    AlertTriangle
+    Loader2
 } from 'lucide-react';
 
 const GRADE_COLORS = {
@@ -468,18 +465,12 @@ export default function Dashboard() {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4 space-y-2.5">
-                                    <div className="flex items-center gap-2">
-                                        <Lightbulb className="w-4 h-4 text-warning" />
-                                        <div className="h-3 w-24 bg-slate-700 rounded"></div>
-                                    </div>
+                                    <div className="h-3 w-24 bg-slate-700 rounded"></div>
                                     <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
                                     <div className="h-2.5 w-4/5 bg-slate-700/60 rounded"></div>
                                 </div>
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4 space-y-2.5">
-                                    <div className="flex items-center gap-2">
-                                        <Target className="w-4 h-4 text-accent-on-dark" />
-                                        <div className="h-3 w-32 bg-slate-700 rounded"></div>
-                                    </div>
+                                    <div className="h-3 w-32 bg-slate-700 rounded"></div>
                                     <div className="h-2.5 w-full bg-slate-700/60 rounded"></div>
                                     <div className="h-2.5 w-4/5 bg-slate-700/60 rounded"></div>
                                 </div>
@@ -512,8 +503,8 @@ export default function Dashboard() {
 
                             {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="px-2.5 py-1 bg-warning/10 border border-warning/30 rounded-md text-[11px] font-bold uppercase tracking-wider text-warning flex items-center gap-1.5">
-                                        <AlertTriangle className="w-3.5 h-3.5 text-warning" /> Needs Attention: {briefing.department_needs_attention}
+                                    <span className="px-2.5 py-1 bg-warning/10 border border-warning/30 rounded-md text-[11px] font-bold uppercase tracking-wider text-warning">
+                                        Needs Attention: {briefing.department_needs_attention}
                                     </span>
                                 </div>
                             )}
@@ -521,8 +512,8 @@ export default function Dashboard() {
                             {/* AI-Generated Descriptive Analytics */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4">
-                                    <span className="text-warning font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                        <Lightbulb className="w-3.5 h-3.5 text-ink-subtle" /> Operational Observations
+                                    <span className="text-warning font-bold text-xs uppercase tracking-wider block">
+                                        Operational Observations
                                     </span>
                                     <ul className="mt-2.5 space-y-1.5">
                                         {(briefing?.key_insights?.length ? briefing.key_insights : ['Not enough attendance data yet to generate observations.']).map((insight, i) => (
@@ -534,8 +525,8 @@ export default function Dashboard() {
                                     </ul>
                                 </div>
                                 <div className="bg-slate-800/60 border border-slate-700/80 rounded-md p-4">
-                                    <span className="text-accent-on-dark font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                        <Target className="w-3.5 h-3.5 text-accent-on-dark" /> Recommended Actions
+                                    <span className="text-accent-on-dark font-bold text-xs uppercase tracking-wider block">
+                                        Recommended Actions
                                     </span>
                                     <ul className="mt-2.5 space-y-1.5">
                                         {(briefing?.actionable_recommendations?.length ? briefing.actionable_recommendations : ['No critical action items at this time.']).map((rec, i) => (
@@ -562,8 +553,8 @@ export default function Dashboard() {
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {totalStaff}
                     </h3>
-                    <span className="text-xs font-semibold text-ink mt-2 flex items-center gap-1">
-                        <i className="ti ti-check" /> Active Personnel
+                    <span className="text-xs font-semibold text-ink mt-2 block">
+                        Active Personnel
                     </span>
                 </div>
 
@@ -596,8 +587,8 @@ export default function Dashboard() {
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
                         {lateTodayCount}
                     </h3>
-                    <span className="text-xs font-semibold text-warning-ink mt-2 flex items-center gap-1">
-                        <i className="ti ti-alert-triangle" /> After 8:00 AM &middot; <span className="group-hover:underline">View list &rarr;</span>
+                    <span className="text-xs font-semibold text-warning-ink mt-2 block">
+                        After 8:00 AM &middot; <span className="group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
 
@@ -623,8 +614,8 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-trophy text-ink-subtle text-lg" /> Department Punctuality Scorecard
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                                Department Punctuality Scorecard
                             </h3>
                         </div>
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200">
@@ -658,9 +649,9 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-flame text-ink-subtle text-lg" /> Burnout & Overtime Risk
-                            </h3>
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                                Burnout & Overtime Risk
+                                </h3>
                         </div>
                         <span className="px-2 py-0.5 bg-danger-subtle text-danger-ink text-[10px] font-bold uppercase rounded-md border border-danger/20">
                             {isAnomalyLoading ? '...' : `${activeFlagCount} active flag${activeFlagCount === 1 ? '' : 's'}`}
@@ -732,8 +723,8 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-chart-arrows-vertical text-ink-subtle text-lg" /> {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly'} Payroll Forecaster
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                                {payrollData?.cutoffLabel ? `${payrollData.cutoffLabel} Cutoff` : 'Weekly'} Payroll Forecaster
                             </h3>
                         </div>
                         {payrollData?.employeesWithPayrate > 0 && (
@@ -792,8 +783,8 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                                <i className="ti ti-scale text-accent text-lg" /> DOLE Rules &amp; Labor Standards
+                            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                                DOLE Rules &amp; Labor Standards
                             </h3>
                         </div>
                         <span className="px-2.5 py-1 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line">
@@ -919,8 +910,8 @@ export default function Dashboard() {
                 {/* Live Biometric Activity Feed */}
                 <div className="lg:col-span-5 bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-2xs flex flex-col">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                            <i className="ti ti-broadcast text-accent" /> Live Gate Feed
+                        <h3 className="text-base font-bold text-slate-900">
+                            Live Gate Feed
                         </h3>
                         <Link to="/admin/attendance" className="text-xs font-semibold text-accent hover:underline">View All &rarr;</Link>
                     </div>

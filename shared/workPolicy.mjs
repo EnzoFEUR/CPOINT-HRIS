@@ -7,19 +7,26 @@ export function getEmployeeRestDays(employee) {
     return days;
 }
 
-export function getWorkPolicy(env = {}) {
-    const integer = (name, fallback, max) => {
-        const raw = env[name];
-        if (raw === undefined || raw === '') return fallback;
+export function getWorkPolicy(source = {}) {
+    const integer = (name, altName, fallback, max) => {
+        const raw = source[name] !== undefined && source[name] !== '' ? source[name] : source[altName];
+        if (raw === undefined || raw === '' || raw === null) return fallback;
         const value = Number(raw);
         if (!Number.isInteger(value) || value < 0 || value > max) throw new Error(`Invalid work policy configuration: ${name}.`);
         return value;
     };
+    const number = (name, altName, fallback, max) => {
+        const raw = source[name] !== undefined && source[name] !== '' ? source[name] : source[altName];
+        if (raw === undefined || raw === '' || raw === null) return fallback;
+        const value = Number(raw);
+        if (!Number.isFinite(value) || value < 0 || value > max) throw new Error(`Invalid work policy configuration: ${name}.`);
+        return value;
+    };
     return Object.freeze({
-        callTimeHour: integer('CALL_TIME_HOUR', 8, 23),
-        callTimeMinute: integer('CALL_TIME_MINUTE', 0, 59),
-        gracePeriodMinutes: integer('GRACE_PERIOD_MINUTES', 120, 1440),
-        lateRatePerMinute: 25,
+        callTimeHour: integer('call_time_hour', 'CALL_TIME_HOUR', 8, 23),
+        callTimeMinute: integer('call_time_minute', 'CALL_TIME_MINUTE', 0, 59),
+        gracePeriodMinutes: integer('grace_period_minutes', 'GRACE_PERIOD_MINUTES', 15, 1440),
+        lateRatePerMinute: number('late_rate_per_minute', 'LATE_RATE_PER_MINUTE', 25, 10000),
         timeZone: 'Asia/Manila',
     });
 }

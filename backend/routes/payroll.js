@@ -55,6 +55,11 @@ const DEFAULT_STATUTORY_SETTINGS = Object.freeze({
     pagibig_employee_rate: 2,
     pagibig_employer_rate: 2,
     pagibig_max_contribution: 200,
+    // Attendance & Tardiness Policy
+    grace_period_minutes: 15,
+    late_rate_per_minute: 25,
+    call_time_hour: 8,
+    call_time_minute: 0,
 });
 
 let statutorySettingsCache = null;
@@ -65,7 +70,7 @@ export const invalidateStatutorySettingsCache = () => {
     statutorySettingsCacheExpires = 0;
 };
 
-const getStatutorySettings = async () => {
+export const getStatutorySettings = async () => {
     const now = Date.now();
     if (statutorySettingsCache && now < statutorySettingsCacheExpires) {
         return statutorySettingsCache;
@@ -92,6 +97,11 @@ const getStatutorySettings = async () => {
     statutorySettingsCache = merged;
     statutorySettingsCacheExpires = now + 60000; // 60-second in-memory cache
     return merged;
+};
+
+export const getActiveWorkPolicy = async () => {
+    const settings = await getStatutorySettings();
+    return getWorkPolicy(settings);
 };
 
 // Optional breakdown columns: gracefully fallback and omit unmigrated schema columns without failing
@@ -373,7 +383,23 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
     try {
         const cleanSettings = { ...req.body };
         delete cleanSettings.admin_id;
+        delete cleanSettings.id;
+        delete cleanSettings.created_at;
         const admin_id = req.user.id;
+
+        // Validation for attendance & tardiness policies if provided
+        if (cleanSettings.grace_period_minutes !== undefined) {
+            cleanSettings.grace_period_minutes = Math.max(0, parseInt(cleanSettings.grace_period_minutes, 10) || 0);
+        }
+        if (cleanSettings.late_rate_per_minute !== undefined) {
+            cleanSettings.late_rate_per_minute = Math.max(0, parseFloat(cleanSettings.late_rate_per_minute) || 0);
+        }
+        if (cleanSettings.call_time_hour !== undefined) {
+            cleanSettings.call_time_hour = Math.min(23, Math.max(0, parseInt(cleanSettings.call_time_hour, 10) || 8));
+        }
+        if (cleanSettings.call_time_minute !== undefined) {
+            cleanSettings.call_time_minute = Math.min(59, Math.max(0, parseInt(cleanSettings.call_time_minute, 10) || 0));
+        }
 
         const { data: existing, error: readError } = await supabase
             .from('statutory_settings')
@@ -382,24 +408,29 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
             .maybeSingle();
 
         if (readError) throw readError;
+        let resultData;
         let error;
         if (existing) {
-            ({ error } = await supabase
+            ({ data: resultData, error } = await supabase
                 .from('statutory_settings')
                 .update(cleanSettings)
-                .eq('id', existing.id));
+                .eq('id', existing.id)
+                .select()
+                .single());
         } else {
-            ({ error } = await supabase
+            ({ data: resultData, error } = await supabase
                 .from('statutory_settings')
-                .insert([cleanSettings]));
+                .insert([cleanSettings])
+                .select()
+                .single());
         }
 
         if (error) throw error;
 
         invalidateStatutorySettingsCache();
         invalidateCache(['/api/payroll/statutory-settings']);
-        broadcastPayrollUpdate('STATUTORY_SETTINGS_UPDATED', { admin_id, settings: cleanSettings });
-        res.json({ success: true, message: 'Statutory settings updated successfully.' });
+        broadcastPayrollUpdate('STATUTORY_SETTINGS_UPDATED', { admin_id, settings: resultData || cleanSettings });
+        res.json({ success: true, message: 'Statutory settings updated successfully.', data: resultData || cleanSettings });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -845,10 +876,12 @@ router.post('/preview', async (req, res) => {
             hourlyRate: toSafeNumber(employee.hourly_rate),
         });
 
+        const activeWorkPolicy = await getActiveWorkPolicy();
+
         res.json({
             ...preview,
-            tardiness: calculateTardiness(attendanceLogs, WORK_POLICY, restDays),
-            workPolicy: WORK_POLICY,
+            tardiness: calculateTardiness(attendanceLogs, activeWorkPolicy, restDays),
+            workPolicy: activeWorkPolicy,
             approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
             paidLeaveRecords: paidLeaveInfo.leaveRecords,
             isFactoryWorker,
@@ -1089,7 +1122,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
             }
         }
 
-        const tardiness = calculateTardiness(attendanceLogs, WORK_POLICY, restDays);
+        const activeWorkPolicy = await getActiveWorkPolicy();
+        const tardiness = calculateTardiness(attendanceLogs, activeWorkPolicy, restDays);
         const lateDed = tardiness.deduction;
 
         // Suspension Deduction Handling
@@ -1237,7 +1271,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
         const matDiffNote = safeMatDiff > 0 ? ` [Maternity Differential: +₱${safeMatDiff.toFixed(2)}]` : '';
         const appliedLateDed = Math.min(lateDed, Math.max(0, round2(grossPay - totalStatutoryContributions - tax)));
         const tardinessNote = tardiness.minutes > 0
-            ? ` [Late: PHP ${appliedLateDed.toFixed(2)}; Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${WORK_POLICY.gracePeriodMinutes}m grace x PHP ${WORK_POLICY.lateRatePerMinute} = PHP ${lateDed.toFixed(2)}${appliedLateDed < lateDed ? '; capped to available earnings' : ''}]`
+            ? ` [Late: PHP ${appliedLateDed.toFixed(2)}; Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${activeWorkPolicy.gracePeriodMinutes}m grace x PHP ${activeWorkPolicy.lateRatePerMinute} = PHP ${lateDed.toFixed(2)}${appliedLateDed < lateDed ? '; capped to available earnings' : ''}]`
             : '';
         const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${otPolicyNote}${cash.cash_pay > 0 ? ` [SIL cash payout: PHP ${cash.cash_pay.toFixed(2)}]` : ''}`;
 
@@ -1383,8 +1417,9 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
             if (!attendanceByEmployee.has(key)) attendanceByEmployee.set(key, []);
             attendanceByEmployee.get(key).push(log);
         }
+        const activeWorkPolicy = await getActiveWorkPolicy();
         // Validate every worker before any inserts; a corrupt punch must not cause a partial batch.
-        const tardinessByEmployee = new Map((empList || []).map(emp => [String(emp.id), calculateTardiness(attendanceByEmployee.get(String(emp.id)) || [], WORK_POLICY, getEmployeeRestDays(emp))]));
+        const tardinessByEmployee = new Map((empList || []).map(emp => [String(emp.id), calculateTardiness(attendanceByEmployee.get(String(emp.id)) || [], activeWorkPolicy, getEmployeeRestDays(emp))]));
 
         const results = [];
         const skipped = [];
@@ -1442,7 +1477,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 }`
                 : '';
 
-            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''}${absenceSummary} | Late: PHP ${appliedLateDed.toFixed(2)} | Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${WORK_POLICY.gracePeriodMinutes}m grace x PHP ${WORK_POLICY.lateRatePerMinute} = PHP ${tardiness.deduction.toFixed(2)} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
+            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''}${absenceSummary} | Late: PHP ${appliedLateDed.toFixed(2)} | Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${activeWorkPolicy.gracePeriodMinutes}m grace x PHP ${activeWorkPolicy.lateRatePerMinute} = PHP ${tardiness.deduction.toFixed(2)} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
 
             let insertPayload = {
                 employee_id,

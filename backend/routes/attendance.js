@@ -7,6 +7,7 @@ import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
 
 import { getWorkPolicy, getEmployeeRestDays, getGraceDeadline, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
+import { getActiveWorkPolicy } from './payroll.js';
 
 const router = express.Router();
 const WORK_POLICY = getWorkPolicy(process.env);
@@ -464,11 +465,13 @@ router.get(
 
       logger.info(reqId, 'Daily attendance roster fetched', { date: targetDate, count: reconciledList.length, department });
 
+      const activeWorkPolicy = await getActiveWorkPolicy();
+
       return res.json({
         status: 'success',
         data: reconciledList,
         meta: {
-          workPolicy: WORK_POLICY,
+          workPolicy: activeWorkPolicy,
           date: targetDate,
           department: department || 'All',
           total: reconciledList.length,
@@ -557,11 +560,13 @@ router.get(
       return log;
     });
 
+    const activeWorkPolicy = await getActiveWorkPolicy();
+
     res.json({
       status: 'success',
       data: filteredData,
       meta: {
-        workPolicy: WORK_POLICY,
+        workPolicy: activeWorkPolicy,
         page: pageNum,
         limit: limitNum,
         total: count,
@@ -840,7 +845,8 @@ router.post(
     const photoPath = await uploadImage(reqId, image_data, existing ? 'out' : 'in', employee.company_id || employee_id);
 
     if (!existing) {
-      const minutesLate = getChargeableLateMinutes({ date: todayStr, time_in: now.toISOString() }, WORK_POLICY, getEmployeeRestDays(employee));
+      const activeWorkPolicy = await getActiveWorkPolicy();
+      const minutesLate = getChargeableLateMinutes({ date: todayStr, time_in: now.toISOString() }, activeWorkPolicy, getEmployeeRestDays(employee));
 
       let status = 'Present';
       let message = isMedicalGrace 

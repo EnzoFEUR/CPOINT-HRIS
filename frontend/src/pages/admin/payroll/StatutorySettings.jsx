@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
+import { supabase } from '../../../supabaseClient';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -11,17 +12,23 @@ const DEFAULT_SETTINGS = {
     philhealth_max_salary: 100000,
     pagibig_employee_rate: 2,     // 2%
     pagibig_employer_rate: 2,     // 2%
-    pagibig_max_contribution: 200 // P200 Max EE share (P400 total EE+ER under Circular 460)
+    pagibig_max_contribution: 200, // P200 Max EE share (P400 total EE+ER under Circular 460)
+    // Attendance & Tardiness Policies
+    grace_period_minutes: 15,     // 15-minute grace period
+    late_rate_per_minute: 25,     // ₱25.00/min deduction
+    call_time_hour: 8,            // 8:00 AM
+    call_time_minute: 0,
 };
 
 // Static class lookup map to fix Tailwind CSS JIT compilation issue with dynamic string interpolation
 const FOCUS_STYLES = {
     blue: 'focus:border-accent focus:ring-1 focus:ring-accent',
     rose: 'focus:border-danger focus:ring-1 focus:ring-danger',
-    emerald: 'focus:border-line focus:ring-1 focus:ring-line'
+    emerald: 'focus:border-line focus:ring-1 focus:ring-line',
+    indigo: 'focus:border-slate-900 focus:ring-1 focus:ring-slate-900'
 };
 
-const FieldInput = ({ label, name, value, onChange, focusColor = 'blue', ...props }) => (
+const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', ...props }) => (
     <div>
         <label htmlFor={name} className="block text-xs font-medium text-slate-700 mb-1.5">{label}</label>
         <input
@@ -35,6 +42,7 @@ const FieldInput = ({ label, name, value, onChange, focusColor = 'blue', ...prop
             className={`w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none ${FOCUS_STYLES[focusColor] || FOCUS_STYLES.blue} transition-colors duration-100 shadow-2xs`}
             {...props}
         />
+        {hint && <p className="text-[11px] text-slate-400 mt-1">{hint}</p>}
     </div>
 );
 
@@ -45,6 +53,7 @@ export default function StatutorySettings({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [realtimeSynced, setRealtimeSynced] = useState(false);
 
     const getCleanErrorMessage = (err) => {
         if (!err) return "An unexpected error occurred while processing your request.";
@@ -73,7 +82,28 @@ export default function StatutorySettings({ onBack }) {
             } finally { if (!stopped) setFetching(false); }
         };
         load();
-        return () => { stopped = true; controller.abort(); };
+
+        // Enterprise Low-Latency Real-Time Channel via Supabase Realtime
+        const channel = supabase
+            .channel('realtime:statutory_settings')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'statutory_settings' },
+                (payload) => {
+                    if (payload.new && !stopped) {
+                        setSettings(previous => ({ ...previous, ...payload.new }));
+                        setRealtimeSynced(true);
+                        setTimeout(() => setRealtimeSynced(false), 3500);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            stopped = true;
+            controller.abort();
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const handleChange = (e) => {
@@ -107,12 +137,32 @@ export default function StatutorySettings({ onBack }) {
 
         const hasNegative = Object.entries(settings).some(([key, val]) => key !== 'id' && typeof val === 'number' && val < 0);
         if (hasNegative) {
-            setErrorMessage("Contribution rates and salary limits cannot be negative values.");
+            setErrorMessage("Contribution rates, tardiness deduction, and limits cannot be negative values.");
             return;
         }
 
         if (Number(settings.philhealth_min_salary) > Number(settings.philhealth_max_salary)) {
             setErrorMessage("PhilHealth Minimum Salary Floor cannot be higher than the Maximum Salary Ceiling.");
+            return;
+        }
+
+        if (Number(settings.call_time_hour) < 0 || Number(settings.call_time_hour) > 23) {
+            setErrorMessage("Shift call time hour must be between 0 and 23 (e.g. 8 for 8:00 AM).");
+            return;
+        }
+
+        if (Number(settings.call_time_minute) < 0 || Number(settings.call_time_minute) > 59) {
+            setErrorMessage("Shift call time minute must be between 0 and 59 (e.g. 0 for 8:00 AM).");
+            return;
+        }
+
+        if (Number(settings.grace_period_minutes) < 0 || Number(settings.grace_period_minutes) > 1440) {
+            setErrorMessage("Grace period must be between 0 and 1440 minutes.");
+            return;
+        }
+
+        if (Number(settings.late_rate_per_minute) < 0 || Number(settings.late_rate_per_minute) > 10000) {
+            setErrorMessage("Tardiness deduction rate must be between ₱0 and ₱10,000 per minute.");
             return;
         }
 
@@ -157,9 +207,27 @@ export default function StatutorySettings({ onBack }) {
         );
     }
 
+    const callHour = Number(settings.call_time_hour ?? 8);
+    const callMin = Number(settings.call_time_minute ?? 0);
+    const graceMins = Number(settings.grace_period_minutes ?? 15);
+    const lateRate = Number(settings.late_rate_per_minute ?? 25);
+
+    const formatTimeDisplay = (hour, minute) => {
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const h12 = hour % 12 === 0 ? 12 : hour % 12;
+        const mStr = String(minute).padStart(2, '0');
+        return `${h12}:${mStr} ${period}`;
+    };
+
+    const callTimeFormatted = formatTimeDisplay(callHour, callMin);
+    const totalDeadlineMins = callHour * 60 + callMin + graceMins;
+    const deadlineHour = Math.floor(totalDeadlineMins / 60) % 24;
+    const deadlineMin = totalDeadlineMins % 60;
+    const graceDeadlineFormatted = formatTimeDisplay(deadlineHour, deadlineMin);
+
     return (
         <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-12 px-3 sm:px-4 md:px-0">
-            <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <button
                     type="button"
                     onClick={() => onBack ? onBack() : window.history.back()}
@@ -175,6 +243,8 @@ export default function StatutorySettings({ onBack }) {
                     </svg>
                     <span>Back to Payroll</span>
                 </button>
+                <div className="flex items-center gap-2">
+                </div>
             </div>
 
             {/* HR Success Alert */}
@@ -216,32 +286,6 @@ export default function StatutorySettings({ onBack }) {
                     </button>
                 </div>
             )}
-            {/* Service Incentive Leave (SIL) Compliance Banner */}
-            <div className="bg-white rounded-lg p-4 sm:p-5 shadow-2xs border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                    <div className="w-9 h-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0 border border-accent/20">
-                        <i className="ti ti-calendar-event text-lg" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-800">Looking for Service Incentive Leave (SIL)?</h3>
-                            <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                                DOLE Art. 95
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                            Statutory leave policies, cash conversion rules, and annual reviews are now managed under Leave Approvals.
-                        </p>
-                    </div>
-                </div>
-                <Link
-                    to="/admin/leaves?tab=sil-policy"
-                    className="inline-flex items-center gap-1.5 h-8 px-3.5 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md shadow-2xs transition-colors shrink-0"
-                >
-                    <span>Manage SIL Policy</span>
-                    <i className="ti ti-arrow-right text-xs" />
-                </Link>
-            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 {/* SSS Contributions Card */}
@@ -292,6 +336,108 @@ export default function StatutorySettings({ onBack }) {
                         <FieldInput label="Employee share (%)" name="pagibig_employee_rate" value={settings.pagibig_employee_rate} onChange={handleChange} step="0.01" focusColor="emerald" />
                         <FieldInput label="Employer share (%)" name="pagibig_employer_rate" value={settings.pagibig_employer_rate} onChange={handleChange} step="0.01" focusColor="emerald" />
                         <FieldInput label="Maximum contribution (₱)" name="pagibig_max_contribution" value={settings.pagibig_max_contribution} onChange={handleChange} focusColor="emerald" />
+                    </div>
+                </div>
+
+                {/* Attendance, Grace Period & Tardiness Policy Card */}
+                <div className="bg-white rounded-lg p-5 shadow-2xs border border-slate-200 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <i className="ti ti-clock-check text-base" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-bold text-slate-900">Attendance, Grace Period &amp; Tardiness Policy</h2>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <FieldInput
+                            label="Tardiness deduction rate (₱ / minute)"
+                            name="late_rate_per_minute"
+                            value={settings.late_rate_per_minute}
+                            onChange={handleChange}
+                            step="0.01"
+                            focusColor="blue"
+                        />
+                        <FieldInput
+                            label="Grace period window (minutes)"
+                            name="grace_period_minutes"
+                            value={settings.grace_period_minutes}
+                            onChange={handleChange}
+                            step="1"
+                            focusColor="blue"
+                        />
+                        <FieldInput
+                            label="Shift call time hour (0 - 23)"
+                            name="call_time_hour"
+                            value={settings.call_time_hour}
+                            onChange={handleChange}
+                            step="1"
+                            focusColor="blue"
+                        />
+                        <FieldInput
+                            label="Shift call time minute (0 - 59)"
+                            name="call_time_minute"
+                            value={settings.call_time_minute}
+                            onChange={handleChange}
+                            step="1"
+                            focusColor="blue"
+                        />
+                    </div>
+
+                    {/* Live Enterprise Policy Simulation & Ledger Preview */}
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <i className="ti ti-calculator text-slate-600 text-sm" />
+                                Policy Preview
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-600">
+                                Call Time: <strong className="font-mono text-slate-900">{callTimeFormatted}</strong> &middot; Grace Deadline: <strong className="font-mono text-slate-900">{graceDeadlineFormatted}</strong>
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="bg-white rounded-md p-3 border border-slate-200 shadow-2xs">
+                                <p className="text-[11px] font-semibold text-slate-500 uppercase">Within Grace Window</p>
+                                <p className="text-xs font-medium text-slate-700 mt-1">Clock-in prior to {graceDeadlineFormatted}</p>
+                                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">Deduction:</span>
+                                    <span className="font-mono font-bold text-sm text-slate-900">₱0.00</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-md p-3 border border-slate-200 shadow-2xs">
+                                <p className="text-[11px] font-semibold text-slate-500 uppercase">Moderate Lateness (5 mins past grace)</p>
+                                <p className="text-xs font-medium text-slate-700 mt-1">5 chargeable whole minutes</p>
+                                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">5 mins &times; ₱{lateRate.toFixed(2)}:</span>
+                                    <span className="font-mono font-bold text-sm text-slate-900">
+                                        ₱{(5 * lateRate).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-md p-3 border border-slate-200 shadow-2xs">
+                                <p className="text-[11px] font-semibold text-slate-500 uppercase">High Lateness (30 mins past grace)</p>
+                                <p className="text-xs font-medium text-slate-700 mt-1">30 chargeable whole minutes</p>
+                                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">30 mins &times; ₱{lateRate.toFixed(2)}:</span>
+                                    <span className="font-mono font-bold text-sm text-slate-900">
+                                        ₱{(30 * lateRate).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 flex items-start gap-1.5 pt-1">
+                            <span>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
