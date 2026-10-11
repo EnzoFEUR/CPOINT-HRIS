@@ -217,7 +217,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                     <button type="button" aria-label="Close bulk import" disabled={isCommitting} onClick={handleClose} className={buttonClass}>Close</button>
                 </header>
                 <div className="overflow-y-auto px-5 py-4">
-                    {isTerminated && <p role="alert" className="mb-4 rounded-md bg-amber-50 p-3 text-xs text-amber-800">Uploads are locked for this employee.</p>}
+                    {isTerminated && <p role="alert" className="mb-4 rounded-md border border-warning/20 bg-warning-subtle p-3 text-xs text-warning-ink">Uploads are locked for this employee.</p>}
                     {!rows.length ? (
                         <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
                             <i className="ti ti-file-zip text-3xl text-slate-400" />
@@ -231,16 +231,16 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                         </div>
                     ) : (
                         <>
-                            <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                                <p className="text-xs font-semibold text-blue-950">Recognize documents from their contents</p>
-                                <p className="mt-1 text-xs leading-5 text-blue-900">Analyze contents sends selected PDFs, JPEG, PNG, WebP, or text files to the configured Gemini service. Filenames are not used for content detection. Other formats need manual review.</p>
-                                <p className="mt-1 text-xs leading-5 text-blue-900">Suggestions can be wrong. Preview each file, edit its type, title, category, or expiry date, then confirm. This does not verify document authenticity or employee identity.</p>
+                            <div className="mb-4 rounded-lg border border-accent/20 bg-accent-subtle p-3">
+                                <p className="text-xs font-semibold text-accent">Recognize documents from their contents</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-700">Analyze contents sends selected PDFs, JPEG, PNG, WebP, or text files to the configured Gemini service. Filenames are not used for content detection. Other formats need manual review.</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-700">Suggestions can be wrong. Preview each file, edit its type, title, category, or expiry date, then confirm. This does not verify document authenticity or employee identity.</p>
                                 <div className="mt-3 flex flex-wrap items-center gap-3">
                                     <button type="button" className={buttonClass} disabled={isCommitting || isAnalyzing || isTerminated || !counts.analyzable} onClick={analyzeContents}>
                                         {isAnalyzing ? 'Analyzing contents…' : 'Analyze contents'}
                                     </button>
                                     {isAnalyzing && <button type="button" className={buttonClass} onClick={() => jobRef.current.controller?.abort()}>Stop analysis</button>}
-                                    <span role="status" aria-live="polite" className="text-xs text-blue-900">{counts.analyzed} of {rows.length} analyzed · {counts.ready} of {counts.selected} ready · {counts.uploaded} imported</span>
+                                    <span role="status" aria-live="polite" className="text-xs text-slate-700">{counts.analyzed} of {rows.length} analyzed · {counts.ready} of {counts.selected} ready · {counts.uploaded} imported</span>
                                 </div>
                             </div>
                             <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -259,16 +259,16 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                     <td className="max-w-sm p-3 align-top">
                                                         <p className="break-all font-semibold text-slate-900">{row.fileName}</p>
                                                         <p className="mt-1 break-all text-[11px] text-slate-500">{row.zipPath}</p>
-                                                        <button type="button" disabled={isCommitting || !!row.blocked} onClick={() => openPreview(row)} className="mt-2 font-semibold text-blue-700 hover:underline">Preview file</button>
-                                                        {analyzing && <p role="status" className="mt-2 text-blue-700">{row.analysisStatus === 'queued' ? 'Queued for analysis' : 'Reading file contents…'}</p>}
+                                                        <button type="button" disabled={isCommitting || !!row.blocked} onClick={() => openPreview(row)} className="mt-2 font-semibold text-accent hover:underline">Preview file</button>
+                                                        {analyzing && <p role="status" className="mt-2 text-accent">{row.analysisStatus === 'queued' ? 'Queued for analysis' : 'Reading file contents…'}</p>}
                                                         {classification && !analyzing && <div className="mt-2 text-[11px] leading-5">
-                                                            <p className={classification.confidence === 'high' ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>{CONFIDENCE_LABELS[classification.confidence]}{classification.source === 'content' ? ` · ${getDocumentType(classification.document_type).label}` : ''}</p>
+                                                            <p className={classification.confidence === 'high' ? 'font-semibold text-success-ink' : 'font-semibold text-warning-ink'}>{CONFIDENCE_LABELS[classification.confidence]}{classification.source === 'content' ? ` · ${getDocumentType(classification.document_type).label}` : ''}</p>
                                                             {classification.evidence?.length > 0 && <p className="text-slate-500">{classification.evidence.map(item => EVIDENCE_LABELS[item]).filter(Boolean).join(' · ')}</p>}
                                                             <p className="text-slate-500">{classification.message}</p>
                                                         </div>}
                                                         {!classification && !analyzing && <p className="mt-2 text-[11px] text-slate-500">Unverified. Analyze contents or classify manually.</p>}
-                                                        {row.duplicate && <p className="mt-2 text-amber-700">Repeated filename; excluded initially. Check whether it is a separate document.</p>}
-                                                        {row.blocked && <p className="mt-2 text-red-700">{row.blocked}</p>}
+                                                        {row.duplicate && <p className="mt-2 text-warning-ink">Repeated filename; excluded initially. Check whether it is a separate document.</p>}
+                                                        {row.blocked && <p className="mt-2 text-danger-ink">{row.blocked}</p>}
                                                     </td>
                                                     <td className="space-y-2 p-3 align-top">
                                                         <label className="block text-[11px] text-slate-500">Document type
@@ -288,12 +288,12 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                         </label>
                                                     </td>
                                                     <td className="p-3 align-top">
-                                                        {row.status === 'success' ? <p className="font-semibold text-emerald-700">Imported · pending HR approval</p> : <label className="flex items-start gap-2 text-xs leading-5 text-slate-700">
+                                                        {row.status === 'success' ? <p className="font-semibold text-success-ink">Imported · pending HR approval</p> : <label className="flex items-start gap-2 text-xs leading-5 text-slate-700">
                                                             <input type="checkbox" className="mt-1" checked={row.confirmed} disabled={isCommitting || !row.include || !!row.blocked || analyzing || !row.title.trim() || row.attempted} onChange={event => updateRow(row.id, current => ({ ...current, confirmed: event.target.checked, revision: current.revision + 1 }))} />
                                                             I reviewed this file and confirm its details and intended employee.
                                                         </label>}
-                                                        {row.status === 'uploading' && <p role="status" className="mt-2 text-blue-700">Importing…</p>}
-                                                        {row.error && <p role="alert" className="mt-2 break-words text-red-700">{row.error}</p>}
+                                                        {row.status === 'uploading' && <p role="status" className="mt-2 text-accent">Importing…</p>}
+                                                        {row.error && <p role="alert" className="mt-2 break-words text-danger-ink">{row.error}</p>}
                                                         {row.status === 'error' && <p className="mt-2 text-[11px] leading-5 text-slate-500">Retry uses the same import ID and details. Check the vault if the connection failed; retry protection lasts 30 minutes on this server.</p>}
                                                     </td>
                                                 </tr>
@@ -311,7 +311,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                         {rows.length > 0 && <button type="button" className={buttonClass} disabled={isCommitting || isAnalyzing || counts.uploaded > 0 || rows.some(row => row.attempted)} onClick={resetAll}>Choose another ZIP</button>}
                     </div>
                     <div className="flex items-center gap-3">
-                        {counts.selected > counts.ready && <span className="text-xs text-amber-700">Review {counts.selected - counts.ready} selected files</span>}
+                        {counts.selected > counts.ready && <span className="text-xs text-warning-ink">Review {counts.selected - counts.ready} selected files</span>}
                         {rows.length > 0 && <button type="button" disabled={importDisabled} onClick={commit} className="rounded-md bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-slate-300">{isCommitting ? 'Importing…' : `${counts.failed ? 'Import / retry' : 'Import'} ${counts.selected} confirmed file${counts.selected === 1 ? '' : 's'}`}</button>}
                     </div>
                 </footer>
@@ -322,10 +322,10 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                     </header>
                     <div className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-auto p-4">
                         {preview.loading && <p role="status" className="text-sm text-slate-500">Preparing local preview…</p>}
-                        {preview.error && <p role="alert" className="text-sm text-red-700">{preview.error}</p>}
+                        {preview.error && <p role="alert" className="text-sm text-danger-ink">{preview.error}</p>}
                         {preview.url && <>
                             {preview.mime?.startsWith('image/') ? <img src={preview.url} alt={`Document preview: ${preview.name}`} className="max-h-[65vh] max-w-full object-contain" /> : preview.mime === 'application/pdf' ? <iframe title={`PDF preview: ${preview.name}`} src={preview.url} sandbox="" className="min-h-[55vh] w-full flex-1 rounded-md border border-slate-200" /> : <p className="text-sm text-slate-600">Open this format locally to review its contents.</p>}
-                            <a href={preview.url} download={preview.name} className="text-xs font-semibold text-blue-700 underline">Download original for local review</a>
+                            <a href={preview.url} download={preview.name} className="text-xs font-semibold text-accent underline">Download original for local review</a>
                             <p className="text-[11px] text-slate-500">This preview stays in your browser.</p>
                         </>}
                     </div>

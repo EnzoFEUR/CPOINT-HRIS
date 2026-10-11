@@ -248,10 +248,10 @@ export default function LeaveDatePicker({
                                             ? 'bg-accent text-white font-bold shadow-2xs'
                                             : unavailable
                                             ? isHoliday
-                                                ? 'cursor-not-allowed text-red-400 font-semibold opacity-60 hover:bg-transparent'
+                                                ? 'cursor-not-allowed text-danger/60 font-semibold opacity-60 hover:bg-transparent'
                                                 : 'cursor-not-allowed text-slate-300 font-normal hover:bg-transparent'
                                             : isHoliday
-                                            ? 'text-red-600 font-bold hover:bg-red-50 hover:text-red-700'
+                                            ? 'text-danger-ink font-bold hover:bg-danger-subtle hover:text-danger-ink'
                                             : isToday
                                             ? 'text-slate-900 font-bold ring-1 ring-accent/60 bg-accent-subtle/20 hover:bg-slate-100'
                                             : 'text-slate-700 hover:bg-slate-100 font-semibold'
@@ -261,7 +261,7 @@ export default function LeaveDatePicker({
                                     {isHoliday && (
                                         <span
                                             className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${
-                                                isSelected ? 'bg-white' : 'bg-red-500'
+                                                isSelected ? 'bg-white' : 'bg-danger'
                                             }`}
                                         />
                                     )}
@@ -273,8 +273,8 @@ export default function LeaveDatePicker({
                     {/* Enterprise Mini-Legend Footer */}
                     <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
                         <div className="flex items-center gap-1.5" title="Statutory or Special Holidays">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-                            <span className="text-red-600 font-semibold">Holiday</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />
+                            <span className="text-danger-ink font-semibold">Holiday</span>
                         </div>
                         <div className="flex items-center gap-1.5" title="Current Day">
                             <span className="w-1.5 h-1.5 rounded-full ring-1 ring-accent inline-block" />

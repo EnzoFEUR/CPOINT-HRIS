@@ -108,7 +108,7 @@ export function SilCashPayment({ employeeId, employee }) {
             <span className="text-slate-600">{query.isPending || query.isLoading ? 'Loading leave credits...' : query.isError ? null : verifiedAccount ? `Available: ${Number(query.data.sil_balance).toLocaleString('en-PH', { maximumFractionDigits: 3 })} days` : getLeaveCreditAllocationMessage(query.data)}</span>
             <button type="button" disabled={query.isFetching || saving} className="font-semibold text-accent disabled:opacity-50" onClick={() => query.refetch()}>Refresh</button>
         </div>
-        {query.isError && <p role="alert" className="text-xs text-red-700">{query.error.message}</p>}
+        {query.isError && <p role="alert" className="text-xs text-danger-ink">{query.error.message}</p>}
         {canRecordPayment && <button type="button" disabled={saving} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50" onClick={() => { setAction('cash-conversion'); set('confirmed', false); }}>Record cash payment</button>}
         {canRecordPayment && action === 'cash-conversion' && <form onSubmit={submit} className="space-y-2.5 rounded-md border border-slate-200 bg-slate-50/40 p-3">
             <fieldset disabled={saving} className="space-y-2.5">

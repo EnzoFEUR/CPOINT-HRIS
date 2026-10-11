@@ -103,7 +103,7 @@ export const Sidebar = ({ user, handleLogout }) => {
           <Link
             to="/"
             aria-label="C-Point HRIS home"
-            className="flex items-center justify-center rounded-md cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+            className="flex items-center justify-center rounded-md cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
           >
             <picture>
               <source srcSet="/logo-crop.webp" type="image/webp" />
@@ -129,7 +129,7 @@ export const Sidebar = ({ user, handleLogout }) => {
             to="/"
             className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
               location.pathname === '/'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
             }`}
           >
@@ -142,7 +142,7 @@ export const Sidebar = ({ user, handleLogout }) => {
               to="/employee/dashboard"
               className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
                 location.pathname === '/employee/dashboard' || location.pathname === '/'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                  ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
               }`}
             >
@@ -159,14 +159,14 @@ export const Sidebar = ({ user, handleLogout }) => {
               to="/employee/qr"
               className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors mt-1 ${
                 location.pathname === '/employee/qr'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                  ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
               }`}
             >
               <i className="ti ti-qrcode text-xl"></i>
               <span className="ml-3 font-medium tracking-wide">Digital Pass (QR)</span>
               {isMedicalExempt(user) && (
-                <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 flex items-center gap-1">
                   <i className="ti ti-bandage text-xs" />
                   Grace
                 </span>
@@ -191,7 +191,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                 }`}
               >
                 <div className="flex items-center">
-                  <i className={`ti ti-clock-hour-4 text-xl ${isAttendanceActive ? 'text-blue-400' : ''}`}></i>
+                  <i className={`ti ti-clock-hour-4 text-xl ${isAttendanceActive ? 'text-accent' : ''}`}></i>
                   <span className="ml-3 font-medium tracking-wide">Time & Attendance</span>
                 </div>
                 <i className={`ti ti-chevron-down text-sm transition-transform ${attendanceDropdownOpen ? 'rotate-180' : ''}`}></i>
@@ -202,7 +202,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/attendance"
                     className={`flex items-center px-4 py-2.5 rounded-xl ${
-                      location.pathname === '/admin/attendance' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      location.pathname === '/admin/attendance' ? 'bg-accent text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <i className="ti ti-list-details text-lg"></i>
@@ -211,7 +211,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                   <Link
                     to="/admin/attendance/calendar"
                     className={`flex items-center px-4 py-2.5 rounded-xl ${
-                      location.pathname === '/admin/attendance/calendar' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      location.pathname === '/admin/attendance/calendar' ? 'bg-accent text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <i className="ti ti-calendar text-lg"></i>
@@ -228,7 +228,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                 to={item.route}
                 className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
                   location.pathname.startsWith(item.route)
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                    ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
@@ -247,12 +247,12 @@ export const Sidebar = ({ user, handleLogout }) => {
                 }`}
               >
                 <div className="flex items-center min-w-0">
-                  <i className={`ti ti-plane-departure text-xl shrink-0 ${isLeavesPath ? 'text-blue-400' : ''}`}></i>
+                  <i className={`ti ti-plane-departure text-xl shrink-0 ${isLeavesPath ? 'text-accent' : ''}`}></i>
                   <span className="ml-3 font-medium tracking-wide truncate">Leave Requests</span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {totalPendingLeaves > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 tabular-nums">
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-warning/20 text-warning border border-warning/30 tabular-nums">
                       {totalPendingLeaves}
                     </span>
                   )}
@@ -266,7 +266,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                     to="/admin/leaves"
                     className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-colors ${
                       isApprovalsActive
-                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
@@ -278,7 +278,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
                         isApprovalsActive
                           ? 'bg-white/20 text-white'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-warning/20 text-warning border border-warning/30'
                       }`}>
                         {leaveCounts.pendingLeaves}
                       </span>
@@ -289,7 +289,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                     to="/admin/leaves?tab=cashouts"
                     className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-colors ${
                       isCashoutsActive
-                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
@@ -301,7 +301,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
                         isCashoutsActive
                           ? 'bg-white/20 text-white'
-                          : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          : 'bg-accent/20 text-accent border border-accent/30'
                       }`}>
                         {leaveCounts.pendingCash}
                       </span>
@@ -312,7 +312,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                     to="/admin/leaves?tab=sil-policy"
                     className={`flex items-center px-4 py-2.5 rounded-xl transition-colors ${
                       isPolicyActive
-                        ? 'bg-blue-600 text-white shadow-md font-bold'
+                        ? 'bg-accent text-white shadow-md font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
@@ -330,7 +330,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                 to={item.route}
                 className={`flex items-center px-4 py-3.5 rounded-2xl mt-1 ${
                   location.pathname.startsWith(item.route)
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                    ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
@@ -345,7 +345,7 @@ export const Sidebar = ({ user, handleLogout }) => {
               to="/employee/profile"
               className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
                 location.pathname === '/employee/profile' || location.pathname === '/profile'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                  ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
               }`}
             >
@@ -358,7 +358,7 @@ export const Sidebar = ({ user, handleLogout }) => {
                 to="/scanner"
                 className={`flex items-center px-4 py-3.5 rounded-2xl transition-colors ${
                   location.pathname === '/scanner'
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30 font-bold'
+                    ? 'bg-accent text-white shadow-lg shadow-accent/20 font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                 }`}
               >
@@ -377,12 +377,12 @@ export const Sidebar = ({ user, handleLogout }) => {
           className="flex items-center p-3 rounded-xl mb-2 cursor-pointer hover:bg-white/5 transition-colors"
         >
           <div className="relative shrink-0">
-            <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
+            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center text-white font-bold shadow-md">
               {user?.name ? user.name.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : '?')}
             </div>
           </div>
           <div className="ml-3 overflow-hidden min-w-0 flex-1">
-            <p className="text-xs font-bold text-white truncate hover:text-blue-400">
+            <p className="text-xs font-bold text-white truncate hover:text-accent">
               {user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Employee'}
             </p>
             <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold truncate mt-0.5">
@@ -392,7 +392,7 @@ export const Sidebar = ({ user, handleLogout }) => {
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center px-4 py-2.5 text-xs font-bold text-rose-400 bg-rose-500/10 rounded-xl hover:text-white hover:bg-rose-600 transition-all cursor-pointer"
+          className="w-full flex items-center justify-center px-4 py-2.5 text-xs font-bold text-danger-ink bg-danger/10 rounded-xl hover:text-white hover:bg-danger transition-all cursor-pointer"
         >
           <i className="ti ti-power mr-2 text-base"></i> Sign Out
         </button>

@@ -218,7 +218,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <i className="ti ti-corner-down-right text-ink shrink-0 text-sm" title="Factory Line Member" />
                     )}
                     <div className="shrink-0 relative">
-                        <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-11 w-11" theme="emerald" />
+                        <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-11 w-11" theme="auto" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -412,14 +412,14 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                     <div
                         className={`w-10 h-10 rounded-md flex items-center justify-center text-base transition-colors duration-100 shadow-2xs shrink-0 ${isExpanded
                             ? 'bg-ink-subtle text-white'
-                            : 'bg-slate-900 text-white group-hover/line:bg-emerald-600'
+                            : 'bg-slate-900 text-white group-hover/line:bg-accent'
                             }`}
                     >
                         <i className="ti ti-building-factory-2 text-xl" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-emerald-800 transition-colors truncate">
+                            <span className="text-sm font-extrabold text-slate-900 group-hover/line:text-accent-hover transition-colors truncate">
                                 {group.groupName}
                             </span>
                             <span className="px-2 py-0.5 bg-surface-muted text-ink border border-line text-[10px] font-black uppercase tracking-wider rounded-md shrink-0">
@@ -557,7 +557,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
                             className="w-4 h-4 mt-0.5 rounded border-slate-300 text-danger-ink focus:ring-danger cursor-pointer shrink-0"
                         />
                     )}
-                    <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="emerald" />
+                    <EmployeeAvatar employee={payroll.employees} employeeId={payroll.employee_id} size="h-10 w-10" theme="auto" />
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">
                             {payroll._fullName || 'Unknown'}

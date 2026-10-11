@@ -1378,7 +1378,7 @@ export default function MyProfile() {
             {/* 201 documents */}
             <div id="documents" className="space-y-4 scroll-mt-20">
                 {documentQuery.error && (
-                    <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                    <div role="alert" className="rounded-md border border-danger/20 bg-danger-subtle p-3 text-xs text-danger-ink">
                         {documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button>
                     </div>
                 )}
@@ -1524,7 +1524,7 @@ export default function MyProfile() {
                                                     </span>
                                                 )}
                                             </div>
-                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-rose-700">{doc.rejection_reason}</p>}
+                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-danger-ink">{doc.rejection_reason}</p>}
                                             <p className="mt-1 text-[10px] text-slate-400">{formatFileSize(doc.file_size)}</p>
                                             <button
                                                 type="button"

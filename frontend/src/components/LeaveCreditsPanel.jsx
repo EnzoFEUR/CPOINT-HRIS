@@ -317,7 +317,7 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
-                                <i className="ti ti-x text-xs text-rose-400" />
+                                <i className="ti ti-x text-xs text-danger" />
                                 <span>Cash-Out Rejected</span>
                             </span>
                             <span className="text-[11px] font-bold text-slate-300 font-mono">
@@ -355,7 +355,7 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
 
                         <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <p className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                                <i className="ti ti-check text-xs text-emerald-400 font-bold shrink-0" />
+                                <i className="ti ti-check text-xs text-success font-bold shrink-0" />
                                 <span>
                                     All {days(recentRejectedCash.days)} {Number(recentRejectedCash.days) === 1 ? 'day has' : 'days have'} been restored to your available SIL balance.
                                 </span>
@@ -376,11 +376,11 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
             {isCooldownActive && showCashRequest && (
                 <div className="bg-slate-900 text-white border border-slate-800 rounded-lg p-3.5 text-xs space-y-1.5 shadow-md">
                     <div className="flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-amber-300 border border-slate-700">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-warning border border-slate-700">
                             <i className="ti ti-hourglass-empty text-xs" />
                             <span>24-Hour Cooldown Active</span>
                         </span>
-                        <span className="text-[11px] font-bold text-amber-300 font-mono">
+                        <span className="text-[11px] font-bold text-warning font-mono">
                             {getCooldownRemaining()} remaining
                         </span>
                     </div>
@@ -577,11 +577,11 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
                                     <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-800 text-[10px]">
                                         <div className="flex items-center justify-between bg-slate-800/80 px-2 py-1 rounded text-slate-300">
                                             <span>SSS / PhilHealth / Pag-IBIG</span>
-                                            <span className="font-bold text-amber-300 font-mono">Excluded</span>
+                                            <span className="font-bold text-warning font-mono">Excluded</span>
                                         </div>
                                         <div className="flex items-center justify-between bg-slate-800/80 px-2 py-1 rounded text-slate-300">
                                             <span>13th Month Basic</span>
-                                            <span className="font-bold text-amber-300 font-mono">Excluded</span>
+                                            <span className="font-bold text-warning font-mono">Excluded</span>
                                         </div>
                                     </div>
                                 </div>

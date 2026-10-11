@@ -22,8 +22,8 @@ export const getNotificationVisuals = (type) => {
     case 'cashout':
       return {
         icon: 'ti-cash',
-        bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        badge: 'bg-emerald-600',
+        bg: 'bg-success-subtle text-success-ink border-success/20',
+        badge: 'bg-success',
         label: 'SIL Cash-Out',
         path: '/admin/leaves?tab=cashouts'
       };

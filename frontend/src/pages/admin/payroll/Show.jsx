@@ -255,7 +255,7 @@ export default function PayrollShow() {
                                 rounded="rounded-md"
                                 border="border border-slate-200"
                                 shadow="shadow-2xs"
-                                theme="emerald"
+                                theme="auto"
                             />
                             <div className="min-w-0 flex-1">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Employee Details</span>

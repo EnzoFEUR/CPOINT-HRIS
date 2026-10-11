@@ -268,10 +268,10 @@ const Calendar = () => {
                             </span>
                         </div>
                         <div className="bg-white rounded-lg p-3.5 sm:p-4 shadow-2xs border border-slate-200 flex flex-col justify-between">
-                            <span className="text-[11px] font-semibold text-sky-600 uppercase tracking-wider flex items-center gap-1">
-                                <i className="ti ti-calendar-event text-sky-600 text-sm"></i> On Leave
+                            <span className="text-[11px] font-semibold text-accent uppercase tracking-wider flex items-center gap-1">
+                                <i className="ti ti-calendar-event text-accent text-sm"></i> On Leave
                             </span>
-                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-sky-700 tabular-nums">
+                            <span className="mt-2 text-2xl sm:text-3xl font-bold font-mono text-accent tabular-nums">
                                 {totalOnLeave}
                             </span>
                         </div>
@@ -347,7 +347,7 @@ const Calendar = () => {
                                                 className="relative group"
                                             >
                                                 <div className={`absolute -left-[25px] sm:-left-[39px] top-6 h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full border-2 border-white shadow-2xs ${
-                                                    isLeave ? 'bg-sky-500 ring-2 ring-sky-200' : isAbsent ? 'bg-danger' : isLate ? 'bg-warning' : 'bg-slate-900'
+                                                    isLeave ? 'bg-accent ring-2 ring-accent-subtle' : isAbsent ? 'bg-danger' : isLate ? 'bg-warning' : 'bg-slate-900'
                                                 }`}></div>
                                                 
                                                 <div className="bg-white rounded-lg p-3.5 sm:p-5 border border-slate-200 shadow-2xs hover:border-slate-300 transition-colors duration-100 flex flex-col sm:flex-row gap-3 sm:gap-5 items-start sm:items-center">
@@ -360,8 +360,8 @@ const Calendar = () => {
                                                     <div className="flex-1 w-full min-w-0">
                                                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1.5 sm:mb-2">
                                                             {isLeave ? (
-                                                                <span className="font-mono font-medium text-sky-700 bg-sky-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-sky-200/80 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
-                                                                    <i className="ti ti-calendar-event text-sky-600 text-xs sm:text-sm"></i>
+                                                                <span className="font-mono font-medium text-accent bg-accent-subtle px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border border-accent/20 text-[10px] sm:text-xs shadow-2xs flex items-center gap-1 sm:gap-1.5">
+                                                                    <i className="ti ti-calendar-event text-accent text-xs sm:text-sm"></i>
                                                                     {log.leave_type || 'Leave'} ({isPaidLeave ? 'Paid' : 'Unpaid'})
                                                                 </span>
                                                             ) : isAbsent ? (
@@ -402,7 +402,7 @@ const Calendar = () => {
 
                                                     <div className="w-full sm:w-auto mt-1 sm:mt-0 flex sm:block shrink-0">
                                                         {isLeave ? (
-                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-sky-50 text-sky-700 border border-sky-200/80 text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-2xs">
+                                                            <span className="w-full sm:w-auto h-8 px-3 rounded-md bg-accent-subtle text-accent border border-accent/20 text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-2xs">
                                                                 <i className="ti ti-calendar-event text-sm"></i> {isPaidLeave ? 'Paid Leave' : 'On Leave'}
                                                             </span>
                                                         ) : isAbsent ? (

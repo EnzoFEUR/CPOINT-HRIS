@@ -388,7 +388,7 @@ const EmployeeDashboard = () => {
             {(dashboard.isPending || dashboard.isFetching || dashboard.isError || history.isError) && (
                 <div role={dashboard.isError || history.isError ? 'alert' : 'status'} aria-live="polite" className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                     <span>{dashboard.isError || history.isError ? 'Some employee records could not refresh. Previously loaded records may be out of date.' : dashboard.isPending ? 'Loading employee records…' : 'Updating employee records…'}</span>
-                    {(dashboard.isError || history.isError) && <button type="button" disabled={dashboard.isFetching || history.isFetching} onClick={refresh} className="font-semibold text-blue-700 disabled:opacity-50">Retry</button>}
+                    {(dashboard.isError || history.isError) && <button type="button" disabled={dashboard.isFetching || history.isFetching} onClick={refresh} className="font-semibold text-accent disabled:opacity-50">Retry</button>}
                 </div>
             )}
             {/* Disciplinary & Separation Alert Banners */}
@@ -1605,7 +1605,7 @@ const EmployeeDashboard = () => {
                             {/* Loading State */}
                             {history.isError && <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                                 <span>Pay history could not refresh. Previously loaded statements may be out of date.</span>
-                                <button type="button" disabled={history.isFetching} onClick={() => history.refetch()} className="font-semibold text-blue-700 disabled:opacity-50">Retry</button>
+                                <button type="button" disabled={history.isFetching} onClick={() => history.refetch()} className="font-semibold text-accent disabled:opacity-50">Retry</button>
                             </div>}
                             {isPayHistoryLoading && allPayrolls.length === 0 && (
                                 <div className="space-y-2.5 animate-pulse py-4">
@@ -1930,7 +1930,7 @@ const EmployeeDashboard = () => {
                                             rounded="rounded-md"
                                             border="border border-slate-200"
                                             shadow="shadow-2xs"
-                                            theme="emerald"
+                                            theme="auto"
                                         />
                                         <div className="min-w-0 flex-1">
                                             <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Employee Details</span>

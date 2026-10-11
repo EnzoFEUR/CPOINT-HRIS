@@ -337,7 +337,7 @@ export default function MyRequestsModal({
                                         <div className="mt-2.5 p-3.5 rounded-lg bg-slate-900 text-white border border-slate-800 space-y-2 text-xs shadow-md">
                                             <div className="flex items-center justify-between gap-2 text-slate-300 font-semibold text-[11px]">
                                                 <span className="flex items-center gap-1.5">
-                                                    <i className="ti ti-alert-circle text-rose-400 text-xs" />
+                                                    <i className="ti ti-alert-circle text-danger text-xs" />
                                                     <span className="font-bold uppercase tracking-wider">Official Reason for Rejection</span>
                                                 </span>
                                                 {item.decidedAt && (
@@ -352,7 +352,7 @@ export default function MyRequestsModal({
                                             {!isLeave && (
                                                 <div className="text-[11px] text-slate-300 pt-0.5 space-y-1">
                                                     <p className="flex items-center gap-1.5">
-                                                        <i className="ti ti-check text-xs text-emerald-400 font-bold shrink-0" />
+                                                        <i className="ti ti-check text-xs text-success font-bold shrink-0" />
                                                         <span>All {item.days} requested days have been restored in full to your available leave balance.</span>
                                                     </p>
 

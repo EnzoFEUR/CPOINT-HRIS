@@ -233,9 +233,9 @@ const Index = () => {
                             <span className="font-mono text-sm font-bold text-slate-900 tabular-nums">{todaysCount}</span>
                         </div>
                         {todaysLeaveCount > 0 && (
-                            <div className="flex items-center gap-2 bg-sky-50 border border-sky-200/80 px-3.5 py-2 rounded-lg">
-                                <span className="text-xs font-semibold text-sky-600 uppercase tracking-wider">On Leave:</span>
-                                <span className="font-mono text-sm font-bold text-sky-800 tabular-nums">{todaysLeaveCount}</span>
+                            <div className="flex items-center gap-2 bg-accent-subtle border border-accent/20 px-3.5 py-2 rounded-lg">
+                                <span className="text-xs font-semibold text-accent uppercase tracking-wider">On Leave:</span>
+                                <span className="font-mono text-sm font-bold text-accent tabular-nums">{todaysLeaveCount}</span>
                             </div>
                         )}
                     </div>
@@ -311,7 +311,7 @@ const Index = () => {
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time In</p>
                                             {isLogOnLeave(log) ? (
-                                                <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/60">
+                                                <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2 py-0.5 rounded border border-accent/20">
                                                     Excused
                                                 </span>
                                             ) : log.time_in ? (
@@ -344,7 +344,7 @@ const Index = () => {
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Time Out</p>
                                             {isLogOnLeave(log) ? (
-                                                <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200/60">
+                                                <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2 py-0.5 rounded border border-accent/20">
                                                     Approved Leave
                                                 </span>
                                             ) : log.time_out ? (
@@ -451,7 +451,7 @@ const Index = () => {
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
                                                     {isLogOnLeave(log) ? (
-                                                        <span className="font-mono text-xs font-semibold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded border border-sky-200/60 tabular-nums">
+                                                        <span className="font-mono text-xs font-semibold text-accent bg-accent-subtle px-2.5 py-0.5 rounded border border-accent/20 tabular-nums">
                                                             Excused
                                                         </span>
                                                     ) : log.time_in ? (
@@ -483,7 +483,7 @@ const Index = () => {
                                             <td className="px-6 py-3.5 text-center">
                                                 <div className="flex flex-col items-center gap-1.5">
                                                     {isLogOnLeave(log) ? (
-                                                        <span className="bg-sky-50 text-sky-700 border border-sky-200/60 px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
+                                                        <span className="bg-accent-subtle text-accent border border-accent/20 px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider">
                                                             Approved Leave
                                                         </span>
                                                     ) : log.time_out ? (
