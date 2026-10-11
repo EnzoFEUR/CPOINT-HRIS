@@ -118,7 +118,7 @@ export const EmployeeAvatar = ({
             case 'red': return 'bg-surface-muted text-ink';
             case 'dark': return 'bg-slate-900 text-white';
             case 'gradient': return 'bg-accent text-white';
-            default: return 'bg-slate-100 text-slate-800';
+            default: return 'bg-surface-muted text-ink';
         }
     }, [theme, isFactory]);
 

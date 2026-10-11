@@ -7,9 +7,9 @@ export const DOCUMENT_STATUSES = [
 ];
 const STATUS_STYLES = {
     to_review: 'bg-slate-100 text-slate-600 border-slate-200',
-    pending: 'bg-amber-50 text-amber-700 border-amber-200',
-    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+    pending: 'bg-warning-subtle text-warning-ink border-warning/20',
+    approved: 'bg-success-subtle text-success-ink border-success/20',
+    rejected: 'bg-danger-subtle text-danger-ink border-danger/20',
 };
 const FILE_MIME_TYPES = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', txt: 'text/plain', csv: 'text/csv', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', tif: 'image/tiff', tiff: 'image/tiff' };
 export const getDocumentMimeType = filename => FILE_MIME_TYPES[String(filename || '').split('.').pop().toLowerCase()] || 'application/octet-stream';

@@ -4,7 +4,9 @@ import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
-import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
+import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
+
+import { isVerifiedCreditManager, isMissingCreditSchema, sendCreditError, refreshLeaveCredits } from './leaves.js';
 
 const router = express.Router();
 
@@ -276,8 +278,12 @@ router.post('/', async (req, res) => {
             role = 'employee',
             gender,
             birth_date,
+            date_hired,
             address
         } = req.body;
+
+        const hireCheck = validateHireDate(date_hired);
+        if (!hireCheck.isValid) return res.status(400).json({ success: false, error: hireCheck.error });
 
         // Input validation
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
@@ -544,6 +550,7 @@ router.post('/', async (req, res) => {
                 requires_password_change: true,
                 gender: sanitizedGender,
                 birth_date: validatedBirthDate,
+                ...(hireCheck.hireDate ? { date_hired: hireCheck.hireDate } : {}),
                 address: sanitizedAddr
             };
 
@@ -658,8 +665,20 @@ router.put('/:id', async (req, res) => {
             production_group_id,
             gender,
             birth_date,
+            date_hired,
             address
         } = req.body;
+
+        if (date_hired !== undefined) {
+            if (req.user?.employee_identity_verified !== true || !isVerifiedCreditManager(req.user)) return res.status(403).json({ success: false, error: 'Only HR or an administrator can change the date hired.' });
+            const hireCheck = validateHireDate(date_hired);
+            if (!hireCheck.isValid || !hireCheck.hireDate) return res.status(400).json({ success: false, error: hireCheck.error || 'Enter the date the employee started working. The saved date cannot be cleared.' });
+            const { error } = await supabase.rpc('check_employee_hire_date_change', { p_employee_id: req.params.id, p_date_hired: hireCheck.hireDate });
+            if (error) {
+                if (isMissingCreditSchema(error)) return res.status(503).json({ code: 'HIRE_DATE_UPDATE_UNAVAILABLE', error: 'Changing the date hired is not ready yet. Ask an administrator to finish the database setup.' });
+                return sendCreditError(res, error);
+            }
+        }
 
         let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
             ? parseFloat(daily_rate)
@@ -686,6 +705,7 @@ router.put('/:id', async (req, res) => {
             job_title
         };
 
+        if (date_hired !== undefined) updatePayload.date_hired = date_hired;
         if (parsedDailyRate !== null) updatePayload.daily_rate = parsedDailyRate;
         if (email !== undefined && email !== null) {
             const normalizedEmail = String(email).trim().toLowerCase();
@@ -832,10 +852,12 @@ router.put('/:id', async (req, res) => {
             updatePayload.address = sanitizeAddress(address);
         }
 
-        let { error } = await supabase
+        let { data: updatedEmployee, error } = await supabase
             .from('employees')
             .update(updatePayload)
-            .eq('id', req.params.id);
+            .eq('id', req.params.id)
+            .select('*')
+            .single();
 
         if (error && error.message?.includes('phone')) {
             const fallbackPayload = { ...updatePayload };
@@ -843,19 +865,18 @@ router.put('/:id', async (req, res) => {
             const retryRes = await supabase
                 .from('employees')
                 .update(fallbackPayload)
-                .eq('id', req.params.id);
+                .eq('id', req.params.id)
+                .select('*')
+                .single();
             if (retryRes.error) throw retryRes.error;
+            updatedEmployee = retryRes.data;
         } else if (error) {
             throw error;
         }
 
         // Notify employee if compensation or shift was modified
         if (parsedDailyRate !== null || parsedHourlyRate !== null || shift) {
-            const { data: emp } = await supabase
-                .from('employees')
-                .select('id, company_id, first_name, last_name')
-                .eq('id', req.params.id)
-                .maybeSingle();
+            const emp = updatedEmployee;
 
             const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
             const avatarUrl = emp?.company_id && emp?.id
@@ -892,29 +913,18 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+        invalidateCache(['/api/employees', '/api/profile', '/api/dashboard', '/api/production-groups']);
         invalidateAuthUser(req.params.id);
+        if (date_hired !== undefined) refreshLeaveCredits(supabase, req.params.id);
 
-        // Real-time low-latency broadcast (<5ms) to synchronize employee profile across all dashboards
+        // Send only refresh hints; profile data is read through authenticated APIs.
         try {
-            const broadcastPayload = {
-                employee_id: req.params.id,
-                company_id: updatePayload.company_id || emp?.company_id,
-                first_name: updatePayload.first_name || emp?.first_name,
-                last_name: updatePayload.last_name || emp?.last_name,
-                gender: updatePayload.gender !== undefined ? updatePayload.gender : emp?.gender,
-                birth_date: updatePayload.birth_date !== undefined ? updatePayload.birth_date : emp?.birth_date,
-                address: updatePayload.address !== undefined ? updatePayload.address : emp?.address,
-                department: updatePayload.department || emp?.department,
-                job_title: updatePayload.job_title || emp?.job_title,
-                shift: updatePayload.shift || emp?.shift,
-                status: updatePayload.status !== undefined ? updatePayload.status : emp?.status,
-                is_active: updatePayload.is_active !== undefined ? updatePayload.is_active : emp?.is_active,
-                updated_at: new Date().toISOString()
-            };
+            const broadcastPayload = { employee_id: req.params.id };
 
             const targetTopics = [
                 'admin-live-employees-directory',
+                `admin-live-employee-${req.params.id}`,
+                `monthly-attendance-live-${req.params.id}`,
                 'disciplinary_realtime_sync',
                 'disciplinary-updates',
                 `employee-live-dashboard-${req.params.id}`,
@@ -923,15 +933,12 @@ router.put('/:id', async (req, res) => {
             ];
 
             targetTopics.forEach(topic => {
-                supabase.channel(topic).send({
-                    type: 'broadcast',
-                    event: 'EMPLOYEE_UPDATED',
-                    payload: broadcastPayload
-                }).catch(() => {});
+                const channel = supabase.channel(topic);
+                Promise.resolve(channel.httpSend('EMPLOYEE_UPDATED', broadcastPayload)).catch(() => {}).finally(() => supabase.removeChannel(channel)).catch(() => {});
             });
         } catch (_) {}
 
-        if (req.body.admin_id) {
+        if (req.body.admin_id || date_hired !== undefined) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
@@ -939,13 +946,14 @@ router.put('/:id', async (req, res) => {
                 subject_type: 'App\\Models\\Employee',
                 subject_id: req.params.id,
                 event: 'updated',
-                causer_id: req.body.admin_id,
+                causer_id: req.user?.id || req.body.admin_id,
                 properties: updatePayload
             });
         }
 
-        res.json({ success: true, message: 'Employee updated successfully.' });
+        res.json({ success: true, data: updatedEmployee, message: 'Employee updated successfully.' });
     } catch (error) {
+        if (error.message === 'EMPLOYEE_HIRE_DATE_REVIEW_REQUIRED' || error.message === 'INVALID_EMPLOYEE_HIRE_DATE') return sendCreditError(res, error);
         const msg = error.message || '';
         if (msg.includes('employees_email_key') || msg.includes('duplicate key') || error.code === '23505') {
             return res.status(409).json({

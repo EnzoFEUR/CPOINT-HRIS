@@ -233,6 +233,7 @@ export default function MyProfile() {
             status: storedUser.status || 'active',
             is_active: storedUser.is_active ?? true,
             created_at: storedUser.created_at || null,
+            date_hired: storedUser.date_hired || null,
             avatar_url: storedUser.avatar_url || storedUser.photo_url || null,
             photo_url: storedUser.photo_url || storedUser.avatar_url || null,
             has_registered_biometrics: storedUser.has_registered_biometrics ?? true,
@@ -299,7 +300,8 @@ export default function MyProfile() {
             job_title: raw.job_title || raw.position || raw.designation || raw.role || 'Staff Member',
             status: raw.status || initialUser?.status || 'active',
             is_active: raw.is_active ?? initialUser?.is_active ?? true,
-            created_at: raw.created_at || raw.hire_date || raw.date_joined || null,
+            created_at: raw.created_at || null,
+            date_hired: raw.date_hired || null,
             avatar_url: raw.avatar_url || raw.photo_url || raw.photo || raw.profile_picture || raw.image_url || null,
             photo_url: raw.photo_url || raw.avatar_url || raw.photo || raw.profile_picture || raw.image_url || null,
             has_registered_biometrics: raw.has_registered_biometrics ?? true,
@@ -628,12 +630,13 @@ export default function MyProfile() {
         }
     };
 
-    const formatDate = (dateString) => {
+    const formatDate = (dateString, dateOnly = false) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',
-            day: 'numeric'
+            day: 'numeric',
+            ...(dateOnly ? { timeZone: 'UTC' } : {})
         });
     };
 
@@ -989,8 +992,8 @@ export default function MyProfile() {
                             <p className="font-semibold text-slate-900">{profile?.job_title || profile?.role || 'Staff'}</p>
                         </div>
                         <div>
-                            <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Date Joined</p>
-                            <p className="font-mono font-semibold text-slate-900">{formatDate(profile?.created_at)}</p>
+                            <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Date hired</p>
+                            <p className="font-mono font-semibold text-slate-900">{formatDate(profile?.date_hired, true)}</p>
                         </div>
                         <div className="col-span-2">
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Employment Status</p>
@@ -1375,7 +1378,7 @@ export default function MyProfile() {
             {/* 201 documents */}
             <div id="documents" className="space-y-4 scroll-mt-20">
                 {documentQuery.error && (
-                    <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                    <div role="alert" className="rounded-md border border-danger/20 bg-danger-subtle p-3 text-xs text-danger-ink">
                         {documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button>
                     </div>
                 )}
@@ -1521,7 +1524,7 @@ export default function MyProfile() {
                                                     </span>
                                                 )}
                                             </div>
-                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-rose-700">{doc.rejection_reason}</p>}
+                                            {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-danger-ink">{doc.rejection_reason}</p>}
                                             <p className="mt-1 text-[10px] text-slate-400">{formatFileSize(doc.file_size)}</p>
                                             <button
                                                 type="button"

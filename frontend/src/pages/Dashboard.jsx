@@ -145,8 +145,13 @@ export default function Dashboard() {
 
             attendances.forEach(att => {
                 if (att.date === todayStr) {
-                    presentTodayCount++;
-                    if (isLatePunch(att)) {
+                    const st = (att.status || '').toLowerCase();
+                    const isLeave = st.includes('leave');
+                    const isAbsent = st.includes('absent');
+                    if (!isLeave && !isAbsent) {
+                        presentTodayCount++;
+                    }
+                    if (isLatePunch(att) || st.includes('late')) {
                         lateTodayCount++;
                     }
                     if (recentLogs.length < 5) {

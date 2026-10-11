@@ -54,9 +54,6 @@ const CutoffPeriodSelector = ({
                         </button>
                     ))}
                 </div>
-                <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
-                    {`End date follows the start date automatically (${CUTOFF_MODE_META[cutoffMode]?.hint}).`}
-                </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

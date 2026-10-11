@@ -155,18 +155,22 @@ export const MainLayout = ({ children }) => {
   }, [location.pathname, navigate, handleLogout]);
 
   return (
-    <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-accent selection:text-white relative overflow-x-hidden min-h-screen">
+    <div className="font-sans antialiased bg-slate-50 text-slate-800 selection:bg-accent selection:text-white relative overflow-x-hidden min-h-screen print:overflow-x-visible print:overflow-visible print:min-h-0 print:h-auto">
       {/* Desktop Sidebar */}
-      <Sidebar user={user} handleLogout={handleLogout} />
+      <div className="print:hidden">
+        <Sidebar user={user} handleLogout={handleLogout} />
+      </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px]">
-        <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
+      <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px] print:pl-0 print:min-h-0">
+        <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto print:max-w-none print:w-full">
           {/* Header */}
-          <Header user={user} />
+          <div className="print:hidden">
+            <Header user={user} />
+          </div>
 
           {/* Page Content */}
-          <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8">
+          <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8 print:p-0 print:m-0 print:pb-0">
             <Suspense
               fallback={
                 <div className="flex items-center justify-center min-h-[50vh] w-full">
@@ -179,24 +183,28 @@ export const MainLayout = ({ children }) => {
           </main>
 
           {/* Mobile Bottom Dock & Sheet Drawer */}
-          <MobileNav
-            user={user}
-            sidebarOpen={sidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            isStandalone={isStandalone}
-            handleInstallApp={handleInstallApp}
-            handleLogout={handleLogout}
-          />
+          <div className="print:hidden">
+            <MobileNav
+              user={user}
+              sidebarOpen={sidebarOpen}
+              setSidebarOpen={setSidebarOpen}
+              isStandalone={isStandalone}
+              handleInstallApp={handleInstallApp}
+              handleLogout={handleLogout}
+            />
+          </div>
 
           {/* Universal PWA Guide Modal */}
-          <PwaInstallModal
-            showInstallGuide={showInstallGuide}
-            setShowInstallGuide={setShowInstallGuide}
-            deferredPrompt={deferredPrompt}
-            handleInstallApp={handleInstallApp}
-            browserType={browserType}
-            setBrowserType={setBrowserType}
-          />
+          <div className="print:hidden">
+            <PwaInstallModal
+              showInstallGuide={showInstallGuide}
+              setShowInstallGuide={setShowInstallGuide}
+              deferredPrompt={deferredPrompt}
+              handleInstallApp={handleInstallApp}
+              browserType={browserType}
+              setBrowserType={setBrowserType}
+            />
+          </div>
         </div>
       </div>
     </div>

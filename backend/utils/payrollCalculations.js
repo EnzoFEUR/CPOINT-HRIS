@@ -1,3 +1,6 @@
+import { DEFAULT_REST_DAYS } from '../../shared/workPolicy.mjs';
+import { sumCashAmounts } from '../../shared/leavePolicy.js';
+import { summarizeApprovedLeaves } from './leaveUtils.js';
 
 // Data Sanitization & Math Helpers
 export function toSafeNumber(val, fallback = 0) {
@@ -126,7 +129,7 @@ export function indexHolidays(holidayList = []) {
     return map;
 }
 
-export function isRestDay(dateStr, restDays = [0]) {
+export function isRestDay(dateStr, restDays = DEFAULT_REST_DAYS) {
     const d = new Date(`${dateStr}T00:00:00`);
     if (isNaN(d.getTime())) return false;
     return restDays.includes(d.getDay());
@@ -136,7 +139,7 @@ export function isRestDay(dateStr, restDays = [0]) {
 export function wasPresentDayBefore(
     dateStr,
     attendanceByDate,
-    restDays = [0],
+    restDays = DEFAULT_REST_DAYS,
     { nonWorkingDates = new Set(), paidLeaveDates = new Set() } = {}
 ) {
     const d = new Date(`${dateStr}T00:00:00`);
@@ -166,7 +169,7 @@ export function computeDayPay({
     hoursWorked = 0,
     holidaysByDate,
     attendanceByDate,
-    restDays = [0],
+    restDays = DEFAULT_REST_DAYS,
     canOvertime = true,
     salaryIncludesHolidayPay = false,
     paidLeaveDates = new Set(),
@@ -283,7 +286,7 @@ export function computeHolidayPayForPeriod({
     monthlySalary,
     holidayList = [],
     attendanceLogs = [],
-    restDays = [0],
+    restDays = DEFAULT_REST_DAYS,
     canOvertime = true,
     salaryIncludesHolidayPay = false,
     dailyRate: dailyRateOverride,
@@ -375,3 +378,79 @@ export function aggregate13thMonthPay(payrollRecords = []) {
         taxableExcess,
     };
 }
+export const getEffectiveMonthlySalary = (employee) => {
+    if (!employee) return 0;
+
+    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
+    if (dailyRate > 0) return dailyRate * 26;
+
+    const hourlyRate = toSafeNumber(employee.hourly_rate);
+    if (hourlyRate > 0) return hourlyRate * 8 * 26;
+
+    const salary = toSafeNumber(employee.salary || employee.monthly_salary);
+    if (salary > 0) return salary;
+
+    const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
+    if (pieceRate > 0) return pieceRate * 8 * 26;
+
+    return 0;
+};
+
+export function payrollLeaveSignature(leaves) {
+    return leaves.map(leave => ({
+        id: String(leave.id),
+        start_date: leave.start_date,
+        end_date: leave.end_date,
+        is_paid: leave.is_paid,
+        credit_pool: leave.credit_pool || null,
+        credit_dates: leave.credit_dates || null,
+        requested_pay_type: leave.requested_pay_type || null
+    })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+export async function fetchPendingSilCash(client, employeeIds, periodEnd) {
+    const { data, error } = await client.from('sil_cash_out_requests').select('*')
+        .in('employee_id', employeeIds).eq('status', 'approved').lte('approved_on', periodEnd);
+    if (['42P01', 'PGRST205'].includes(error?.code)) return { available: false, requests: [] };
+    if (error) throw new Error('Unable to verify SIL cash payouts. Refresh before paying.', { cause: error });
+    const requests = (data || []).filter(row => row.status === 'approved' && row.approved_on <= periodEnd && employeeIds.includes(row.employee_id));
+    for (const row of requests) {
+        if (!Number.isFinite(Number(row.cash_amount)) || Number(row.cash_amount) <= 0 || row.taxable_amount == null || !Number.isFinite(Number(row.taxable_amount)) || Number(row.taxable_amount) < 0 || Number(row.taxable_amount) > Number(row.cash_amount)) throw new Error('The SIL cash payout needs HR review.');
+    }
+    return { available: true, requests };
+}
+
+export function cashPayForEmployee(requests, employeeId) {
+    const rows = requests.filter(row => row.employee_id === employeeId);
+    return {
+        cash_pay: sumCashAmounts(rows.map(row => row.cash_amount)),
+        taxable_cash: sumCashAmounts(rows.map(row => row.taxable_amount)),
+        payout_ids: rows.map(row => row.id).sort()
+    };
+}
+
+export async function fetchPayrollLeavePay(client, employees, periodStart, periodEnd) {
+    const ids = employees.map(employee => employee.id);
+    const [leaves, cash] = await Promise.all([
+        client.from('leave_requests').select('*').in('employee_id', ids).eq('status', 'Approved').lte('start_date', periodEnd).gte('end_date', periodStart),
+        fetchPendingSilCash(client, ids, periodEnd),
+    ]);
+    if (leaves.error) throw new Error('Unable to retrieve approved leave. Payroll calculation must be retried.', { cause: leaves.error });
+    const data = {};
+    for (const employee of employees) {
+        const summary = summarizeApprovedLeaves((leaves.data || []).filter(row => row.employee_id === employee.id && row.status === 'Approved'), { employeeId: employee.id, periodStart, periodEnd });
+        const savedRate = Number(employee.daily_rate || employee.daily_pay || 0);
+        const factory = `${employee.department || ''} ${employee.shift || ''}`.toLowerCase().includes('factory');
+        const rate = savedRate > 0 ? savedRate : factory ? 0 : round2(getEffectiveMonthlySalary(employee) * 12 / 261);
+        if (summary.paid_leave_days > 0 && (!Number.isFinite(rate) || rate <= 0)) throw new Error('HR must save a daily rate before paying approved leave.');
+        data[employee.id] = {
+            paid_leave_days: summary.paid_leave_days,
+            paid_leave_pay: round2(summary.paid_leave_days * rate),
+            leaves: summary.leaves,
+            leave_signature: payrollLeaveSignature(summary.leaves),
+            ...cashPayForEmployee(cash.requests, employee.id)
+        };
+    }
+    return { data, cash_out_available: cash.available };
+}
+

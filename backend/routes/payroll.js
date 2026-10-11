@@ -1,4 +1,10 @@
 import express from 'express';
+import { calculateBIRWithholdingTax } from '../../shared/payrollTax.mjs';
+import { isCreditUuid, isLeaveDate } from '../../shared/leaveCredits.mjs';
+import { fetchPendingSilCash, cashPayForEmployee, fetchPayrollLeavePay, payrollLeaveSignature } from '../utils/payrollCalculations.js';
+import { refreshLeaveCredits, sendCreditError } from './leaves.js';
+import { assertCreditAttendanceConsistent } from '../../shared/leaveCredits.mjs';
+import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
@@ -10,10 +16,33 @@ import {
     calculateMaternityDifferential,
     calculateStatutoryLeavePay,
     aggregate13thMonthPay,
+    getEffectiveMonthlySalary,
 } from '../utils/payrollCalculations.js';
 import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
+import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
+import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
+
 const router = express.Router();
+const WORK_POLICY = getWorkPolicy(process.env);
+
+const requirePayrollManager = (req, res, next) => {
+    if (!hasVerifiedManagerRole(req.user)) {
+        return res.status(403).json({ error: 'Verified HR or administrator access is required to create payroll.' });
+    }
+    next();
+};
+
+router.post('/:id/confirm-sil-payment', requirePayrollManager, async (req, res) => {
+    const { operation_id, reference } = req.body || {};
+    if (!req.params.id || req.params.id.length > 128 || !isCreditUuid(operation_id) || typeof reference !== 'string' || !reference.trim() || reference.trim().length > 120) return res.status(400).json({ error: 'A valid payroll, request ID and completed payment reference are required.' });
+    try {
+        const { data, error } = await supabase.rpc('confirm_sil_payroll_payment', { p_actor_id: req.user.id, p_payroll_id: req.params.id, p_operation_id: operation_id, p_reference: reference.trim() });
+        if (error) throw error;
+        refreshLeaveCredits(supabase, data.employee_id);
+        res.json({ success: true, data });
+    } catch (error) { sendCreditError(res, error); }
+});
 
 // Statutory rates and caps with fallback defaults when configuration is unreachable
 const DEFAULT_STATUTORY_SETTINGS = Object.freeze({
@@ -73,15 +102,45 @@ const OPTIONAL_PAYROLL_COLUMNS = [
     'philhealth_deduction',
     'pagibig_deduction',
     'tax_deduction',
+    'paid_leave_days', 'paid_leave_pay', 'paid_leave_in_basic', 'sil_cash_pay',
+    'leave_pay', 'maternity_salary_differential',
 ];
 
-const insertPayrollRow = async (payload) => {
+const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') => {
+    if (cash?.available) {
+        const result = await supabase.rpc('post_payroll_with_sil', {
+            p_actor_id: actorId,
+            p_employee_id: payload.employee_id,
+            p_payroll: payload,
+            p_payout_ids: cash.payout_ids || [],
+            p_frequency: frequency,
+            p_leave_signature: cash.leave_signature || []
+        });
+        if (result.error?.code === 'PGRST202') {
+            result.error = { ...result.error, status: 503, message: 'Install the SIL payroll migration before posting this payslip.' };
+        }
+        const conflicts = {
+            PAYROLL_ALREADY_EXISTS: 'A payslip already exists for this employee and period.',
+            SIL_PAYOUT_CHANGED: 'Cash-out payments changed. Refresh the preview before saving.',
+            PAYROLL_LEAVE_CHANGED: 'Approved leave changed. Refresh the preview before saving.',
+            FORBIDDEN: 'Manager or HR permissions are required to post payroll.',
+            INVALID_CREDIT_COMMAND: 'Invalid payroll calculation or period range for SIL cash-out posting.'
+        };
+        if (conflicts[result.error?.message]) {
+            result.error = { ...result.error, status: result.error?.message === 'FORBIDDEN' ? 403 : 409, message: conflicts[result.error.message] };
+        }
+        return result;
+    }
     const row = { ...payload };
     for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
         const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
         if (!error) return { data, error: null };
         const missing = OPTIONAL_PAYROLL_COLUMNS.find((col) => col in row && error.message?.includes(col));
         if (!missing) return { data: null, error };
+        // Older schemas still retain the full earnings total until breakdown columns are installed.
+        if (missing === 'paid_leave_pay' && row.paid_leave_in_basic !== true) { row.basic_pay = round2(row.basic_pay + row.paid_leave_pay); row.paid_leave_in_basic = true; }
+        if (['leave_pay', 'maternity_salary_differential'].includes(missing)) row.basic_pay = round2(row.basic_pay + row[missing]);
+        if (missing === 'paid_leave_in_basic' && row.paid_leave_in_basic === true) delete row.paid_leave_pay;
         delete row[missing];
     }
     return { data: null, error: new Error('Payroll insert failed after removing optional columns.') };
@@ -118,6 +177,10 @@ const getPaidLeaveDates = (leaveRecords = []) => {
     const dates = new Set();
     for (const leave of leaveRecords || []) {
         if (!leave || !leave.is_paid || !leave.start_date || !leave.end_date) continue;
+        if (leave.credit_pool) {
+            for (const date of leave.credit_dates || []) dates.add(date);
+            continue;
+        }
         let cursor = String(leave.start_date).substring(0, 10);
         const end = String(leave.end_date).substring(0, 10);
         for (let i = 0; i < 62 && cursor <= end; i++) {
@@ -251,63 +314,11 @@ const normalizeDateRange = (d1, d2) => {
     return d1 <= d2 ? { start: d1, end: d2 } : { start: d2, end: d1 };
 };
 
-const getEffectiveMonthlySalary = (employee) => {
-    if (!employee) return 0;
-
-    const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
-    if (dailyRate > 0) return dailyRate * 26;
-
-    const hourlyRate = toSafeNumber(employee.hourly_rate);
-    if (hourlyRate > 0) return hourlyRate * 8 * 26;
-
-    const salary = toSafeNumber(employee.salary || employee.monthly_salary);
-    if (salary > 0) return salary;
-
-    const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
-    if (pieceRate > 0) return pieceRate * 8 * 26;
-
-    return 0;
-};
 
 /**
  * Helper: Computes BIR Withholding Tax under TRAIN Law (Weekly / Semi-Monthly / Monthly Brackets)
  * Reference: BIR Revised Withholding Tax Table under RA 10963 (TRAIN Law)
  */
-const calculateBIRWithholdingTax = (taxableIncome, frequency = 'weekly') => {
-    const taxable = Math.max(0, toSafeNumber(taxableIncome));
-
-    if (frequency === 'weekly') {
-        // BIR Revised Withholding Tax Table - WEEKLY
-        // Bracket 1: <= ₱4,807.69 (Annual <= P250,000 / 52) -> 0% Tax
-        if (taxable <= 4807.69) return 0;
-        // Bracket 2: ₱4,807.70 to ₱7,692.30 -> 15% of excess over ₱4,807.69
-        if (taxable <= 7692.30) return round2((taxable - 4807.69) * 0.15);
-        // Bracket 3: ₱7,692.31 to ₱15,384.61 -> ₱432.69 + 20% of excess over ₱7,692.31
-        if (taxable <= 15384.61) return round2(432.69 + (taxable - 7692.31) * 0.20);
-        // Bracket 4: ₱15,384.62 to ₱38,461.53 -> ₱1,971.15 + 25% of excess over ₱15,384.62
-        if (taxable <= 38461.53) return round2(1971.15 + (taxable - 15384.62) * 0.25);
-        // Bracket 5: ₱38,461.54 to ₱153,846.15 -> ₱7,740.38 + 30% of excess over ₱38,461.54
-        if (taxable <= 153846.15) return round2(7740.38 + (taxable - 38461.54) * 0.30);
-        // Bracket 6: > ₱153,846.15 -> ₱42,355.77 + 35% of excess over ₱153,846.15
-        return round2(42355.77 + (taxable - 153846.15) * 0.35);
-    } else if (frequency === 'semi-monthly') {
-        // BIR Revised Withholding Tax Table - SEMI-MONTHLY
-        if (taxable <= 10416.67) return 0;
-        if (taxable <= 16666.67) return round2((taxable - 10416.67) * 0.15);
-        if (taxable <= 33333.33) return round2(937.50 + (taxable - 16666.67) * 0.20);
-        if (taxable <= 83333.33) return round2(4270.83 + (taxable - 33333.33) * 0.25);
-        if (taxable <= 333333.33) return round2(16770.83 + (taxable - 83333.33) * 0.30);
-        return round2(91770.83 + (taxable - 333333.33) * 0.35);
-    } else {
-        // BIR Revised Withholding Tax Table - MONTHLY
-        if (taxable <= 20833.33) return 0;
-        if (taxable <= 33333.33) return round2((taxable - 20833.33) * 0.15);
-        if (taxable <= 66666.67) return round2(1875.00 + (taxable - 33333.33) * 0.20);
-        if (taxable <= 166666.67) return round2(8541.67 + (taxable - 66666.67) * 0.25);
-        if (taxable <= 666666.67) return round2(33541.67 + (taxable - 166666.67) * 0.30);
-        return round2(183541.67 + (taxable - 666666.67) * 0.35);
-    }
-};
 
 /**
  * Helper: Fetches HR-approved paid leave applications for an employee within a date range.
@@ -327,9 +338,20 @@ const fetchApprovedPaidLeaves = async (employeeId, start, end) => {
         };
     } catch (err) {
         console.error('Error fetching approved paid leaves:', err);
-        return { totalPaidLeaveDays: 0, leaveRecords: [] };
+        throw err;
     }
 };
+
+router.post('/leave-pay-preview', requirePayrollManager, async (req, res) => {
+    const { employee_ids, period_start, period_end } = req.body;
+    if (!Array.isArray(employee_ids) || employee_ids.length < 1 || employee_ids.length > 500 || employee_ids.some(id => !isCreditUuid(id)) || !isLeaveDate(period_start) || !isLeaveDate(period_end) || period_end < period_start || getCutoffSpanDays(period_start, period_end) > 7) return res.status(400).json({ error: 'Select employees and a valid weekly pay period.' });
+    try {
+        const { data, error } = await supabase.from('employees').select('*').in('id', [...new Set(employee_ids)]);
+        if (error) throw error;
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ success: true, ...await fetchPayrollLeavePay(supabase, data || [], period_start, period_end) });
+    } catch (error) { res.status(503).json({ error: error.message }); }
+});
 
 // 1. Statutory settings
 router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
@@ -347,17 +369,19 @@ router.get('/statutory-settings', cacheResponse(20), async (req, res) => {
     }
 });
 
-router.put('/statutory-settings', async (req, res) => {
+router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
     try {
-        const { admin_id: bodyAdminId, ...cleanSettings } = req.body || {};
-        const admin_id = bodyAdminId || req.user?.id || null;
+        const cleanSettings = { ...req.body };
+        delete cleanSettings.admin_id;
+        const admin_id = req.user.id;
 
-        const { data: existing } = await supabase
+        const { data: existing, error: readError } = await supabase
             .from('statutory_settings')
             .select('id')
             .limit(1)
             .maybeSingle();
 
+        if (readError) throw readError;
         let error;
         if (existing) {
             ({ error } = await supabase
@@ -784,28 +808,22 @@ router.post('/preview', async (req, res) => {
 
         const lookbackStart = shiftDateStr(pStart, -HOLIDAY_LOOKBACK_DAYS);
         const [
-            { data: allAttendanceLogs },
+            allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
             { data: lookbackHolidays }
         ] = await Promise.all([
-            supabase
-                .from('attendances')
-                .select('*')
-                .eq('employee_id', employee_id)
-                .gte('date', lookbackStart)
-                .lte('date', pEnd),
+            fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
             supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd)
         ]);
         // Period-only view for display; the wider lookback set is used for holiday eligibility only.
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        assertCreditAttendanceConsistent(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
         const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
-        const restDays = Array.isArray(employee?.rest_days) && employee.rest_days.length
-            ? employee.rest_days
-            : [0];
+        const restDays = getEmployeeRestDays(employee);
 
         const empDept = (employee?.department || '').toLowerCase();
         const empShift = (employee?.shift || '').toLowerCase();
@@ -829,6 +847,8 @@ router.post('/preview', async (req, res) => {
 
         res.json({
             ...preview,
+            tardiness: calculateTardiness(attendanceLogs, WORK_POLICY, restDays),
+            workPolicy: WORK_POLICY,
             approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
             paidLeaveRecords: paidLeaveInfo.leaveRecords,
             isFactoryWorker,
@@ -871,7 +891,7 @@ router.get('/', cacheResponse(20), async (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requirePayrollManager, async (req, res) => {
     try {
         const {
             employee_id,
@@ -881,8 +901,6 @@ router.post('/', async (req, res) => {
             regular_ot_hours,
             regular_holiday_ot_hours,
             special_holiday_ot_hours,
-            late_deductions,
-            late_minutes,
             working_days_in_year,
             sss_cash_benefit,
             maternity_leave_days,
@@ -954,7 +972,8 @@ router.post('/', async (req, res) => {
         const dailyRate = empDailyRate > 0 ? empDailyRate : round2((effectiveMonthlySalary * 12) / annualWorkDays);
         const empHourlyRate = toSafeNumber(employee.hourly_rate);
         const hourlyRate = empHourlyRate > 0 ? empHourlyRate : round2(dailyRate / 8);
-        const weeklySalary = empDailyRate > 0 ? round2(empDailyRate * 6) : round2((effectiveMonthlySalary * 12) / 52);
+        const restDays = getEmployeeRestDays(employee);
+        const weeklySalary = empDailyRate > 0 ? round2(empDailyRate * (7 - restDays.length)) : round2((effectiveMonthlySalary * 12) / 52);
 
         let basicPay = 0;
         if (isFactory) {
@@ -969,18 +988,13 @@ router.post('/', async (req, res) => {
         await ensureHolidaysGeneratedForRange(lookbackStart, pEnd);
         const [
             { data: allHolidays },
-            { data: allAttendanceLogs },
+            allAttendanceLogs,
             paidLeaveInfo,
             lookbackLeaveInfo,
             { data: suspensionLogs }
         ] = await Promise.all([
             supabase.from('holidays').select('*').gte('date', lookbackStart).lte('date', pEnd),
-            supabase
-                .from('attendances')
-                .select('*')
-                .eq('employee_id', employee_id)
-                .gte('date', lookbackStart)
-                .lte('date', pEnd),
+            fetchPayrollAttendance(supabase, [employee_id], lookbackStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, pStart, pEnd),
             fetchApprovedPaidLeaves(employee_id, lookbackStart, pEnd),
             supabase
@@ -994,11 +1008,10 @@ router.post('/', async (req, res) => {
         // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
         const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart);
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
+        assertCreditAttendanceConsistent(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
         const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
-        const restDays = Array.isArray(employee.rest_days) && employee.rest_days.length
-            ? employee.rest_days
-            : [0];
+
 
         // Holiday pay is computed BEFORE the absence step so the absence step can see which
         // Regular Holidays were forfeited under DOLE Art. 94 (see forfeitedHolidayDates below).
@@ -1032,19 +1045,9 @@ router.post('/', async (req, res) => {
                 }
             });
 
-            const daysPresent = req.body.days_worked !== undefined && req.body.days_worked !== null && req.body.days_worked !== ''
-                ? toSafeNumber(req.body.days_worked)
-                : completedAttendanceDates.size;
-
-            let expectedWorkDays = 0;
-            const curDate = new Date(`${pStart}T00:00:00`);
-            const endDate = new Date(`${pEnd}T00:00:00`);
-            while (curDate <= endDate) {
-                const dow = curDate.getDay();
-                if (!restDays.includes(dow)) expectedWorkDays++;
-                curDate.setDate(curDate.getDate() + 1);
-            }
-            if (expectedWorkDays === 0) expectedWorkDays = 6;
+            const expectedDates = getScheduledWorkDates(pStart, pEnd, restDays);
+            const expectedWorkDays = expectedDates.length;
+            const daysPresent = expectedDates.filter(date => completedAttendanceDates.has(date)).length;
 
             // Declared Special Non-Working Days and Regular Holidays are non-working by law; unworked days are not absences
             const forfeitedHolidayDates = new Set(
@@ -1086,70 +1089,8 @@ router.post('/', async (req, res) => {
             }
         }
 
-        // Lateness Policy Handling: Evaluates 2-hour policy per shift rather than cumulative period minutes
-        const LATE_HOURLY_CONVERSION_MINS = 120;
-        let lateMins = 0;
-        let perMinuteLateMins = 0;
-        let hourlyConvertedLoss = 0;
-        let hourlyConvertedShifts = 0;
-        let lateDed = 0;
-        let tardinessNote = '';
-
-        if (!isFactory) {
-            const shiftLateMins = [];
-            for (const log of attendanceLogs || []) {
-                if (!log || !log.time_in) continue;
-                const dateStr = log.date || (typeof log.time_in === 'string' ? log.time_in.split('T')[0] : null);
-                if (!dateStr) continue;
-                const timeIn = new Date(log.time_in);
-                const scheduleStart = new Date(`${dateStr}T08:00:00`);
-                if (!isNaN(timeIn.getTime()) && !isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
-                    const mins = Math.floor((timeIn - scheduleStart) / 60000);
-                    if (mins > 0) shiftLateMins.push(mins);
-                }
-            }
-
-            if (shiftLateMins.length > 0) {
-                for (const mins of shiftLateMins) {
-                    lateMins += mins;
-                    if (mins >= LATE_HOURLY_CONVERSION_MINS) {
-                        const workedHours = Math.max(0, 8 - mins / 60);
-                        hourlyConvertedLoss += Math.max(0, dailyRate - workedHours * hourlyRate);
-                        hourlyConvertedShifts++;
-                    } else {
-                        perMinuteLateMins += mins;
-                    }
-                }
-            } else {
-                // No attendance logs, so only a period total is available and single shifts can't be
-                // identified. Never apply the 2-hour rule to a total: deduct per minute instead.
-                const providedMins = toSafeNumber(late_minutes);
-                if (providedMins > 0) {
-                    lateMins = providedMins;
-                    perMinuteLateMins = providedMins;
-                }
-            }
-        }
-
-        if (!isFactory && lateMins > 0) {
-            hourlyConvertedLoss = round2(hourlyConvertedLoss);
-            const perMinuteDed = round2((hourlyRate / 60) * perMinuteLateMins);
-
-            // Hourly-converted shifts reduce basic pay directly; per-minute lateness is a deduction.
-            basicPay = Math.max(0, round2(basicPay - hourlyConvertedLoss));
-            lateDed = perMinuteDed;
-
-            const parts = [];
-            if (perMinuteLateMins > 0) {
-                parts.push(`${perMinuteLateMins} min under 2 hrs per shift: per-minute deduction -₱${perMinuteDed.toFixed(2)}`);
-            }
-            if (hourlyConvertedShifts > 0) {
-                parts.push(`${hourlyConvertedShifts} shift(s) 2+ hrs late: converted to hourly rate -₱${hourlyConvertedLoss.toFixed(2)}`);
-            }
-            tardinessNote = ` [Lateness ${lateMins} mins total - ${parts.join('; ')}]`;
-        } else {
-            lateDed = round2(toSafeNumber(late_deductions));
-        }
+        const tardiness = calculateTardiness(attendanceLogs, WORK_POLICY, restDays);
+        const lateDed = tardiness.deduction;
 
         // Suspension Deduction Handling
         let suspensionDeduction = 0;
@@ -1199,7 +1140,8 @@ router.post('/', async (req, res) => {
 
         const paternityPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Paternity', daysTaken: paternity_days, dailyRate }).leavePay;
         const soloParentPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'Solo Parent', daysTaken: solo_parent_days, dailyRate }).leavePay;
-        const silPay = calculateStatutoryLeavePay({ monthlySalary: effectiveMonthlySalary, leaveType: 'SIL', daysTaken: sil_days, dailyRate }).leavePay;
+        if (toSafeNumber(sil_days) > 0) return res.status(400).json({ error: 'SIL pay comes from approved leave requests. Use a cash-out request for unused credits.' });
+        const silPay = 0;
         const totalOtherLeavePay = round2(toSafeNumber(paternityPay) + toSafeNumber(soloParentPay) + toSafeNumber(silPay));
 
         let matDiffPay = 0;
@@ -1218,9 +1160,12 @@ router.post('/', async (req, res) => {
         const safeLeave = toSafeNumber(totalOtherLeavePay);
         const safeMatDiff = toSafeNumber(matDiffPay);
         const safePaidLeavePay = toSafeNumber(paidLeavePay);
+        const pendingCash = await fetchPendingSilCash(supabase, [employee_id], pEnd);
+        const cash = { ...cashPayForEmployee(pay_frequency === 'weekly' ? pendingCash.requests : [], employee_id), available: pendingCash.available, leave_signature: payrollLeaveSignature(paidLeaveInfo.leaveRecords) };
+        if ((req.body.expected_paid_leave_pay != null && Number(req.body.expected_paid_leave_pay) !== safePaidLeavePay) || (req.body.expected_sil_cash_pay != null && Number(req.body.expected_sil_cash_pay) !== cash.cash_pay)) return res.status(409).json({ error: 'Leave payments changed. Refresh the preview before saving.' });
 
         // Combined Gross Pay: Basic + OT + Holiday Pay + Statutory Leaves + Maternity Differential + HR Approved Paid Leaves
-        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + safePaidLeavePay);
+        const grossPay = round2(safeBasic + safeOt + safeHoliday + safeLeave + safeMatDiff + (isFactory ? safePaidLeavePay : 0) + cash.cash_pay);
 
         // Deductions schedule: prorated contributions apply per cycle for weekly/semi-monthly, or month-end for monthly
         const periodEndDay = new Date(`${pEnd}T00:00:00`).getDate();
@@ -1241,7 +1186,7 @@ router.post('/', async (req, res) => {
         let pagIbigER = 0;
 
         if (shouldDeductStatutory) {
-            const contributionSalaryBase = (isFactory && effectiveMonthlySalary <= 0) ? (grossPay * 4) : effectiveMonthlySalary;
+            const contributionSalaryBase = (isFactory && effectiveMonthlySalary <= 0) ? ((grossPay - cash.cash_pay) * 4) : effectiveMonthlySalary;
 
             // Frequency Divisor (Weekly = 4, Semi-Monthly = 2, Monthly = 1)
             const divisor = pay_frequency === 'weekly' ? 4 : (pay_frequency === 'semi-monthly' ? 2 : 1);
@@ -1273,7 +1218,7 @@ router.post('/', async (req, res) => {
         const totalStatutoryContributions = round2(sssEE + philHealthEE + pagIbigEE);
 
         // BIR Taxable Income & Withholding Tax (passed with pay_frequency)
-        const taxableGross = Math.max(0, grossPay - safeMatDiff);
+        const taxableGross = Math.max(0, grossPay - safeMatDiff - cash.cash_pay + cash.taxable_cash);
         const taxableIncome = Math.max(0, round2(taxableGross - totalStatutoryContributions - lateDed));
         const tax = calculateBIRWithholdingTax(taxableIncome, pay_frequency);
 
@@ -1284,19 +1229,29 @@ router.post('/', async (req, res) => {
 
         const baseRemarks = shouldDeductStatutory
             ? `2026 Statutory Applied (${pay_frequency.toUpperCase()}) - SSS: ${sssEE.toFixed(2)} (ER: ${sssER.toFixed(2)}, EC: ${sssEC}), PhilHealth: ${philHealthEE.toFixed(2)}, Pag-IBIG: ${pagIbigEE.toFixed(2)}, Tax: ${tax.toFixed(2)}`
-            : `Regular Period (No Statutory Deductions) - Tax: ${tax.toFixed(2)}, Late: ${lateDed.toFixed(2)}`;
-        const paidLeaveNote = approvedPaidLeaveDays > 0 ? ` [Approved Paid Leave: ${approvedPaidLeaveDays} day(s) (+₱${safePaidLeavePay.toFixed(2)})]` : '';
+            : `Regular Period (No Statutory Deductions) - Tax: ${tax.toFixed(2)}`;
+        const paidLeaveNote = approvedPaidLeaveDays > 0 ? ` [Approved Paid Leave: ${approvedPaidLeaveDays} day(s), PHP ${safePaidLeavePay.toFixed(2)}${isFactory ? ' added to output pay' : ' included in basic pay'}]` : '';
         const otPolicyNote = isFactory && (toSafeNumber(overtime_hours) > 0 || toSafeNumber(regular_ot_hours) > 0)
             ? ' [Factory Worker: Overtime disallowed per HR policy (₱0.00)]'
             : '';
         const matDiffNote = safeMatDiff > 0 ? ` [Maternity Differential: +₱${safeMatDiff.toFixed(2)}]` : '';
-        const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${otPolicyNote}`;
+        const appliedLateDed = Math.min(lateDed, Math.max(0, round2(grossPay - totalStatutoryContributions - tax)));
+        const tardinessNote = tardiness.minutes > 0
+            ? ` [Late: PHP ${appliedLateDed.toFixed(2)}; Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${WORK_POLICY.gracePeriodMinutes}m grace x PHP ${WORK_POLICY.lateRatePerMinute} = PHP ${lateDed.toFixed(2)}${appliedLateDed < lateDed ? '; capped to available earnings' : ''}]`
+            : '';
+        const remarks = `${baseRemarks}${tardinessNote}${absenceNote}${suspensionNote}${paidLeaveNote}${matDiffNote}${otPolicyNote}${cash.cash_pay > 0 ? ` [SIL cash payout: PHP ${cash.cash_pay.toFixed(2)}]` : ''}`;
 
         let insertPayload = {
             employee_id,
             period_start: pStart,
             period_end: pEnd,
             basic_pay: safeBasic,
+            paid_leave_days: approvedPaidLeaveDays,
+            paid_leave_pay: safePaidLeavePay,
+            paid_leave_in_basic: !isFactory,
+            sil_cash_pay: cash.cash_pay,
+            leave_pay: safeLeave,
+            maternity_salary_differential: safeMatDiff,
             overtime_pay: isFactory ? 0 : safeOt,
             holiday_pay: safeHoliday,
             holiday_breakdown: holidayBreakdown,
@@ -1310,10 +1265,11 @@ router.post('/', async (req, res) => {
             status: 'Paid'
         };
 
-        const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload);
+        const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, pay_frequency);
 
         if (insertError) throw insertError;
         const insertedPayrollId = insertedRecord?.id;
+        if (cash.cash_pay > 0) refreshLeaveCredits(supabase, employee_id);
 
         const { data: emp } = await supabase
             .from('employees')
@@ -1375,12 +1331,12 @@ router.post('/', async (req, res) => {
             }
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 
 // 6. Factory batch submission
-router.post('/batch', async (req, res) => {
+router.post('/batch', requirePayrollManager, async (req, res) => {
     try {
         const { entries, period_start, period_end, pay_frequency = 'weekly' } = req.body;
 
@@ -1402,7 +1358,7 @@ router.post('/batch', async (req, res) => {
         const empIds = entries.map(e => e.employee_id).filter(Boolean);
 
         // Optimized single-roundtrip prefetch for existing payrolls and employee metadata
-        const [{ data: existingRecords }, { data: empList }] = await Promise.all([
+        const [{ data: existingRecords, error: existingError }, { data: empList, error: employeeError }, attendanceLogs] = await Promise.all([
             supabase
                 .from('payrolls')
                 .select('employee_id')
@@ -1411,12 +1367,24 @@ router.post('/batch', async (req, res) => {
                 .eq('period_end', pEnd),
             supabase
                 .from('employees')
-                .select('id, company_id, first_name, last_name')
-                .in('id', empIds)
+                .select('*')
+                .in('id', empIds),
+            fetchPayrollAttendance(supabase, empIds, pStart, pEnd)
         ]);
+        if (existingError || employeeError) throw existingError || employeeError;
 
         const existingSet = new Set((existingRecords || []).map(r => String(r.employee_id)));
         const empMap = new Map((empList || []).map(e => [String(e.id), e]));
+        const leavePay = await fetchPayrollLeavePay(supabase, empList || [], pStart, pEnd);
+
+        const attendanceByEmployee = new Map();
+        for (const log of attendanceLogs) {
+            const key = String(log.employee_id);
+            if (!attendanceByEmployee.has(key)) attendanceByEmployee.set(key, []);
+            attendanceByEmployee.get(key).push(log);
+        }
+        // Validate every worker before any inserts; a corrupt punch must not cause a partial batch.
+        const tardinessByEmployee = new Map((empList || []).map(emp => [String(emp.id), calculateTardiness(attendanceByEmployee.get(String(emp.id)) || [], WORK_POLICY, getEmployeeRestDays(emp))]));
 
         const results = [];
         const skipped = [];
@@ -1431,10 +1399,20 @@ router.post('/batch', async (req, res) => {
                 continue;
             }
 
-            const grossPay = round2(toSafeNumber(entry.gross_pay));
-
-            // Determine frequency divisor (default to weekly = / 4)
+            const tardiness = tardinessByEmployee.get(String(employee_id));
+            if (!tardiness) { skipped.push({ employee_id, reason: 'Employee not found' }); continue; }
             const frequency = entry.pay_frequency || pay_frequency || 'weekly';
+            const basicPay = Math.max(0, round2(toSafeNumber(entry.gross_pay)));
+            const cash = { ...leavePay.data[employee_id], available: leavePay.cash_out_available };
+            if (frequency !== 'weekly') { cash.cash_pay = 0; cash.taxable_cash = 0; cash.payout_ids = []; }
+            if ((entry.expected_paid_leave_pay != null && Number(entry.expected_paid_leave_pay) !== cash.paid_leave_pay)
+                || (entry.expected_sil_cash_pay != null && Number(entry.expected_sil_cash_pay) !== cash.cash_pay)) {
+                skipped.push({ employee_id, reason: 'Leave payments changed. Refresh the preview before saving.' });
+                continue;
+            }
+            assertCreditAttendanceConsistent(cash.leaves, attendanceByEmployee.get(String(employee_id)) || []);
+            const grossPay = round2(basicPay + cash.paid_leave_pay + cash.cash_pay);
+
             const divisor = frequency === 'weekly' ? 4 : (frequency === 'semi-monthly' ? 2 : 1);
 
             // Pro-rate raw monthly deductions (preserve directly if already prorated to avoid double division)
@@ -1442,9 +1420,10 @@ router.post('/batch', async (req, res) => {
             const sssDed = isProrated ? round2(toSafeNumber(entry.sss_deduction)) : round2(toSafeNumber(entry.sss_deduction) / divisor);
             const phDed = isProrated ? round2(toSafeNumber(entry.philhealth_deduction)) : round2(toSafeNumber(entry.philhealth_deduction) / divisor);
             const pgbDed = isProrated ? round2(toSafeNumber(entry.pagibig_deduction)) : round2(toSafeNumber(entry.pagibig_deduction) / divisor);
-            const taxDed = isProrated ? round2(toSafeNumber(entry.tax_deduction)) : round2(toSafeNumber(entry.tax_deduction) / divisor);
+            const taxDed = calculateBIRWithholdingTax(Math.max(0, basicPay + cash.paid_leave_pay + cash.taxable_cash - sssDed - phDed - pgbDed - tardiness.deduction), frequency);
 
-            const rawDeductions = round2(sssDed + phDed + pgbDed + taxDed);
+            const appliedLateDed = Math.min(tardiness.deduction, Math.max(0, round2(grossPay - sssDed - phDed - pgbDed - taxDed)));
+            const rawDeductions = round2(sssDed + phDed + pgbDed + taxDed + tardiness.deduction);
 
             // DEDUCTION CAP GUARDRAIL: Deductions can never exceed Gross Pay
             const totalDeductions = Math.min(rawDeductions, grossPay);
@@ -1463,13 +1442,19 @@ router.post('/batch', async (req, res) => {
                 }`
                 : '';
 
-            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''}${absenceSummary} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
+            const remarks = `Factory Batch Payout (${frequency.toUpperCase()}) - Group: ${entry.group || 'N/A'}${opsSummary ? ` | Operations - ${opsSummary}` : ''}${absenceSummary} | Late: PHP ${appliedLateDed.toFixed(2)} | Tardiness calculation: ${tardiness.minutes} whole minute(s) beyond ${WORK_POLICY.gracePeriodMinutes}m grace x PHP ${WORK_POLICY.lateRatePerMinute} = PHP ${tardiness.deduction.toFixed(2)} | SSS: ₱${sssDed.toFixed(2)}, PhilHealth: ₱${phDed.toFixed(2)}, Pag-IBIG: ₱${pgbDed.toFixed(2)}, Tax: ₱${taxDed.toFixed(2)}`;
 
             let insertPayload = {
                 employee_id,
                 period_start: pStart,
                 period_end: pEnd,
-                basic_pay: grossPay,
+                basic_pay: basicPay,
+                paid_leave_days: cash.paid_leave_days,
+                paid_leave_pay: cash.paid_leave_pay,
+                paid_leave_in_basic: false,
+                sil_cash_pay: cash.cash_pay,
+                holiday_pay: 0,
+                holiday_breakdown: [],
                 overtime_pay: 0,
                 deductions: totalDeductions,
                 sss_deduction: sssDed,
@@ -1481,13 +1466,15 @@ router.post('/batch', async (req, res) => {
                 status: 'Paid'
             };
 
-            const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload);
+            const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, frequency);
 
             if (insertError) {
                 skipped.push({ employee_id, reason: insertError.message });
                 continue;
             }
 
+            existingSet.add(String(employee_id));
+            if (cash.cash_pay > 0) refreshLeaveCredits(supabase, employee_id);
             results.push({ id: insertedRec?.id, employee_id, net_pay: netPay });
 
             const emp = empMap.get(String(employee_id));
@@ -1773,11 +1760,11 @@ router.put('/factory-logs/:id', async (req, res) => {
     }
 });
 
-router.get('/:id', cacheResponse(20), async (req, res) => {
+router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || !isValidUUID(id)) {
-            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
+        if (!id || id.length > 128) {
+            return res.status(400).json({ status: 'error', code: 'INVALID_ID', message: 'Invalid Payroll ID format.' });
         }
 
         const { data, error } = await supabase
@@ -1788,6 +1775,7 @@ router.get('/:id', cacheResponse(20), async (req, res) => {
 
         if (error) throw error;
         if (!data) return res.status(404).json({ status: 'error', code: 'NOT_FOUND', message: 'Payroll record not found.' });
+        if (!hasVerifiedManagerRole(req.user) && data.employee_id !== req.user?.id) return res.status(403).json({ error: 'You may only read your own payslip.' });
 
         res.json(data);
     } catch (err) {
@@ -1809,15 +1797,35 @@ router.post('/bulk-delete', async (req, res) => {
             return res.status(400).json({ error: `Invalid payroll ID format: ${invalidIds.join(', ')}` });
         }
 
-        const { error, count } = await supabase.from('payrolls').delete({ count: 'exact' }).in('id', ids);
-        if (error) throw error;
+        const actorId = req.user?.id || req.body?.admin_id || null;
+        const validActorId = actorId && isValidUUID(actorId) ? actorId : null;
+
+        const { data, error } = await supabase.rpc('delete_payroll_records_bulk', {
+            p_payroll_ids: ids,
+            p_actor_id: validActorId,
+        });
+
+        let deletedCount = ids.length;
+        if (error) {
+            console.error('delete_payroll_records_bulk RPC error:', error);
+            const { error: directError, count } = await supabase.from('payrolls').delete({ count: 'exact' }).in('id', ids);
+            if (directError) throw directError;
+            deletedCount = count ?? ids.length;
+        } else if (data && typeof data.deleted_count === 'number') {
+            deletedCount = data.deleted_count;
+        }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
         broadcastPayrollUpdate('PAYROLL_BULK_DELETED', { ids });
-        const deletedCount = count ?? ids.length;
         res.json({ success: true, deleted_count: deletedCount, message: `${deletedCount} payroll record(s) deleted successfully.` });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('bulk-delete payroll error:', err);
+        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        res.status(isConflict ? 409 : 500).json({
+            error: isConflict
+                ? 'This payslip is locked or contains linked records that prevent deletion.'
+                : err.message
+        });
     }
 });
 
@@ -1825,17 +1833,36 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {
-            return res.status(400).json({ status: 'error', code: 'INVALID_UUID', message: 'Invalid Payroll ID format.' });
+            return res.status(400).json({ status: 'error', code: 'INVALID_ID', message: 'Invalid Payroll ID format.' });
         }
 
-        const { error } = await supabase.from('payrolls').delete().eq('id', id);
-        if (error) throw error;
+        const actorId = req.user?.id || req.body?.admin_id || null;
+        const validActorId = actorId && isValidUUID(actorId) ? actorId : null;
+
+        const { data, error } = await supabase.rpc('delete_payroll_record', {
+            p_payroll_id: id,
+            p_actor_id: validActorId,
+        });
+
+        if (error) {
+            console.error('delete_payroll_record RPC error:', error);
+            const { error: directError } = await supabase.from('payrolls').delete().eq('id', id);
+            if (directError) throw directError;
+        } else if (data && data.success === false) {
+            return res.status(404).json({ status: 'error', code: 'NOT_FOUND', message: data.message || 'Payroll record not found.' });
+        }
 
         invalidateCache(['/api/payroll', '/api/dashboard']);
         broadcastPayrollUpdate('PAYROLL_DELETED', { id });
         res.json({ success: true, message: 'Payroll record deleted successfully.' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('delete payroll error:', err);
+        const isConflict = err.code === '23503' || err.code === 'P0001' || err.message?.includes('SIL_PAYROLL_LOCKED');
+        res.status(isConflict ? 409 : 500).json({
+            error: isConflict
+                ? 'This payslip is locked or contains linked records that prevent deletion.'
+                : err.message
+        });
     }
 });
 

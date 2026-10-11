@@ -17,6 +17,16 @@ export const getNotificationVisuals = (type) => {
         label: 'Leave',
         path: '/admin/leaves'
       };
+    case 'cash_out':
+    case 'sil_cash_out':
+    case 'cashout':
+      return {
+        icon: 'ti-cash',
+        bg: 'bg-success-subtle text-success-ink border-success/20',
+        badge: 'bg-success',
+        label: 'SIL Cash-Out',
+        path: '/admin/leaves?tab=cashouts'
+      };
     case 'shift':
       return {
         icon: 'ti-calendar-time',

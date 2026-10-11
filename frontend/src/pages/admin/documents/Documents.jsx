@@ -390,7 +390,7 @@ export default function Documents() {
                 </div>
             )}
 
-            {documentQuery.error && <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button></div>}
+            {documentQuery.error && <div role="alert" className="rounded-md border border-danger/20 bg-danger-subtle p-3 text-xs text-danger-ink">{documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button></div>}
             {/* CONTROLS */}
             <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -511,7 +511,7 @@ export default function Documents() {
                                     </p>
 
                                     <span className={`inline-flex mt-2 rounded border px-2 py-0.5 text-[10px] font-medium ${review.className}`}>{review.label}</span>
-                                    {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-rose-700">{doc.rejection_reason}</p>}
+                                    {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-danger-ink">{doc.rejection_reason}</p>}
                                     {status && (
                                         <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-sm border text-[10px] font-medium ${expiryBadgeStyles[status.level]}`}>
                                             <i className={`ti ${status.level === 'expired' ? 'ti-circle-x' : status.level === 'warning' ? 'ti-clock' : 'ti-circle-check'} text-xs`} />
@@ -532,8 +532,8 @@ export default function Documents() {
                                         <button type="button" onClick={() => handleOpenDocument(doc.id)} disabled={openingDocument === doc.id} aria-label={`Open ${doc.title || doc.file_name}`} className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-md" title="View / Download">
                                             <i className={`ti ${openingDocument === doc.id ? 'ti-loader animate-spin' : 'ti-download'} text-base`} />
                                         </button>
-                                        {review.key !== 'approved' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'approved')} className="text-xs text-emerald-700 font-semibold px-1" title="Approve document">Approve</button>}
-                                        {review.key !== 'rejected' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'rejected')} className="text-xs text-rose-700 font-semibold px-1" title="Reject document">Reject</button>}
+                                        {review.key !== 'approved' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'approved')} className="text-xs text-success-ink font-semibold px-1" title="Approve document">Approve</button>}
+                                        {review.key !== 'rejected' && <button type="button" disabled={reviewingDocument === doc.id} onClick={() => handleReviewDocument(doc, 'rejected')} className="text-xs text-danger-ink font-semibold px-1" title="Reject document">Reject</button>}
                                         <button
                                             onClick={() => handleDeleteDocument(doc)}
                                             className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-danger-ink hover:bg-danger-subtle rounded-md transition-colors duration-100 cursor-pointer"

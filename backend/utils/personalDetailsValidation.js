@@ -1,3 +1,12 @@
+import { isLeaveDate } from '../../shared/leavePolicy.js';
+import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
+
+export function validateHireDate(value, now = new Date()) {
+    if (value == null) return { isValid: true, hireDate: null };
+    if (!isLeaveDate(value) || value > getManilaWorkDate(now)) return { isValid: false, error: 'Hire date must be a valid, nonfuture date in YYYY-MM-DD format.' };
+    return { isValid: true, hireDate: value };
+}
+
 /**
  * Personal Details Validation and Sanitization
  * Enterprise-grade security for PII (Address, Birth Date, Gender)

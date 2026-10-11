@@ -1504,7 +1504,7 @@ const Scanner = () => {
 
             {/* Screen flash pulse */}
             {state.liveness.flashActive && (
-              <div className="absolute inset-0 z-50 bg-[#00f5d4]/25 border-[10px] border-[#00f5d4] pointer-events-none transition-opacity duration-150 animate-pulse shadow-[inset_0_0_80px_rgba(0,245,212,0.6)]" />
+              <div className="absolute inset-0 z-50 bg-accent/20 border-[8px] border-accent pointer-events-none transition-opacity duration-150 animate-pulse shadow-[inset_0_0_80px_rgba(37,99,235,0.35)]" />
             )}
 
             {/* Direction challenge prompt */}

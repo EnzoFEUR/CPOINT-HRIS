@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { calculateBIRWithholdingTax } from '../../../../../shared/payrollTax.mjs';
+import { getUser } from '../../../routes/guards';
+import { getEmployeeRestDays, getScheduledWorkDates, calculateTardiness, DEFAULT_WORK_POLICY } from '../../../../../shared/workPolicy.mjs';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import FactoryPiece from './FactoryPiece';
@@ -14,7 +17,8 @@ import {
     getEmployeeDept,
     isFactoryDept,
     getEmployeeRates,
-    matchJobTitle
+    matchJobTitle,
+    loadPayrollAttendance
 } from './utils/payrollHelpers';
 
 // Subcomponents
@@ -59,6 +63,10 @@ const PayrollCreate = () => {
     // Used so a worker's piece-rate share reflects days actually present, not a flat
     // equal split across everyone assigned to an operation.
     const [groupAttendanceMap, setGroupAttendanceMap] = useState({});
+    const [groupTardinessMap, setGroupTardinessMap] = useState({});
+    const [attendanceRefreshTick, setAttendanceRefreshTick] = useState(0);
+    const [attendanceError, setAttendanceError] = useState(null);
+    const [workPolicy, setWorkPolicy] = useState(DEFAULT_WORK_POLICY);
     // employee_id -> list of dates (YYYY-MM-DD) the worker actually clocked in and out on
     const [groupWorkedDatesMap, setGroupWorkedDatesMap] = useState({});
     const [isLoadingGroupAttendance, setIsLoadingGroupAttendance] = useState(false);
@@ -134,7 +142,7 @@ const PayrollCreate = () => {
     const [activePreset, setActivePreset] = useState('current_week');
 
     // Cutoff length: '7day' (Mon-Sun) or '5day' (Mon-Fri, weekends excluded from the count).
-    const [cutoffMode, setCutoffMode] = useState('7day');
+    const [cutoffMode, setCutoffMode] = useState('5day');
     // Kept as a derived flag rather than its own state so every existing computation
     // that already reads includeWeekends (expected days, attendance, etc.) keeps working.
     const includeWeekends = cutoffMode !== '5day';
@@ -267,7 +275,7 @@ const PayrollCreate = () => {
 
         fetchPaidLeaves();
         return () => { isMounted = false; };
-    }, [entryMode, formData.employee_id, periodStart, periodEnd]);
+    }, [entryMode, formData.employee_id, periodStart, periodEnd, attendanceRefreshTick]);
 
     // Automatic Holiday Rate Multiplier for Piece-Rate calculations
     const holidayRateMultiplier = useMemo(() => {
@@ -347,7 +355,7 @@ const PayrollCreate = () => {
 
         fetchHolidayPreview();
         return () => { isMounted = false; };
-    }, [periodStart, periodEnd, formData.employee_id, entryMode, holidayRefreshTick]);
+    }, [periodStart, periodEnd, formData.employee_id, entryMode, holidayRefreshTick, attendanceRefreshTick]);
 
     // Explicit holiday-generation status check (no side effects on the backend -
     // this is what lets the reminder banner below actually appear, rather than
@@ -1045,46 +1053,37 @@ const PayrollCreate = () => {
 
         let isMounted = true;
 
+        const controller = new AbortController();
         const loadGroupAttendance = async () => {
             setIsLoadingGroupAttendance(true);
+            setAttendanceError(null);
             try {
                 const results = await Promise.all(
                     activeGroupEmployees.map(async (emp) => {
                         const empId = String(emp.id);
-                        try {
-                            const res = await fetchWithAuth(
-                                `/api/attendance?employee_id=${empId}&start_date=${periodStart}&end_date=${periodEnd}`
-                            );
-                            const rawLogs = await res.json();
-                            const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
-                            const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
-
-                            const workedDatesSet = new Set();
-                            completedLogs.forEach(log => {
-                                const dateStr = extractDateStr(log.date || log.time_in);
-                                if (dateStr) workedDatesSet.add(dateStr);
-                            });
-
-                            return { empId, daysPresent: workedDatesSet.size, workedDates: Array.from(workedDatesSet) };
-                        } catch (err) {
-                            console.error(`Attendance fetch failed for worker ${empId}:`, err);
-                            return { empId, daysPresent: 0, workedDates: [] };
-                        }
+                        const { logs, workPolicy: policy } = await loadPayrollAttendance(empId, periodStart, periodEnd, controller.signal);
+                        const restDays = getEmployeeRestDays(emp);
+                        const completedLogs = logs.filter(log => log && log.time_out && log.time_in);
+                        const workedDatesSet = new Set(completedLogs.map(log => extractDateStr(log.date || log.time_in)).filter(Boolean));
+                        return { empId, daysPresent: workedDatesSet.size, workedDates: Array.from(workedDatesSet), tardiness: calculateTardiness(logs, policy, restDays) };
                     })
                 );
 
                 if (isMounted) {
                     const map = {};
                     const datesMap = {};
+                    const tardinessMap = {};
                     results.forEach(r => {
                         map[r.empId] = r.daysPresent;
                         datesMap[r.empId] = r.workedDates || [];
+                        tardinessMap[r.empId] = r.tardiness;
                     });
                     setGroupAttendanceMap(map);
                     setGroupWorkedDatesMap(datesMap);
+                    setGroupTardinessMap(tardinessMap);
                 }
             } catch (err) {
-                console.error('Group attendance load error:', err);
+                if (isMounted && err.name !== 'AbortError') setAttendanceError(err.message || 'Cannot load group attendance.');
             } finally {
                 if (isMounted) setIsLoadingGroupAttendance(false);
             }
@@ -1092,34 +1091,62 @@ const PayrollCreate = () => {
 
         loadGroupAttendance();
 
-        return () => { isMounted = false; };
-    }, [entryMode, activeGroupEmployees, periodStart, periodEnd, isInvalidDateRange]);
+        return () => { isMounted = false; controller.abort(); };
+    }, [entryMode, activeGroupEmployees, periodStart, periodEnd, isInvalidDateRange, attendanceRefreshTick]);
 
     const activeGroupEmployeeIdSet = useMemo(() => {
         return new Set(activeGroupEmployees.map(e => String(e.id)));
     }, [activeGroupEmployees]);
 
-    // How many days a worker was expected to show up for this cutoff.
-    // Honours statutory rest days (DOLE Art. 91: Sundays are rest days for 6-day factory work weeks,
-    // and Sat/Sun are rest days for 5-day office work weeks).
+    const leavePayEmployeeIds = useMemo(() => entryMode === 'single' ? (formData.employee_id ? [formData.employee_id] : []) : activeGroupEmployees.map(employee => employee.id).sort(), [entryMode, formData.employee_id, activeGroupEmployees]);
+    const leavePayPreview = useQuery({
+        queryKey: ['payrollLeavePay', getUser()?.id, leavePayEmployeeIds, periodStart, periodEnd],
+        enabled: leavePayEmployeeIds.length > 0 && Boolean(periodStart && periodEnd) && !isInvalidDateRange,
+        queryFn: async ({ signal }) => {
+            const response = await fetchWithAuth('/api/payroll/leave-pay-preview', { method: 'POST', signal, body: JSON.stringify({ employee_ids: leavePayEmployeeIds, period_start: periodStart, period_end: periodEnd }) });
+            const body = await response.json();
+            if (!response.ok || !body.success) throw new Error(body.error || 'Unable to verify leave payments.');
+            return body;
+        },
+        staleTime: 15000, refetchInterval: 60000, refetchIntervalInBackground: false, retry: false,
+    });
+    const leavePayLoading = leavePayEmployeeIds.length > 0 && (leavePayPreview.isPending || leavePayPreview.isFetching);
+    const singleCashPay = leavePayPreview.data?.data?.[formData.employee_id]?.cash_pay || 0;
+
+    // The cutoff length does not change the Monday-Friday work schedule.
     const expectedWorkingDays = useMemo(() => {
         if (!periodStart || !periodEnd || isInvalidDateRange) return 0;
-        const cur = new Date(periodStart + 'T00:00:00');
-        const end = new Date(periodEnd + 'T00:00:00');
-        if (isNaN(cur.getTime()) || isNaN(end.getTime())) return 0;
-        let count = 0;
-        while (cur <= end) {
-            const dow = cur.getDay(); // 0 = Sunday, 6 = Saturday
-            if (cutoffMode === '5day') {
-                if (dow !== 0 && dow !== 6) count++;
-            } else {
-                // 6-day factory operations (Mon-Sat); Sunday is the statutory weekly rest day
-                if (dow !== 0) count++;
-            }
-            cur.setDate(cur.getDate() + 1);
-        }
-        return count;
-    }, [periodStart, periodEnd, cutoffMode, isInvalidDateRange]);
+        return getScheduledWorkDates(periodStart, periodEnd).length;
+    }, [periodStart, periodEnd, isInvalidDateRange]);
+
+    useEffect(() => {
+        const ids = entryMode === 'single' ? new Set([String(formData.employee_id)]) : activeGroupEmployeeIdSet;
+        if ((entryMode === 'single' && !formData.employee_id) || ids.size === 0) return;
+        let timer;
+        const refresh = () => {
+            if (document.visibilityState === 'hidden') return;
+            clearTimeout(timer);
+            timer = setTimeout(() => { setAttendanceRefreshTick(value => value + 1); queryClient.invalidateQueries({ queryKey: ['payrollLeavePay'] }); }, 150);
+        };
+        const channel = supabase.channel(`payroll-attendance-${entryMode}-${formData.employee_id || selectedGroup}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, event => { if (ids.has(String(event.new?.employee_id || event.old?.employee_id))) refresh(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sil_cash_out_requests' }, event => { if (ids.has(String(event.new?.employee_id || event.old?.employee_id))) refresh(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances', ...(entryMode === 'single' ? { filter: `employee_id=eq.${formData.employee_id}` } : {}) }, event => {
+                const id = event.new?.employee_id || event.old?.employee_id;
+                if (ids.has(String(id)) || event.eventType === 'DELETE') refresh();
+            })
+            .subscribe(status => { if (status === 'SUBSCRIBED') refresh(); });
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        const poll = setInterval(refresh, 60000);
+        return () => {
+            clearTimeout(timer);
+            clearInterval(poll);
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+            supabase.removeChannel(channel);
+        };
+    }, [entryMode, formData.employee_id, selectedGroup, activeGroupEmployeeIdSet, queryClient]);
 
     // Anyone short of even one expected day. Held back until attendance has actually
     // loaded so the whole roster isn't flagged mid-fetch.
@@ -1134,26 +1161,23 @@ const PayrollCreate = () => {
             (holidayPreview?.items || [])
                 .filter(item => item && (item.holidayType === 'special_non_working' || item.holidayType === 'regular') && item.date)
                 .map(item => extractDateStr(item.date))
-                .filter(dateStr => {
-                    const dow = new Date(`${dateStr}T00:00:00`).getDay();
-                    if (Number.isNaN(dow)) return false;
-                    return cutoffMode === '5day' ? (dow !== 0 && dow !== 6) : dow !== 0;
-                })
+                .filter(Boolean)
         ));
 
         activeGroupEmployees.forEach(emp => {
             const idStr = String(emp.id);
-            const daysPresent = groupAttendanceMap[idStr] || 0;
+            const workDates = getScheduledWorkDates(periodStart, periodEnd, getEmployeeRestDays(emp));
             const workedDates = new Set(groupWorkedDatesMap[idStr] || []);
-            const unworkedHolidayDays = nonWorkingHolidayDates.filter(d => !workedDates.has(d)).length;
-            const expectedForWorker = Math.max(0, expectedWorkingDays - unworkedHolidayDays);
+            const daysPresent = workDates.filter(date => workedDates.has(date)).length;
+            const unworkedHolidayDays = nonWorkingHolidayDates.filter(date => workDates.includes(date) && !workedDates.has(date)).length;
+            const expectedForWorker = Math.max(0, workDates.length - unworkedHolidayDays);
             const daysAbsent = Math.max(0, expectedForWorker - daysPresent);
             if (daysAbsent > 0) {
                 map[idStr] = { employee: emp, daysPresent, daysAbsent, expectedWorkingDays: expectedForWorker };
             }
         });
         return map;
-    }, [entryMode, activeGroupEmployees, groupAttendanceMap, groupWorkedDatesMap, expectedWorkingDays, isLoadingGroupAttendance, holidayPreview, cutoffMode]);
+    }, [entryMode, activeGroupEmployees, groupAttendanceMap, groupWorkedDatesMap, expectedWorkingDays, isLoadingGroupAttendance, holidayPreview, periodStart, periodEnd]);
 
     // Computed Factory Operation Rows
     const computedFactoryRows = useMemo(() => {
@@ -1287,11 +1311,6 @@ const PayrollCreate = () => {
         });
     }, [factoryRows, activeGroupEmployees, activeGroupEmployeeIdSet, holidayRateMultiplier, groupAttendanceMap, absenteeInfo, absenteeOutputs]);
 
-    const grandTotalFactoryPayout = useMemo(() => {
-        if (!selectedGroup) return 0;
-        return computedFactoryRows.reduce((sum, r) => sum + r.totalPrice, 0);
-    }, [computedFactoryRows, selectedGroup]);
-
     // Operation-Level Calculation & Statutory Breakdown per Employee
     const workerPayrollMap = useMemo(() => {
         const map = {};
@@ -1307,6 +1326,8 @@ const PayrollCreate = () => {
                 pagIbig: 0,
                 tax: 0,
                 totalDeductions: 0,
+                lateMinutes: groupTardinessMap[idStr]?.minutes || 0,
+                lateDeduction: groupTardinessMap[idStr]?.deduction || 0,
                 netPay: 0,
                 daysPresent: groupAttendanceMap[idStr] || 0,
                 isAbsent: !!absenteeInfo[idStr],
@@ -1352,73 +1373,31 @@ const PayrollCreate = () => {
 
         Object.keys(map).forEach(empId => {
             const item = map[empId];
-            const gross = item.grossPay;
-
-            let sss = 0;
-            let philHealth = 0;
-            let pagIbig = 0;
-            let tax = 0;
-
-            if (gross > 0) {
-                const monthlyEquiv = gross * 4;
-
-                const sssBase = Math.min(monthlyEquiv, statutoryRates.sss_max_msc);
-                const monthlySss = sssBase * (statutoryRates.sss_employee_rate / 100);
-                sss = parseFloat((monthlySss / 4).toFixed(2));
-
-                const phBase = Math.min(
-                    Math.max(monthlyEquiv, statutoryRates.philhealth_min_salary),
-                    statutoryRates.philhealth_max_salary
-                );
-                const monthlyPhilHealth = (phBase * (statutoryRates.philhealth_rate / 100)) / 2;
-                philHealth = parseFloat((monthlyPhilHealth / 4).toFixed(2));
-
-                const monthlyPagIbig = Math.min(
-                    monthlyEquiv * (statutoryRates.pagibig_employee_rate / 100),
-                    statutoryRates.pagibig_max_contribution
-                );
-                pagIbig = parseFloat((monthlyPagIbig / 4).toFixed(2));
-
-                const totalStatutory = parseFloat((sss + philHealth + pagIbig).toFixed(2));
-                const weeklyTaxable = Math.max(0, gross - totalStatutory);
-                const monthlyTaxable = weeklyTaxable * 4;
-
-                let monthlyTax = 0;
-                if (monthlyTaxable > 20833.33) {
-                    if (monthlyTaxable <= 33333.33) {
-                        monthlyTax = (monthlyTaxable - 20833.33) * 0.15;
-                    } else if (monthlyTaxable <= 66666.67) {
-                        monthlyTax = 1875.00 + (monthlyTaxable - 33333.33) * 0.20;
-                    } else if (monthlyTaxable <= 166666.67) {
-                        monthlyTax = 8541.67 + (monthlyTaxable - 66666.67) * 0.25;
-                    } else if (monthlyTaxable <= 666666.67) {
-                        monthlyTax = 33541.67 + (monthlyTaxable - 166666.67) * 0.30;
-                    } else {
-                        monthlyTax = 183541.67 + (monthlyTaxable - 666666.67) * 0.35;
-                    }
-                }
-                tax = parseFloat((monthlyTax / 4).toFixed(2));
-
-                item.sss = sss;
-                item.philHealth = philHealth;
-                item.pagIbig = pagIbig;
-                item.tax = tax;
-
-                const rawTotalDeductions = parseFloat((totalStatutory + tax).toFixed(2));
-                item.totalDeductions = Math.min(gross, rawTotalDeductions);
-                item.netPay = Math.max(0, parseFloat((gross - item.totalDeductions).toFixed(2)));
-            } else {
-                item.sss = 0;
-                item.philHealth = 0;
-                item.pagIbig = 0;
-                item.tax = 0;
-                item.totalDeductions = 0;
-                item.netPay = 0;
+            const extra = leavePayPreview.data?.data?.[empId];
+            item.piecePay = parseFloat(item.grossPay.toFixed(2));
+            item.paidLeavePay = extra?.paid_leave_pay || 0;
+            item.silCashPay = extra?.cash_pay || 0;
+            const compensation = item.piecePay + item.paidLeavePay;
+            const gross = parseFloat((compensation + item.silCashPay).toFixed(2));
+            item.grossPay = gross;
+            if (compensation > 0) {
+                const monthlyEquiv = compensation * 4;
+                item.sss = parseFloat((Math.min(monthlyEquiv, statutoryRates.sss_max_msc) * statutoryRates.sss_employee_rate / 100 / 4).toFixed(2));
+                const phBase = Math.min(Math.max(monthlyEquiv, statutoryRates.philhealth_min_salary), statutoryRates.philhealth_max_salary);
+                item.philHealth = parseFloat((phBase * statutoryRates.philhealth_rate / 100 / 2 / 4).toFixed(2));
+                item.pagIbig = parseFloat((Math.min(monthlyEquiv * statutoryRates.pagibig_employee_rate / 100, statutoryRates.pagibig_max_contribution) / 4).toFixed(2));
             }
+            const statutory = item.sss + item.philHealth + item.pagIbig;
+            item.tax = calculateBIRWithholdingTax(Math.max(0, compensation + (extra?.taxable_cash || 0) - statutory - item.lateDeduction), 'weekly');
+            item.lateDeduction = Math.min(item.lateDeduction, Math.max(0, parseFloat((gross - statutory - item.tax).toFixed(2))));
+            item.totalDeductions = Math.min(gross, parseFloat((statutory + item.tax + item.lateDeduction).toFixed(2)));
+            item.netPay = Math.max(0, parseFloat((gross - item.totalDeductions).toFixed(2)));
         });
 
         return map;
-    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, absenteeInfo, expectedWorkingDays, statutoryRates]);
+    }, [activeGroupEmployees, computedFactoryRows, groupAttendanceMap, groupTardinessMap, absenteeInfo, expectedWorkingDays, statutoryRates, leavePayPreview.data]);
+
+    const grandTotalFactoryPayout = Object.values(workerPayrollMap).reduce((sum, item) => sum + item.grossPay, 0);
 
     // Gate for saving: every absent worker needs a quantity on every paid operation
     // they are assigned to, and no operation may be over-declared.
@@ -1549,7 +1528,7 @@ const PayrollCreate = () => {
         });
     }, [employees, empSearch, selectedDeptFilter]);
 
-    // Single Employee Attendance & Calculation (with 2-Hour Regular Lateness Rule)
+    // Single payroll uses the same effective policy as server-side payout calculation.
     useEffect(() => {
         if (entryMode !== 'single' || !formData.employee_id || !periodStart || !periodEnd || isInvalidDateRange) {
             return;
@@ -1557,22 +1536,14 @@ const PayrollCreate = () => {
 
         let isMounted = true;
 
+        const controller = new AbortController();
         const calculatePayroll = async () => {
             setIsCalculating(true);
+            setAttendanceError(null);
             try {
-                const attendanceRes = await fetchWithAuth(
-                    `/api/attendance?employee_id=${formData.employee_id}&start_date=${periodStart}&end_date=${periodEnd}`
-                );
-                const rawLogs = await attendanceRes.json();
-                const logs = Array.isArray(rawLogs) ? rawLogs : (rawLogs.data || rawLogs.logs || []);
-
-                const gracePeriodMins = 120; // 2-Hour Late Rule threshold
-                const { hourlyRate, dailyRate } = employeeRates;
-                const perMinuteRate = hourlyRate / 60;
-
-                let adjustments = 0;
+                const { logs, workPolicy: policy } = await loadPayrollAttendance(formData.employee_id, periodStart, periodEnd, controller.signal);
+                const tardiness = calculateTardiness(logs, policy, getEmployeeRestDays(selectedEmployee));
                 let calculatedOtHours = 0;
-                let totalLateMinutes = 0;
                 const workedDatesSet = new Set();
 
                 const completedLogs = Array.isArray(logs) ? logs.filter(l => l && l.time_out && l.time_in) : [];
@@ -1581,29 +1552,7 @@ const PayrollCreate = () => {
                     const dateStr = extractDateStr(log.date || log.time_in);
                     if (dateStr) workedDatesSet.add(dateStr);
 
-                    const timeIn = parseDate(log.time_in);
                     const timeOut = parseDate(log.time_out);
-
-                    if (timeIn && dateStr) {
-                        const scheduleStart = new Date(`${dateStr}T08:00:00`);
-                        if (!isNaN(scheduleStart.getTime()) && timeIn > scheduleStart) {
-                            const minutes = Math.floor((timeIn - scheduleStart) / 60000);
-                            if (minutes > 0) {
-                                totalLateMinutes += minutes;
-                                if (minutes >= gracePeriodMins) {
-                                    // 2-Hour Rule: Lateness >= 2 hrs (120+ mins): payment converts to HOURLY rate for actual hours worked
-                                    const lateHours = minutes / 60;
-                                    const workedHours = Math.max(0, 8 - lateHours);
-                                    const earnedHourlyPay = workedHours * hourlyRate;
-                                    const dayLoss = Math.max(0, dailyRate - earnedHourlyPay);
-                                    adjustments += dayLoss;
-                                } else if (perMinuteRate > 0) {
-                                    // < 2 Hours Late (< 120 mins): Standard per-minute deduction against standard basic pay
-                                    adjustments += (minutes * perMinuteRate);
-                                }
-                            }
-                        }
-                    }
 
                     if (log.overtime_hours) {
                         calculatedOtHours += parseFloat(log.overtime_hours) || 0;
@@ -1624,24 +1573,25 @@ const PayrollCreate = () => {
                 const daysWorked = uniqueWorkedDates.length;
 
                 if (isMounted) {
+                    setWorkPolicy(policy);
                     setFormData(prev => ({
                         ...prev,
                         days_worked: daysWorked,
-                        late_minutes: totalLateMinutes,
+                        late_minutes: tardiness.minutes,
                         overtime_hours: calculatedOtHours > 0 ? calculatedOtHours.toFixed(2) : prev.overtime_hours,
-                        late_deductions: adjustments > 0 ? adjustments.toFixed(2) : (prev.late_deductions || '0.00')
+                        late_deductions: tardiness.deduction.toFixed(2)
                     }));
                 }
             } catch (err) {
-                console.error('Calculation error:', err);
+                if (isMounted && err.name !== 'AbortError') setAttendanceError(err.message || 'Cannot load payroll attendance.');
             } finally {
                 if (isMounted) setIsCalculating(false);
             }
         };
 
         calculatePayroll();
-        return () => { isMounted = false; };
-    }, [entryMode, formData.employee_id, periodStart, periodEnd, selectedEmployee, employeeRates, isInvalidDateRange]);
+        return () => { isMounted = false; controller.abort(); };
+    }, [entryMode, formData.employee_id, periodStart, periodEnd, selectedEmployee, employeeRates, isInvalidDateRange, attendanceRefreshTick]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -1650,6 +1600,7 @@ const PayrollCreate = () => {
 
     const handleSubmitBatch = async (e) => {
         e.preventDefault();
+        if (leavePayLoading || leavePayPreview.isError) { setError(leavePayPreview.error?.message || 'Still checking leave payments. Try again in a moment.'); return; }
         if (isInvalidDateRange) {
             setError(isRangeTooLong
                 ? `Payroll cutoff cannot be longer than ${MAX_CUTOFF_DAYS} days (${periodDaysCount} selected).`
@@ -1672,6 +1623,7 @@ const PayrollCreate = () => {
             return;
         }
 
+        if (attendanceError) { setError(attendanceError); return; }
         if (isLoadingGroupAttendance) {
             setError('Still checking attendance for this group. Try again in a moment.');
             return;
@@ -1727,7 +1679,9 @@ const PayrollCreate = () => {
                     period_end: periodEnd,
                     pay_frequency: 'weekly',
                     is_prorated: true,
-                    gross_pay: empGrossPay,
+                    gross_pay: workerData?.piecePay || 0,
+                    expected_paid_leave_pay: workerData?.paidLeavePay || 0,
+                    expected_sil_cash_pay: workerData?.silCashPay || 0,
                     sss_deduction: workerData ? workerData.sss : 0,
                     philhealth_deduction: workerData ? workerData.philHealth : 0,
                     pagibig_deduction: workerData ? workerData.pagIbig : 0,
@@ -1746,10 +1700,10 @@ const PayrollCreate = () => {
                     overtime_hours: 0,
                     overtime_pay: 0
                 };
-            }).filter(entry => entry.gross_pay > 0);
+            }).filter(entry => entry.gross_pay + entry.expected_paid_leave_pay + entry.expected_sil_cash_pay > 0);
 
             if (batchEntries.length === 0) {
-                setError('No employees were assigned to operations with positive payouts.');
+                setError('No employees have output pay, paid leave or approved cash payouts this period.');
                 setIsSubmitting(false);
                 return;
             }
@@ -1770,11 +1724,15 @@ const PayrollCreate = () => {
                 setError(data.error || 'Failed to submit factory batch payroll.');
                 setIsSubmitting(false);
             } else {
-                setSuccess(`${selectedGroup} Payroll Distributed! Distributed ₱${grandTotalFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2 })} across ${batchEntries.length} assigned workers in ${selectedGroup}.`);
+                const saved = data.saved || [];
+                setSuccess(`Saved ${saved.length} payslip(s) for ${selectedGroup}.`);
+                if (data.skipped?.length) setError(data.skipped.map(item => { const emp = employees.find(employee => employee.id === item.employee_id); return `${emp?.first_name || item.employee_id}: ${item.reason}`; }).join('; '));
+                queryClient.invalidateQueries({ queryKey: ['payrollLeavePay'] });
                 queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'all' });
                 queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'all' });
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'], refetchType: 'all' });
-                setTimeout(() => navigate('/admin/payroll'), 900);
+                if (!data.skipped?.length) setTimeout(() => navigate('/admin/payroll'), 900);
+                else setIsSubmitting(false);
             }
         } catch (err) {
             setError('Connection error. Please check your network.');
@@ -1784,6 +1742,8 @@ const PayrollCreate = () => {
 
     const handleSubmitSingle = async (e) => {
         e.preventDefault();
+        if (leavePayLoading || leavePayPreview.isError) { setError(leavePayPreview.error?.message || 'Still checking leave payments. Try again in a moment.'); return; }
+        if (attendanceError || isCalculating) { setError(attendanceError || 'Attendance is still being checked.'); return; }
         if (isInvalidDateRange) {
             setError(isRangeTooLong
                 ? `Payroll cutoff cannot be longer than ${MAX_CUTOFF_DAYS} days (${periodDaysCount} selected).`
@@ -1810,6 +1770,8 @@ const PayrollCreate = () => {
                 late_minutes: Number(formData.late_minutes) || 0,
                 hourly_rate: employeeRates.hourlyRate,
                 daily_rate: employeeRates.dailyRate,
+                expected_paid_leave_pay: leavePayPreview.data?.data?.[formData.employee_id]?.paid_leave_pay || 0,
+                expected_sil_cash_pay: singleCashPay,
                 paid_leave_days: totalPaidLeaveDays,
                 paid_leave_pay: parseFloat((totalPaidLeaveDays * employeeRates.dailyRate).toFixed(2)),
                 overtime_hours: otHours,
@@ -1835,7 +1797,8 @@ const PayrollCreate = () => {
                 queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'all' });
                 queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'all' });
                 queryClient.invalidateQueries({ queryKey: ['adminEmployees'], refetchType: 'all' });
-                setTimeout(() => navigate('/admin/payroll'), 900);
+                if (!data.skipped?.length) setTimeout(() => navigate('/admin/payroll'), 900);
+                else setIsSubmitting(false);
             }
         } catch (err) {
             setError('Connection error. Please check your network.');
@@ -1893,12 +1856,13 @@ const PayrollCreate = () => {
                 </div>
 
                 {/* Notifications & Error Alerts */}
-                {error && (
+                {attendanceError && <p role="alert" className="mb-4 text-sm text-danger-ink">{attendanceError} Payroll submission is blocked until attendance is available.</p>}
+                {(error || leavePayPreview.isError) && (
                     <div className="mb-6 p-3.5 sm:p-4 bg-danger-subtle border-l-4 border-danger rounded-r-md shadow-2xs flex items-start gap-3">
                         <i className="ti ti-alert-triangle text-danger-ink mt-0.5 text-lg"></i>
                         <div className="min-w-0">
                             <h4 className="text-xs sm:text-sm font-bold text-danger-ink">Action Stopped</h4>
-                            <p className="text-xs sm:text-sm text-danger-ink mt-0.5 break-words">{error}</p>
+                            <p className="text-xs sm:text-sm text-danger-ink mt-0.5 break-words">{error || leavePayPreview.error?.message}</p>
                         </div>
                     </div>
                 )}
@@ -2099,8 +2063,8 @@ const PayrollCreate = () => {
                         setBreakdownViewMode={setBreakdownViewMode}
                         setIsFactoryPieceOpen={setIsFactoryPieceOpen}
                         setIsGroupModalOpen={setIsGroupModalOpen}
-                        isSubmitting={isSubmitting}
-                        isInvalidDateRange={isInvalidDateRange || (holidayYearStatus.checked && !holidayYearStatus.generated)}
+                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError}
+                        isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitBatch={handleSubmitBatch}
                         absenteeInfo={absenteeInfo}
                         absenteeValidation={absenteeValidation}
@@ -2115,13 +2079,15 @@ const PayrollCreate = () => {
                         employeeRates={employeeRates}
                         estimatedOtPay={estimatedOtPay}
                         setIsEmpModalOpen={setIsEmpModalOpen}
+                        silCashPay={singleCashPay}
                         paidLeaves={paidLeaves}
                         isLoadingLeaves={isLoadingLeaves}
                         totalPaidLeaveDays={totalPaidLeaveDays}
                         isCalculating={isCalculating}
+                        workPolicy={workPolicy}
                         holidayPreview={holidayPreview}
-                        isSubmitting={isSubmitting}
-                        isInvalidDateRange={isInvalidDateRange || (holidayYearStatus.checked && !holidayYearStatus.generated)}
+                        isSubmitting={isSubmitting || leavePayLoading || leavePayPreview.isError}
+                        isInvalidDateRange={isInvalidDateRange || Boolean(attendanceError) || (holidayYearStatus.checked && !holidayYearStatus.generated)}
                         handleSubmitSingle={handleSubmitSingle}
                         periodStart={periodStart}
                         periodEnd={periodEnd}

@@ -12,7 +12,9 @@ const SinglePayrollSection = ({
     paidLeaves,
     isLoadingLeaves,
     totalPaidLeaveDays,
+    silCashPay = 0,
     isCalculating,
+    workPolicy,
     holidayPreview,
     isSubmitting,
     isInvalidDateRange,
@@ -87,6 +89,7 @@ const SinglePayrollSection = ({
                 )}
             </div>
 
+            {silCashPay > 0 && <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">SIL cash payout: PHP {silCashPay.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
             {/* Leave with Pay Details Banner */}
             {selectedEmployee && (
                 <div className="bg-surface-muted border border-line p-4 rounded-lg shadow-2xs space-y-3">
@@ -112,17 +115,14 @@ const SinglePayrollSection = ({
                                         </span>
                                     )}
                                 </h4>
-                                <p className="text-[11px] text-ink font-medium">
-                                    Approved leave with pay records overlapping this cutoff period ({formatReadableDate(periodStart)} – {formatReadableDate(periodEnd)})
-                                </p>
                             </div>
                         </div>
 
                         {paidLeaves.length > 0 && employeeRates.dailyRate > 0 && (
                             <div className="bg-white border border-success/20 px-3 py-1.5 rounded-md shadow-2xs font-mono text-xs text-right">
-                                <span className="text-[10px] text-success-ink font-bold block uppercase">Est. Leave Pay</span>
+                                <span className="text-[10px] text-success-ink font-bold block uppercase">{getEmployeeDept(selectedEmployee).toLowerCase().includes('factory') ? 'Leave pay added' : 'Included in basic pay'}</span>
                                 <span className="font-bold text-success-ink">
-                                    +₱{(totalPaidLeaveDays * employeeRates.dailyRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    ₱{(totalPaidLeaveDays * employeeRates.dailyRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                             </div>
                         )}
@@ -261,40 +261,16 @@ const SinglePayrollSection = ({
                 </div>
             )}
 
-            {/* Deductions & Overrides with 2-Hour Rule indicator */}
             <div className="p-4 bg-danger-subtle/40 rounded-lg border border-danger/20 space-y-2">
-                <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-danger-ink uppercase">Late Deductions / Tardiness (₱)</label>
-                    {Number(formData.late_minutes) > 0 && (
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border ${Number(formData.late_minutes) >= 120
-                            ? 'bg-warning-subtle text-warning-ink border-warning/20'
-                            : 'bg-danger-subtle text-danger-ink border-danger/20'
-                            }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${Number(formData.late_minutes) >= 120 ? 'bg-warning' : 'bg-danger'}`} />
-                            {formData.late_minutes} mins late {Number(formData.late_minutes) >= 120 ? '(≥ 2 hrs: Hourly Pay Rule)' : '(< 2 hrs: Per-Min Deduction)'}
-                        </span>
-                    )}
-                </div>
-                <input
-                    type="number"
-                    step="0.01"
-                    name="late_deductions"
-                    value={formData.late_deductions}
-                    onChange={handleInputChange}
-                    className="w-full h-10 px-3 bg-white border border-danger/20 rounded-md font-mono text-danger-ink text-base font-bold outline-none focus:border-danger focus:ring-1 focus:ring-danger transition-colors duration-100"
-                    placeholder="0.00"
-                />
-                {Number(formData.late_minutes) >= 120 && (
-                    <p className="text-[11px] text-warning-ink font-medium">
-                        <i className="ti ti-info-circle mr-1" />
-                        Regular Policy: Lateness of 2+ hours converts shift earnings to actual worked hours ({Math.max(0, 8 - (Number(formData.late_minutes) / 60)).toFixed(1)} hrs @ ₱{employeeRates.hourlyRate.toFixed(2)}/hr).
-                    </p>
-                )}
+                <label htmlFor="payroll-tardiness" className="block text-xs font-bold text-danger-ink uppercase">Tardiness deduction (PHP)</label>
+                <input id="payroll-tardiness" type="number" name="late_deductions" value={formData.late_deductions} readOnly
+                    className="w-full h-10 px-3 bg-white border border-danger/20 rounded-md font-mono text-danger-ink text-base font-bold" placeholder="0.00" />
+                <p className="text-xs text-slate-600">{formData.late_minutes || 0} whole minute(s) beyond the {workPolicy.gracePeriodMinutes}-minute grace period x PHP {workPolicy.lateRatePerMinute}. Calculated from attendance; verified again when saved.</p>
             </div>
 
             <button
                 type="submit"
-                disabled={isSubmitting || !formData.employee_id || isInvalidDateRange}
+                disabled={isSubmitting || isCalculating || !formData.employee_id || isInvalidDateRange}
                 className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
                 {!isSubmitting ? (
