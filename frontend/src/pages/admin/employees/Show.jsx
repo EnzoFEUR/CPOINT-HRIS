@@ -531,13 +531,16 @@ export default function Show() {
             });
             const resData = await response.json();
             if (resData.success) {
-                toast.success('Employee deleted permanently.');
+                toast.success(resData.message || 'Employee forensically purged.');
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? oldData.filter(emp => emp.id !== employee.id) : [];
                 });
+                queryClient.removeQueries({ queryKey: ['employeeDetails', employee.id] });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard'] });
                 navigate('/admin/employees');
             } else {
-                toast.error('Failed: ' + resData.error);
+                toast.error('Failed: ' + (resData.error || 'Cascading purge failed'));
             }
         } catch (err) {
             toast.error('Network Error. Failed to delete employee.');

@@ -42,7 +42,34 @@ export const DOCUMENT_TYPES = Object.freeze([
 ]);
 
 export const DOCUMENT_TYPE_IDS = DOCUMENT_TYPES.map(type => type.id);
-export const getDocumentType = id => DOCUMENT_TYPES.find(type => type.id === id) || DOCUMENT_TYPES.at(-1);
+
+export const getDocumentType = (idOrLabel) => {
+    if (!idOrLabel || typeof idOrLabel !== 'string') return DOCUMENT_TYPES.at(-1);
+    const query = idOrLabel.trim().toLowerCase();
+
+    // 1. Exact id match
+    const byId = DOCUMENT_TYPES.find(type => type.id.toLowerCase() === query);
+    if (byId) return byId;
+
+    // 2. Exact label match
+    const byLabel = DOCUMENT_TYPES.find(type => type.label.toLowerCase() === query);
+    if (byLabel) return byLabel;
+
+    // 3. Normalized / alias matching
+    const byNormalized = DOCUMENT_TYPES.find(type => {
+        const typeIdLower = type.id.toLowerCase();
+        const typeLabelLower = type.label.toLowerCase();
+        return (
+            typeLabelLower.includes(query) ||
+            query.includes(typeLabelLower) ||
+            query.includes(typeIdLower.replace(/_/g, ' ')) ||
+            typeIdLower.includes(query.replace(/[\s-]/g, '_'))
+        );
+    });
+    if (byNormalized) return byNormalized;
+
+    return DOCUMENT_TYPES.at(-1);
+};
 export const getDocumentTypesByCategory = category => !category || category === 'All' ? DOCUMENT_TYPES : DOCUMENT_TYPES.filter(type => type.category === category);
 export const getStandard201Requirements = () => DOCUMENT_TYPES.filter(type => type.is201Required);
 export const CLASSIFICATION_EVIDENCE = ['agency_name', 'document_heading', 'form_code', 'logo', 'layout'];

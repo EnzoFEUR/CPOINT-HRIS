@@ -766,21 +766,35 @@ const EmployeeDashboard = () => {
 
             {/* Pending Document Requests from HR Banner */}
             {pendingDocRequests.length > 0 && !isTerminated && (
-                <div className="bg-white border border-accent/30 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden ring-1 ring-accent/10">
-                    <div className="flex items-center gap-3.5">
+                <div className="bg-surface border border-accent/30 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden ring-1 ring-accent/10">
+                    <div className="flex items-start sm:items-center gap-3.5 min-w-0">
                         <div className="w-10 h-10 rounded-md bg-accent-subtle border border-accent/20 flex items-center justify-center shrink-0 text-accent">
                             <i className="ti ti-file-alert text-xl" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-accent text-white">Action Required</span>
-                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-slate-900">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent text-white">Action Required</span>
+                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-ink">
                                     HR Requested Document{pendingDocRequests.length > 1 ? 's' : ''} ({pendingDocRequests.length})
                                 </h3>
                             </div>
-                            <p className="text-slate-600 text-xs mt-0.5 leading-relaxed font-medium">
-                                HR has requested <span className="font-semibold text-slate-900">{pendingDocRequests[0].document_type}</span>{pendingDocRequests.length > 1 ? ` and ${pendingDocRequests.length - 1} other record(s)` : ''} for your personnel records vault.
-                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                {pendingDocRequests.map(req => (
+                                    <span
+                                        key={req.id}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200"
+                                    >
+                                        <i className="ti ti-file-text text-[11px]" />
+                                        <span>{req.document_type}</span>
+                                        {req.due_date && <span className="text-[10px] text-amber-700 font-normal">· Due {req.due_date}</span>}
+                                    </span>
+                                ))}
+                            </div>
+                            {pendingDocRequests[0]?.notes && (
+                                <p className="text-ink-muted text-xs mt-1 italic">
+                                    &quot;{pendingDocRequests[0].notes}&quot;
+                                </p>
+                            )}
                         </div>
                     </div>
                     <Link

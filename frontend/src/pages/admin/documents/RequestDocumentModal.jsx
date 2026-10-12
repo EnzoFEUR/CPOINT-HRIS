@@ -17,6 +17,7 @@ export default function RequestDocumentModal({
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
     const [selectedDocTypeId, setSelectedDocTypeId] = useState(initialDocTypeId || 'tin');
     const [customDocType, setCustomDocType] = useState('');
+    const [customCategory, setCustomCategory] = useState('Other');
     const [priority, setPriority] = useState('normal');
     const [dueDate, setDueDate] = useState('');
     const [notes, setNotes] = useState('');
@@ -43,7 +44,6 @@ export default function RequestDocumentModal({
                 .then(res => res.json())
                 .then(data => {
                     const list = Array.isArray(data) ? data : data.data || [];
-                    // Keep active / non-archived employees
                     const activeList = list.filter(e =>
                         !e.archived_at &&
                         e.is_active !== false &&
@@ -81,12 +81,14 @@ export default function RequestDocumentModal({
             return;
         }
 
+        const resolvedCategory = isCustomType ? (customCategory || 'Other') : (selectedTypeObj.category || 'Other');
+
         setIsSubmitting(true);
         try {
             await createDocumentRequest({
                 employeeId,
                 documentType: resolvedDocType,
-                category: selectedTypeObj.category || 'Other',
+                category: resolvedCategory,
                 priority,
                 dueDate: dueDate || null,
                 notes: notes.trim() || null
@@ -103,51 +105,51 @@ export default function RequestDocumentModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-surface rounded-xl shadow-2xl border border-line w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh] text-ink">
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-2xs shrink-0">
-                            <i className="ti ti-file-alert text-lg" />
+                <div className="px-5 py-3.5 border-b border-line flex items-center justify-between bg-surface">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center shadow-2xs shrink-0">
+                            <i className="ti ti-file-alert text-base" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-slate-900">Request Required Document</h3>
+                            <h3 className="text-sm font-semibold text-ink">Request Required Document</h3>
                         </div>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                        className="text-ink-muted hover:text-ink p-1.5 rounded-lg hover:bg-surface-muted transition-colors cursor-pointer"
                         aria-label="Close dialog"
                     >
-                        <i className="ti ti-x text-base" />
+                        <i className="ti ti-x text-sm" />
                     </button>
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+                <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto">
                     {/* Employee Target */}
                     <div>
-                        <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                            Target Employee <span className="text-rose-500">*</span>
+                        <label className="block text-xs font-semibold text-ink mb-1.5">
+                            Target Employee <span className="text-danger-ink">*</span>
                         </label>
                         {initialEmployee ? (
-                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-lg flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
-                                    <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold font-mono">
+                                    <div className="w-7 h-7 rounded-full bg-accent-subtle text-accent flex items-center justify-center text-xs font-bold font-mono">
                                         {(initialEmployee.first_name?.[0] || 'E')}
                                     </div>
                                     <div>
-                                        <p className="text-xs font-semibold text-slate-900">
+                                        <p className="text-xs font-semibold text-ink">
                                             {initialEmployee.first_name} {initialEmployee.last_name}
                                         </p>
-                                        <p className="text-[11px] text-slate-500 font-mono">
+                                        <p className="text-[11px] text-ink-subtle font-mono">
                                             {initialEmployee.company_id || initialEmployee.id?.slice(0, 8)}
                                         </p>
                                     </div>
                                 </div>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-success-subtle text-success-ink border border-success/30">
                                     Target Personnel
                                 </span>
                             </div>
@@ -157,7 +159,7 @@ export default function RequestDocumentModal({
                                 onChange={e => setEmployeeId(e.target.value)}
                                 required
                                 disabled={isLoadingEmployees}
-                                className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400 transition-colors"
+                                className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent transition-colors"
                             >
                                 {isLoadingEmployees ? (
                                     <option value="">Loading active personnel...</option>
@@ -175,11 +177,11 @@ export default function RequestDocumentModal({
                     {/* Document Type Selection */}
                     <div>
                         <div className="flex items-center justify-between mb-1.5">
-                            <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                Required Document Type <span className="text-rose-500">*</span>
+                            <label className="text-xs font-semibold text-ink">
+                                Required Document Type <span className="text-danger-ink">*</span>
                             </label>
                             {selectedTypeObj.is201Required && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-warning-ink bg-warning-subtle px-2 py-0.5 rounded border border-warning/30">
                                     <i className="ti ti-certificate text-[11px]" />
                                     <span>Statutory Mandatory</span>
                                 </span>
@@ -188,7 +190,7 @@ export default function RequestDocumentModal({
                         <select
                             value={selectedDocTypeId}
                             onChange={e => setSelectedDocTypeId(e.target.value)}
-                            className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400 transition-colors"
+                            className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent transition-colors"
                         >
                             <optgroup label="Statutory & Government Identification">
                                 {DOCUMENT_TYPES.filter(t => t.category === 'Government ID').map(t => (
@@ -229,25 +231,41 @@ export default function RequestDocumentModal({
 
                         {/* Description */}
                         {selectedTypeObj.description && !isCustomType && (
-                            <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
+                            <p className="mt-1.5 text-[11px] text-ink-muted leading-relaxed bg-surface-muted p-2 rounded border border-line">
                                 {selectedTypeObj.description}
                             </p>
                         )}
 
                         {/* Custom Title Input */}
                         {isCustomType && (
-                            <div className="mt-2.5">
-                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                                    Custom Document Name <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={customDocType}
-                                    onChange={e => setCustomDocType(e.target.value)}
-                                    placeholder="e.g. Special Power of Attorney, PRC Board License"
-                                    className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400"
-                                />
+                            <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-ink-muted mb-1">
+                                        Custom Document Name <span className="text-danger-ink">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={customDocType}
+                                        onChange={e => setCustomDocType(e.target.value)}
+                                        placeholder="e.g. Special Power of Attorney, PRC Board License"
+                                        className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-ink-muted mb-1">
+                                        Category
+                                    </label>
+                                    <select
+                                        value={customCategory}
+                                        onChange={e => setCustomCategory(e.target.value)}
+                                        className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent"
+                                    >
+                                        {DOCUMENT_CATEGORIES.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -255,13 +273,13 @@ export default function RequestDocumentModal({
                     {/* Priority and Due Date Row */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                            <label className="block text-xs font-semibold text-ink mb-1.5">
                                 Priority Level
                             </label>
                             <select
                                 value={priority}
                                 onChange={e => setPriority(e.target.value)}
-                                className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400"
+                                className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent"
                             >
                                 <option value="normal">Normal Priority</option>
                                 <option value="high">High Priority</option>
@@ -270,7 +288,7 @@ export default function RequestDocumentModal({
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                            <label className="block text-xs font-semibold text-ink mb-1.5">
                                 Due Date (Optional)
                             </label>
                             <input
@@ -278,14 +296,14 @@ export default function RequestDocumentModal({
                                 min={new Date().toISOString().split('T')[0]}
                                 value={dueDate}
                                 onChange={e => setDueDate(e.target.value)}
-                                className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400"
+                                className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent"
                             />
                         </div>
                     </div>
 
                     {/* Instructions / Notes for the Employee */}
                     <div>
-                        <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-semibold text-ink mb-1.5">
                             HR Instructions & Remarks (Optional)
                         </label>
                         <textarea
@@ -294,33 +312,33 @@ export default function RequestDocumentModal({
                             onChange={e => setNotes(e.target.value)}
                             placeholder="e.g., Must include official dry seal from the issuing agency; clear colored scan required."
                             maxLength="500"
-                            className="w-full text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-slate-400"
+                            className="w-full text-xs font-medium text-ink bg-surface border border-line rounded-lg p-2.5 focus:outline-none focus:border-accent resize-none"
                         />
                     </div>
 
                     {/* Actions */}
-                    <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                    <div className="pt-2 flex items-center justify-end gap-2 border-t border-line">
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={isSubmitting}
-                            className="h-9 px-4 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            className="h-8 px-3.5 text-xs font-semibold text-ink-muted hover:text-ink hover:bg-surface-muted rounded-md border border-line transition-colors cursor-pointer"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="h-9 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="h-8 px-4 bg-accent hover:bg-accent-hover text-white text-xs font-semibold rounded-md shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                             {isSubmitting ? (
                                 <>
-                                    <i className="ti ti-loader-2 animate-spin text-sm" />
+                                    <i className="ti ti-loader animate-spin text-xs" />
                                     <span>Sending Request...</span>
                                 </>
                             ) : (
                                 <>
-                                    <i className="ti ti-send text-sm" />
+                                    <i className="ti ti-send text-xs" />
                                     <span>Send Document Request</span>
                                 </>
                             )}

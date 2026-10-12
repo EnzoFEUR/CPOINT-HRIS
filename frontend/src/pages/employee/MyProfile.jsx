@@ -635,11 +635,11 @@ export default function MyProfile() {
             toast.error('Document uploads are disabled for separated/terminated accounts.');
             return;
         }
-        const matched = DOCUMENT_TYPES.find(t => t.label === req.document_type || t.id === req.document_type) || DOCUMENT_TYPES[0];
-        setSelectedDocTypeId(matched.id);
+        const matched = getDocumentType(req.document_type);
+        setSelectedDocTypeId(matched.id !== 'unknown' ? matched.id : 'unknown');
         setUploadForm({
             title: `${req.document_type} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
-            category: req.category || matched.category,
+            category: req.category || (matched.id !== 'unknown' ? matched.category : 'Other'),
             documentType: req.document_type,
             requestId: req.id,
             expiryDate: '',

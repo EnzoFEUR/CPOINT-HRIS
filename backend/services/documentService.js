@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { invalidateCache } from '../middleware/cacheMiddleware.js';
+import { createNotification } from '../routes/notifications.js';
 
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_URL_TTL = 300;
@@ -157,8 +158,11 @@ export async function uploadDocument(client, user, body, file) {
         const { data: signed } = await bucket.createSignedUrl(filePath, 3600);
         if (signed?.signedUrl) data.preview_url = signed.signedUrl;
     } catch (_) {}
+    let docRequest = null;
     if (metadata.request_id) {
         try {
+            const { data: reqData } = await client.from('document_requests').select('*').eq('id', metadata.request_id).maybeSingle();
+            docRequest = reqData;
             await client.from('document_requests').update({
                 status: 'submitted',
                 fulfilled_document_id: data.id,
@@ -169,6 +173,53 @@ export async function uploadDocument(client, user, body, file) {
             console.warn('[DOCUMENT_REQUEST_LINK_WARN]', reqErr.message);
         }
     }
+
+    // Enterprise Real-Time Document Submission Notifications
+    try {
+        const isEmployeeSelfSubmit = !isDocumentAdmin(user) || String(user.id).toLowerCase() === String(metadata.employee_id).toLowerCase();
+        const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
+        const docTitle = metadata.title || cleanFileName || 'Document';
+        const requestSuffix = docRequest?.document_type ? ` (Fulfilling request: ${docRequest.document_type})` : '';
+
+        // 1. Notify Admin/HR of incoming submission for review
+        createNotification({
+            target: 'admin',
+            title: `Document Submitted: ${empName}`,
+            text: `${empName} (${emp.company_id || 'ID Pending'}) submitted "${docTitle}"${requestSuffix}. Ready for HR review.`,
+            type: 'document_submission',
+            sender_id: metadata.employee_id,
+            sender_name: empName,
+            company_id: emp.company_id
+        }).catch(err => console.warn('[NOTIF_SUBMISSION_WARN]', err.message));
+
+        // If a specific admin requested it, also notify them directly
+        if (docRequest?.requested_by && docRequest.requested_by !== 'admin') {
+            createNotification({
+                target: docRequest.requested_by,
+                title: `Requested Document Submitted: ${empName}`,
+                text: `${empName} has uploaded "${docTitle}" for your request (${docRequest.document_type}).`,
+                type: 'document_submission',
+                sender_id: metadata.employee_id,
+                sender_name: empName,
+                company_id: emp.company_id
+            }).catch(err => console.warn('[NOTIF_SPECIFIC_ADMIN_WARN]', err.message));
+        }
+
+        // 2. Immediate submission confirmation receipt for the employee
+        if (isEmployeeSelfSubmit) {
+            createNotification({
+                target: metadata.employee_id,
+                title: `Document Submitted: ${docTitle}`,
+                text: `Your ${docTitle} has been submitted successfully and is now pending HR review.`,
+                type: 'document_submission_receipt',
+                sender_id: metadata.employee_id,
+                sender_name: 'Document Vault'
+            }).catch(err => console.warn('[NOTIF_RECEIPT_WARN]', err.message));
+        }
+    } catch (notifErr) {
+        console.warn('[DOCUMENT_NOTIF_DISPATCH_WARN]', notifErr.message);
+    }
+
     // The reviewed type is a human selection, not proof of authenticity or AI accuracy.
     const review = body.import_source === 'bulk_import' ? { import_source: 'bulk_import', document_type: body.document_type, review_confirmed: true, import_id: body.import_id } : {};
     documentChanged(client, data.employee_id, data.id, 'uploaded', user, review);

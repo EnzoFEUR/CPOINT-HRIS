@@ -120,8 +120,11 @@ export function createDocumentRouter(client = supabase) {
         const emp = await ensureWritableEmployee(client, employee_id);
 
         const docTypeMeta = getDocumentType(document_type);
-        const resolvedCategory = category?.trim() || docTypeMeta.category || 'Other';
-        const resolvedLabel = docTypeMeta.label || document_type;
+        const isStandard = docTypeMeta && docTypeMeta.id !== 'unknown';
+        const resolvedLabel = isStandard ? docTypeMeta.label : document_type.trim();
+        const resolvedCategory = (category?.trim() && category !== 'Other')
+            ? category.trim()
+            : (isStandard ? docTypeMeta.category : (category?.trim() || 'Other'));
 
         const payload = {
             employee_id,
@@ -151,12 +154,25 @@ export function createDocumentRouter(client = supabase) {
         }).catch(err => console.warn('[NOTIF_WARN]', err.message));
 
         try {
-            const channel = client.channel('document-updates');
-            await channel.httpSend('DOCUMENT_CHANGED', {
+            const realtimePayload = {
                 employee_id,
                 action: 'request_created',
-                request_id: data.id
-            }, { timeout: 2000 });
+                request_id: data.id,
+                document_type: resolvedLabel,
+                category: resolvedCategory
+            };
+            const channel = client.channel('document-updates');
+            if (typeof channel.send === 'function') {
+                channel.send({ type: 'broadcast', event: 'DOCUMENT_CHANGED', payload: realtimePayload }).catch(() => {});
+            }
+            if (typeof channel.httpSend === 'function') {
+                channel.httpSend('DOCUMENT_CHANGED', realtimePayload, { timeout: 2000 }).catch(() => {});
+            }
+            client.channel(`myprofile-realtime-${employee_id}`).send({
+                type: 'broadcast',
+                event: 'DOCUMENT_CHANGED',
+                payload: realtimePayload
+            }).catch(() => {});
         } catch (_) {}
 
         res.status(201).json({ success: true, request: data });
@@ -238,7 +254,13 @@ export function createDocumentRouter(client = supabase) {
 
             const approvedDoc = matchedDocs.find(d => d.status === 'approved');
             const pendingDoc = matchedDocs.find(d => d.status === 'pending');
-            const hasOpenReq = (openRequests || []).find(r => r.document_type?.toLowerCase().includes(st.label.toLowerCase()) || r.document_type?.toLowerCase().includes(st.id.replace(/_/g, ' ')));
+            const hasOpenReq = (openRequests || []).find(r => {
+                if (!r.document_type) return false;
+                const reqType = getDocumentType(r.document_type);
+                return reqType.id === st.id ||
+                    r.document_type.toLowerCase().includes(st.label.toLowerCase()) ||
+                    r.document_type.toLowerCase().includes(st.id.replace(/_/g, ' '));
+            });
 
             let complianceStatus = 'missing';
             let document = null;
