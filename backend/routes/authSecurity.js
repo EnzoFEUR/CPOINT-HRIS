@@ -270,12 +270,10 @@ router.post('/forgot-password', async (req, res) => {
             }
         }
 
-        // 4.5. Atomic Double-Click & Cooldown Lock Check
-        const lockKeys = [targetEmail, `pwd_reset_${targetEmail}`];
+        // 4.5. Atomic Double-Click & Cooldown Lock Check (Purpose-isolated to prevent cross-action lockups)
+        const lockKeys = [`pwd_reset_${targetEmail}`, `dest_email_pwd_reset_${targetEmail}`];
         if (method === 'sms' && userPhone) {
-            lockKeys.push(`dest_phone_${userPhone}`);
-        } else {
-            lockKeys.push(`dest_email_${targetEmail}`);
+            lockKeys.push(`dest_phone_pwd_reset_${userPhone}`);
         }
 
         const lock = acquireOtpLock(lockKeys);

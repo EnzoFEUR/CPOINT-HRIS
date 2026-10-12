@@ -1177,7 +1177,7 @@ export default function Show() {
                 </div>
 
                 {/* Monthly Work Days & Attendance Audit Section */}
-                <LeaveCreditsPanel key={employee.id} employeeId={employee.id} employee={employee} manage />
+                <LeaveCreditsPanel key={employee.id} employeeId={employee.id} employee={employee} manage isTerminated={isTerminated} isSuspended={isSuspended} />
 
                 <MonthlyWorkCalendar
                     employeeId={employee?.id || id}

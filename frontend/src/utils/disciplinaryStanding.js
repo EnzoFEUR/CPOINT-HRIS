@@ -53,9 +53,34 @@ export function computeDisciplinaryStanding({
     const warningsCount = sustainedWarnings.length;
     const activeNoticesCount = activeNotices.length;
     const hasDisciplinaryDismissal = sustainedTerminations.length > 0;
+    const isExplicitDismissal = hasDisciplinaryDismissal || status === 'terminated';
 
-    // 2. Separation / Termination checks
-    const isTerm = isTerminated || status === 'terminated' || operational_status === 'Terminated';
+    // 2. Operational holds (Suspension takes precedence over generic separation/archive if not dismissed)
+    const isSusp = !isExplicitDismissal && (isSuspended || status === 'suspended' || operational_status === 'Suspended');
+    if (isSusp) {
+        return {
+            tier: 4,
+            tierCode: 'SUSPENDED',
+            levelName: 'Active Suspension',
+            badgeLabel: 'Suspended (Active Hold)',
+            shortLabel: 'Suspended',
+            badgeClass: 'bg-warning-subtle text-warning-ink border-warning/20',
+            bannerClass: 'bg-warning-subtle border-warning/20 text-warning-ink',
+            icon: 'ti-player-pause',
+            title: 'Account Suspended',
+            description: 'Employee is currently serving a suspension. Clock-in and system access are paused.',
+            employeeDescription: 'Your account is currently suspended. Time clocking and system access are temporarily paused.',
+            isGoodStanding: false,
+            servedSuspensionsCount: servedSuspCount,
+            clearedSuspensionsCount: clearedSuspCount,
+            warningsCount,
+            activeNoticesCount,
+            totalLogsCount: logs.length
+        };
+    }
+
+    // 3. Separation / Termination checks
+    const isTerm = !isSusp && (isTerminated || isExplicitDismissal || operational_status === 'Terminated');
     if (isTerm) {
         if (hasDisciplinaryDismissal) {
             return {
@@ -141,30 +166,6 @@ export function computeDisciplinaryStanding({
             clearedSuspensionsCount: clearedSuspCount,
             warningsCount: 0,
             activeNoticesCount: 0,
-            totalLogsCount: logs.length
-        };
-    }
-
-    // 3. Operational holds
-    const isSusp = isSuspended || status === 'suspended' || operational_status === 'Suspended';
-    if (isSusp) {
-        return {
-            tier: 4,
-            tierCode: 'SUSPENDED',
-            levelName: 'Active Suspension',
-            badgeLabel: 'Suspended (Active Hold)',
-            shortLabel: 'Suspended',
-            badgeClass: 'bg-warning-subtle text-warning-ink border-warning/20',
-            bannerClass: 'bg-warning-subtle border-warning/20 text-warning-ink',
-            icon: 'ti-player-pause',
-            title: 'Account Suspended',
-            description: 'Employee is currently serving a suspension. Clock-in and system access are paused.',
-            employeeDescription: 'Your account is currently suspended. Time clocking and system access are temporarily paused.',
-            isGoodStanding: false,
-            servedSuspensionsCount: servedSuspCount,
-            clearedSuspensionsCount: clearedSuspCount,
-            warningsCount,
-            activeNoticesCount,
             totalLogsCount: logs.length
         };
     }

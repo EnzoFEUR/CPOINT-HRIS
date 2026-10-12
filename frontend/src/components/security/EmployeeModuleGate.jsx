@@ -12,13 +12,15 @@ export default function EmployeeModuleGate({ children }) {
     const userIdentifier = user?.id || user?.email || 'admin';
     const unlockKey = `cpoint_employee_module_unlocked_${userIdentifier}`;
 
-    const [isUnlocked, setIsUnlocked] = useState(() => {
+    const checkIsUnlocked = () => {
         try {
             return sessionStorage.getItem(unlockKey) === 'true';
         } catch {
             return false;
         }
-    });
+    };
+
+    const [isUnlocked, setIsUnlocked] = useState(checkIsUnlocked);
 
     const isUnlockedRef = useRef(isUnlocked);
     isUnlockedRef.current = isUnlocked;
@@ -28,18 +30,13 @@ export default function EmployeeModuleGate({ children }) {
 
     // Keep unlock status in sync across navigations and session events
     useEffect(() => {
-        try {
-            const unlocked = sessionStorage.getItem(unlockKey) === 'true';
-            isUnlockedRef.current = unlocked;
-            setIsUnlocked(unlocked);
-            if (unlocked) {
-                setIsModalOpen(false);
-            }
-        } catch {
-            isUnlockedRef.current = false;
-            setIsUnlocked(false);
+        const unlocked = checkIsUnlocked();
+        isUnlockedRef.current = unlocked;
+        setIsUnlocked(unlocked);
+        if (unlocked) {
+            setIsModalOpen(false);
         }
-    }, [location.pathname, unlockKey]);
+    }, [location.pathname, unlockKey, user?.id, user?.email]);
 
     const handleVerificationSuccess = (data) => {
         try {
@@ -110,6 +107,7 @@ export default function EmployeeModuleGate({ children }) {
                 onClose={handleModalClose}
                 onSuccess={handleVerificationSuccess}
                 email={user?.email}
+                purpose="modal_stepup"
                 title="Employee Module Security Gate"
                 subtitle="Authenticate with 2FA to access employee personnel records"
                 description="Step-up authentication required for workforce records."

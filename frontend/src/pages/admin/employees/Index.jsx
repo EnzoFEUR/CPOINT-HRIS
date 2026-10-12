@@ -1357,6 +1357,7 @@ export default function EmployeesIndex() {
                     navigate('/admin/archive');
                 }}
                 email={currentUser?.email}
+                purpose="modal_stepup"
                 title="Archive Access Verification"
                 subtitle="Confirm your identity to access archived employee records."
                 description="Select a verification method to authenticate access to employee records."

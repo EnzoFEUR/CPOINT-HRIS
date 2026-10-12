@@ -53,9 +53,32 @@ export function computeDisciplinaryStanding({
     const warningsCount = sustainedWarnings.length;
     const activeNoticesCount = activeNotices.length;
     const hasDisciplinaryDismissal = sustainedTerminations.length > 0;
+    const isExplicitDismissal = hasDisciplinaryDismissal || status === 'terminated';
 
-    // 2. Separation / Termination checks
-    const isTerm = isTerminated || status === 'terminated' || operational_status === 'Terminated';
+    // 2. Operational holds (Suspension takes precedence over generic separation/archive if not dismissed)
+    const isSusp = !isExplicitDismissal && (isSuspended || status === 'suspended' || operational_status === 'Suspended');
+    if (isSusp) {
+        return {
+            tier: 4,
+            tier_code: 'SUSPENDED',
+            level_name: 'Active Suspension',
+            badge_label: 'Suspended (Active Hold)',
+            short_label: 'Suspended',
+            badge_color: 'warning',
+            title: 'Account Suspended',
+            description: 'Employee is currently serving a suspension. Clock-in and system access are paused.',
+            employee_description: 'Your account is currently suspended. Time clocking and system access are temporarily paused.',
+            is_good_standing: false,
+            served_suspensions_count: servedSuspCount,
+            cleared_suspensions_count: clearedSuspCount,
+            warnings_count: warningsCount,
+            active_notices_count: activeNoticesCount,
+            total_logs_count: logs.length
+        };
+    }
+
+    // 3. Separation / Termination checks
+    const isTerm = !isSusp && (isTerminated || isExplicitDismissal || operational_status === 'Terminated');
     if (isTerm) {
         if (hasDisciplinaryDismissal) {
             return {
@@ -137,27 +160,6 @@ export function computeDisciplinaryStanding({
         };
     }
 
-    // 3. Operational holds
-    const isSusp = isSuspended || status === 'suspended' || operational_status === 'Suspended';
-    if (isSusp) {
-        return {
-            tier: 4,
-            tier_code: 'SUSPENDED',
-            level_name: 'Active Suspension',
-            badge_label: 'Suspended (Active Hold)',
-            short_label: 'Suspended',
-            badge_color: 'warning',
-            title: 'Account Suspended',
-            description: 'Employee is currently serving a suspension. Clock-in and system access are paused.',
-            employee_description: 'Your account is currently suspended. Time clocking and system access are temporarily paused.',
-            is_good_standing: false,
-            served_suspensions_count: servedSuspCount,
-            cleared_suspensions_count: clearedSuspCount,
-            warnings_count: warningsCount,
-            active_notices_count: activeNoticesCount,
-            total_logs_count: logs.length
-        };
-    }
 
     // 3. Active unacknowledged or pending notices (NTE / Memos)
     if (activeNoticesCount > 0) {

@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { getUser } from '../routes/guards';
+import { getDisciplinaryCache } from '../utils/disciplinaryCache';
 import {
     calculateSilConversion,
     validateCashOutRequest,
@@ -84,11 +85,53 @@ const formatDateTime = value => {
     return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} at ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 };
 
-export default function LeaveCreditsPanel({ employeeId, employee, manage = false, compact = false }) {
+export default function LeaveCreditsPanel({
+    employeeId,
+    employee,
+    manage = false,
+    compact = false,
+    isTerminated = false,
+    isSuspended = false,
+}) {
     const user = getUser();
     const canManage = Boolean(user?.id) && manage && isCreditManager(user);
     const queryClient = useQueryClient();
     const query = useEmployeeLeaveCredits(employeeId);
+    const [liveDisciplinary, setLiveDisciplinary] = useState(() => getDisciplinaryCache(employeeId));
+
+    useEffect(() => {
+        if (!employeeId) return;
+        setLiveDisciplinary(getDisciplinaryCache(employeeId));
+
+        const handleSync = (e) => {
+            if (!e?.detail?.userId || e.detail.userId === employeeId) {
+                setLiveDisciplinary(getDisciplinaryCache(employeeId));
+            }
+        };
+
+        window.addEventListener('hris_disciplinary_sync', handleSync);
+        return () => window.removeEventListener('hris_disciplinary_sync', handleSync);
+    }, [employeeId]);
+
+    const isSeparatedEmployee = Boolean(
+        isTerminated ||
+        liveDisciplinary?.isTerminated ||
+        employee?.is_terminated ||
+        employee?.operational_status === 'Terminated' ||
+        ['terminated', 'separated', 'archived'].includes(String(employee?.status || '').toLowerCase()) ||
+        (String(employee?.status || '').toLowerCase() === 'inactive' && Boolean(employee?.separation_type || employee?.archived_at))
+    );
+
+    const isSuspendedEmployee = !isSeparatedEmployee && Boolean(
+        isSuspended ||
+        liveDisciplinary?.isSuspended ||
+        employee?.is_suspended ||
+        employee?.operational_status === 'Suspended' ||
+        String(employee?.status || '').toLowerCase() === 'suspended'
+    );
+
+    const isSilDisabled = isSeparatedEmployee || isSuspendedEmployee;
+
     const allocationReady = query.data?.account && query.data.allocation_status === 'ready';
     const reconciling = Boolean(query.data?.account) && query.data?.allocation_status === 'service_date_review_required';
     const canReview =
@@ -147,6 +190,7 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
     const convertible = Number(query.data?.conversion?.convertible_days ?? query.data?.sil_balance ?? 0);
     const canReviewCash = canManage && user.id !== employeeId;
     const canRequestCash =
+        !isSilDisabled &&
         showCashRequest &&
         allocationReady &&
         !query.isError &&
@@ -189,6 +233,14 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
         const revising = ['cash-out-cancel', 'cash-out-resubmit'].includes(action);
 
         if (requesting || deciding || revising) {
+            if (requesting && isSilDisabled) {
+                toast.error(
+                    isSeparatedEmployee
+                        ? 'Service Incentive Leave cash-out is disabled for separated personnel.'
+                        : 'Service Incentive Leave cash-out is paused during disciplinary suspension.'
+                );
+                return;
+            }
             if (
                 busy.current ||
                 !form.confirmed ||
@@ -386,7 +438,21 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
         >
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Service Incentive Leave</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Service Incentive Leave</h3>
+                    {isSeparatedEmployee && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                            <i className="ti ti-lock text-[11px]" />
+                            <span>Locked · Separated</span>
+                        </span>
+                    )}
+                    {isSuspendedEmployee && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                            <i className="ti ti-clock-pause text-[11px]" />
+                            <span>Paused · Suspended</span>
+                        </span>
+                    )}
+                </div>
             </div>
 
             {/* Content States */}
@@ -456,6 +522,34 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* DOLE Separation Advisory Banner */}
+            {isSeparatedEmployee && (
+                <div className="bg-rose-50/70 border border-rose-200 rounded-lg p-3.5 text-xs space-y-1.5">
+                    <div className="flex items-center gap-2">
+                        <i className="ti ti-shield-lock text-rose-600 text-sm shrink-0" />
+                        <span className="font-semibold text-rose-900">
+                            DOLE Advisory No. 06-20 · SIL Encashment Deactivated
+                        </span>
+                    </div>
+                    <p className="text-rose-700 text-[11px] leading-relaxed pl-5">
+                        Remaining statutory credits are audited and liquidated through final clearance pay.
+                    </p>
+                </div>
+            )}
+
+            {/* Disciplinary Suspension Advisory Banner */}
+            {isSuspendedEmployee && (
+                <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-3 text-xs flex items-start gap-2.5">
+                    <i className="ti ti-lock text-amber-600 text-sm mt-0.5 shrink-0" />
+                    <div className="space-y-0.5">
+                        <span className="font-semibold text-amber-900">SIL Encashment Paused during Disciplinary Suspension</span>
+                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                            Leave conversions and applications are temporarily withheld under active administrative disciplinary terms.
+                        </p>
+                    </div>
                 </div>
             )}
 
@@ -579,6 +673,25 @@ export default function LeaveCreditsPanel({ employeeId, employee, manage = false
                     >
                         <i className="ti ti-cash text-sm" />
                         <span>Request SIL Cash-Out</span>
+                    </button>
+                </div>
+            )}
+
+            {/* Disabled Action CTA when Separated or Suspended */}
+            {showCashRequest && !manage && !openCash && !action && isSilDisabled && (
+                <div className="pt-1">
+                    <button
+                        type="button"
+                        disabled
+                        className="h-8 px-4 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-semibold rounded-md flex items-center justify-center gap-1.5 w-full sm:w-auto cursor-not-allowed opacity-80"
+                        title={isSeparatedEmployee ? 'SIL cash-out disabled for separated personnel' : 'SIL cash-out paused during suspension'}
+                    >
+                        <i className="ti ti-lock text-sm" />
+                        <span>
+                            {isSeparatedEmployee
+                                ? 'SIL Cash-Out Locked (Separated)'
+                                : 'SIL Cash-Out Paused (Suspended)'}
+                        </span>
                     </button>
                 </div>
             )}

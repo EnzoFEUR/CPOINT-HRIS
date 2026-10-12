@@ -6,6 +6,7 @@ import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
+import { isDisciplinaryExempt } from '../../../routes/guards';
 
 export default function DisciplinaryIndex() {
     const queryClient = useQueryClient();
@@ -54,7 +55,7 @@ export default function DisciplinaryIndex() {
     });
     const [employees, setEmployees] = useState(() => {
         const cached = queryClient.getQueryData(['adminEmployees']);
-        return Array.isArray(cached) ? cached.filter(e => e.role !== 'admin') : [];
+        return Array.isArray(cached) ? cached.filter(e => !isDisciplinaryExempt(e)) : [];
     });
 
     // Reconcile server records with local state while protecting optimistic overturns
@@ -77,7 +78,7 @@ export default function DisciplinaryIndex() {
     // Reconcile server employees
     useEffect(() => {
         if (serverEmployees) {
-            setEmployees(serverEmployees.filter(e => e.role !== 'admin'));
+            setEmployees(serverEmployees.filter(e => !isDisciplinaryExempt(e)));
         }
     }, [serverEmployees]);
 
@@ -181,10 +182,14 @@ export default function DisciplinaryIndex() {
         const handleEmployeeChange = (payload) => {
             const { eventType, new: newEmp, old: oldEmp } = payload;
             if (eventType === 'UPDATE' && newEmp) {
-                setEmployees(prev => prev.map(emp => emp.id === newEmp.id ? { ...emp, ...newEmp } : emp));
+                if (isDisciplinaryExempt(newEmp)) {
+                    setEmployees(prev => prev.filter(emp => emp.id !== newEmp.id));
+                } else {
+                    setEmployees(prev => prev.map(emp => emp.id === newEmp.id ? { ...emp, ...newEmp } : emp));
+                }
             } else if (eventType === 'INSERT' && newEmp) {
                 setEmployees(prev => {
-                    if (prev.some(e => e.id === newEmp.id) || newEmp.role === 'admin') return prev;
+                    if (prev.some(e => e.id === newEmp.id) || isDisciplinaryExempt(newEmp)) return prev;
                     return [...prev, newEmp];
                 });
             } else if (eventType === 'DELETE' && oldEmp) {
@@ -398,7 +403,7 @@ export default function DisciplinaryIndex() {
         // 2. Suspended Check: Evaluated dynamically against active suspension records
         const activeSuspensionLog = !isTerminated && empLogs.find(r => 
             r.type === 'Suspension' && 
-            ['Active', 'Action Required', 'Under Review'].includes(r.status)
+            ['Active', 'Action Required', 'Under Review', 'Acknowledged'].includes(r.status)
         );
         const hasSuspensionLogs = empLogs.some(r => r.type === 'Suspension');
 
@@ -485,6 +490,7 @@ export default function DisciplinaryIndex() {
     // Filtered personnel list for the target personnel custom dropdown
     const filteredPersonnel = useMemo(() => {
         return employees.filter(emp => {
+            if (isDisciplinaryExempt(emp)) return false;
             const standing = getEmployeeStanding(emp);
 
             if (personnelFilter === 'Active' && !standing.isClean) return false;
@@ -614,6 +620,11 @@ export default function DisciplinaryIndex() {
         e.preventDefault();
         if (!employeeId) {
             toast.error('Please select an employee.');
+            return;
+        }
+
+        if (isDisciplinaryExempt(selectedEmployeeObj)) {
+            toast.error('Disciplinary actions cannot be issued to administrative or security guard personnel.');
             return;
         }
 

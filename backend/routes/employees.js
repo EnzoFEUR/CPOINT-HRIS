@@ -39,7 +39,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
 
         const logStatus = (l.status || '').toLowerCase();
         // If HR marked it Resolved, Closed, Dismissed, or Cancelled, it is lifted
-        if (logStatus === 'resolved' || logStatus === 'dismissed' || logStatus === 'cancelled' || logStatus === 'closed') {
+        if (logStatus === 'resolved' || logStatus === 'dismissed' || logStatus === 'cancelled' || logStatus === 'closed' || logStatus === 'overturned') {
             return false;
         }
 
@@ -50,7 +50,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
             if (endDate < now) return false;
         }
 
-        return l.status === 'Active' || l.status === 'Under Review';
+        return ['active', 'action required', 'under review', 'acknowledged'].includes(logStatus);
     });
 
     const isSuspended = (emp.status === 'suspended' || Boolean(activeSuspension)) && !Boolean(termLog);
@@ -59,7 +59,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
     const isTerminated = !isSuspended && Boolean(
         emp.status === 'terminated' ||
         Boolean(termLog) || 
-        (Boolean(emp.archived_at) && emp.status !== 'active')
+        (Boolean(emp.archived_at) && emp.status !== 'active' && emp.status !== 'suspended')
     );
 
     let operational_status = 'Active';

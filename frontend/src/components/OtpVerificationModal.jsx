@@ -10,6 +10,7 @@ export default function OtpVerificationModal({
     onSuccess,
     email: propEmail,
     initialMethod,
+    purpose = 'modal_stepup',
     title = 'Two-Factor Authentication',
     subtitle = 'Choose where to receive your security code',
     description
@@ -25,9 +26,11 @@ export default function OtpVerificationModal({
 
     const email = propEmail || sessionUser?.email || '';
 
-    // Scoped cooldown key based on identity
-    const cooldownKey = `modal_otp_${(email || 'global').toLowerCase().trim()}`;
-    const { cooldown, isCooldown, startCooldown } = useOtpCooldown(`dest_email_${(email || 'global').toLowerCase().trim()}`, 60);
+    // Purpose-isolated cooldown key preventing contamination across login 2FA, password recovery, and modal step-up
+    const normalizedEmail = (email || sessionUser?.email || 'global').toLowerCase().trim();
+    const cooldownScope = `${purpose}_dest_email_${normalizedEmail}`;
+    const cooldownKey = `${purpose}_${normalizedEmail}`;
+    const { cooldown, isCooldown, startCooldown, clearCooldown } = useOtpCooldown(cooldownScope, 60);
 
     // TOTP status detection
     const [hasTotp, setHasTotp] = useState(() => {
@@ -71,9 +74,10 @@ export default function OtpVerificationModal({
 
         const checkOtpStatus = async () => {
             try {
-                const targetId = email || sessionUser?.id || sessionUser?.company_id;
+                const targetId = email || sessionUser?.email || sessionUser?.id || sessionUser?.company_id;
                 if (!targetId) return;
-                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status?identifier=${encodeURIComponent(targetId)}&purpose=modal_stepup`);
+                const targetEmail = email || sessionUser?.email || '';
+                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status?identifier=${encodeURIComponent(targetId)}&email=${encodeURIComponent(targetEmail)}&purpose=${encodeURIComponent(purpose)}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (!isMounted || !data.success) return;
@@ -99,7 +103,7 @@ export default function OtpVerificationModal({
         return () => {
             isMounted = false;
         };
-    }, [isOpen, email, sessionUser, startCooldown, cooldownKey]);
+    }, [isOpen, email, sessionUser, startCooldown, cooldownKey, purpose]);
 
     useEffect(() => {
         let timer;
@@ -195,8 +199,8 @@ export default function OtpVerificationModal({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     method: 'email',
-                    email,
-                    purpose: 'modal_stepup',
+                    email: email || sessionUser?.email,
+                    purpose,
                     mock: isMock
                 })
             });
@@ -304,10 +308,10 @@ export default function OtpVerificationModal({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         method: 'email',
-                        email,
-                        identifier: email,
+                        email: email || sessionUser?.email,
+                        identifier: email || sessionUser?.email,
                         otp: targetCode,
-                        purpose: 'modal_stepup'
+                        purpose
                     })
                 });
 
@@ -341,7 +345,7 @@ export default function OtpVerificationModal({
             verifyLockRef.current = false;
             setIsVerifying(false);
         }
-    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose]);
+    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose, purpose]);
 
     const handleInputChange = (index, value) => {
         const cleanVal = value.replace(/\D/g, '');

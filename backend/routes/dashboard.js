@@ -877,12 +877,17 @@ export function createEmployeeDashboardHandler(client = supabase) {
 
                 // Strict mutually exclusive separation: Suspension (Temporary Hold) vs Termination (Archival)
                 const status = String(employeeObj.status || '').toLowerCase();
-                const isTerm = Boolean(
-                    ['terminated', 'separated', 'archived'].includes(status) ||
+                const hasActiveTermination = Boolean(
                     Boolean(termLog) ||
-                    Boolean(employeeObj.archived_at)
+                    status === 'terminated' ||
+                    (Boolean(employeeObj.separation_type) && ['separated', 'inactive'].includes(status))
                 );
-                const isSusp = !isTerm && (status === 'suspended' || Boolean(suspLog));
+                const isSusp = !hasActiveTermination && (status === 'suspended' || Boolean(suspLog));
+                const isTerm = !isSusp && Boolean(
+                    hasActiveTermination ||
+                    ['terminated', 'separated', 'archived'].includes(status) ||
+                    (Boolean(employeeObj.archived_at) && status !== 'active' && status !== 'suspended')
+                );
 
                 employeeObj.is_suspended = isSusp;
                 employeeObj.is_terminated = isTerm;

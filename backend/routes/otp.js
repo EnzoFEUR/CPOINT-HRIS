@@ -57,8 +57,12 @@ router.get('/status', async (req, res) => {
         }
 
         const emailScope = `${purpose}_${targetEmail}`.toLowerCase().trim();
-        const active = getActiveOtp(emailScope) || getActiveOtp(scopedTarget) || getActiveOtp(rawTarget);
-        const cooldown = [emailScope, scopedTarget, `dest_email_${String(targetEmail || '').toLowerCase().trim()}`]
+        const active = getActiveOtp(emailScope) || getActiveOtp(scopedTarget);
+        const cooldown = [
+            emailScope,
+            scopedTarget,
+            `dest_email_${purpose}_${String(targetEmail || '').toLowerCase().trim()}`
+        ]
             .map(key => checkOtpCooldown(key))
             .reduce((longest, current) => current.remainingSeconds > longest.remainingSeconds ? current : longest);
 
@@ -155,13 +159,13 @@ router.post('/send', async (req, res) => {
         // Atomic lock keys to prevent double-click / concurrent race conditions
         const lockKeys = [identifier];
         if (targetEmail) {
-            lockKeys.push(`dest_email_${targetEmail.toLowerCase().trim()}`);
+            lockKeys.push(`dest_email_${purpose}_${targetEmail.toLowerCase().trim()}`);
             if (baseIdentifier !== targetEmail) {
                 lockKeys.push(`${purpose}_${targetEmail}`.toLowerCase().trim());
             }
         }
         if (targetPhone) {
-            lockKeys.push(`dest_phone_${targetPhone.toLowerCase().trim()}`);
+            lockKeys.push(`dest_phone_${purpose}_${targetPhone.toLowerCase().trim()}`);
         }
 
         // Enterprise Atomic Lock & Cooldown Check

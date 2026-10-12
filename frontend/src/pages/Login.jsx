@@ -99,9 +99,9 @@ export default function Login() {
     const otpVerifyLockRef = useRef(false);
     const lastOtpClickRef = useRef(0);
 
-    // Persistent 60s cooldown hook across page reloads and tab navigations
+    // Persistent 60s cooldown hook across page reloads and tab navigations (purpose-isolated)
     const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
-        'dest_email_' + ((employeeData?.email || email).trim().toLowerCase() || 'global'),
+        'login_2fa_dest_email_' + ((employeeData?.email || email).trim().toLowerCase() || 'global'),
         60
     );
 
@@ -136,6 +136,17 @@ export default function Login() {
         }, 1000);
         return () => clearInterval(interval);
     }, [lockoutTimer]);
+
+    // Purge any prior employee module unlock tokens when visiting the login screen
+    useEffect(() => {
+        try {
+            Object.keys(sessionStorage).forEach((key) => {
+                if (key.startsWith('cpoint_employee_module_unlocked')) {
+                    sessionStorage.removeItem(key);
+                }
+            });
+        } catch {}
+    }, []);
 
     // Cross-tab real-time authentication synchronization
     useEffect(() => {
@@ -327,7 +338,7 @@ export default function Login() {
                         .select('*')
                         .eq('employee_id', employee.id)
                         .eq('type', 'Suspension')
-                        .eq('status', 'Active')
+                        .in('status', ['Active', 'Action Required', 'Under Review', 'Acknowledged'])
                         .order('created_at', { ascending: false })
                         .limit(1);
 
@@ -588,11 +599,11 @@ export default function Login() {
             delete userData._auth_metadata;
             localStorage.setItem('user', JSON.stringify(userData));
 
-            // Clear temporary verification state; the server resend limit remains active.
+            // Clear temporary verification state and reset employee module locks for fresh session
             try {
                 sessionStorage.removeItem('cpoint_login_2fa_session');
                 Object.keys(sessionStorage).forEach((key) => {
-                    if (key.startsWith('cpoint_my_profile_cache')) {
+                    if (key.startsWith('cpoint_my_profile_cache') || key.startsWith('cpoint_employee_module_unlocked')) {
                         sessionStorage.removeItem(key);
                     }
                 });
@@ -603,11 +614,19 @@ export default function Login() {
             broadcastAuthChange(userData);
 
             // Prime disciplinary cache synchronously for instant zero-flash screen loading
-            if (userData.status === 'inactive' || userData.is_active === false) {
-                setDisciplinaryCache(userData.id, {
-                    type: userData.is_terminated ? 'Termination' : 'Suspension',
-                    record: null
-                });
+            if (userData.status === 'inactive' || userData.status === 'suspended' || userData.is_active === false) {
+                const isTerm = userData.status !== 'suspended' && Boolean(userData.is_terminated || userData.status === 'terminated' || (userData.status === 'inactive' && userData.separation_type));
+                const isSusp = !isTerm && Boolean(userData.status === 'suspended' || userData.is_suspended);
+                if (isTerm || isSusp) {
+                    setDisciplinaryCache(userData.id, {
+                        type: isTerm ? 'Termination' : 'Suspension',
+                        record: null,
+                        isSuspended: isSusp,
+                        isTerminated: isTerm
+                    });
+                } else {
+                    clearDisciplinaryCache(userData.id);
+                }
             } else {
                 clearDisciplinaryCache(userData.id);
             }

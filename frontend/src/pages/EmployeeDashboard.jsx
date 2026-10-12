@@ -99,9 +99,205 @@ const EmployeeDashboard = () => {
         };
         const onEmployeeEvent = event => ({ payload }) => {
             if (disposed || !targetsDashboardEmployee(payload, storedUser.id)) return;
-            // Broadcasts announce changes; authenticated reads determine account/QR permissions.
             scheduled.refresh();
-            if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && ['Suspension', 'Warning'].includes(payload?.type))) setShowInfractionsModal(true);
+
+            if (event === 'EMPLOYEE_TERMINATED' || (event === 'DISCIPLINARY_CREATED' && payload?.type === 'Termination')) {
+                const termRecord = payload?.record || {
+                    id: payload?.id || `disc-term-${Date.now()}`,
+                    employee_id: storedUser.id,
+                    type: 'Termination',
+                    severity: payload?.severity || 'Critical',
+                    reason: payload?.reason || payload?.separation_reason || 'Employment contract separated.',
+                    status: 'Active',
+                    date: payload?.date || payload?.separation_date || new Date().toISOString()
+                };
+                const statusObj = {
+                    type: 'Termination',
+                    record: termRecord,
+                    isTerminated: true,
+                    isSuspended: false
+                };
+                setDisciplinaryCache(storedUser.id, statusObj);
+                setDisciplinaryState(statusObj);
+
+                queryClient.setQueryData(['employeeDashboard', storedUser.id], old => {
+                    if (!old) return old;
+                    const oldDisc = old.discData?.data || old.discData || [];
+                    const updatedDisc = [termRecord, ...oldDisc.filter(d => d.id !== termRecord.id)];
+                    const oldEmp = old.employee || old.shiftData?.[0] || {};
+                    const updatedEmp = {
+                        ...oldEmp,
+                        status: 'inactive',
+                        is_active: false,
+                        is_terminated: true,
+                        is_suspended: false,
+                        operational_status: 'Terminated',
+                        separation_type: payload?.separation_type || 'Disciplinary Termination',
+                        separation_reason: payload?.separation_reason || payload?.reason || 'Employment contract separated.',
+                        separation_date: payload?.date || payload?.separation_date || new Date().toISOString().split('T')[0],
+                        archived_at: payload?.archived_at || new Date().toISOString()
+                    };
+                    return {
+                        ...old,
+                        employee: updatedEmp,
+                        shiftData: [updatedEmp],
+                        discData: updatedDisc
+                    };
+                });
+
+                try {
+                    const saved = JSON.parse(localStorage.getItem('user') || '{}');
+                    if (saved?.id === storedUser.id) {
+                        localStorage.setItem('user', JSON.stringify({
+                            ...saved,
+                            status: 'inactive',
+                            is_active: false,
+                            is_terminated: true,
+                            is_suspended: false,
+                            operational_status: 'Terminated',
+                            separation_type: payload?.separation_type || 'Disciplinary Termination',
+                            separation_reason: payload?.separation_reason || payload?.reason || 'Employment contract separated.',
+                            archived_at: payload?.archived_at || new Date().toISOString()
+                        }));
+                    }
+                } catch (_) {}
+
+                window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', {
+                    detail: {
+                        userId: storedUser.id,
+                        status: 'Terminated',
+                        isTerminated: true,
+                        isSuspended: false,
+                        record: termRecord,
+                        reason: payload?.reason || payload?.separation_reason,
+                        archived_at: payload?.archived_at || new Date().toISOString()
+                    }
+                }));
+            } else if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && payload?.type === 'Suspension')) {
+                const suspRecord = payload?.record || {
+                    id: payload?.id || `disc-susp-${Date.now()}`,
+                    employee_id: storedUser.id,
+                    type: 'Suspension',
+                    severity: payload?.severity || 'High',
+                    reason: payload?.reason || 'Operational Suspension',
+                    status: 'Active',
+                    date: payload?.date || new Date().toISOString()
+                };
+                const statusObj = {
+                    type: 'Suspension',
+                    record: suspRecord,
+                    isSuspended: true,
+                    isTerminated: false
+                };
+                setDisciplinaryCache(storedUser.id, statusObj);
+                setDisciplinaryState(statusObj);
+
+                queryClient.setQueryData(['employeeDashboard', storedUser.id], old => {
+                    if (!old) return old;
+                    const oldDisc = old.discData?.data || old.discData || [];
+                    const updatedDisc = [suspRecord, ...oldDisc.filter(d => d.id !== suspRecord.id)];
+                    const oldEmp = old.employee || old.shiftData?.[0] || {};
+                    const updatedEmp = {
+                        ...oldEmp,
+                        status: 'suspended',
+                        is_active: false,
+                        is_suspended: true,
+                        is_terminated: false,
+                        operational_status: 'Suspended'
+                    };
+                    return {
+                        ...old,
+                        employee: updatedEmp,
+                        shiftData: [updatedEmp],
+                        discData: updatedDisc
+                    };
+                });
+
+                try {
+                    const saved = JSON.parse(localStorage.getItem('user') || '{}');
+                    if (saved?.id === storedUser.id) {
+                        localStorage.setItem('user', JSON.stringify({
+                            ...saved,
+                            status: 'suspended',
+                            is_active: false,
+                            is_suspended: true,
+                            is_terminated: false,
+                            operational_status: 'Suspended'
+                        }));
+                    }
+                } catch (_) {}
+
+                setShowInfractionsModal(true);
+
+                window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', {
+                    detail: {
+                        userId: storedUser.id,
+                        status: 'Suspended',
+                        isSuspended: true,
+                        isTerminated: false,
+                        record: suspRecord
+                    }
+                }));
+            } else if (['DISCIPLINARY_OVERTURNED', 'DISCIPLINARY_RESOLVED', 'EMPLOYEE_RESTORED'].includes(event)) {
+                clearDisciplinaryCache(storedUser.id);
+                setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+
+                queryClient.setQueryData(['employeeDashboard', storedUser.id], old => {
+                    if (!old) return old;
+                    const oldDisc = old.discData?.data || old.discData || [];
+                    const updatedDisc = oldDisc.map(d => {
+                        if (payload?.id && d.id === payload.id) {
+                            return { ...d, status: event === 'DISCIPLINARY_OVERTURNED' ? 'Overturned' : 'Resolved' };
+                        }
+                        return d;
+                    });
+                    const oldEmp = old.employee || old.shiftData?.[0] || {};
+                    const updatedEmp = {
+                        ...oldEmp,
+                        status: 'active',
+                        is_active: true,
+                        is_suspended: false,
+                        is_terminated: false,
+                        operational_status: 'Active',
+                        archived_at: null,
+                        separation_type: null,
+                        separation_reason: null
+                    };
+                    return {
+                        ...old,
+                        employee: updatedEmp,
+                        shiftData: [updatedEmp],
+                        discData: updatedDisc
+                    };
+                });
+
+                try {
+                    const saved = JSON.parse(localStorage.getItem('user') || '{}');
+                    if (saved?.id === storedUser.id) {
+                        localStorage.setItem('user', JSON.stringify({
+                            ...saved,
+                            status: 'active',
+                            is_active: true,
+                            is_suspended: false,
+                            is_terminated: false,
+                            operational_status: 'Active',
+                            archived_at: null
+                        }));
+                    }
+                } catch (_) {}
+
+                window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', {
+                    detail: {
+                        userId: storedUser.id,
+                        status: 'Active',
+                        isSuspended: false,
+                        isTerminated: false
+                    }
+                }));
+            } else if (event === 'DISCIPLINARY_CREATED' && ['Warning'].includes(payload?.type)) {
+                setShowInfractionsModal(true);
+            }
+
             const alert = alerts[event];
             if (alert) toast[alert[0]](alert[1], { id: alert[2], duration: 8000 });
         };
@@ -121,12 +317,15 @@ const EmployeeDashboard = () => {
             if (!disposed && targetsDashboardEmployee(payload, storedUser.id)) scheduled.refresh();
         });
         const disciplinaryBus = supabase.channel(`dashboard-disciplinary-sync-${storedUser.id}`);
+        const globalDisciplinary = supabase.channel('disciplinary_realtime_sync');
         for (const event of ['DISCIPLINARY_CREATED', 'DISCIPLINARY_STATUS_UPDATED', 'DISCIPLINARY_DELETED', ...Object.keys(alerts)]) {
             channel.on('broadcast', { event }, onEmployeeEvent(event));
             disciplinaryBus.on('broadcast', { event }, onEmployeeEvent(event));
+            globalDisciplinary.on('broadcast', { event }, onEmployeeEvent(event));
         }
         channel.subscribe(onSubscribe);
         disciplinaryBus.subscribe(onSubscribe);
+        globalDisciplinary.subscribe(onSubscribe);
         const openDisciplinary = () => setShowInfractionsModal(true);
         const refreshAll = () => scheduled.refresh(true);
         const syncDisciplinary = event => {
@@ -138,7 +337,7 @@ const EmployeeDashboard = () => {
         return () => {
             disposed = true;
             scheduled.cancel();
-            for (const subscription of [channel, disciplinaryBus]) supabase.removeChannel(subscription);
+            for (const subscription of [channel, disciplinaryBus, globalDisciplinary]) supabase.removeChannel(subscription);
             window.removeEventListener('refresh_dashboard', refreshAll);
             window.removeEventListener('open_disciplinary_modal', openDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
@@ -321,19 +520,39 @@ const EmployeeDashboard = () => {
         const logs = data?.discData?.data || data?.discData || [];
         return Array.isArray(logs) ? logs.filter(log => String(log.employee_id) === String(user.id)) : [];
     }, [data?.discData, user.id]);
-    const infractions = employeeDisciplinary.filter(log => log.status === 'Active');
-    const unresolvedInfractions = employeeDisciplinary.filter(log => log.status !== 'Resolved');
     const isActiveSanction = log => !isExoneratedOrCleared(log) && !['resolved', 'overturned', 'dismissed', 'cleared', 'cancelled', 'closed'].includes(String(log.status || '').toLowerCase());
+    const infractions = employeeDisciplinary.filter(log => 
+        isActiveSanction(log) && 
+        ['active', 'action required'].includes(String(log.status || '').toLowerCase())
+    );
+    const hasActiveSanctions = employeeDisciplinary.some(isActiveSanction);
     const terminationRecord = employeeDisciplinary.find(log => log.type === 'Termination' && isActiveSanction(log));
-    const activeTermination = queryHasLoaded ? terminationRecord : (disciplinaryState.isTerminated ? disciplinaryState.record : null);
-    const activeSuspension = queryHasLoaded
-        ? employeeDisciplinary.find(log => log.type === 'Suspension' && isActiveSanction(log))
-        : (disciplinaryState.isSuspended ? disciplinaryState.record : null);
-    const isTerminated = Boolean(activeTermination || user.is_terminated || user.archived_at ||
-        user.operational_status === 'Terminated' || ['terminated', 'separated', 'archived'].includes(currentStatus) ||
-        (currentStatus === 'inactive' && user.separation_type) || (!queryHasLoaded && disciplinaryState.isTerminated));
-    const isSuspended = !isTerminated && Boolean(activeSuspension || user.is_suspended ||
-        currentStatus === 'suspended' || user.operational_status === 'Suspended' || (!queryHasLoaded && disciplinaryState.isSuspended));
+    const activeTermination = terminationRecord || (disciplinaryState.isTerminated ? disciplinaryState.record : null);
+    const activeSuspension = employeeDisciplinary.find(log => log.type === 'Suspension' && isActiveSanction(log)) || (disciplinaryState.isSuspended ? disciplinaryState.record : null);
+
+    const hasExplicitTermination = Boolean(
+        activeTermination ||
+        disciplinaryState.isTerminated ||
+        currentStatus === 'terminated' ||
+        user.is_terminated ||
+        user.operational_status === 'Terminated' ||
+        (Boolean(user?.separation_type) && ['separated', 'inactive'].includes(currentStatus)) ||
+        (Boolean(user?.archived_at) && currentStatus !== 'active' && currentStatus !== 'suspended')
+    );
+    const isSuspended = !hasExplicitTermination && Boolean(
+        activeSuspension ||
+        user.is_suspended ||
+        currentStatus === 'suspended' ||
+        user.operational_status === 'Suspended' ||
+        disciplinaryState.isSuspended
+    );
+    const isTerminated = !isSuspended && Boolean(
+        hasExplicitTermination ||
+        disciplinaryState.isTerminated ||
+        user.is_terminated ||
+        user.operational_status === 'Terminated' ||
+        ['terminated', 'separated', 'archived'].includes(currentStatus)
+    );
 
     const leaveBlockedReason = isTerminated || user.is_active === false || ['inactive', 'resigned', 'separated', 'terminated'].includes(currentStatus)
         ? 'Leave requests are disabled for separated or inactive accounts.'
@@ -788,7 +1007,7 @@ const EmployeeDashboard = () => {
                     </button>
 
                     {/* Leave balance and cash-out request */}
-                    <LeaveCreditsPanel key={user.id} employeeId={user.id} employee={user} />
+                    <LeaveCreditsPanel key={user.id} employeeId={user.id} employee={user} isTerminated={isTerminated} isSuspended={isSuspended} />
 
                     {/* Leave overview & request ledger */}
                     <button
@@ -1093,7 +1312,7 @@ const EmployeeDashboard = () => {
                             </div>
                         </div>
                     </div>
-                ) : unresolvedInfractions.length > 0 ? (
+                ) : infractions.length > 0 ? (
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-danger/20">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-danger/20">
@@ -1108,7 +1327,7 @@ const EmployeeDashboard = () => {
                                         </h3>
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
                                             <i className="ti ti-alert-triangle" />
-                                            <span>{unresolvedInfractions.length} Action Required</span>
+                                            <span>{infractions.length} Action Required</span>
                                         </span>
                                     </div>
                                     <p className="text-slate-500 text-xs sm:text-sm font-medium mt-0.5">
@@ -1122,13 +1341,13 @@ const EmployeeDashboard = () => {
                                 className="w-full sm:w-auto h-9 px-4 bg-danger hover:bg-danger-ink text-white text-xs font-medium rounded-md transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-2xs"
                             >
                                 <i className="ti ti-file-text text-sm" />
-                                <span>Review &amp; Acknowledge ({unresolvedInfractions.length})</span>
+                                <span>{infractions.length > 1 ? `Review & Acknowledge All (${infractions.length})` : 'Review & Acknowledge'}</span>
                             </button>
                         </div>
 
                         {/* Notice Items */}
                         <div className="space-y-3 pt-4 sm:pt-5">
-                            {unresolvedInfractions.map((infraction) => (
+                            {infractions.map((infraction) => (
                                 <div
                                     key={infraction.id}
                                     onClick={() => setShowInfractionsModal(true)}
@@ -1908,17 +2127,21 @@ const EmployeeDashboard = () => {
                                     ? 'bg-danger-subtle border-danger/20 text-danger-ink'
                                     : isSuspended
                                         ? 'bg-warning-subtle border-warning/20 text-warning-ink'
-                                        : unresolvedInfractions.length > 0
+                                        : infractions.length > 0
                                             ? 'bg-danger-subtle border-danger/20 text-danger-ink'
-                                            : 'bg-success-subtle border-success/20 text-success-ink'
+                                            : hasActiveSanctions
+                                                ? 'bg-warning-subtle border-warning/20 text-warning-ink'
+                                                : 'bg-success-subtle border-success/20 text-success-ink'
                                     }`}>
                                     <i className={`ti ${isTerminated
                                         ? 'ti-user-x'
                                         : isSuspended
                                             ? 'ti-clock-pause'
-                                            : unresolvedInfractions.length > 0
+                                            : infractions.length > 0
                                                 ? 'ti-shield-alert'
-                                                : 'ti-shield-check'
+                                                : hasActiveSanctions
+                                                    ? 'ti-alert-circle'
+                                                    : 'ti-shield-check'
                                         } text-xl`} />
                                 </div>
                                 <div>
@@ -1927,9 +2150,11 @@ const EmployeeDashboard = () => {
                                             ? 'Separation & Disciplinary File'
                                             : isSuspended
                                                 ? 'Suspension & Disciplinary Order'
-                                                : unresolvedInfractions.length > 0
+                                                : infractions.length > 0
                                                     ? 'Disciplinary & Policy Notices'
-                                                    : 'Compliance & Personnel Standing'}
+                                                    : hasActiveSanctions
+                                                        ? 'Disciplinary Record File'
+                                                        : 'Compliance & Personnel Standing'}
                                     </h2>
                                 </div>
                             </div>
@@ -1945,9 +2170,10 @@ const EmployeeDashboard = () => {
                         <div className="overflow-y-auto p-5 sm:p-6 space-y-4">
                             {employeeDisciplinary.length > 0 ? (
                                 employeeDisciplinary.map((record) => {
-                                    const isPending = record.status === 'Active';
-                                    const isAcknowledged = record.status === 'Acknowledged';
-                                    const isResolved = record.status === 'Resolved';
+                                    const isCleared = isExoneratedOrCleared(record) || ['overturned', 'dismissed', 'cleared'].includes(String(record.status || '').toLowerCase());
+                                    const isPending = !isCleared && ['active', 'action required'].includes(String(record.status || '').toLowerCase());
+                                    const isAcknowledged = !isCleared && String(record.status || '').toLowerCase() === 'acknowledged';
+                                    const isResolved = !isCleared && String(record.status || '').toLowerCase() === 'resolved';
 
                                     const sevColors = {
                                         Critical: 'bg-danger-subtle text-danger-ink border-danger/20',
@@ -1958,17 +2184,23 @@ const EmployeeDashboard = () => {
 
                                     const statColors = {
                                         Active: 'bg-danger-subtle text-danger-ink border-danger/20',
+                                        'Action Required': 'bg-danger-subtle text-danger-ink border-danger/20',
                                         Acknowledged: 'bg-surface-muted text-ink border-line',
                                         Resolved: 'bg-slate-100 text-slate-600 border-slate-200',
+                                        Overturned: 'bg-success-subtle text-success-ink border-success/20',
+                                        Dismissed: 'bg-success-subtle text-success-ink border-success/20',
+                                        Cleared: 'bg-success-subtle text-success-ink border-success/20',
                                         'Under Review': 'bg-accent-subtle text-accent border-accent/20'
-                                    }[record.status] || 'bg-slate-100 text-slate-700 border-slate-200';
+                                    }[record.status] || (isCleared ? 'bg-success-subtle text-success-ink border-success/20' : 'bg-slate-100 text-slate-700 border-slate-200');
 
                                     return (
                                         <div
                                             key={record.id}
                                             className={`p-4 sm:p-5 rounded-md border transition-colors duration-100 ${isPending
                                                 ? 'bg-danger-subtle/40 border-danger/20 shadow-2xs'
-                                                : 'bg-white border-slate-200'
+                                                : isCleared
+                                                    ? 'bg-success-subtle/20 border-success/20'
+                                                    : 'bg-white border-slate-200'
                                                 }`}
                                         >
                                             <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
@@ -1977,7 +2209,7 @@ const EmployeeDashboard = () => {
                                                         {record.severity} Severity
                                                     </span>
                                                     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${statColors}`}>
-                                                        {record.status === 'Active' ? 'Action Required' : record.status}
+                                                        {isCleared ? 'Cleared · Overturned' : record.status === 'Active' ? 'Action Required' : record.status}
                                                     </span>
                                                 </div>
                                                 <span className="text-[11px] font-mono text-slate-400">
@@ -2027,6 +2259,18 @@ const EmployeeDashboard = () => {
                                                 <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 px-3 py-2 rounded-md border border-slate-200">
                                                     <i className="ti ti-circle-check text-base text-slate-500" />
                                                     <span>Case closed and officially resolved by HR Compliance.</span>
+                                                </div>
+                                            )}
+
+                                            {isCleared && (
+                                                <div className="flex items-center gap-2.5 text-xs font-medium text-success-ink bg-success-subtle px-3.5 py-2.5 rounded-md border border-success/20">
+                                                    <i className="ti ti-shield-check text-base text-success shrink-0" />
+                                                    <div>
+                                                        <p className="font-bold">Record Exonerated &amp; Cleared</p>
+                                                        <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                                                            HR Compliance has officially cleared and overturned this file. No disciplinary sanction or penalty remains in effect.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>

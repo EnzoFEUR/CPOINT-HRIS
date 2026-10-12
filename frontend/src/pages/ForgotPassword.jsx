@@ -29,7 +29,7 @@ export default function ForgotPassword() {
   const [accountInfo, setAccountInfo] = useState(null);
 
   const { cooldown, isCooldown, startCooldown } = useOtpCooldown(
-    'dest_email_' + ((accountInfo?.email || email).trim().toLowerCase() || 'global'),
+    'pwd_reset_dest_email_' + ((accountInfo?.email || email).trim().toLowerCase() || 'global'),
     60
   );
 
