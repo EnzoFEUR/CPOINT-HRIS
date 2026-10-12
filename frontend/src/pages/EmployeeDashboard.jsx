@@ -22,6 +22,7 @@ import LeaveCreditsPanel from '../components/LeaveCreditsPanel';
 import EmployeeLeaveRequest from '../components/EmployeeLeaveRequest';
 import MyRequestsModal from '../components/MyRequestsModal';
 import useEmployeeLeaveCredits from '../utils/useEmployeeLeaveCredits';
+import useDocumentRequests from '../utils/useDocumentRequests';
 import { getEmployeeLeaveStatus } from '../../../shared/leaveRequests.mjs';
 import { acknowledgeDashboardNotices, createDashboardRefresh, getDashboardPayrolls, targetsDashboardEmployee } from '../utils/employeeDashboardData';
 
@@ -44,6 +45,8 @@ const EmployeeDashboard = () => {
     const [showLeaveModal, setShowLeaveModal] = useState(false);
     const [showMyRequestsModal, setShowMyRequestsModal] = useState(false);
     const leaveCredits = useEmployeeLeaveCredits(user.id);
+    const documentRequests = useDocumentRequests({ employeeId: user.id, actorId: storedUser.id, enabled: Boolean(user.id) });
+    const pendingDocRequests = (documentRequests.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
     const cashRequests = leaveCredits.data?.cash_out_requests || [];
     const cashEvents = leaveCredits.data?.cash_events || [];
     const [showPayslipModal, setShowPayslipModal] = useState(false);
@@ -662,7 +665,7 @@ const EmployeeDashboard = () => {
                             </div>
                             <h3 className="font-bold text-sm sm:text-base tracking-tight text-white mt-1">Employment Records &amp; Clearance Archive</h3>
                             <p className="text-slate-300 text-xs mt-0.5 leading-relaxed max-w-xl">
-                                Operational credentials have been deactivated. All statutory 201 records, government contributions, and historical payslips remain permanently accessible for tax clearance and DOLE audit verification.
+                                Operational credentials have been deactivated. All statutory records, government contributions, and historical payslips remain permanently accessible for tax clearance and DOLE audit verification.
                             </p>
                         </div>
                     </div>
@@ -757,6 +760,35 @@ const EmployeeDashboard = () => {
                     >
                         <i className="ti ti-camera text-sm" />
                         <span>Register face scan</span>
+                    </Link>
+                </div>
+            )}
+
+            {/* Pending Document Requests from HR Banner */}
+            {pendingDocRequests.length > 0 && !isTerminated && (
+                <div className="bg-white border border-accent/30 rounded-lg p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden ring-1 ring-accent/10">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-md bg-accent-subtle border border-accent/20 flex items-center justify-center shrink-0 text-accent">
+                            <i className="ti ti-file-alert text-xl" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-accent text-white">Action Required</span>
+                                <h3 className="font-bold text-sm sm:text-base tracking-tight text-slate-900">
+                                    HR Requested Document{pendingDocRequests.length > 1 ? 's' : ''} ({pendingDocRequests.length})
+                                </h3>
+                            </div>
+                            <p className="text-slate-600 text-xs mt-0.5 leading-relaxed font-medium">
+                                HR has requested <span className="font-semibold text-slate-900">{pendingDocRequests[0].document_type}</span>{pendingDocRequests.length > 1 ? ` and ${pendingDocRequests.length - 1} other record(s)` : ''} for your personnel records vault.
+                            </p>
+                        </div>
+                    </div>
+                    <Link
+                        to="/employee/profile#documents"
+                        className="w-full sm:w-auto h-9 px-4 bg-accent hover:bg-accent-hover text-white font-medium rounded-md shadow-2xs transition-colors duration-100 text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                    >
+                        <i className="ti ti-upload text-sm" />
+                        <span>Upload Document</span>
                     </Link>
                 </div>
             )}
@@ -1466,7 +1498,7 @@ const EmployeeDashboard = () => {
                                     <i className="ti ti-folders text-sm" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">201 Audit Trail</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Record Audit Trail</p>
                                     <p className="font-bold text-slate-800 truncate">{employeeDisciplinary.length} Recorded Action(s)</p>
                                 </div>
                             </div>

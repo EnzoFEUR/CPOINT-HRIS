@@ -48,6 +48,37 @@ export function normalizeDocumentPath(value, employeeId, projectUrl) {
     if (path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || !path.startsWith(`${employeeId}/`)) throw new DocumentError(400, 'Invalid document storage path.');
     return path;
 }
+export function formatCleanDocumentFileName(title = '', originalName = '') {
+    const rawExt = String(originalName || '').split('.').pop() || '';
+    const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const safeExt = ext ? `.${ext}` : '';
+
+    let cleanTitle = String(title || '').trim();
+    if (ext && cleanTitle.toLowerCase().endsWith(`.${ext}`)) {
+        cleanTitle = cleanTitle.slice(0, -(ext.length + 1));
+    }
+
+    const cleanBase = cleanTitle
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    if (cleanBase) {
+        return `${cleanBase}${safeExt}`;
+    }
+
+    const origBase = String(originalName || '')
+        .replace(/\.[^/.]+$/, '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    return `${origBase || 'document'}${safeExt}`;
+}
+
 export function validateDocumentInput(body = {}, file) {
     const employeeId = assertUuid(body.employee_id, 'Employee ID');
     if (typeof body.title !== 'string') throw new DocumentError(400, 'Document title is required.');
@@ -64,7 +95,9 @@ export function validateDocumentInput(body = {}, file) {
         if (!file.size || file.size > DOCUMENT_MAX_BYTES) throw new DocumentError(400, 'Files must be nonempty and no larger than 10 MB.');
         if (['text/html', 'image/svg+xml', 'application/javascript', 'text/javascript'].includes(file.mimetype)) throw new DocumentError(400, 'Active web content is not accepted as a personnel document.');
     }
-    return { employee_id: employeeId, title, category, expiry_date: expiryDate };
+    const documentType = body.document_type ? String(body.document_type).trim() : null;
+    const requestId = body.request_id ? assertUuid(body.request_id, 'Request ID') : null;
+    return { employee_id: employeeId, title, category, expiry_date: expiryDate, document_type: documentType, request_id: requestId };
 }
 export const isEmployeeUploadLocked = employee => Boolean(employee?.archived_at) || employee?.is_active === false || ['inactive', 'terminated', 'separated', 'archived'].includes(String(employee?.status || '').toLowerCase());
 export async function ensureWritableEmployee(client, employeeId) {
@@ -88,23 +121,53 @@ export function documentChanged(client, employeeId, documentId, action, actor, r
     try {
         let channel = broadcasts.get(client);
         if (!channel) { channel = client.channel('document-updates'); broadcasts.set(client, channel); }
-        Promise.resolve(channel.httpSend('DOCUMENT_CHANGED', { employee_id: employeeId, document_id: documentId, action }, { timeout: 2000 })).catch(error => console.warn('[DOCUMENT_REALTIME]', error.message));
+        const payload = { employee_id: employeeId, document_id: documentId, action, ...review };
+        if (typeof channel.send === 'function') {
+            channel.send({ type: 'broadcast', event: 'DOCUMENT_CHANGED', payload }).catch(() => {});
+        }
+        if (typeof channel.httpSend === 'function') {
+            channel.httpSend('DOCUMENT_CHANGED', payload, { timeout: 2000 }).catch(() => {});
+        }
+        if (employeeId) {
+            client.channel(`myprofile-realtime-${employeeId}`).send({
+                type: 'broadcast',
+                event: 'DOCUMENT_CHANGED',
+                payload
+            }).catch(() => {});
+        }
     } catch (error) { console.warn('[DOCUMENT_REALTIME]', error.message); }
 }
 export async function uploadDocument(client, user, body, file) {
     if (!file) throw new DocumentError(400, 'No file uploaded.');
     const metadata = validateDocumentInput(body, file);
     assertDocumentOwner(user, metadata.employee_id);
-    await ensureWritableEmployee(client, metadata.employee_id);
+    const emp = await ensureWritableEmployee(client, metadata.employee_id);
     const filePath = `${metadata.employee_id}/${randomUUID()}.${file.originalname.split('.').pop().toLowerCase()}`;
     const bucket = client.storage.from('documents');
     const { error: storageError } = await bucket.upload(filePath, file.buffer, { contentType: file.mimetype || 'application/octet-stream', upsert: false });
     if (storageError) throw storageError;
-    const { data, error } = await client.from('employee_documents').insert({ ...metadata, file_name: file.originalname, file_path: filePath, file_size: file.size, status: 'pending' }).select().single();
+    const cleanFileName = formatCleanDocumentFileName(metadata.title, file.originalname);
+    const { data, error } = await client.from('employee_documents').insert({ ...metadata, file_name: cleanFileName, file_path: filePath, file_size: file.size, status: 'pending' }).select().single();
     if (error || !data) {
         const { error: cleanupError } = await bucket.remove([filePath]);
         if (cleanupError) console.error('[DOCUMENT_ORPHAN]', filePath, cleanupError.message);
         throw error || new Error('Document record was not saved.');
+    }
+    try {
+        const { data: signed } = await bucket.createSignedUrl(filePath, 3600);
+        if (signed?.signedUrl) data.preview_url = signed.signedUrl;
+    } catch (_) {}
+    if (metadata.request_id) {
+        try {
+            await client.from('document_requests').update({
+                status: 'submitted',
+                fulfilled_document_id: data.id,
+                fulfilled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', metadata.request_id);
+        } catch (reqErr) {
+            console.warn('[DOCUMENT_REQUEST_LINK_WARN]', reqErr.message);
+        }
     }
     // The reviewed type is a human selection, not proof of authenticity or AI accuracy.
     const review = body.import_source === 'bulk_import' ? { import_source: 'bulk_import', document_type: body.document_type, review_confirmed: true, import_id: body.import_id } : {};
@@ -133,7 +196,8 @@ export async function listDocuments(client, user, filters = {}) {
     if (employeeId) query = query.eq('employee_id', employeeId);
     if (filters.status) {
         if (filters.status === 'to_review') query = query.is('status', null);
-        else if (['pending', 'approved', 'rejected'].includes(filters.status)) query = query.eq('status', filters.status);
+        else if (filters.status === 'pending') query = query.or('status.eq.pending,status.is.null');
+        else if (['approved', 'rejected'].includes(filters.status)) query = query.eq('status', filters.status);
         else throw new DocumentError(400, 'Invalid document status filter.');
     }
     if (filters.category) query = query.eq('category', filters.category);
@@ -157,6 +221,43 @@ export async function listDocuments(client, user, filters = {}) {
         employees = lookup.data || [];
     }
     const byId = new Map(employees.map(employee => [employee.id, employee]));
+
+    if (documents.length > 0) {
+        try {
+            const pathEntries = [];
+            for (const doc of documents) {
+                if (doc.file_path) {
+                    try {
+                        const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                        pathEntries.push(norm);
+                    } catch (_) {}
+                }
+            }
+            if (pathEntries.length > 0) {
+                const uniquePaths = [...new Set(pathEntries)];
+                const { data: signedList } = await client.storage.from('documents').createSignedUrls(uniquePaths, 3600);
+                if (Array.isArray(signedList)) {
+                    const signedMap = new Map();
+                    for (const item of signedList) {
+                        if (item?.path && item?.signedUrl) {
+                            signedMap.set(item.path, item.signedUrl);
+                        }
+                    }
+                    for (const doc of documents) {
+                        try {
+                            const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                            doc.preview_url = signedMap.get(norm) || null;
+                        } catch {
+                            doc.preview_url = null;
+                        }
+                    }
+                }
+            }
+        } catch (signErr) {
+            console.warn('[DOC_BATCH_SIGN_WARN]', signErr.message);
+        }
+    }
+
     return { documents: documents.map(doc => ({ ...doc, employees: byId.get(doc.employee_id) || null })), employee: employeeResult.data, upload_locked: employeeResult.data ? isEmployeeUploadLocked(employeeResult.data) : false, meta: { page, limit, total: result.count ?? documents.length, has_more: paginated && page * limit < (result.count ?? 0) } };
 }
 export function documentRoute(handler) {

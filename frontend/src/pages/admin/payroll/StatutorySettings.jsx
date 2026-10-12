@@ -454,7 +454,7 @@ export default function StatutorySettings({ onBack }) {
                         <h2 className="text-base font-bold text-slate-800">Holiday Pay Floor (Piece-Rate Workers)</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        <FieldInput label="Daily minimum wage (₱)" name="minimum_daily_wage" value={settings.minimum_daily_wage} onChange={handleChange} step="0.01" focusColor="blue" hint="Used when a piece-rate worker's 7-day average daily output wage is lower." />
+                        <FieldInput label="Daily minimum wage (₱)" name="minimum_daily_wage" value={settings.minimum_daily_wage} onChange={handleChange} step="0.01" focusColor="blue"  />
                     </div>
                 </div>
 

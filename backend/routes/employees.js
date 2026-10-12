@@ -203,7 +203,7 @@ router.get('/check-email', async (req, res) => {
     }
 });
 
-// Get employee details and 201 documents in a single parallel batch
+// Get employee details and documents in a single parallel batch
 router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
@@ -253,7 +253,31 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
             disciplinary_logs: logs
         };
 
-        res.json({ success: true, data: enrichedEmp, documents: docsRes.data || [] });
+        const empDocs = docsRes.data || [];
+        if (empDocs.length > 0) {
+            try {
+                const paths = empDocs
+                    .filter(d => d.file_path)
+                    .map(d => {
+                        let p = d.file_path;
+                        if (p.includes('/')) return p;
+                        return `${id}/${p}`;
+                    })
+                    .filter(Boolean);
+                if (paths.length > 0) {
+                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], 3600);
+                    if (Array.isArray(signedList)) {
+                        const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
+                        for (const doc of empDocs) {
+                            let p = doc.file_path;
+                            doc.preview_url = signedMap.get(p) || signedMap.get(`${id}/${p}`) || null;
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        res.json({ success: true, data: enrichedEmp, documents: empDocs });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

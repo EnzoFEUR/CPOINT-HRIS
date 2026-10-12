@@ -161,10 +161,31 @@ export function getLeaveOverlapDays(leave, periodStart, periodEnd) {
     return end < start ? 0 : Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
 }
 
-export function assertCreditAttendanceConsistent(leaves = [], attendance = []) {
-    const creditedDates = new Set(leaves.filter(leave => leave.is_paid && leave.credit_pool).flatMap(leave => leave.credit_dates || []));
-    if (attendance.some(log => creditedDates.has(String(log.date || '').slice(0, 10)) && (log.time_in || log.time_out))) throw new Error('Approved credited leave conflicts with attendance punches. Reconcile the leave before calculating payroll.');
+export function getCreditAttendanceConflicts(leaves = [], attendance = []) {
+    const creditedDates = new Set(
+        (leaves || [])
+            .filter(leave => leave && leave.is_paid && leave.credit_pool)
+            .flatMap(leave => Array.isArray(leave.credit_dates) ? leave.credit_dates : [])
+    );
+    if (creditedDates.size === 0) return [];
+    const conflicts = new Set();
+    for (const log of (attendance || [])) {
+        if (!log) continue;
+        const dateKey = String(log.date || '').slice(0, 10);
+        if (creditedDates.has(dateKey) && (log.time_in || log.time_out)) {
+            conflicts.add(dateKey);
+        }
+    }
+    return Array.from(conflicts).sort();
 }
+
+export function assertCreditAttendanceConsistent(leaves = [], attendance = []) {
+    const conflicts = getCreditAttendanceConflicts(leaves, attendance);
+    if (conflicts.length > 0) {
+        invalid(`Approved credited leave conflicts with attendance punches on ${conflicts.join(', ')}. Reconcile the leave before calculating payroll.`, 400);
+    }
+}
+
 
 // --- Leave Filing & Request Range Validation ---
 export const LEAVE_REQUEST_TYPES = ['Sick Leave', 'Vacation / PTO', 'Service Incentive Leave', 'Maternity/Paternity', 'Emergency Leave'];

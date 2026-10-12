@@ -12,6 +12,7 @@ import bannerCover from '../../../assets/employee-cover.jpg';
 import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalendar';
 import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
+import RequestDocumentModal from '../documents/RequestDocumentModal';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -41,6 +42,7 @@ export default function Show() {
 
     // Modals State
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [isRequestDocModalOpen, setIsRequestDocModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -310,7 +312,7 @@ export default function Show() {
         return null;
     }, [queryClient, id]);
 
-    // Query employee details and 201 documents
+    // Query employee details and documents
     const { data: employeeData, isLoading: isEmpLoading } = useQuery({
         queryKey: ['employeeDetails', id],
         queryFn: async () => {
@@ -624,6 +626,16 @@ export default function Show() {
                             <i className="ti ti-folders text-slate-500 text-sm" />
                             <span className="hidden sm:inline">Documents</span>
                         </Link>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsRequestDocModalOpen(true)}
+                            className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
+                            title="Request missing document from employee"
+                        >
+                            <i className="ti ti-file-plus text-slate-500 text-sm" />
+                            <span className="hidden sm:inline">Request Document</span>
+                        </button>
 
                         <button onClick={() => setIsPrintModalOpen(true)} className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
                             <i className="ti ti-qrcode text-slate-500 text-sm" />
@@ -1599,7 +1611,7 @@ export default function Show() {
                                         <span>Statutory Compliance & Digital Revocation</span>
                                     </div>
                                     <p className="text-[11px] text-accent-strong leading-relaxed font-normal">
-                                        Retains 201 records, biometric timestamps, BIR 2316 tax history, and payslips in cold storage per DOLE labor regulations. Real-time access to gate scanners and portal accounts is permanently severed immediately.
+                                        Retains personnel records, biometric timestamps, BIR 2316 tax history, and payslips in cold storage per DOLE labor regulations. Real-time access to gate scanners and portal accounts is permanently severed immediately.
                                     </p>
                                 </div>
 
@@ -2041,6 +2053,18 @@ export default function Show() {
                     </div>
                 </div>
             )}
+
+            {/* Request Document Modal */}
+            <RequestDocumentModal
+                isOpen={isRequestDocModalOpen}
+                onClose={() => setIsRequestDocModalOpen(false)}
+                initialEmployeeId={employee?.id}
+                initialEmployee={employee}
+                onSuccess={() => {
+                    toast.success('Document request dispatched to employee.');
+                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
+                }}
+            />
 
         </>
     );

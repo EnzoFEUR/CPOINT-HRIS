@@ -54,9 +54,6 @@ const ThirteenthMonthModal = ({ onClose }) => {
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 gap-3">
                     <div className="min-w-0">
                         <h3 className="text-sm font-bold text-slate-800">13th Month Pay</h3>
-                        <p className="text-[11px] text-slate-400 font-semibold">
-                            Basic pay earned in the year &divide; 12. Added to each payslip in the last cutoff of December.
-                        </p>
                     </div>
                     <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors duration-100 border border-slate-200 cursor-pointer shrink-0">
                         <i className="ti ti-x text-base font-semibold" />

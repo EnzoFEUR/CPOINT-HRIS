@@ -1517,7 +1517,6 @@ export default function DisciplinaryIndex() {
                                     <h2 className="text-base font-semibold text-slate-900 leading-tight">
                                         {type === 'Suspension' ? 'Log Account Suspension' : (type === 'Termination' ? 'Log Employment Termination' : 'Issue Disciplinary Warning')}
                                     </h2>
-                                    <p className="text-[11px] text-slate-400 font-medium">Employee incident documentation</p>
                                 </div>
                             </div>
                             <button onClick={() => setShowModal(false)} className="w-8 h-8 rounded-md text-slate-400 hover:text-slate-600 flex items-center justify-center cursor-pointer transition-colors duration-100">
@@ -1945,7 +1944,7 @@ export default function DisciplinaryIndex() {
                                         <span>1-to-1 Employee Archive Separation</span>
                                     </div>
                                     <p className="text-[11px] text-danger-ink leading-relaxed">
-                                        The employee is immediately deactivated and moved to the <strong>Employee Archive</strong> with complete separation details. Biometric Gate Scanner access is revoked. Historical 201 records are preserved.
+                                        The employee is immediately deactivated and moved to the <strong>Employee Archive</strong> with complete separation details. Biometric Gate Scanner access is revoked. Historical records are preserved.
                                     </p>
                                 </div>
                             )}

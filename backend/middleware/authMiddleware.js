@@ -102,7 +102,7 @@ export const verifyToken = async (req, res, next) => {
 
     // Enterprise DOLE & BIR 2316 Retention Policy:
     // Separated personnel retain read-only portal access to their personal archive (dashboard,
-    // disciplinary separation notices, tax records / BIR 2316, payroll history, 201 profile records)
+    // disciplinary separation notices, tax records / BIR 2316, payroll history, official profile documents)
     // and acknowledgment of formal notices.
     // Operational credentials (attendance clock-in, leave filing, profile mutations) are strictly revoked.
     const isSuspended = resolvedUser.status === 'Suspended' || resolvedUser.status === 'suspended';

@@ -6,10 +6,10 @@ export const DOCUMENT_STATUSES = [
     { key: 'rejected', label: 'Rejected' },
 ];
 const STATUS_STYLES = {
-    to_review: 'bg-slate-100 text-slate-600 border-slate-200',
-    pending: 'bg-warning-subtle text-warning-ink border-warning/20',
-    approved: 'bg-success-subtle text-success-ink border-success/20',
-    rejected: 'bg-danger-subtle text-danger-ink border-danger/20',
+    to_review: 'bg-surface-muted text-ink-muted border-line',
+    pending: 'bg-warning-subtle text-warning-ink border-warning/30',
+    approved: 'bg-success-subtle text-success-ink border-success/30',
+    rejected: 'bg-danger-subtle text-danger-ink border-danger/30',
 };
 const FILE_MIME_TYPES = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', txt: 'text/plain', csv: 'text/csv', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', tif: 'image/tiff', tiff: 'image/tiff' };
 export const getDocumentMimeType = filename => FILE_MIME_TYPES[String(filename || '').split('.').pop().toLowerCase()] || 'application/octet-stream';
@@ -38,3 +38,45 @@ export function getDocumentExpiry(document, now = new Date()) {
     if (daysLeft <= 30) return { level: 'warning', daysLeft, label: `Expires in ${daysLeft}d` };
     return { level: 'valid', daysLeft, label: `Valid until ${date}` };
 }
+
+export function isImageDocument(fileName = '') {
+    const ext = String(fileName || '').split('.').pop().toLowerCase();
+    return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'heic', 'heif'].includes(ext);
+}
+
+export function isPdfDocument(fileName = '') {
+    const ext = String(fileName || '').split('.').pop().toLowerCase();
+    return ext === 'pdf';
+}
+
+export function formatCleanDocumentFileName(title = '', originalName = '') {
+    const rawExt = String(originalName || '').split('.').pop() || '';
+    const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const safeExt = ext ? `.${ext}` : '';
+
+    let cleanTitle = String(title || '').trim();
+    if (ext && cleanTitle.toLowerCase().endsWith(`.${ext}`)) {
+        cleanTitle = cleanTitle.slice(0, -(ext.length + 1));
+    }
+
+    const cleanBase = cleanTitle
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    if (cleanBase) {
+        return `${cleanBase}${safeExt}`;
+    }
+
+    const origBase = String(originalName || '')
+        .replace(/\.[^/.]+$/, '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    return `${origBase || 'document'}${safeExt}`;
+}
+
