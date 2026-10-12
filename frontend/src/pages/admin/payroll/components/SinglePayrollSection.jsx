@@ -20,7 +20,8 @@ const SinglePayrollSection = ({
     isInvalidDateRange,
     handleSubmitSingle,
     periodStart,
-    periodEnd
+    periodEnd,
+    attendanceBlock = null
 }) => {
     return (
         <form onSubmit={handleSubmitSingle} className="space-y-6">
@@ -52,8 +53,20 @@ const SinglePayrollSection = ({
                         <i className="ti ti-chevron-right text-slate-400 text-base group-hover:text-accent transition-colors shrink-0 ml-2"></i>
                     </button>
                 ) : (
-                    <div className="bg-white p-3.5 sm:p-4 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden">
-                        <div className="flex items-start justify-between gap-3">
+                    <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Change selected employee"
+                        onClick={() => setIsEmpModalOpen(true)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setIsEmpModalOpen(true);
+                            }
+                        }}
+                        className="group bg-white p-3.5 sm:p-4 rounded-lg border border-slate-200 shadow-2xs relative overflow-hidden cursor-pointer transition-all duration-100 hover:border-accent hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                        <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
                                 <EmployeeAvatar
                                     employee={selectedEmployee}
@@ -79,7 +92,7 @@ const SinglePayrollSection = ({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsEmpModalOpen(true)}
+                                onClick={(e) => { e.stopPropagation(); setIsEmpModalOpen(true); }}
                                 className="shrink-0 h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md transition-colors duration-100 cursor-pointer flex items-center"
                             >
                                 Change
@@ -215,7 +228,7 @@ const SinglePayrollSection = ({
                             </label>
                             {estimatedOtPay > 0 && (
                                 <span className="text-xs font-bold text-ink font-mono bg-surface-muted px-2 py-0.5 rounded-md border border-line">
-                                    +₱{estimatedOtPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (1.25x Rate)
+                                    +₱{estimatedOtPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (OT total)
                                 </span>
                             )}
                         </div>
@@ -230,7 +243,23 @@ const SinglePayrollSection = ({
                             placeholder="0.0"
                         />
                         <p className="text-[11px] text-slate-500 font-medium">
-                            Approved overtime hours eligible for extra pay.
+                            Approved overtime hours eligible for extra pay (1.25x).
+                        </p>
+                        <label className="block text-xs font-bold text-accent uppercase pt-2">
+                            Rest-Day OT Hours (1.69x)
+                        </label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="rest_day_ot_hours"
+                            value={formData.rest_day_ot_hours ?? ''}
+                            onChange={handleInputChange}
+                            className="w-full h-10 px-3 bg-white border border-accent/20 rounded-md font-mono text-accent-strong text-base font-bold outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
+                            placeholder="0.0"
+                        />
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            Overtime worked on a rest day. Paid at 1.69x instead of 1.25x.
                         </p>
                     </div>
                 </div>
@@ -267,6 +296,16 @@ const SinglePayrollSection = ({
                     className="w-full h-10 px-3 bg-white border border-danger/20 rounded-md font-mono text-danger-ink text-base font-bold" placeholder="0.00" />
                 <p className="text-xs text-slate-600">{formData.late_minutes || 0} whole minute(s) beyond the {workPolicy.gracePeriodMinutes}-minute grace period x PHP {workPolicy.lateRatePerMinute}. Calculated from attendance; verified again when saved.</p>
             </div>
+
+            {attendanceBlock && (
+                <div role="alert" className="flex items-start gap-2.5 p-3.5 bg-danger-subtle border border-danger/20 rounded-md text-xs text-danger-ink font-medium">
+                    <i className="ti ti-ban text-base shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                        <p className="font-bold">Payroll blocked for this employee</p>
+                        <p className="mt-0.5 leading-relaxed">{attendanceBlock.reason}</p>
+                    </div>
+                </div>
+            )}
 
             <button
                 type="submit"

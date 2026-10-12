@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import EmployeeAvatar from '../../../../components/EmployeeAvatar';
 
-const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplier }) => {
+const WorkerPayrollCard = React.memo(({ worker, workerData, isLoadingAttendance = false }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     if (!workerData) return null;
 
@@ -61,9 +61,6 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                                         {op.isDeclaredOutput
                                             ? ` (${op.declaredQty === null ? '\u2014' : op.declaredQty.toLocaleString('en-US')} made \u00d7 \u20b1${op.amt.toFixed(2)})`
                                             : ` (${op.workerCount} worker${op.workerCount > 1 ? 's' : ''})`}
-                                        {holidayRateMultiplier > 1 && (
-                                            <span className="text-[9px] text-warning-ink font-bold ml-1">(Hol. Rate)</span>
-                                        )}
                                         {op.isProrated && (
                                             <span className="text-[9px] text-accent font-bold ml-1">(Prorated)</span>
                                         )}
@@ -78,11 +75,25 @@ const WorkerPayrollCard = React.memo(({ worker, workerData, holidayRateMultiplie
                             ))}
                         </div>
                     ) : (
-                        <p className="text-[10px] text-warning-ink italic">No matching job operation assigned</p>
+                        isLoadingAttendance ? (
+                            <p className="text-[10px] text-slate-400 italic animate-pulse">Loading attendance&hellip;</p>
+                        ) : workerData.skippedNoAttendance ? (
+                            <p className="text-[10px] text-danger-ink font-semibold">No attendance this cutoff</p>
+                        ) : (
+                            <p className="text-[10px] text-warning-ink italic">No matching job operation assigned</p>
+                        )
                     )}
                 </div>
             </div>
 
+            {workerData.holidayPay > 0 && (
+                <p className="text-xs text-warning-ink">
+                    Holiday pay: PHP {workerData.holidayPay.toFixed(2)}
+                    {workerData.holidayItems?.length > 0 && ` (${workerData.holidayItems.map(h => `${h.holidayName || 'Holiday'} ${h.multiplier}x`).join(', ')})`}
+                </p>
+            )}
+            {workerData.holidayMissingRate && <p className="text-xs text-danger-ink">Worked a holiday but has no daily rate saved - holiday pay not computed</p>}
+            {workerData.thirteenthMonthPay > 0 && <p className="text-xs text-ink font-semibold">13th month pay: PHP {workerData.thirteenthMonthPay.toFixed(2)}</p>}
             {workerData.paidLeavePay > 0 && <p className="text-xs text-slate-600">Paid leave: PHP {workerData.paidLeavePay.toFixed(2)}</p>}
             {workerData.silCashPay > 0 && <p className="text-xs text-slate-600">SIL cash payout: PHP {workerData.silCashPay.toFixed(2)}</p>}
             {workerData.lateMinutes > 0 && <p className="text-xs text-danger-ink">Tardiness: {workerData.lateMinutes} min beyond grace - PHP {workerData.lateDeduction.toFixed(2)}</p>}

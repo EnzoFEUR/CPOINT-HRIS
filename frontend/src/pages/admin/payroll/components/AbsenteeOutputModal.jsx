@@ -7,8 +7,7 @@ const AbsenteeOutputModal = ({
     computedFactoryRows,
     absenteeOutputs,
     setAbsenteeOutputs,
-    absenteeValidation,
-    holidayRateMultiplier
+    absenteeValidation
 }) => {
     // Group the paid operations each absent worker is assigned to.
     const workerSections = useMemo(() => {
@@ -113,9 +112,6 @@ const AbsenteeOutputModal = ({
                                                     <span className="text-xs font-bold text-slate-700 block truncate">{row.operation || 'Unnamed Process'}</span>
                                                     <span className="text-[10px] text-slate-400 font-medium block">
                                                         Batch qty {row.qty.toLocaleString('en-US')} &middot; Rate &#8369;{row.effectiveAmt.toFixed(2)}
-                                                        {holidayRateMultiplier > 1 && (
-                                                            <span className="text-warning-ink font-bold"> ({holidayRateMultiplier.toFixed(1)}x holiday)</span>
-                                                        )}
                                                         {' '}&middot; Total &#8369;{row.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </span>
                                                     <span className={`text-[10px] font-bold block mt-0.5 ${row.isOverDeclared ? 'text-danger-ink' : 'text-slate-500'}`}>

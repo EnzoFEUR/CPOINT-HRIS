@@ -1,4 +1,5 @@
 import { DEFAULT_REST_DAYS } from '../../shared/workPolicy.mjs';
+import { HOLIDAY_TYPES, HOLIDAY_TYPE_LABELS, MULTIPLIERS } from '../../shared/holidayMultipliers.mjs';
 import { sumCashAmounts } from '../../shared/leavePolicy.js';
 import { summarizeApprovedLeaves } from './leaveUtils.js';
 
@@ -17,39 +18,18 @@ export function round2(n) {
 
 // Constants & Multipliers
 
+// Holiday types, labels and multipliers live in shared/holidayMultipliers.mjs (also used by the browser).
+// Re-exported here so existing imports of these names keep working.
+export { HOLIDAY_TYPES, HOLIDAY_TYPE_LABELS, MULTIPLIERS };
 
-export const HOLIDAY_TYPES = Object.freeze({
-    REGULAR: 'regular',
-    SPECIAL_NON_WORKING: 'special_non_working',
-    SPECIAL_WORKING: 'special_working',
-});
-export const HOLIDAY_TYPE_LABELS = Object.freeze({
-    [HOLIDAY_TYPES.REGULAR]: 'Regular Holiday',
-    [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: 'Special Non-Working Day',
-    [HOLIDAY_TYPES.SPECIAL_WORKING]: 'Special Working Day',
-});
+
 
 export const DOLE_DIVISOR = 21.75; // Standard PH monthly-to-daily factor
 export const STANDARD_SHIFT_HOURS = 8;
 export const HOLIDAY_OT_PREMIUM = 0.30;
+export const UNPAID_BREAK_HOURS = 1; // Unpaid meal break, taken out of a daily-rate employee's holiday hours
+export const UNPAID_BREAK_MIN_SHIFT_HOURS = 5; // The break is only deducted from shifts longer than this (a 4-hour half day has none)
 export const THIRTEENTH_MONTH_TAX_EXEMPT_CEILING = 90000;
-export const MULTIPLIERS = Object.freeze({
-    [HOLIDAY_TYPES.REGULAR]: {
-        worked: 2.0,
-        workedRestDay: 2.6,
-        unworked: 1.0,
-    },
-    [HOLIDAY_TYPES.SPECIAL_NON_WORKING]: {
-        worked: 1.3,
-        workedRestDay: 1.5,
-        unworked: 0,
-    },
-    [HOLIDAY_TYPES.SPECIAL_WORKING]: {
-        worked: 1.0,
-        workedRestDay: 1.3,
-        unworked: 0,
-    },
-});
 
 
 // Rate Helpers
@@ -173,6 +153,7 @@ export function computeDayPay({
     canOvertime = true,
     salaryIncludesHolidayPay = false,
     paidLeaveDates = new Set(),
+    salaryCoversRestDays = true,
 }) {
     const holiday = holidaysByDate.get(dateStr);
     if (!holiday) return null;
@@ -180,6 +161,11 @@ export function computeDayPay({
     const safeHoursWorked = toSafeNumber(hoursWorked);
     const worked = safeHoursWorked > 0;
     const restDayToday = isRestDay(dateStr, restDays);
+    // Is this date already paid inside the fixed salary?
+    //  - monthly-salaried staff: the salary spans every day, rest days included;
+    //  - daily/hourly staff: weekly pay covers working days only, so a holiday that lands on
+    //    their rest day is NOT in the salary and must be paid in full.
+    const salaryCoversDate = salaryIncludesHolidayPay && (salaryCoversRestDays || !restDayToday);
     const regularHours = Math.min(safeHoursWorked, STANDARD_SHIFT_HOURS);
     // Factory workers cannot overtime per company policy
     const overtimeHours = canOvertime ? Math.max(safeHoursWorked - STANDARD_SHIFT_HOURS, 0) : 0;
@@ -193,7 +179,7 @@ export function computeDayPay({
         if (holiday.type === HOLIDAY_TYPES.SPECIAL_NON_WORKING || holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING) {
             const note = holiday.type === HOLIDAY_TYPES.SPECIAL_WORKING
                 ? 'Special Working Day is treated as an ordinary working day — no work, no pay, no holiday premium.'
-                : 'No work, no pay.';
+                : 'No work, no pay (DOLE: special non-working day, unless a company policy or CBA grants pay).';
             return {
                 date: dateStr,
                 holidayType: holiday.type,
@@ -217,7 +203,7 @@ export function computeDayPay({
             }
         }
         const eligible = wasPresentDayBefore(dateStr, attendanceByDate, restDays, { nonWorkingDates, paidLeaveDates });
-        const alreadyInSalary = salaryIncludesHolidayPay && eligible;
+        const alreadyInSalary = salaryCoversDate && eligible;
         const pay = eligible && !alreadyInSalary ? round2(dailyRate) : 0;
         return {
             date: dateStr,
@@ -249,7 +235,7 @@ export function computeDayPay({
     // premium above it is added here; otherwise the day would be paid salary (100%) + multiplier,
     // e.g. 300% for a regular holiday or 230% for a special day.
     // Overtime hours keep the full multiplier below.
-    const salaryCredit = salaryIncludesHolidayPay ? 1 : 0;
+    const salaryCredit = salaryCoversDate ? 1 : 0;
     const basicHolidayPay = toSafeNumber(hourlyRate) * (multiplier - salaryCredit) * regularHours;
     const holidayHourlyRate = toSafeNumber(hourlyRate) * multiplier;
     const otHourlyRate = holidayHourlyRate * (1 + HOLIDAY_OT_PREMIUM);
@@ -292,6 +278,8 @@ export function computeHolidayPayForPeriod({
     dailyRate: dailyRateOverride,
     hourlyRate: hourlyRateOverride,
     paidLeaveDates = [],
+    salaryCoversRestDays = true,
+    unpaidBreakHours = 0,
 }) {
     // Contractual rates win over the DOLE-derived ones (see calculateStatutoryLeavePay).
     const derived = deriveRates(monthlySalary);
@@ -309,7 +297,13 @@ export function computeHolidayPayForPeriod({
     for (const dateStr of getPayPeriodDates(periodStart, periodEnd)) {
         if (!holidaysByDate.has(dateStr)) continue;
 
-        const hoursWorked = hoursWorkedOn(dateStr, attendanceByDate);
+        const rawHours = hoursWorkedOn(dateStr, attendanceByDate);
+        // Attendance stores one raw punch pair per day, so the unpaid break is still inside rawHours:
+        // 8:00-5:00 is 8 hours, not 9 (no phantom overtime hour). Shifts of 5 hours or less
+        // (e.g. a half day) have no break to remove.
+        const hoursWorked = unpaidBreakHours > 0 && rawHours > UNPAID_BREAK_MIN_SHIFT_HOURS
+            ? rawHours - unpaidBreakHours
+            : rawHours;
         const result = computeDayPay({
             dateStr,
             hourlyRate,
@@ -321,6 +315,7 @@ export function computeHolidayPayForPeriod({
             canOvertime,
             salaryIncludesHolidayPay,
             paidLeaveDates: paidLeaveDateSet,
+            salaryCoversRestDays,
         });
         if (result) items.push(result);
     }
@@ -382,17 +377,15 @@ export const getEffectiveMonthlySalary = (employee) => {
     if (!employee) return 0;
 
     const dailyRate = toSafeNumber(employee.daily_rate || employee.daily_pay);
-    if (dailyRate > 0) return dailyRate * 26;
+    if (dailyRate > 0) return dailyRate * DOLE_DIVISOR;
 
     const hourlyRate = toSafeNumber(employee.hourly_rate);
-    if (hourlyRate > 0) return hourlyRate * 8 * 26;
+    if (hourlyRate > 0) return hourlyRate * 8 * DOLE_DIVISOR;
 
     const salary = toSafeNumber(employee.salary || employee.monthly_salary);
     if (salary > 0) return salary;
 
-    const pieceRate = toSafeNumber(employee.piece_rate || employee.rate_per_piece);
-    if (pieceRate > 0) return pieceRate * 8 * 26;
-
+    // Piece rate is per piece, not per hour, so it has no monthly equivalent here.
     return 0;
 };
 
@@ -453,4 +446,3 @@ export async function fetchPayrollLeavePay(client, employees, periodStart, perio
     }
     return { data, cash_out_available: cash.available };
 }
-

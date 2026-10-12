@@ -16,6 +16,9 @@ const GroupSelectionModal = ({
 
     if (!isOpen) return null;
 
+    // A line with no selected workers cannot be saved or continued
+    const hasNoWorkers = selectedGroupMemberIds.length === 0;
+
     const filtered = employeesInSelectedGroup.filter(emp =>
         `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase().includes(groupSearch.toLowerCase())
     );
@@ -70,6 +73,13 @@ const GroupSelectionModal = ({
                 </div>
 
                 <div className="overflow-y-auto p-2.5 space-y-1.5">
+                    {filtered.length === 0 && (
+                        <p className="p-4 text-center text-xs font-semibold text-slate-400">
+                            {employeesInSelectedGroup.length === 0
+                                ? `No workers found in ${selectedGroup}.`
+                                : 'No workers match your search.'}
+                        </p>
+                    )}
                     {filtered.map((emp) => {
                         const isChecked = selectedGroupMemberIds.includes(String(emp.id));
 
@@ -102,11 +112,18 @@ const GroupSelectionModal = ({
                     })}
                 </div>
 
-                <div className="p-3.5 border-t border-slate-100 bg-slate-50/50">
+                <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 space-y-2">
+                    {hasNoWorkers && (
+                        <p role="alert" className="text-[11px] font-semibold text-danger-ink text-center">
+                            <i className="ti ti-alert-circle mr-1" />
+                            Select at least 1 worker to continue.
+                        </p>
+                    )}
                     <button
                         type="button"
-                        onClick={onClose}
-                        className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer"
+                        onClick={() => { if (!hasNoWorkers) onClose(); }}
+                        disabled={hasNoWorkers}
+                        className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-md shadow-2xs transition-colors duration-100 cursor-pointer disabled:bg-slate-300 disabled:hover:bg-slate-300 disabled:cursor-not-allowed"
                     >
                         Confirm Selection ({selectedGroupMemberIds.length} Members)
                     </button>

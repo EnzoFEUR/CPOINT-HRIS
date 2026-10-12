@@ -7,6 +7,7 @@ import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
+import ThirteenthMonthModal from './components/ThirteenthMonthModal';
 
 const toSafeNumber = (val) => {
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -25,7 +26,7 @@ const calculateGrossPay = (payroll) => {
     const holiday = toSafeNumber(payroll.holiday_pay);
     const leave = toSafeNumber(payroll.leave_pay);
     const matDiff = toSafeNumber(payroll.maternity_salary_differential);
-    return basic + ot + holiday + leave + matDiff + (payroll.paid_leave_in_basic ? 0 : toSafeNumber(payroll.paid_leave_pay)) + toSafeNumber(payroll.sil_cash_pay);
+    return basic + ot + holiday + leave + matDiff + (payroll.paid_leave_in_basic ? 0 : toSafeNumber(payroll.paid_leave_pay)) + toSafeNumber(payroll.sil_cash_pay) + toSafeNumber(payroll.thirteenth_month_pay);
 };
 
 const isFactoryDept = (dept) => (dept || '').toLowerCase().includes('factory');
@@ -120,6 +121,41 @@ const FREQUENCY_LABELS = {
     semimonthly: 'Semi-Monthly',
     monthly: 'Monthly',
 };
+
+// -- Weekly pending cycles -------------------------------------------------
+const toLocalDateKey = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Mon-Fri payroll weeks (the same 5-day cutoff the process page uses) that have ALREADY
+// STARTED inside the selected month. Future weeks are never listed, and a week belongs to the
+// month it starts in (the same rule the ledger uses to file a payroll under a month).
+const getPendingWeeks = (cycleBounds, now = new Date()) => {
+    const todayKey = toLocalDateKey(now);
+    const monday = new Date(`${cycleBounds.start}T00:00:00`);
+    monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7)); // first Monday on/after the 1st
+
+    const weeks = [];
+    while (toLocalDateKey(monday) <= cycleBounds.end && toLocalDateKey(monday) <= todayKey) {
+        const start = toLocalDateKey(monday);
+        const friday = new Date(monday);
+        friday.setDate(friday.getDate() + 4);
+        const end = toLocalDateKey(friday);
+        // The calendar week still counts as "current" over the weekend after its Friday cutoff.
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        weeks.push({ start, end, isCurrent: start <= todayKey && todayKey <= toLocalDateKey(sunday) });
+        monday.setDate(monday.getDate() + 7);
+    }
+    return weeks;
+};
+
+// A week counts as paid when any of the employee's payrolls overlaps it, so a Mon-Fri
+// payroll or an older longer-range payroll still marks the week as done.
+const filterUnpaidWeeks = (weeks, paidRanges = []) =>
+    weeks.filter(week => !paidRanges.some(range => range.start <= week.end && range.end >= week.start));
+
+const countDistinctWorkers = (items = []) =>
+    new Set(items.map(i => String(i.employee_id ?? i.id))).size;
 
 const getPayFrequencyLabel = (payroll) => {
     const saved = String(payroll?.pay_frequency || '').toLowerCase().replace(/[\s_]+/g, '-');
@@ -265,7 +301,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                         <span>{payroll._endFormatted}</span>
                     </span>
                     <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-semibold uppercase tracking-wider w-max border border-slate-200/60">
-                        {payroll.isPending ? 'Current Cycle' : getPayFrequencyLabel(payroll)}
+                        {payroll.isPending ? (payroll.pendingLabel || 'Current Week') : getPayFrequencyLabel(payroll)}
                     </span>
                 </div>
             </td>
@@ -280,6 +316,7 @@ const PayrollTableRow = React.memo(({ payroll, isGroupChild = false, viewMode = 
                             ₱{payroll._gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         {payroll.sil_cash_pay > 0 && <span className="text-[10px] font-semibold text-accent">SIL cash: PHP {toSafeNumber(payroll.sil_cash_pay).toFixed(2)}</span>}
+                        {payroll.thirteenth_month_pay > 0 && <span className="text-[10px] font-semibold text-accent">13th month: PHP {toSafeNumber(payroll.thirteenth_month_pay).toFixed(2)}</span>}
                         {payroll.overtime_pay > 0 && (
                             <span className="text-[10px] font-semibold text-accent font-sans mt-0.5">
                                 +₱{toSafeNumber(payroll.overtime_pay).toFixed(2)} OT
@@ -428,7 +465,7 @@ const FactoryLineBannerRow = React.memo(({ group, isExpanded, onToggle, selectio
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                             <span className="text-xs text-slate-600 font-semibold truncate">
-                                {group.items.length} {group.items.length === 1 ? 'Worker' : 'Workers'}
+                                {countDistinctWorkers(group.items)} {countDistinctWorkers(group.items) === 1 ? 'Worker' : 'Workers'}
                             </span>
                             <span className="text-slate-300">•</span>
                             <span className="text-[11px] font-sans text-slate-400">
@@ -600,7 +637,7 @@ const PayrollMobileCard = React.memo(({ payroll, isGroupChild = false, viewMode 
 
                 {payroll.isPending ? (
                     <div className="pt-2 border-t border-slate-200 text-xs text-center text-warning-ink font-medium py-1 bg-warning-subtle rounded-md">
-                        Awaiting Computation for Current Cycle
+                        Awaiting Computation for {payroll.pendingLabel === 'Missed Week' ? 'this Missed Week' : 'the Current Week'}
                     </div>
                 ) : (
                     <>
@@ -828,6 +865,7 @@ export default function PayrollIndex() {
 
     // ── Calendar (month/year) picker ─────────────────────────────────────────
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [isThirteenthOpen, setIsThirteenthOpen] = useState(false);
     const [calendarViewYear, setCalendarViewYear] = useState(() => currentYear ? parseInt(currentYear, 10) : currentYearNum);
     const calendarRef = useRef(null);
 
@@ -944,7 +982,7 @@ export default function PayrollIndex() {
 
     // ── Single-Pass Precomputation & Enriched Records ──
     const enrichedRecords = useMemo(() => {
-        const computedEmployeeIds = new Set();
+        const employeePeriods = new Map();
         const employeeLastKnownLineMap = {};
 
         const enrichedActual = payrolls.map(p => {
@@ -953,9 +991,12 @@ export default function PayrollIndex() {
                 employeeLastKnownLineMap[String(p.employee_id)] = line;
             }
 
-            const periodStart = dayjs(p.period_start);
-            if (periodStart.isValid() && periodStart.year() === cycleBounds.year && (periodStart.month() + 1) === cycleBounds.month) {
-                computedEmployeeIds.add(String(p.employee_id));
+            const startKey = String(p.period_start || '').substring(0, 10);
+            const endKey = String(p.period_end || p.period_start || '').substring(0, 10);
+            if (startKey && p.employee_id) {
+                const empKey = String(p.employee_id);
+                if (!employeePeriods.has(empKey)) employeePeriods.set(empKey, []);
+                employeePeriods.get(empKey).push({ start: startKey, end: endKey || startKey });
             }
 
             const gross = calculateGrossPay(p);
@@ -1005,9 +1046,14 @@ export default function PayrollIndex() {
             );
         };
 
+        const pendingWeeks = getPendingWeeks(cycleBounds);
+
         const pendingEntries = employees
-            .filter(emp => !computedEmployeeIds.has(String(emp.id)) && !isExcludedStatus(emp))
-            .map(emp => {
+            .filter(emp => !isExcludedStatus(emp))
+            .flatMap(emp => {
+                const openWeeks = filterUnpaidWeeks(pendingWeeks, employeePeriods.get(String(emp.id)));
+                if (openWeeks.length === 0) return [];
+
                 const mockPayroll = { employees: emp };
                 const inheritedLine = employeeLastKnownLineMap[String(emp.id)];
                 const line = inheritedLine || getEmployeeLine(mockPayroll);
@@ -1018,15 +1064,16 @@ export default function PayrollIndex() {
                 const jobTitle = emp.job_title || emp.position || '';
                 const searchTokens = `${fullName} ${companyId} ${emp.email || ''} ${jobTitle} ${dept} ${line}`.toLowerCase();
 
-                return {
-                    id: `pending-${emp.id}`,
+                return openWeeks.map(week => ({
+                    id: `pending-${emp.id}-${week.start}`,
                     employee_id: emp.id,
                     employees: emp,
                     line: line,
                     _line: line,
                     status: 'Pending',
-                    period_start: cycleBounds.start,
-                    period_end: cycleBounds.end,
+                    period_start: week.start,
+                    period_end: week.end,
+                    pendingLabel: week.isCurrent ? 'Current Week' : 'Missed Week',
                     gross_pay: 0,
                     deductions: 0,
                     net_pay: 0,
@@ -1042,10 +1089,10 @@ export default function PayrollIndex() {
                     _dept: dept,
                     _jobTitle: jobTitle,
                     _searchTokens: searchTokens,
-                    _startFormatted: dayjs(cycleBounds.start).format('MMM DD'),
-                    _endFormatted: dayjs(cycleBounds.end).format('MMM DD, YYYY'),
+                    _startFormatted: dayjs(week.start).format('MMM DD'),
+                    _endFormatted: dayjs(week.end).format('MMM DD, YYYY'),
                     isPending: true,
-                };
+                }));
             });
 
         return [...enrichedActual, ...pendingEntries];
@@ -1497,6 +1544,16 @@ export default function PayrollIndex() {
                             <span>Statutory settings</span>
                         </Link>
 
+                        <button
+                            type="button"
+                            onClick={() => setIsThirteenthOpen(true)}
+                            className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs cursor-pointer"
+                            title="13th month pay report"
+                        >
+                            <i className="ti ti-gift text-base text-slate-500" />
+                            <span>13th month</span>
+                        </button>
+
                         <Link
                             to="/admin/payroll/process"
                             className="h-9 px-4 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
@@ -1507,6 +1564,8 @@ export default function PayrollIndex() {
                     </div>
                 }
             />
+
+            {isThirteenthOpen && <ThirteenthMonthModal onClose={() => setIsThirteenthOpen(false)} />}
 
             {/* Executive Financial KPI Metric Ribbon */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1941,7 +2000,7 @@ export default function PayrollIndex() {
                                                             </span>
                                                         </div>
                                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                                            {item.items.length} Total {item.items.length === 1 ? 'Worker' : 'Workers'}
+                                                            {countDistinctWorkers(item.items)} Total {countDistinctWorkers(item.items) === 1 ? 'Worker' : 'Workers'}
                                                         </p>
                                                     </div>
                                                 </div>

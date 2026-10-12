@@ -9,7 +9,6 @@ const FactoryBatchSection = ({
     batchSummaryTotals,
     filteredGroupEmployees,
     workerPayrollMap,
-    holidayRateMultiplier,
     isLoadingEmployees,
     isLoadingGroupAttendance,
     breakdownSearch,
@@ -358,7 +357,11 @@ const FactoryBatchSection = ({
                                                 </div>
                                             </td>
                                             <td className="p-3">
-                                                {workerData.assignedOperations.length > 0 ? (
+                                                {isLoadingGroupAttendance ? (
+                                                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md inline-block animate-pulse">
+                                                        Loading attendance&hellip;
+                                                    </span>
+                                                ) : workerData.assignedOperations.length > 0 ? (
                                                     <div className="flex flex-wrap gap-1 max-w-sm">
                                                         {workerData.assignedOperations.map((op, idx) => (
                                                             <span
@@ -366,15 +369,14 @@ const FactoryBatchSection = ({
                                                                 className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md"
                                                             >
                                                                 <span>{op.operation}</span>
-                                                                {holidayRateMultiplier > 1 && (
-                                                                    <span className="text-[8px] font-bold text-warning-ink bg-warning-subtle px-1 rounded">
-                                                                        {holidayRateMultiplier.toFixed(1)}x
-                                                                    </span>
-                                                                )}
                                                                 <span className="font-mono font-bold text-accent">₱{op.share.toFixed(2)}</span>
                                                             </span>
                                                         ))}
                                                     </div>
+                                                ) : workerData.skippedNoAttendance ? (
+                                                    <span className="text-[10px] font-semibold text-danger-ink bg-danger-subtle px-2 py-0.5 rounded-md inline-block">
+                                                        No attendance this cutoff
+                                                    </span>
                                                 ) : (
                                                     <span className="text-[10px] font-semibold text-warning-ink bg-warning-subtle px-2 py-0.5 rounded-md inline-block">
                                                         No matching process
@@ -382,7 +384,17 @@ const FactoryBatchSection = ({
                                                 )}
                                             </td>
                                             <td className="p-3 text-right font-mono font-bold text-xs text-slate-800">
-                                                ₱{workerData.grossPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                {isLoadingGroupAttendance ? '\u2014' : `₱${workerData.grossPay.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                                                {!isLoadingGroupAttendance && workerData.holidayPay > 0 && (
+                                                    <span className="block font-sans text-[9px] font-semibold text-warning-ink">
+                                                        incl. holiday ₱{workerData.holidayPay.toFixed(2)}
+                                                    </span>
+                                                )}
+                                                {!isLoadingGroupAttendance && workerData.holidayMissingRate && (
+                                                    <span className="block font-sans text-[9px] font-semibold text-danger-ink">
+                                                        Worked a holiday - no daily rate saved
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="p-3 text-right">
                                                 <span className="font-mono font-bold text-xs text-danger-ink block">
@@ -408,7 +420,7 @@ const FactoryBatchSection = ({
                                 key={worker.id}
                                 worker={worker}
                                 workerData={workerPayrollMap[String(worker.id)]}
-                                holidayRateMultiplier={holidayRateMultiplier}
+                                isLoadingAttendance={isLoadingGroupAttendance}
                             />
                         ))}
                     </div>
