@@ -1,7 +1,22 @@
+import { compressDocumentImage } from './documentImage.js';
 import { getDocumentType } from '../../../shared/documentTypes.mjs';
 
 export const BULK_LIMITS = Object.freeze({ archiveBytes: 25 * 1024 * 1024, totalBytes: 100 * 1024 * 1024, fileBytes: 10 * 1024 * 1024, files: 100, entries: 300 });
 export const BULK_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff']);
+
+export function filenameDocumentHint(filename) {
+    const name = filename.replace(/\.[^.]+$/, '').toLowerCase().replace(/[_-]/g, ' ');
+    const patterns = [
+        ['tin', /\b(?:1902|2316|tin)\b/], ['sss', /\b(?:sss|e\s?[14])\b/],
+        ['philhealth', /\b(?:philhealth|mdr)\b/], ['pagibig', /\b(?:pag\s?ibig|mdf)\b/],
+        ['philsys', /\b(?:philsys|ephilid|national id)\b/], ['umid', /\bumid\b/],
+        ['drivers_license', /\b(?:lto|driver'?s? license|license)\b/], ['passport', /\bpassport\b/],
+        ['nbi_clearance', /\bnbi\b/], ['police_clearance', /\bpolice\b/], ['barangay_clearance', /\bbarangay\b/],
+        ['medical_certificate', /\b(?:med cert|medical|fit to work)\b/], ['birth_certificate', /\b(?:psa|birth certificate)\b/],
+    ];
+    const matches = patterns.filter(([, pattern]) => pattern.test(name));
+    return matches.length === 1 ? getDocumentType(matches[0][0]) : null;
+}
 
 // Check the central directory before JSZip allocates entries or inflates content.
 export function validateZipDirectory(buffer) {
@@ -85,8 +100,9 @@ export function buildImportRows(entries, categories) {
         const blocked = !BULK_EXTENSIONS.has(extension) ? 'Unsupported upload format.' : null;
         const duplicate = names.has(fileName.toLowerCase());
         names.add(fileName.toLowerCase());
-        const category = parts.slice(0, -1).map(segment => categories.find(value => normalize(value) === normalize(segment))).find(Boolean) || 'Other';
-        rows.push({ id: crypto.randomUUID(), importId: crypto.randomUUID(), zipPath: entry.name, fileName, entry, category, title: fileName.slice(0, 200), documentType: 'unknown', expiryDate: '', include: !blocked && !duplicate, confirmed: false, revision: 0, attempted: false, status: 'idle', analysisStatus: 'idle', classification: null, blocked, duplicate, error: null });
+        const hint = filenameDocumentHint(fileName);
+        const category = hint?.category || parts.slice(0, -1).map(segment => categories.find(value => normalize(value) === normalize(segment))).find(Boolean) || 'Other';
+        rows.push({ id: crypto.randomUUID(), importId: crypto.randomUUID(), zipPath: entry.name, fileName, entry, category, title: hint?.label || fileName.slice(0, 200), documentType: hint?.id || 'unknown', expiryDate: '', include: !blocked && !duplicate, confirmed: false, revision: 0, attempted: false, status: 'idle', analysisStatus: 'idle', classification: hint ? { source: 'filename', confidence: 'low', document_type: hint.id, evidence: [], message: 'Filename hint only. Analyze or preview the contents before confirming.' } : null, blocked, duplicate, error: null });
     }
     if (!rows.length) throw new Error('No personnel files were found in the ZIP.');
     if (rows.length > BULK_LIMITS.files) throw new Error('Import at most 100 files per ZIP.');
@@ -95,10 +111,35 @@ export function buildImportRows(entries, categories) {
 
 export function applyContentSuggestion(row, classification, revision) {
     // A late AI response must never overwrite a reviewer edit or confirmation.
-    const result = { ...row, classification, analysisStatus: 'done' };
-    if (row.revision !== revision || row.confirmed || row.status === 'success' || classification.source !== 'content') return result;
+    const result = { ...row, classification, analysisStatus: classification.source === 'manual' ? 'error' : 'done', error: classification.source === 'manual' ? classification.message : null };
+    if (row.revision !== revision || row.confirmed || row.status === 'success' || !['content', 'content_vision', 'digital_pdf_stream'].includes(classification.source)) return result;
     const type = getDocumentType(classification.document_type);
-    return { ...result, documentType: type.id, category: type.category, title: classification.suggested_title || row.title };
+    return { ...result, documentType: type.id, category: type.category, title: classification.suggested_title || row.title, expiryDate: classification.expiry_date || row.expiryDate };
 }
 
 export const canImportRow = row => row.include && !row.blocked && row.confirmed && Boolean(row.title.trim()) && row.title.trim().length <= 200 && row.status !== 'success';
+
+export async function optimizeDocumentImageForAI(file, maxDimension = 1600, quality = 0.82, { signal } = {}) {
+    signal?.throwIfAborted();
+    if (!/^image\/(?:jpeg|png|webp)$/.test(file.type)) return file;
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return compressDocumentImage(file, maxDimension, quality);
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('./documentImage.worker.js', import.meta.url), { type: 'module' });
+        let settled = false;
+        const finish = (error, result = file) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
+            worker.terminate();
+            if (error) reject(error); else resolve(result);
+        };
+        const abort = () => finish(signal.reason);
+        const timer = setTimeout(() => finish(null), 5000);
+        signal?.addEventListener('abort', abort, { once: true });
+        worker.onmessage = event => finish(null, event.data);
+        worker.onerror = () => finish(null);
+        worker.postMessage({ file, maxDimension, quality });
+        if (signal?.aborted) abort();
+    });
+}

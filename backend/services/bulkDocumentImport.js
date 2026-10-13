@@ -24,7 +24,7 @@ export function createBulkDocumentImporter({ save = uploadDocument, now = Date.n
         if (!review) return save(client, user, body, file);
         if (!file) throw new DocumentError(400, 'No file uploaded.');
         const key = `${user.id}:${review.import_id}`;
-        const fingerprint = createHash('sha256').update(JSON.stringify([body.employee_id, body.title, body.category, body.expiry_date || null, review.document_type, file.originalname, file.mimetype])).update(file.buffer).digest('hex');
+        const fingerprint = createHash('sha256').update(JSON.stringify([body.employee_id, body.title, body.category, body.expiry_date || null, review.document_type, body.extracted_id_number || null, file.originalname, file.mimetype])).update(file.buffer).digest('hex');
         for (const [id, entry] of completed) if (entry.expires <= now()) completed.delete(id);
         const existing = completed.get(key) || pending.get(key);
         if (existing) {

@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
+import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
 
@@ -265,7 +266,7 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
                     })
                     .filter(Boolean);
                 if (paths.length > 0) {
-                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], 3600);
+                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], DOCUMENT_URL_TTL);
                     if (Array.isArray(signedList)) {
                         const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
                         for (const doc of empDocs) {

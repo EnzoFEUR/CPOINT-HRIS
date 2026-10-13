@@ -72,4 +72,4 @@ export const getDocumentType = (idOrLabel) => {
 };
 export const getDocumentTypesByCategory = category => !category || category === 'All' ? DOCUMENT_TYPES : DOCUMENT_TYPES.filter(type => type.category === category);
 export const getStandard201Requirements = () => DOCUMENT_TYPES.filter(type => type.is201Required);
-export const CLASSIFICATION_EVIDENCE = ['agency_name', 'document_heading', 'form_code', 'logo', 'layout'];
+export const CLASSIFICATION_EVIDENCE = ['agency_name', 'document_heading', 'form_code', 'logo', 'layout', 'statutory_id_format', 'security_seal'];

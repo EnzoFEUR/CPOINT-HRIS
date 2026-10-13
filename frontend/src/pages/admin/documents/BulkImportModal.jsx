@@ -3,15 +3,16 @@ import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 import { classifyEmployeeDocument, uploadEmployeeDocument } from '../../../utils/documentApi';
 import { getDocumentMimeType, isImageDocument, isPdfDocument, formatDocumentSize } from '../../../utils/documentUtils';
-import { applyContentSuggestion, buildImportRows, BULK_LIMITS, canImportRow, extractZipEntry, validateZipDirectory } from '../../../utils/bulkDocumentImport';
+import { applyContentSuggestion, buildImportRows, BULK_LIMITS, canImportRow, extractZipEntry, optimizeDocumentImageForAI, validateZipDirectory } from '../../../utils/bulkDocumentImport';
 import { DOCUMENT_TYPES, getDocumentType } from '../../../../../shared/documentTypes.mjs';
 
-const EVIDENCE_LABELS = { agency_name: 'Agency wording', document_heading: 'Document heading', form_code: 'Form code', logo: 'Logo', layout: 'Layout' };
+const EVIDENCE_LABELS = { agency_name: 'Agency wording', document_heading: 'Document heading', form_code: 'Form code', logo: 'Logo', layout: 'Layout', statutory_id_format: 'Number format', security_seal: 'Seal' };
 
 export default function BulkImportModal({ isOpen, onClose, employeeId, employeeName, isTerminated, categories, onImported }) {
     const [rows, setRows] = useState([]);
     const [isParsing, setIsParsing] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisProgress, setAnalysisProgress] = useState({ completed: 0, total: 0 });
     const [isCommitting, setIsCommitting] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [filterTab, setFilterTab] = useState('all');
@@ -30,8 +31,26 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     const pdfUrlsRef = useRef({});
     const dialogRef = useRef(null);
 
+    // Filtered rows for the table
+    const displayedRows = useMemo(() => {
+        return rows.filter(row => {
+            if (filterTab === 'needs_review' && (row.confirmed || !row.include || row.blocked || row.status === 'success')) return false;
+            if (filterTab === 'ready' && !canImportRow(row)) return false;
+            if (filterTab === 'errors' && row.status !== 'error' && !row.error && !row.blocked) return false;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const matchName = row.fileName.toLowerCase().includes(q);
+                const matchTitle = (row.title || '').toLowerCase().includes(q);
+                const matchType = (row.documentType || '').toLowerCase().includes(q);
+                if (!matchName && !matchTitle && !matchType) return false;
+            }
+            return true;
+        });
+    }, [rows, filterTab, searchQuery]);
+
     // Cleanup all blob object URLs on unmount
     useEffect(() => () => {
+        rowsRef.current = [];
         jobRef.current.epoch++;
         jobRef.current.controller?.abort();
         previewRef.current.epoch++;
@@ -89,54 +108,6 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
         onClose();
     };
 
-    // Keyboard navigation
-    const handleDialogKey = useEffectEvent(event => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            if (preview) closePreview();
-            else handleClose();
-            return;
-        }
-
-        if (preview) {
-            if (event.key === 'ArrowLeft') {
-                event.preventDefault();
-                navigatePreview(-1);
-                return;
-            }
-            if (event.key === 'ArrowRight') {
-                event.preventDefault();
-                navigatePreview(1);
-                return;
-            }
-        }
-
-        if (event.key !== 'Tab') return;
-        const scope = dialogRef.current?.querySelector('[data-preview]') || dialogRef.current;
-        const focusable = scope?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], iframe');
-        if (!focusable?.length) { event.preventDefault(); return; }
-        const first = focusable[0], last = focusable[focusable.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
-            event.preventDefault();
-            first.focus();
-        }
-    });
-
-    useEffect(() => {
-        if (!isOpen) return;
-        const previous = document.activeElement;
-        dialogRef.current?.focus();
-        const listener = event => handleDialogKey(event);
-        document.addEventListener('keydown', listener);
-        return () => {
-            document.removeEventListener('keydown', listener);
-            previous?.focus();
-        };
-    }, [isOpen]);
-
     const editRow = (id, patch) => updateRow(id, row => ({
         ...row,
         ...patch,
@@ -158,13 +129,14 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
             await Promise.all(batch.map(async (row) => {
                 try {
                     const bytes = await extractZipEntry(row.entry);
+                    if (!rowsRef.current.some(item => item.id === row.id)) return;
                     const mime = getDocumentMimeType(row.fileName);
                     const blob = new Blob([bytes], { type: mime });
                     const url = URL.createObjectURL(blob);
                     thumbnailsRef.current[row.id] = url;
                     setThumbnails(prev => ({ ...prev, [row.id]: url }));
-                } catch (e) {
-                    console.warn('Failed to load thumbnail for', row.fileName, e);
+                } catch {
+                    console.warn('[DOCUMENT_THUMBNAIL] Preview unavailable.');
                 }
             }));
         }
@@ -205,6 +177,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
         jobRef.current.controller = controller;
         jobRef.current.busy = true;
         setIsAnalyzing(true);
+        setAnalysisProgress({ completed: 0, total: selected.length });
         replaceRows(rowsRef.current.map(row => selected.some(item => item.id === row.id) ? { ...row, analysisStatus: 'queued', error: null } : row));
         let index = 0;
         const worker = async () => {
@@ -212,11 +185,16 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                 const row = selected[index++];
                 if (!rowsRef.current.find(item => item.id === row.id)?.include) {
                     updateRow(row.id, { analysisStatus: 'idle' });
+                    setAnalysisProgress(current => ({ ...current, completed: current.completed + 1 }));
                     continue;
                 }
-                updateRow(row.id, { analysisStatus: 'analyzing' });
+                updateRow(row.id, { analysisStatus: 'optimizing' });
                 try {
-                    const file = await makeFile(row, controller.signal);
+                    const original = await makeFile(row, controller.signal);
+                    const file = await optimizeDocumentImageForAI(original, 1600, 0.82, { signal: controller.signal });
+                    controller.signal.throwIfAborted();
+                    if (epoch !== jobRef.current.epoch) return;
+                    updateRow(row.id, { analysisStatus: 'analyzing' });
                     const classification = await classifyEmployeeDocument({ employeeId, file, signal: controller.signal });
                     if (epoch === jobRef.current.epoch && !controller.signal.aborted) {
                         updateRow(row.id, current => applyContentSuggestion(current, classification, row.revision));
@@ -225,14 +203,16 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                     if (epoch === jobRef.current.epoch && !controller.signal.aborted) {
                         updateRow(row.id, { analysisStatus: 'error', error: error.message || 'Analysis failed. Classify manually.' });
                     }
+                } finally {
+                    if (epoch === jobRef.current.epoch) setAnalysisProgress(current => ({ ...current, completed: current.completed + 1 }));
                 }
             }
         };
         try {
-            await Promise.all([worker(), worker()]);
+            await Promise.all(Array.from({ length: 4 }, worker));
         } finally {
             if (epoch === jobRef.current.epoch) {
-                replaceRows(rowsRef.current.map(row => ['queued', 'analyzing'].includes(row.analysisStatus) ? { ...row, analysisStatus: 'idle' } : row));
+                replaceRows(rowsRef.current.map(row => ['queued', 'optimizing', 'analyzing'].includes(row.analysisStatus) ? { ...row, analysisStatus: 'idle' } : row));
                 setIsAnalyzing(false);
                 jobRef.current.busy = false;
                 jobRef.current.controller = null;
@@ -290,11 +270,66 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     };
 
     const handleConfirmAndNext = (row) => {
-        if (!row) return;
-        updateRow(row.id, current => ({ ...current, confirmed: true, revision: current.revision + 1 }));
-        toast.success(`Confirmed "${row.title}"`);
+        const current = rowsRef.current.find(item => item.id === row?.id);
+        if (!current || isAnalyzing || isCommitting || current.attempted || current.blocked || !current.include || !current.title.trim() || current.status === 'success') return;
+        updateRow(current.id, item => ({ ...item, confirmed: true, revision: item.revision + 1 }));
+        setPreview(value => value?.row?.id === current.id ? { ...value, row: { ...current, confirmed: true } } : value);
+        toast.success('Document confirmed');
         navigatePreview(1);
     };
+
+    // Keyboard navigation
+    const handleDialogKey = useEffectEvent(event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            if (preview) closePreview();
+            else handleClose();
+            return;
+        }
+
+        if (preview) {
+            if (['Enter', ' '].includes(event.key) && !event.repeat && !event.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) {
+                event.preventDefault();
+                handleConfirmAndNext(preview.row);
+                return;
+            }
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                navigatePreview(-1);
+                return;
+            }
+            if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                navigatePreview(1);
+                return;
+            }
+        }
+
+        if (event.key !== 'Tab') return;
+        const scope = dialogRef.current?.querySelector('[data-preview]') || dialogRef.current;
+        const focusable = scope?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], iframe');
+        if (!focusable?.length) { event.preventDefault(); return; }
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const previous = document.activeElement;
+        dialogRef.current?.focus();
+        const listener = event => handleDialogKey(event);
+        document.addEventListener('keydown', listener);
+        return () => {
+            document.removeEventListener('keydown', listener);
+            previous?.focus();
+        };
+    }, [isOpen]);
 
     const commit = async () => {
         if (jobRef.current.busy || isTerminated || !employeeId) return;
@@ -307,6 +342,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
         setIsCommitting(true);
         closePreview();
         let saved = 0;
+        let storageFailure = false;
         try {
             for (const row of selected) {
                 if (epoch !== jobRef.current.epoch) break;
@@ -319,12 +355,19 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                         title: row.title,
                         category: row.category,
                         expiryDate: row.expiryDate,
-                        bulkReview: { confirmed: row.confirmed, documentType: row.documentType, importId: row.importId },
+                        bulkReview: { confirmed: row.confirmed, documentType: row.documentType, importId: row.importId, idNumber: row.classification?.document_type === row.documentType ? row.classification?.id_number : null },
                     });
                     saved++;
                     if (epoch === jobRef.current.epoch) updateRow(row.id, { status: 'success' });
                 } catch (error) {
                     if (epoch === jobRef.current.epoch) {
+                        if (error.code?.startsWith('DOCUMENT_VAULT_')) {
+                            storageFailure = true;
+                            const remainingIds = new Set(selected.slice(selected.indexOf(row)).map(item => item.id));
+                            replaceRows(rowsRef.current.map(item => remainingIds.has(item.id) ? { ...item, status: 'error', attempted: false, error: error.message } : item));
+                            toast.error(error.message);
+                            break;
+                        }
                         updateRow(row.id, {
                             status: 'error',
                             attempted: ![400, 403, 404].includes(error.status),
@@ -334,8 +377,8 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                 }
             }
             if (epoch === jobRef.current.epoch) {
-                if (saved) toast.success(`${saved} document${saved === 1 ? '' : 's'} imported for review.`);
-                else toast.error('No documents were imported. Review errors before retrying.');
+                if (saved) toast.success(`${saved} document${saved === 1 ? '' : 's'} imported and approved.`);
+                else if (!storageFailure) toast.error('No documents were imported. Review errors before retrying.');
             }
         } finally {
             if (epoch === jobRef.current.epoch) {
@@ -393,22 +436,6 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
         };
     }, [rows]);
 
-    // Filtered rows for the table
-    const displayedRows = useMemo(() => {
-        return rows.filter(row => {
-            if (filterTab === 'needs_review' && (row.confirmed || !row.include || row.blocked || row.status === 'success')) return false;
-            if (filterTab === 'ready' && !canImportRow(row)) return false;
-            if (filterTab === 'errors' && row.status !== 'error' && !row.error && !row.blocked) return false;
-            if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase();
-                const matchName = row.fileName.toLowerCase().includes(q);
-                const matchTitle = (row.title || '').toLowerCase().includes(q);
-                const matchType = (row.documentType || '').toLowerCase().includes(q);
-                if (!matchName && !matchTitle && !matchType) return false;
-            }
-            return true;
-        });
-    }, [rows, filterTab, searchQuery]);
 
     if (!isOpen) return null;
 
@@ -417,7 +444,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity" onClick={handleClose} />
+            <div className="absolute inset-0 bg-surface-dark/70 backdrop-blur-xs transition-opacity" onClick={handleClose} />
 
             {/* Modal Dialog */}
             <section
@@ -475,14 +502,14 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 {isAnalyzing ? 'Analyzing documents with Gemini AI...' : 'Uploading verified documents...'}
                             </span>
                             <span className="font-mono text-ink-muted text-[11px]">
-                                {isAnalyzing ? `${counts.analyzed} of ${rows.length} analyzed` : `${counts.uploaded} of ${counts.selected} imported`}
+                                {isAnalyzing ? `${analysisProgress.completed} of ${analysisProgress.total} analyzed` : `${counts.uploaded} of ${counts.selected} imported`}
                             </span>
                         </div>
                         <div className="w-full bg-line rounded-full h-1.5 overflow-hidden">
                             <div
                                 className="bg-accent h-1.5 rounded-full transition-all duration-300"
                                 style={{
-                                    width: `${isAnalyzing ? Math.round((counts.analyzed / Math.max(rows.length, 1)) * 100) : Math.round((counts.uploaded / Math.max(counts.selected, 1)) * 100)}%`
+                                    width: `${isAnalyzing ? Math.round((analysisProgress.completed / Math.max(analysisProgress.total, 1)) * 100) : Math.round((counts.uploaded / Math.max(counts.selected, 1)) * 100)}%`
                                 }}
                             />
                         </div>
@@ -520,7 +547,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 Choose or drop a ZIP archive of personnel documents
                             </h3>
                             <p className="mt-1 text-xs text-ink-muted max-w-md">
-                                Files are automatically extracted and unpacked locally in your browser. Nothing is uploaded until you inspect and confirm.
+                                Files open locally. Analyze sends contents to Google Gemini. Confirmed imports save the original files.
                             </p>
 
                             <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-ink-subtle">
@@ -529,7 +556,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 <span className="px-2 py-0.5 rounded bg-surface-muted border border-line">PDF, JPG, PNG, WebP, DOCX</span>
                             </div>
 
-                            <label className="mt-6 inline-flex items-center gap-2 cursor-pointer rounded-md bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent-hover transition-colors shadow-2xs">
+                            <label className="mt-6 inline-flex items-center gap-2 cursor-pointer rounded-md bg-accent px-4 py-2 text-xs font-semibold text-surface hover:bg-accent-hover transition-colors shadow-2xs">
                                 <i className={`ti ${isParsing ? 'ti-loader animate-spin' : 'ti-upload'} text-sm`} />
                                 <span>{isParsing ? 'Unpacking archive…' : 'Select ZIP Archive'}</span>
                                 <input
@@ -613,7 +640,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                         disabled={isCommitting || isAnalyzing || isTerminated || !counts.analyzable}
                                         onClick={analyzeContents}
                                         className="h-7 px-2.5 rounded-md text-xs font-medium bg-accent-subtle text-accent hover:bg-accent/15 border border-accent/20 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                        title="Send document pages to AI classifier to suggest document type and title"
+                                        title="Send document contents to Google Gemini for type, name, identifier and expiry suggestions"
                                     >
                                         <i className={`ti ${isAnalyzing ? 'ti-loader animate-spin' : 'ti-sparkles'} text-xs`} />
                                         <span>{isAnalyzing ? 'Analyzing…' : 'Analyze'}</span>
@@ -672,7 +699,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                         ) : displayedRows.map(row => {
                                             const frozen = isCommitting || row.attempted || row.status === 'success';
                                             const classification = row.classification;
-                                            const analyzing = ['queued', 'analyzing'].includes(row.analysisStatus);
+                                            const analyzing = ['queued', 'optimizing', 'analyzing'].includes(row.analysisStatus);
                                             const isImage = isImageDocument(row.fileName);
                                             const isPdf = isPdfDocument(row.fileName);
                                             const thumbUrl = thumbnails[row.id];
@@ -729,7 +756,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                                 )}
 
                                                                 {/* Hover Zoom Overlay */}
-                                                                <div className="absolute inset-0 bg-slate-950/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                                <div className="absolute inset-0 bg-surface-dark/40 text-surface opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                                                     <i className="ti ti-zoom-in text-sm" />
                                                                 </div>
                                                             </div>
@@ -861,7 +888,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                         {analyzing ? (
                                                             <div className="flex items-center gap-2 text-accent font-medium text-xs">
                                                                 <i className="ti ti-loader animate-spin text-sm" />
-                                                                <span>{row.analysisStatus === 'queued' ? 'Queued' : 'Analyzing…'}</span>
+                                                                <span>{row.analysisStatus === 'queued' ? 'Queued' : row.analysisStatus === 'optimizing' ? 'Optimizing' : 'Analyzing…'}</span>
                                                             </div>
                                                         ) : classification ? (
                                                             <div className="space-y-1">
@@ -871,8 +898,28 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                                         : 'bg-warning-subtle text-warning-ink border-warning/30'
                                                                 }`}>
                                                                     <i className={`ti ${classification.confidence === 'high' ? 'ti-sparkles' : 'ti-bulb'} text-xs`} />
-                                                                    <span>{classification.confidence === 'high' ? 'Strong Match' : 'Suggested'}</span>
+                                                                    <span>{classification.source === 'filename' ? 'Filename hint' : classification.source === 'manual' ? 'Needs review' : classification.confidence === 'high' ? 'Strong Match' : 'Suggested'}</span>
                                                                 </span>
+
+                                                                {classification.id_number && (
+                                                                    <button type="button" className="block max-w-full break-all px-2 py-1 rounded border border-line bg-surface-muted text-ink text-[11px]" title="Copy extracted number" onClick={async () => {
+                                                                        try { await navigator.clipboard.writeText(classification.id_number); toast.success('Number copied'); }
+                                                                        catch { toast.error('Copy is unavailable. Select the number to copy it.'); }
+                                                                    }}>{classification.document_type.toUpperCase()}: {classification.id_number}</button>
+                                                                )}
+                                                                {classification.identity_reconciliation && (
+                                                                    <span title={classification.identity_reconciliation.message} className={`block text-[11px] ${classification.identity_reconciliation.matched ? 'text-success-ink' : 'text-warning-ink'}`}>
+                                                                        {classification.identity_reconciliation.matched ? 'Name matches record' : classification.identity_reconciliation.status === 'name_mismatch' ? `Name mismatch: ${classification.full_name_on_document}` : 'Name needs review'}
+                                                                    </span>
+                                                                )}
+                                                                {classification.is_expired && <span className="block text-[11px] text-danger-ink">Expired document</span>}
+                                                                {classification.quality_assessment && (
+                                                                    <span className="block text-[11px] text-ink-muted">{[
+                                                                        classification.quality_assessment.blur_detected && 'Blur detected',
+                                                                        classification.quality_assessment.glare_detected && 'Glare detected',
+                                                                        classification.quality_assessment.partial_crop && 'Cropped document',
+                                                                    ].filter(Boolean).join(' · ')}</span>
+                                                                )}
 
                                                                 {classification.evidence?.length > 0 && (
                                                                     <div className="flex flex-wrap gap-1 mt-1">
@@ -897,7 +944,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                         {row.status === 'success' ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-success-subtle text-success-ink border border-success/30">
                                                                 <i className="ti ti-circle-check text-xs" />
-                                                                <span>Imported</span>
+                                                                <span>Approved</span>
                                                             </span>
                                                         ) : row.status === 'uploading' ? (
                                                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-accent bg-accent-subtle border border-accent/20">
@@ -975,7 +1022,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 type="button"
                                 disabled={importDisabled}
                                 onClick={commit}
-                                className="h-8 px-4 rounded-md bg-accent text-white hover:bg-accent-hover text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:bg-line disabled:text-ink-subtle disabled:cursor-not-allowed"
+                                className="h-8 px-4 rounded-md bg-accent text-surface hover:bg-accent-hover text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:bg-line disabled:text-ink-subtle disabled:cursor-not-allowed"
                             >
                                 <i className={`ti ${isCommitting ? 'ti-loader animate-spin' : 'ti-cloud-upload'} text-xs`} />
                                 <span>
@@ -1091,6 +1138,9 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                     <button
                                         type="button"
                                         onClick={() => handleConfirmAndNext(preview.row)}
+                                        disabled={isAnalyzing || isCommitting}
+                                        aria-keyshortcuts="Enter Space"
+                                        title="Confirm this document and open the next (Enter or Space)"
                                         className="h-8 px-3 rounded-md bg-success-subtle hover:bg-success/20 text-success-ink border border-success/30 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ml-1"
                                     >
                                         <i className="ti ti-check text-xs" />
@@ -1149,7 +1199,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                             <a
                                                 href={preview.url}
                                                 download={preview.name}
-                                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white text-xs font-semibold hover:bg-accent-hover transition-colors"
+                                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-surface text-xs font-semibold hover:bg-accent-hover transition-colors"
                                             >
                                                 <i className="ti ti-download text-xs" />
                                                 <span>Download file</span>

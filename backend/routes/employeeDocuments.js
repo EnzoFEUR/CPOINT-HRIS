@@ -90,14 +90,15 @@ router.get('/:id/url', documentRoute(async (req, res) => {
 // Advisory classification only: no storage upload, document write, or draft broadcast.
 router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('file'), documentRoute(async (req, res) => {
     if (req.body.analysis_consent !== 'true') throw new DocumentError(400, 'Consent to content analysis is required.');
-    const employeeId = assertUuid(req.body.employee_id, 'Employee ID');
-    await ensureWritableEmployee(client, employeeId);
+    const employeeId = req.body.employee_id ? assertUuid(req.body.employee_id, 'Employee ID') : null;
+    const targetEmployee = employeeId ? await ensureWritableEmployee(client, employeeId) : null;
     if (res.destroyed) return;
     const controller = new AbortController();
     const disconnect = () => controller.abort(new Error('Client disconnected'));
     res.once('close', disconnect);
     try {
-        const classification = await classifier.classify(req.file, { actorId: req.user.id, signal: controller.signal });
+        // Use authoritative names, never client-supplied identity claims.
+        const classification = await classifier.classify(req.file, { actorId: req.user.id, signal: controller.signal, targetEmployee });
         if (!res.destroyed) res.json({ success: true, classification });
     } catch (error) {
         if (!controller.signal.aborted) throw error;

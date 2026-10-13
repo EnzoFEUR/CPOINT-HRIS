@@ -14,6 +14,7 @@ export async function documentRequest(endpoint, options) {
     if (!response.ok || !data.success) {
         const error = new Error(data.message || data.error || 'Document request failed.');
         error.status = response.status;
+        error.code = data.code;
         throw error;
     }
     return data;
@@ -50,6 +51,7 @@ export async function uploadEmployeeDocument({
         body.append('review_confirmed', String(bulkReview.confirmed === true));
         body.append('document_type', bulkReview.documentType);
         body.append('import_id', bulkReview.importId);
+        if (bulkReview.idNumber) body.append('extracted_id_number', bulkReview.idNumber);
     }
     return (await documentRequest('/api/employee-documents', { method: 'POST', body })).document;
 }

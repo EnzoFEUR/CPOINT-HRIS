@@ -5,6 +5,7 @@ import {
     assertDocumentOwner,
     assertUuid,
     documentChanged,
+    DOCUMENT_URL_TTL,
     documentRoute,
     ensureWritableEmployee,
     findDocument,
@@ -80,7 +81,7 @@ export function createDocumentRouter(client = supabase) {
                     })
                     .filter(Boolean);
                 if (paths.length > 0) {
-                    const { data: signedList } = await client.storage.from('documents').createSignedUrls([...new Set(paths)], 3600);
+                    const { data: signedList } = await client.storage.from('documents').createSignedUrls([...new Set(paths)], DOCUMENT_URL_TTL);
                     if (Array.isArray(signedList)) {
                         const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
                         for (const doc of fulfilledDocs) {
@@ -318,7 +319,7 @@ export function createDocumentRouter(client = supabase) {
         }).select().single();
         if (error) throw error;
         try {
-            const { data: signed } = await client.storage.from('documents').createSignedUrl(filePath, 3600);
+            const { data: signed } = await client.storage.from('documents').createSignedUrl(filePath, DOCUMENT_URL_TTL);
             if (signed?.signedUrl) data.preview_url = signed.signedUrl;
         } catch (_) {}
 

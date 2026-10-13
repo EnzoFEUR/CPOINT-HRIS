@@ -4,6 +4,7 @@ import { verifyToken } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
 import { createAuditLog } from './auditLogs.js';
+import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
                     })
                     .filter(Boolean);
                 if (paths.length > 0) {
-                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], 3600);
+                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], DOCUMENT_URL_TTL);
                     if (Array.isArray(signedList)) {
                         const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
                         for (const doc of documents) {
