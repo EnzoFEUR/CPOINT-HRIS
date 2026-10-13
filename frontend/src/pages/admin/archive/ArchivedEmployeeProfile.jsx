@@ -5,6 +5,7 @@ import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { formatPhDisplay } from '../../../utils/phoneUtils';
 
 // ---------- helpers ----------
 
@@ -484,7 +485,7 @@ export default function ArchivedEmployeeProfile() {
                 </div>
                 <div>
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Contact Phone</span>
-                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{employee.phone || employee.contact_no || 'Not on file'}</span>
+                  <span className="font-semibold text-slate-800 text-xs mt-0.5 block">{formatPhDisplay(employee.phone || employee.contact_no) || 'Not on file'}</span>
                 </div>
                 <div className="col-span-2">
                   <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">Archived Timestamp</span>

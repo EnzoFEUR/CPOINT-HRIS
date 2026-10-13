@@ -32,7 +32,7 @@ export default function Register() {
 
     const phoneCheck = validatePhPhone(phone);
     if (!phoneCheck.isValid) {
-      setError(phoneCheck.message || 'A valid 11-digit Philippine mobile phone number starting with 09 is required.');
+      setError(phoneCheck.message || 'A valid 10-digit Philippine mobile phone number starting with 9 is required.');
       return;
     }
 
@@ -48,7 +48,7 @@ export default function Register() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
-        phone: `+63${cleanPhone.slice(1)}`,
+        phone: `+63${cleanPhone}`,
         options: {
           data: {
             name: name.trim(),
@@ -177,9 +177,10 @@ export default function Register() {
                 <input
                   type="tel"
                   value={phone}
+                  maxLength={12}
                   onChange={(e) => setPhone(formatPhPhone(e.target.value))}
                   required
-                  placeholder="0917 123 4567"
+                  placeholder="917 123 4567"
                   className={`w-full h-9 pl-11 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none font-mono transition-colors duration-100 shadow-2xs ${
                     phone && phoneValidation.isValid
                       ? 'border-line focus:border-line'

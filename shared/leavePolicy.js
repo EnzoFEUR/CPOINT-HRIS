@@ -5,7 +5,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const invalid = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 
 // --- Identifiers & Role Checks ---
-export const isCreditManager = user => ['admin', 'superadmin', 'hr'].includes(String(user?.role || '').toLowerCase());
+export const isCreditManager = user => ['admin', 'hr'].includes(String(user?.role || '').toLowerCase());
 export const isCreditLeaveType = type => ['sick leave', 'vacation / pto', 'vacation leave', 'emergency leave', 'service incentive leave'].includes(String(type || '').toLowerCase().trim());
 export const isCreditUuid = value => typeof value === 'string' && UUID.test(value);
 export const isLeaveDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;

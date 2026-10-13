@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { fetchWithAuth } from '../../../utils/api';
 import useEmployeeDocuments from '../../../utils/useEmployeeDocuments';
 import useDocumentRequests from '../../../utils/useDocumentRequests';
 import {
@@ -47,10 +48,38 @@ export default function Documents() {
     const queryClient = useQueryClient();
 
     // Document & Loading states
+    const currentUser = useMemo(() => {
+        try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+        catch { return null; }
+    }, []);
+
     const [actorId] = useState(() => {
         try { return JSON.parse(localStorage.getItem('user') || '{}').id; }
         catch { return null; }
     });
+
+    const [targetEmployeeId, setTargetEmployeeId] = useState(() => employeeId || '');
+
+    useEffect(() => {
+        if (employeeId) {
+            setTargetEmployeeId(employeeId);
+        }
+    }, [employeeId]);
+
+    // Active personnel list for target selection (workforce employees only, strictly excluding admin governance accounts)
+    const { data: employeeOptions = [] } = useQuery({
+        queryKey: ['adminEmployeesListForDocs'],
+        queryFn: async () => {
+            const res = await fetchWithAuth('/api/employees?limit=250&status=active');
+            const data = await res.json();
+            return data?.data?.employees || data?.employees || [];
+        },
+        staleTime: 60000,
+    });
+
+    const workforceOptions = useMemo(() => {
+        return (employeeOptions || []).filter(e => e.role !== 'admin');
+    }, [employeeOptions]);
 
     // View tabs: 'vault' | 'requests'
     const [activeTab, setActiveTab] = useState('vault');
@@ -423,6 +452,7 @@ export default function Documents() {
         setSelectedDocTypeId('employment_contract');
         setCategory('Contract');
         setExpiryDate('');
+        setTargetEmployeeId(employeeId || '');
     };
 
     const openModalWithFile = (file) => {
@@ -491,8 +521,13 @@ export default function Documents() {
             toast.error('Please select a file to upload.');
             return;
         }
-        if (!employeeId) {
-            toast.error('Employee ID is missing in the URL.');
+        const effectiveEmployeeId = employeeId || targetEmployeeId;
+        if (!effectiveEmployeeId) {
+            toast.error('Please select a workforce employee account for this document.');
+            return;
+        }
+        if (currentUser?.id && effectiveEmployeeId === currentUser.id) {
+            toast.error('Document uploads are disabled for administrator governance accounts.');
             return;
         }
 
@@ -504,7 +539,7 @@ export default function Documents() {
             const renamedFile = selectedFile.name === cleanFileName ? selectedFile : new File([selectedFile], cleanFileName, { type: selectedFile.type });
 
             await uploadEmployeeDocument({
-                employeeId,
+                employeeId: effectiveEmployeeId,
                 file: renamedFile,
                 title: resolvedTitle,
                 category,
@@ -513,6 +548,8 @@ export default function Documents() {
             });
             documentQuery.refresh();
             requestQuery.refresh();
+            queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
+            queryClient.invalidateQueries({ queryKey: ['employeeDocuments'] });
             toast.success('Document uploaded successfully!');
             setIsUploadModalOpen(false);
             resetUploadForm();
@@ -1560,6 +1597,36 @@ export default function Documents() {
                         </div>
 
                         <form onSubmit={handleUploadSubmit} className="space-y-3.5">
+                            {/* Target Personnel Account Selector */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                                    Target Personnel Account <span className="text-rose-500">*</span>
+                                </label>
+                                {employeeId ? (
+                                    <div className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-xs text-slate-700 flex items-center justify-between">
+                                        <span className="truncate">
+                                            {employee?.first_name ? `${employee.first_name} ${employee.last_name} (${employee.company_id || 'ID Pending'})` : `Employee ID: ${employeeId}`}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-accent uppercase tracking-widest px-1.5 py-0.5 bg-accent-subtle rounded border border-accent/20 shrink-0">
+                                            Scoped
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <select
+                                        value={targetEmployeeId}
+                                        onChange={(e) => setTargetEmployeeId(e.target.value)}
+                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-slate-400 font-medium text-xs text-slate-800 transition-colors duration-100 shadow-2xs cursor-pointer"
+                                    >
+                                        <option value="">Select workforce employee...</option>
+                                        {workforceOptions.map(e => (
+                                            <option key={e.id} value={e.id}>
+                                                {e.first_name} {e.last_name} ({e.company_id || 'CP-MAIN'}) — {e.job_title || e.department || 'Staff'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
                             {/* Aligned Document Type Dropdown */}
                             <div>
                                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">

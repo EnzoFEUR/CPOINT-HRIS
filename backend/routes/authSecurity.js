@@ -56,12 +56,16 @@ function checkRateLimit(key) {
     return { allowed: true, remaining: MAX_ATTEMPTS_PER_WINDOW - record.count };
 }
 
-// Helper: Mask phone number (e.g. "09123456789" -> "09******789")
+// Helper: Mask phone number (e.g. "+63 917 ··· 4567")
 function maskPhone(phone) {
     if (!phone) return 'registered phone';
-    const clean = phone.replace(/\D/g, '');
+    let clean = String(phone).replace(/\D/g, '');
+    if (clean.startsWith('63') && (clean.length === 12 || clean.length === 11)) {
+        clean = clean.slice(2);
+    }
+    clean = clean.replace(/^0+/, '');
     if (clean.length < 7) return 'registered phone';
-    return clean.slice(0, 2) + '*'.repeat(Math.max(4, clean.length - 5)) + clean.slice(-3);
+    return '+63 ' + clean.slice(0, 3) + ' ··· ' + clean.slice(-4);
 }
 
 // Helper: NIST SP 800-63B Password Complexity Validator
@@ -304,9 +308,8 @@ router.post('/forgot-password', async (req, res) => {
                 const code = otpInfo.code;
                 storeOtp(otpStorageKey, code);
 
-                // Attempt carrier gateway dispatch; returns simulated if gateway uncredited
                 const smsResult = await sendSmsOtp(userPhone, code);
-                const isSimulated = Boolean(smsResult?.simulated) || !process.env.SEMAPHORE_API_KEY;
+                const isSimulated = Boolean(smsResult?.simulated);
                 const previewCode = code;
 
                 releaseOtpLock(lockKeys, true);

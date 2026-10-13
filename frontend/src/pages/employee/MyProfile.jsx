@@ -13,6 +13,7 @@ import useDocumentRequests from '../../utils/useDocumentRequests';
 import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/documentApi';
 import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry, formatCleanDocumentFileName } from '../../utils/documentUtils';
 import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../../shared/documentTypes.mjs';
+import { formatPhDisplay } from '../../utils/phoneUtils';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 
@@ -220,8 +221,16 @@ export default function MyProfile() {
         toast.success('Backup codes downloaded.');
     };
 
+const normalizeJobTitle = (title, isAdmin) => {
+    if (!title || /super\s*admin/i.test(title)) {
+        return isAdmin ? 'Admin' : 'Staff Member';
+    }
+    return title;
+};
+
     const initialUser = useMemo(() => {
         if (!storedUser) return null;
+        const isInitAdmin = storedUser.role === 'admin' || storedUser.email === 'admin@c-point.com';
         return {
             id: storedUser.id || storedUser.user_id,
             company_id: storedUser.company_id || storedUser.employee_id || storedUser.emp_id || 'CP-MAIN',
@@ -233,7 +242,7 @@ export default function MyProfile() {
             birth_date: storedUser.birth_date || null,
             address: storedUser.address || '',
             department: storedUser.department || 'Operations',
-            job_title: storedUser.job_title || storedUser.position || 'Staff Member',
+            job_title: normalizeJobTitle(storedUser.job_title || storedUser.position, isInitAdmin),
             status: storedUser.status || 'active',
             is_active: storedUser.is_active ?? true,
             created_at: storedUser.created_at || null,
@@ -242,11 +251,35 @@ export default function MyProfile() {
             photo_url: storedUser.photo_url || storedUser.avatar_url || null,
             has_registered_biometrics: storedUser.has_registered_biometrics ?? true,
             medical_record_url: storedUser.medical_record_url || null,
+            role: storedUser.role || (storedUser.email === 'admin@c-point.com' ? 'admin' : 'employee'),
         };
     }, [storedUser]);
 
     const currentUserId = initialUser?.id;
     const cacheStorageKey = currentUserId ? `cpoint_my_profile_cache_${currentUserId}` : 'cpoint_my_profile_cache';
+
+    // Auto-heal legacy session cache if it contains deprecated 'Super Admin'
+    useEffect(() => {
+        try {
+            const rawUser = localStorage.getItem('user');
+            if (rawUser && /super\s*admin/i.test(rawUser)) {
+                const parsed = JSON.parse(rawUser);
+                if (parsed.job_title && /super\s*admin/i.test(parsed.job_title)) {
+                    parsed.job_title = 'Admin';
+                }
+                if (parsed.role && /super\s*admin/i.test(parsed.role)) {
+                    parsed.role = 'admin';
+                }
+                localStorage.setItem('user', JSON.stringify(parsed));
+            }
+            if (cacheStorageKey) {
+                const cached = sessionStorage.getItem(cacheStorageKey);
+                if (cached && /super\s*admin/i.test(cached)) {
+                    sessionStorage.removeItem(cacheStorageKey);
+                }
+            }
+        } catch (_) {}
+    }, [cacheStorageKey]);
 
     // Query profile and documents with 0ms SWR session cache scoped strictly to the authenticated user ID
     const initialProfileData = (() => {
@@ -288,6 +321,13 @@ export default function MyProfile() {
 
     const raw = profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {};
     
+    const isAdminAccount = useMemo(() => {
+        const role = String(raw?.role || raw?.user?.role || storedUser?.role || initialUser?.role || '').toLowerCase();
+        const email = String(raw?.email || storedUser?.email || initialUser?.email || '').toLowerCase();
+        const jobTitle = String(raw?.job_title || raw?.position || storedUser?.job_title || '').toLowerCase();
+        return role === 'admin' || email === 'admin@c-point.com' || jobTitle.includes('admin');
+    }, [raw, storedUser, initialUser]);
+
     const profile = useMemo(() => {
         if (!raw || typeof raw !== 'object' || !raw.id) return initialUser;
         return {
@@ -301,7 +341,7 @@ export default function MyProfile() {
             birth_date: raw.birth_date || raw.dob || raw.birthdate || null,
             address: raw.address || raw.home_address || raw.present_address || '',
             department: raw.department?.name || raw.department || raw.dept || 'Operations',
-            job_title: raw.job_title || raw.position || raw.designation || raw.role || 'Staff Member',
+            job_title: normalizeJobTitle(raw.job_title || raw.position || raw.designation, isAdminAccount),
             status: raw.status || initialUser?.status || 'active',
             is_active: raw.is_active ?? initialUser?.is_active ?? true,
             created_at: raw.created_at || null,
@@ -317,8 +357,9 @@ export default function MyProfile() {
             separation_notes: raw.separation_notes || initialUser?.separation_notes || null,
             operational_status: raw.operational_status || initialUser?.operational_status || null,
             is_terminated: raw.is_terminated ?? initialUser?.is_terminated ?? false,
+            role: raw.role || raw.user?.role || initialUser?.role || storedUser?.role || (isAdminAccount ? 'admin' : 'employee'),
         };
-    }, [raw, initialUser]);
+    }, [raw, initialUser, storedUser, isAdminAccount]);
 
     // Medical grace protocol state
     const medicalExemption = useMemo(() => {
@@ -345,17 +386,17 @@ export default function MyProfile() {
         return Math.max(0, Math.ceil((new Date(medicalExemption.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     }, [isMedicalExempt, medicalExemption]);
 
-    const disciplinaryLogs = profileResponse?.disciplinary_logs || [];
+    const disciplinaryLogs = isAdminAccount ? [] : (profileResponse?.disciplinary_logs || []);
     const isLoading = isQueryLoading && !profile;
     const [docSearch, setDocSearch] = useState('');
     const [docStatus, setDocStatus] = useState('all');
     const [docCategory, setDocCategory] = useState('All');
     const [docSort, setDocSort] = useState('newest');
     const [openingDocument, setOpeningDocument] = useState(null);
-    const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id), status: docStatus, category: docCategory, sort: docSort, search: docSearch });
-    const documents = documentQuery.documents;
-    const requestQuery = useDocumentRequests({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) });
-    const activeRequests = (requestQuery.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
+    const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount, status: docStatus, category: docCategory, sort: docSort, search: docSearch });
+    const documents = isAdminAccount ? [] : documentQuery.documents;
+    const requestQuery = useDocumentRequests({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount });
+    const activeRequests = isAdminAccount ? [] : (requestQuery.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
     useEffect(() => {
         if (location.hash !== '#documents' || !profile?.id) return;
         const frame = requestAnimationFrame(() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -468,10 +509,24 @@ export default function MyProfile() {
         };
     }, [profile?.id, queryClient]);
 
+    // Live activity sync for administrative sessions
+    useEffect(() => {
+        if (!isAdminAccount || !profile?.id) return;
+        const channel = supabase
+            .channel(`admin-profile-activity-${profile.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_log' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+            })
+            .subscribe();
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [isAdminAccount, profile?.id, queryClient]);
+
     const activeSuspensionLog = disciplinaryLogs.find(l => (l.type === 'Suspension' || l.action_taken === 'Suspension') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
     const activeTerminationLog = disciplinaryLogs.find(l => (l.type === 'Termination' || l.action_taken === 'Termination') && l.status !== 'Resolved' && l.status !== 'Overturned' && l.status !== 'Dismissed');
 
-    const isSuspended = !Boolean(activeTerminationLog) && Boolean(
+    const isSuspended = !isAdminAccount && !Boolean(activeTerminationLog) && Boolean(
         activeSuspensionLog ||
         disciplinaryState?.isSuspended ||
         profile?.status === 'suspended' ||
@@ -479,7 +534,7 @@ export default function MyProfile() {
         profile?.is_suspended
     );
 
-    const isTerminated = !isSuspended && Boolean(
+    const isTerminated = !isAdminAccount && !isSuspended && Boolean(
         activeTerminationLog ||
         Boolean(profile?.archived_at) ||
         Boolean(profile?.is_terminated) ||
@@ -496,6 +551,107 @@ export default function MyProfile() {
         const targetDate = new Date(refDate.getTime() + 14 * 24 * 60 * 60 * 1000);
         return Math.max(0, Math.ceil((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     }, [isPendingArchive, profile?.archived_at, profile?.separation_date]);
+
+    // Admin Password Management State & Handlers with Multi-Factor OTP & Brute-Force Defense
+    const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const [passwordOtp, setPasswordOtp] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const [otpCooldown, setOtpCooldown] = useState(0);
+    const [otpError, setOtpError] = useState('');
+    const [attemptsRemaining, setAttemptsRemaining] = useState(null);
+
+    useEffect(() => {
+        if (otpCooldown <= 0) return;
+        const interval = setInterval(() => {
+            setOtpCooldown((prev) => Math.max(0, prev - 1));
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [otpCooldown]);
+
+    const handleRequestPasswordOtp = async () => {
+        if (isSendingOtp || otpCooldown > 0) return;
+        setIsSendingOtp(true);
+        setOtpError('');
+        try {
+            const res = await fetchWithAuth('/api/profile/request-password-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.message || data.error || 'Failed to dispatch verification code.');
+            }
+            toast.success(data.message || 'Verification code dispatched to your corporate email.');
+            setOtpCooldown(data.cooldown || 60);
+        } catch (err) {
+            setOtpError(err.message || 'Failed to send verification code.');
+            toast.error(err.message || 'Failed to send verification code.');
+        } finally {
+            setIsSendingOtp(false);
+        }
+    };
+
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        setOtpError('');
+        if (!currentPassword.trim() || !newPassword.trim()) {
+            toast.error('Please enter both current and new passwords.');
+            return;
+        }
+        if (newPassword.length < 8) {
+            toast.error('New password must be at least 8 characters long.');
+            return;
+        }
+        if (newPassword.trim() === currentPassword.trim()) {
+            toast.error('New password must be different from current password.');
+            return;
+        }
+        if (newPassword !== confirmNewPassword) {
+            toast.error('New passwords do not match.');
+            return;
+        }
+        if (!passwordOtp.trim()) {
+            toast.error('Please enter the 6-digit verification code from your email or Google Authenticator.');
+            return;
+        }
+
+        setIsChangingPassword(true);
+        try {
+            const res = await fetchWithAuth('/api/profile/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    current_password: currentPassword.trim(),
+                    new_password: newPassword.trim(),
+                    otp: passwordOtp.trim()
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                if (data.remainingAttempts !== undefined) {
+                    setAttemptsRemaining(data.remainingAttempts);
+                }
+                throw new Error(data.message || 'Failed to update password.');
+            }
+            toast.success(data.message || 'Password updated successfully.');
+            setShowChangePasswordModal(false);
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmNewPassword('');
+            setPasswordOtp('');
+            setOtpError('');
+            setAttemptsRemaining(null);
+        } catch (err) {
+            setOtpError(err.message || 'Failed to change password.');
+            toast.error(err.message || 'Failed to change password.');
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
 
     // Personal Details Edit State & Handlers
     const [showEditPersonalModal, setShowEditPersonalModal] = useState(false);
@@ -612,6 +768,10 @@ export default function MyProfile() {
     };
 
     const openUploadModal = (file = null) => {
+        if (isAdminAccount) {
+            toast.error('Document uploads are disabled for administrator governance accounts.');
+            return;
+        }
         if (isTerminated) {
             toast.error('Document uploads are disabled for separated/terminated accounts.');
             return;
@@ -663,6 +823,11 @@ export default function MyProfile() {
 
     const handleUploadSubmit = async (e) => {
         e.preventDefault();
+
+        if (isAdminAccount) {
+            toast.error('Document uploads are disabled for administrator governance accounts.');
+            return;
+        }
 
         if (isTerminated) {
             toast.error('Document uploads are disabled for separated/terminated accounts.');
@@ -752,24 +917,26 @@ export default function MyProfile() {
     };
 
     const alerts = useMemo(() => {
+        if (isAdminAccount) return [];
         return documents
             .map((doc) => ({ doc, status: getDocumentExpiry(doc) }))
             .filter(({ status }) => status && status.level !== 'valid')
             .sort((a, b) => a.status.daysLeft - b.status.daysLeft);
-    }, [documents]);
+    }, [documents, isAdminAccount]);
 
     const filteredDocuments = useMemo(() => {
+        if (isAdminAccount) return [];
         const q = docSearch.toLowerCase().trim();
         return documents.filter((doc) =>
             (doc.title || '').toLowerCase().includes(q) || (doc.file_name || '').toLowerCase().includes(q)
         ).sort((a, b) => docSort === 'oldest' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at));
-    }, [documents, docSearch, docSort]);
+    }, [documents, docSearch, docSort, isAdminAccount]);
 
     const showExpiryField = EXPIRABLE_CATEGORIES.includes(uploadForm.category);
 
     const handleDragEnter = (e) => {
         e.preventDefault();
-        if (isTerminated) return;
+        if (isTerminated || isAdminAccount) return;
         if (e.dataTransfer.types?.includes('Files')) {
             dragCounter.current += 1;
             setIsDraggingFile(true);
@@ -788,6 +955,7 @@ export default function MyProfile() {
         e.preventDefault();
         dragCounter.current = 0;
         setIsDraggingFile(false);
+        if (isAdminAccount) return;
         if (isTerminated) {
             toast.error('Document uploads are disabled for separated/terminated accounts.');
             return;
@@ -858,39 +1026,55 @@ export default function MyProfile() {
 
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-                            {isTerminated && (
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-md border ${
-                                    isPendingArchive 
-                                        ? 'bg-warning/20 text-warning border-warning/30' 
-                                        : 'bg-danger/20 text-danger border-danger/30'
-                                }`}>
-                                    <i className={`ti ${isPendingArchive ? 'ti-clock-pause' : 'ti-circle-x'}`} />
-                                    {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
-                                </span>
-                            )}
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
-                                <i className="ti ti-id text-slate-400" /> {profile?.company_id || 'EMPLOYEE'}
-                            </span>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
-                                {profile?.department || 'Operations'}
-                            </span>
-                            {(profile?.department || '').toLowerCase().includes('factory') ? (
+                            {isAdminAccount ? (
                                 <>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded-md border border-warning/30">
-                                        Factory (08:00 - 17:00 • No OT)
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
+                                        <i className="ti ti-shield-lock text-accent" /> {profile?.company_id || 'CP-MAIN'}
                                     </span>
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
-                                        Piece-Rate Production
+                                        <i className="ti ti-crown" /> {profile?.job_title || profile?.role || 'Admin'}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-800 text-slate-300 text-xs font-semibold rounded-md border border-slate-700">
+                                        {profile?.department || 'IT Operations'}
                                     </span>
                                 </>
                             ) : (
                                 <>
+                                    {isTerminated && (
+                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-md border ${
+                                            isPendingArchive 
+                                                ? 'bg-warning/20 text-warning border-warning/30' 
+                                                : 'bg-danger/20 text-danger border-danger/30'
+                                        }`}>
+                                            <i className={`ti ${isPendingArchive ? 'ti-clock-pause' : 'ti-circle-x'}`} />
+                                            {isPendingArchive ? `Pending Archive (${daysUntilPermanentArchive}d)` : 'Separated'}
+                                        </span>
+                                    )}
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-800 text-slate-200 text-xs font-mono font-bold rounded-md border border-slate-700">
+                                        <i className="ti ti-id text-slate-400" /> {profile?.company_id || 'EMPLOYEE'}
+                                    </span>
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
-                                        Regular (08:00 - 20:00 • OT Eligible)
+                                        {profile?.department || 'Operations'}
                                     </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line">
-                                        Salaried Monthly
-                                    </span>
+                                    {(profile?.department || '').toLowerCase().includes('factory') ? (
+                                        <>
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-warning/20 text-warning text-xs font-semibold rounded-md border border-warning/30">
+                                                Factory (08:00 - 17:00 • No OT)
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
+                                                Piece-Rate Production
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded-md border border-accent/30">
+                                                Regular (08:00 - 20:00 • OT Eligible)
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded-md border border-line">
+                                                Salaried Monthly
+                                            </span>
+                                        </>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -899,7 +1083,7 @@ export default function MyProfile() {
                             {profile?.first_name} {profile?.last_name}
                         </h1>
                         <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5">
-                            {profile?.job_title || 'Staff Member'}
+                            {profile?.job_title || (isAdminAccount ? 'Admin' : 'Staff Member')}
                         </p>
 
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-3 text-xs font-medium text-slate-400">
@@ -908,36 +1092,43 @@ export default function MyProfile() {
                             </span>
                             {profile?.phone && (
                                 <span className="flex items-center gap-1.5 font-mono">
-                                    <i className="ti ti-phone text-slate-400 text-sm" /> {profile.phone}
+                                    <i className="ti ti-phone text-slate-400 text-sm" /> {formatPhDisplay(profile.phone)}
                                 </span>
                             )}
                         </div>
                     </div>
 
                     <div className="flex sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
-                        {alerts.length > 0 && (
-                            <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-warning/20 text-warning border border-warning/30 rounded-md text-xs font-semibold">
-                                <i className="ti ti-alert-triangle text-warning text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
+                        {isAdminAccount ? (
+                            <div className="w-full sm:w-auto h-9 px-3.5 bg-slate-800/90 text-slate-200 border border-slate-700 rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-2 select-none">
                             </div>
-                        )}
-                        {isTerminated ? (
-                            <span className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
-                                <i className="ti ti-lock text-sm" /> Uploads Disabled
-                            </span>
                         ) : (
-                            <button
-                                onClick={() => openUploadModal()}
-                                className="w-full sm:w-auto h-9 px-3.5 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                                <i className="ti ti-upload text-sm" /> Upload Document
-                            </button>
+                            <>
+                                {alerts.length > 0 && (
+                                    <div className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-warning/20 text-warning border border-warning/30 rounded-md text-xs font-semibold">
+                                        <i className="ti ti-alert-triangle text-warning text-sm" /> {alerts.length} Doc{alerts.length > 1 ? 's' : ''} Need Attention
+                                    </div>
+                                )}
+                                {isTerminated ? (
+                                    <span className="w-full sm:w-auto h-9 px-3.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                                        <i className="ti ti-lock text-sm" /> Uploads Disabled
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => openUploadModal()}
+                                        className="w-full sm:w-auto h-9 px-3.5 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-medium transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                        <i className="ti ti-upload text-sm" /> Upload Document
+                                    </button>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
             </div>
 
             {/* Disciplinary Suspension Notification */}
-            {isSuspended && !isPendingArchive && (
+            {!isAdminAccount && isSuspended && !isPendingArchive && (
                 <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
                         <div className="p-2.5 bg-warning-subtle text-warning-ink rounded-md shrink-0 mt-0.5">
@@ -960,7 +1151,7 @@ export default function MyProfile() {
             )}
 
             {/* Pending Archive Clearance Notification */}
-            {isPendingArchive && (
+            {!isAdminAccount && isPendingArchive && (
                 <div className="bg-warning-subtle border border-warning/20 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
                     <div className="flex items-start gap-3">
                         <div className="p-2.5 bg-warning-subtle text-warning-ink rounded-md shrink-0 mt-0.5">
@@ -989,8 +1180,261 @@ export default function MyProfile() {
                 </div>
             )}
 
-            {/* Personal and employment details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+            {isAdminAccount ? (
+                <>
+                    {/* Admin Section 1: Personal Identity & Administrative Governance Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                        {/* Personal Information */}
+                        <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
+                                        <i className="ti ti-user-shield text-lg" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-slate-900 text-sm">Administrative Identity</h3>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={openEditPersonalModal}
+                                    className="h-7 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200 transition-colors duration-100 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                >
+                                    <i className="ti ti-edit text-xs" /> Edit Details
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3.5 text-xs">
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">First Name</p>
+                                    <p className="font-semibold text-slate-900">{profile?.first_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Last Name</p>
+                                    <p className="font-semibold text-slate-900">{profile?.last_name || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Contact Phone</p>
+                                    <p className="font-mono font-semibold text-slate-900">{formatPhDisplay(profile?.phone) || 'Not configured'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Gender</p>
+                                    <p className="font-semibold text-slate-900 capitalize">{profile?.gender || 'N/A'}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Corporate Email</p>
+                                    <p className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                                        <i className="ti ti-mail text-slate-400" />
+                                        {profile?.email || 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Residential Address</p>
+                                    <p className="font-semibold text-slate-900">{profile?.address || 'No address registered'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Administrative Governance & System Assignment */}
+                        <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                                <div className="h-9 w-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center border border-slate-200">
+                                    <i className="ti ti-shield-check text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm">System Governance</h3>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3.5 text-xs">
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Admin ID</p>
+                                    <p className="font-mono font-semibold text-slate-900">{profile?.company_id || 'CP-MAIN'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Department</p>
+                                    <p className="font-semibold text-slate-900">{profile?.department || 'IT Operations'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Administrative Role</p>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent/20 text-accent-on-dark font-semibold text-[11px] rounded-md border border-accent/30">
+                                        <i className="ti ti-shield-lock" /> {profile?.job_title || profile?.role || 'Admin'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Security Clearance</p>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-muted text-ink font-semibold text-[11px] rounded-md border border-line">
+                                        Tier 0 · Executive
+                                    </span>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Governance Status</p>
+                                    <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-md border border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-slate-900">Active Privileged Account</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Admin Section 2: Security Credentials & Two-Factor Authentication */}
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className={`h-9 w-9 rounded-md flex items-center justify-center border ${
+                                    totpStatus.enabled ? 'bg-surface-muted text-ink border-line' : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}>
+                                <i className="ti ti-shield-lock text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Administrative Authentication &amp; 2FA</h3>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
+                                    totpStatus.enabled ? 'bg-surface-muted text-ink border-line' : 'bg-slate-100 text-slate-700 border-slate-300'
+                                }`}>
+                                    <i className={`ti ${totpStatus.enabled ? 'ti-circle-check' : 'ti-alert-circle'}`} />
+                                    {totpStatus.enabled ? 'Enabled & Active' : 'Not Configured'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* 2FA Card */}
+                            <div className="p-4 rounded-md bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3 text-xs">
+                                <div>
+                                    <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                                        <i className="ti ti-device-mobile text-slate-500" />
+                                        Two-Factor Authenticator (TOTP)
+                                    </p>
+                                    <p className="text-slate-600 mt-1 leading-relaxed">
+                                        {totpStatus.enabled 
+                                            ? 'Your administrative session is protected with offline TOTP codes (Google Authenticator).'
+                                            : 'Protect elevated administrative access against credential theft with mandatory 2FA.'}
+                                    </p>
+                                </div>
+                                <div className="pt-2 flex items-center gap-2">
+                                    {totpStatus.enabled ? (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowReconfigureModal(true)}
+                                                disabled={totpSubmitting}
+                                                className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
+                                            >
+                                                Reconfigure
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDisableCode('');
+                                                    setShowDisableModal(true);
+                                                }}
+                                                disabled={totpSubmitting}
+                                                className="h-8 px-3 bg-danger-subtle hover:bg-danger-subtle text-danger-ink border border-danger/20 rounded-md font-medium text-xs shadow-2xs transition-colors cursor-pointer"
+                                            >
+                                                Disable 2FA
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={handleStartTotpSetup}
+                                            disabled={totpSubmitting}
+                                            className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold text-xs shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                                        >
+                                            <i className="ti ti-qrcode text-sm" />
+                                            <span>Setup Authenticator</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Password Management Card */}
+                            <div className="p-4 rounded-md bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3 text-xs">
+                                <div>
+                                    <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                                        <i className="ti ti-key text-slate-500" />
+                                        Administrative Password
+                                    </p>
+                                    <p className="text-slate-600 mt-1 leading-relaxed">
+                                        Maintain high entropy credentials. NIST SP 800-63B standards require minimum 8 characters with periodic rotation.
+                                    </p>
+                                </div>
+                                <div className="pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowChangePasswordModal(true)}
+                                        className="h-8 px-3.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md font-semibold text-xs shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                                    >
+                                        <i className="ti ti-lock-password text-sm" />
+                                        <span>Update Password</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Admin Section 4: Recent Administrative Activity Audit */}
+                    <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
+                                    <i className="ti ti-activity text-lg" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Recent Administrative Activity</h3>
+                                </div>
+                            </div>
+                            <Link
+                                to="/admin/audit-logs"
+                                className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+                            >
+                                <span>Full Audit Trail</span>
+                                <i className="ti ti-arrow-right text-xs" />
+                            </Link>
+                        </div>
+
+                        {profileResponse?.recent_activity?.length > 0 ? (
+                            <div className="divide-y divide-slate-100 text-xs">
+                                {profileResponse.recent_activity.map((act) => (
+                                    <div key={act.id} className="py-2.5 flex items-start justify-between gap-3">
+                                        <div className="flex items-start gap-2.5 min-w-0">
+                                            <div className="w-7 h-7 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
+                                                <i className="ti ti-terminal text-sm" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="font-semibold text-slate-900 truncate">
+                                                    {act.description || act.event || 'System Action'}
+                                                </p>
+                                                <p className="text-[11px] text-slate-500 font-mono">
+                                                    {act.subject_type || 'System'}{act.subject_id ? ` · ${String(act.subject_id).slice(0, 8)}...` : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
+                                            {formatDate(act.created_at)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-4 rounded-md bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                                <i className="ti ti-shield-check text-2xl text-slate-400 mb-1 block" />
+                                <p className="font-semibold text-slate-700">Audit Logging Active</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">All administrative transactions, record modifications, and privilege grants are immutably captured.</p>
+                            </div>
+                        )}
+                    </div>
+                </>
+            ) : (
+                <>
+                    {/* Personal and employment details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 {/* Personal Information */}
                 <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1628,6 +2072,14 @@ export default function MyProfile() {
                                     <p className="text-[11px] text-slate-500">Document uploads are locked for separated employee accounts.</p>
                                 </div>
                             </div>
+                        ) : isAdminAccount ? (
+                            <div className="text-center py-10 bg-slate-50 rounded-md border border-slate-200 space-y-2">
+                                <i className="ti ti-shield-lock text-3xl text-slate-400 block" />
+                                <div>
+                                    <p className="font-semibold text-slate-700 text-xs sm:text-sm">Administrative Governance Account</p>
+                                    <p className="text-[11px] text-slate-500">Personnel 201 compliance documents are not applicable to administrator profiles.</p>
+                                </div>
+                            </div>
                         ) : (
                             <div
                                 onClick={() => openUploadModal()}
@@ -1699,6 +2151,8 @@ export default function MyProfile() {
                     {documentQuery.hasNextPage && <button type="button" disabled={documentQuery.isFetchingNextPage} onClick={() => documentQuery.fetchNextPage()} className="mt-4 rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold">{documentQuery.isFetchingNextPage ? 'Loading…' : 'Load more documents'}</button>}
                 </div>
             </div>
+            </>
+            )}
 
             {/* Edit Personal Details Modal */}
             {showEditPersonalModal && !isTerminated && (
@@ -2381,6 +2835,172 @@ export default function MyProfile() {
                                 )}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Administrative Password Modal */}
+            {showChangePasswordModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto">
+                    <div className="bg-white rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-4 my-auto max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
+                                    <i className="ti ti-key text-base" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base">Change Password</h3>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !isChangingPassword && setShowChangePasswordModal(false)}
+                                className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                                <i className="ti ti-x text-base" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleChangePassword} className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    Current Password <span className="text-danger-ink">*</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    required
+                                    autoComplete="current-password"
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                    placeholder="Enter current password"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    New Password <span className="text-danger-ink">*</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    required
+                                    minLength={8}
+                                    autoComplete="new-password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    placeholder="Enter new password (min. 8 characters)"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    Confirm New Password <span className="text-danger-ink">*</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    required
+                                    minLength={8}
+                                    autoComplete="new-password"
+                                    value={confirmNewPassword}
+                                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                    placeholder="Re-enter new password"
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
+                                />
+                            </div>
+
+                            {/* Multi-Factor Verification & Anti-Brute-Force Shield */}
+                            <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                        <i className="ti ti-shield-lock text-accent text-sm" />
+                                        <span>Multi-Factor Verification</span>
+                                    </div>
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent-on-dark border border-accent/30">
+                                        NIST SP 800-63B
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 leading-relaxed">
+                                    Enter the 6-digit code sent to your email or from your Google Authenticator app.
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        required
+                                        maxLength={14}
+                                        value={passwordOtp}
+                                        onChange={(e) => setPasswordOtp(e.target.value.toUpperCase())}
+                                        placeholder="e.g. 123456 or CP-XXXX"
+                                        className="flex-1 h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors shadow-2xs"
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={isSendingOtp || otpCooldown > 0}
+                                        onClick={handleRequestPasswordOtp}
+                                        className="h-9 px-3 bg-white hover:bg-slate-100 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-md border border-slate-300 transition-colors shrink-0 shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                    >
+                                        {isSendingOtp ? (
+                                            <>
+                                                <i className="ti ti-loader-2 animate-spin text-xs" />
+                                                <span>Sending...</span>
+                                            </>
+                                        ) : otpCooldown > 0 ? (
+                                            <>
+                                                <i className="ti ti-clock text-xs" />
+                                                <span>Resend ({otpCooldown}s)</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="ti ti-mail-forward text-xs" />
+                                                <span>Send Email Code</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {attemptsRemaining !== null && attemptsRemaining < 5 && (
+                                    <div className="p-2 rounded-md bg-warning-subtle border border-warning/20 text-[11px] text-warning-ink flex items-center gap-1.5 font-medium">
+                                        <i className="ti ti-shield-alert text-sm" />
+                                        <span>Brute-force shield: {attemptsRemaining} attempt{attemptsRemaining === 1 ? '' : 's'} remaining before 15-min lockout.</span>
+                                    </div>
+                                )}
+
+                                {otpError && (
+                                    <div className="p-2 rounded-md bg-danger-subtle border border-danger/20 text-[11px] text-danger-ink flex items-center gap-1.5 font-medium">
+                                        <i className="ti ti-alert-circle text-sm" />
+                                        <span>{otpError}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    disabled={isChangingPassword}
+                                    onClick={() => setShowChangePasswordModal(false)}
+                                    className="h-8 px-3.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold rounded-md border border-slate-200 transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isChangingPassword}
+                                    className="h-8 px-4 bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+                                >
+                                    {isChangingPassword ? (
+                                        <>
+                                            <i className="ti ti-loader-2 animate-spin text-xs" />
+                                            <span>Updating...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ti ti-check text-xs" />
+                                            <span>Update Password</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

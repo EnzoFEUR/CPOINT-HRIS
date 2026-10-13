@@ -384,7 +384,7 @@ export default function BiometricSetup() {
     dispatch({ type: 'SET_STATUS', payload: 'Transmitting encrypted biometric profile...' });
 
     try {
-      const companyId = user.company_id || user.id;
+      const companyId = user.company_id || (isAdmin(user) ? 'CP-MAIN' : user.id);
       const telemetry = {
         angles_captured: captures.map(c => c.phase),
         client_timestamp: new Date().toISOString(),
@@ -416,7 +416,11 @@ export default function BiometricSetup() {
       dispatch({ type: 'SET_STATUS', payload: 'Biometric Enrollment Complete' });
       playSound('success'); haptic('success');
 
-      const updated = { ...user, has_registered_biometrics: true };
+      const updated = { 
+        ...user, 
+        has_registered_biometrics: true,
+        company_id: user.company_id || (isAdmin(user) ? 'CP-MAIN' : user.company_id)
+      };
       localStorage.setItem('user', JSON.stringify(updated));
 
       setTimeout(() => {

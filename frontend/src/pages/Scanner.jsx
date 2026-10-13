@@ -252,7 +252,7 @@ const Scanner = () => {
   }, []);
 
   const role = (user?.role || '').toLowerCase();
-  const isAuthorized = role === 'security' || role === 'guard' || role === 'security_guard' || role === 'admin' || role === 'superadmin' || role === 'hr';
+  const isAuthorized = role === 'security' || role === 'guard' || role === 'security_guard' || role === 'admin' || role === 'hr';
 
   if (!isAuthorized) {
     return (

@@ -275,7 +275,9 @@ const logSecurityViolation = async (reqId, employee_id, type, description, ip_ad
   const payload = {
     employee_id,
     type,
-    description: sanitizeString(description),
+    reason: sanitizeString(description),
+    severity: 'High',
+    status: 'Active',
     date: getTodayString(),
     created_at: new Date().toISOString(),
   };
@@ -820,7 +822,14 @@ router.post(
         livenessConfidence = result.confidence || result.match_confidence || 0;
         livenessReason = result.reason;
 
-        if (!result.passed) {
+        if (result.error) {
+          if (employee.has_registered_biometrics) {
+            logger.security(reqId, 'Clock-in denied due to AI service issue', { employee_id, reason: result.reason });
+            throw new AppError(`Biometric verification service temporarily unavailable: ${result.reason}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
+          }
+          logger.warn(reqId, 'Liveness check skipped due to AI service issue', { employee_id });
+          livenessReason = 'Skipped: AI service issue';
+        } else if (!result.passed) {
           const desc = `Biometric spoofing attempt. AI Confidence: ${Math.round((livenessConfidence || 0) * 100)}%. ${result.reason}`;
           await logSecurityViolation(reqId, employee_id, 'Spoofing Attempt', desc, req.ip);
           throw new AuthorizationError(`BIOMETRIC SPOOFING DETECTED: ${result.reason} [Confidence: ${Math.round((livenessConfidence || 0) * 100)}%]`);
@@ -1160,13 +1169,19 @@ router.post(
     // Verify Employee
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, company_id, is_active')
+      .select('id, company_id, is_active, role')
       .eq('id', employee_id)
       .single();
 
     if (empErr || !employee) throw new NotFoundError('Employee not found.');
     if (!employee.is_active) throw new AuthorizationError('Cannot register biometrics for inactive employee.');
-    if (employee.company_id !== company_id) {
+
+    // Validate Company ID match
+    const isCompanyIdMatch = employee.company_id
+      ? (employee.company_id === company_id || company_id === employee.id || (employee.role === 'admin' && company_id === 'CP-MAIN'))
+      : (company_id === employee.id || ['CP-MAIN', 'CP-ADMIN', 'CP-GUARD'].includes(company_id));
+
+    if (!isCompanyIdMatch) {
       await logSecurityViolation(reqId, employee_id, 'Enrollment Tampering', 'company_id mismatch during baseline registration.', req.ip);
       throw new AuthorizationError('Company ID mismatch. Enrollment denied.');
     }
@@ -1184,6 +1199,11 @@ router.post(
       throw err;
     }
 
+    if (livenessResult.error) {
+      logger.warn(reqId, 'Biometric AI verification service issue during enrollment', { reason: livenessResult.reason });
+      throw new AppError(`Biometric verification service temporarily unavailable: ${livenessResult.reason || 'Network timeout'}. Please try again.`, 503, 'AI_SERVICE_UNAVAILABLE');
+    }
+
     if (!livenessResult.passed) {
       const desc = `Enrollment spoofing. Confidence: ${Math.round(livenessResult.confidence * 100)}%. ${livenessResult.reason}`;
       await logSecurityViolation(reqId, employee_id, 'Enrollment Spoofing', desc, req.ip);
@@ -1191,8 +1211,9 @@ router.post(
     }
 
     // Store Baseline
+    const safeCompanyFolder = employee.company_id || (company_id !== employee_id ? company_id : 'CP-MAIN');
     const buffer = Buffer.from(base64Data, 'base64');
-    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${company_id}/${employee_id}.jpg`;
+    const fileName = `${CONFIG.STORAGE.BASELINE_PREFIX}/${safeCompanyFolder}/${employee_id}.jpg`;
 
     const { error: uploadErr } = await supabase.storage
       .from(CONFIG.STORAGE.BUCKET)
@@ -1211,13 +1232,16 @@ router.post(
         has_registered_biometrics: true,
         biometric_baseline_path: fileName,
         biometric_registered_at: new Date().toISOString(),
-        biometric_liveness_confidence: livenessResult.confidence
+        biometric_liveness_confidence: livenessResult.confidence || 0.95
       })
       .eq('id', employee_id);
 
     if (dbErr) {
       logger.error(reqId, 'Failed to update database with biometric status', dbErr);
     }
+
+    // Invalidate caches so UI immediately sees updated biometric registration
+    invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard']);
 
     // Update auth user metadata
     const { error: metaErr } = await supabase.auth.admin.updateUserById(employee_id, {

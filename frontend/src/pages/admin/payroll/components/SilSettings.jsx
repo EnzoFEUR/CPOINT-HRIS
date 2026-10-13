@@ -88,7 +88,7 @@ export default function SilSettings() {
         return (obligations.data?.data || []).filter(item => {
             const role = (item.employees?.role || '').toLowerCase();
             const dept = (item.employees?.department || '').toLowerCase();
-            if (['admin', 'superadmin', 'security'].includes(role)) return false;
+            if (['admin', 'security'].includes(role)) return false;
             if (dept.includes('admin') || dept.includes('security')) return false;
             return true;
         });

@@ -13,6 +13,7 @@ import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalen
 import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
+import { formatPhDisplay } from '../../../utils/phoneUtils';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -796,7 +797,7 @@ export default function Show() {
                                 </span>
                                 {employee.phone && (
                                     <span className="flex items-center gap-1.5 font-mono">
-                                        <i className="ti ti-phone text-slate-400 text-sm" /> {employee.phone}
+                                        <i className="ti ti-phone text-slate-400 text-sm" /> {formatPhDisplay(employee.phone)}
                                     </span>
                                 )}
                             </div>

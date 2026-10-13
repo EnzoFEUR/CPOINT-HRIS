@@ -289,7 +289,7 @@ export default function Edit() {
 
         const phoneCheck = validatePhPhone(phone);
         if (!phoneCheck.isValid) {
-            toast.error(phoneCheck.message || 'A valid 11-digit Philippine mobile phone number starting with 09 is required.');
+            toast.error(phoneCheck.message || 'A valid 10-digit Philippine mobile phone number starting with 9 is required.');
             return;
         }
 
@@ -456,9 +456,10 @@ export default function Edit() {
                                         type="tel"
                                         name="phone"
                                         required
+                                        maxLength={12}
                                         value={phone}
                                         onChange={(e) => setPhone(formatPhPhone(e.target.value))}
-                                        placeholder="0917 123 4567"
+                                        placeholder="917 123 4567"
                                         className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 font-mono shadow-2xs ${
                                             phone && phoneValidation.isValid
                                                 ? 'border-line focus:border-line'

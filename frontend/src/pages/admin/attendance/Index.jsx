@@ -52,7 +52,7 @@ const Index = () => {
         if (status !== 'active') return true;
 
         return (
-            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+            ['admin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
             dept === 'security' || dept === 'administration' || dept === 'human resources' || dept === 'it' ||
             title.includes('guard') || title.includes('security') || title.includes('administrator') || title.includes('admin')
         );
