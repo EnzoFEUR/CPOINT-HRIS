@@ -1062,33 +1062,6 @@ router.get(
         });
       }
     });
-
-    // Reconcile all active workforce employees who have neither punches nor approved leaves on this date
-    const { data: allCalendarEmps } = await supabase
-      .from('employees')
-      .select('id, company_id, first_name, last_name, role, department, job_title, status');
-
-    const activeWorkforce = (allCalendarEmps || []).filter(e => isWorkforceEmployee(e));
-    const isToday = date === getTodayString();
-
-    activeWorkforce.forEach(emp => {
-      if (!existingEmpIds.has(emp.id)) {
-        existingEmpIds.add(emp.id);
-        reconciledDailyLogs.push({
-          id: `roster-${emp.id}-${date}`,
-          employee_id: emp.id,
-          date,
-          time_in: null,
-          time_out: null,
-          status: isToday ? 'Awaiting Clock-in' : 'Absent',
-          is_absent: !isToday,
-          is_awaiting: isToday,
-          employees: emp,
-          created_at: new Date().toISOString()
-        });
-      }
-    });
-
     logger.info(reqId, 'Calendar data fetched', { date, dailyCount: reconciledDailyLogs.length, activeDatesCount: activeDates.length });
 
     res.json({

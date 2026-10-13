@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 import { classifyEmployeeDocument, uploadEmployeeDocument } from '../../../utils/documentApi';
 import { getDocumentMimeType, isImageDocument, isPdfDocument, formatDocumentSize } from '../../../utils/documentUtils';
-import { applyContentSuggestion, buildImportRows, BULK_LIMITS, canImportRow, extractZipEntry, optimizeDocumentImageForAI, validateZipDirectory } from '../../../utils/bulkDocumentImport';
+import { applyContentSuggestion, buildImportRows, buildImportRowsFromFiles, BULK_LIMITS, canImportRow, extractFilesFromDataTransfer, extractZipEntry, optimizeDocumentImageForAI, validateZipDirectory } from '../../../utils/bulkDocumentImport';
 import { DOCUMENT_TYPES, getDocumentType } from '../../../../../shared/documentTypes.mjs';
 
 const EVIDENCE_LABELS = { agency_name: 'Agency wording', document_heading: 'Document heading', form_code: 'Form code', logo: 'Logo', layout: 'Layout', statutory_id_format: 'Number format', security_seal: 'Seal' };
@@ -30,6 +30,8 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     const thumbnailsRef = useRef({});
     const pdfUrlsRef = useRef({});
     const dialogRef = useRef(null);
+    const folderInputRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     // Filtered rows for the table
     const displayedRows = useMemo(() => {
@@ -116,6 +118,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     }));
 
     const makeFile = async (row, signal) => {
+        if (row.file) return row.file;
         const bytes = await extractZipEntry(row.entry, { signal });
         return new File([bytes], row.fileName, { type: getDocumentMimeType(row.fileName) });
     };
@@ -123,9 +126,24 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
     // Asynchronous thumbnail generator for instant visual previews
     const generateImageThumbnails = async (newRows) => {
         const imageRows = newRows.filter(r => isImageDocument(r.fileName) && !thumbnailsRef.current[r.id]);
+
+        // Fast path for native File objects (Folder/File upload): instant zero-latency ObjectURL
+        const directFiles = imageRows.filter(r => r.file);
+        if (directFiles.length > 0) {
+            const immediateThumbs = {};
+            for (const row of directFiles) {
+                const url = URL.createObjectURL(row.file);
+                thumbnailsRef.current[row.id] = url;
+                immediateThumbs[row.id] = url;
+            }
+            setThumbnails(prev => ({ ...prev, ...immediateThumbs }));
+        }
+
+        // For ZIP entries, extract in concurrent batches
+        const zipRows = imageRows.filter(r => !r.file && r.entry);
         const BATCH_SIZE = 4;
-        for (let i = 0; i < imageRows.length; i += BATCH_SIZE) {
-            const batch = imageRows.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < zipRows.length; i += BATCH_SIZE) {
+            const batch = zipRows.slice(i, i + BATCH_SIZE);
             await Promise.all(batch.map(async (row) => {
                 try {
                     const bytes = await extractZipEntry(row.entry);
@@ -142,29 +160,67 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
         }
     };
 
-    const handleFileSelected = async file => {
-        if (!file || jobRef.current.busy) return;
-        if (file.size > BULK_LIMITS.archiveBytes) return toast.error('Choose a ZIP no larger than 25 MB.');
+    const handleFilesWithPathsSelected = async (filesWithPaths) => {
+        if (!filesWithPaths?.length || jobRef.current.busy) return;
         resetAll();
         const epoch = jobRef.current.epoch;
         jobRef.current.busy = true;
         setIsParsing(true);
         try {
-            const bytes = await file.arrayBuffer();
+            // Single ZIP archive fast path
+            if (filesWithPaths.length === 1 && filesWithPaths[0].file?.name?.toLowerCase().endsWith('.zip')) {
+                const zipFile = filesWithPaths[0].file;
+                if (zipFile.size > BULK_LIMITS.archiveBytes) throw new Error(`Choose a ZIP no larger than ${(BULK_LIMITS.archiveBytes / (1024 * 1024)).toFixed(0)} MB.`);
+                const bytes = await zipFile.arrayBuffer();
+                if (epoch !== jobRef.current.epoch) return;
+                validateZipDirectory(bytes);
+                const zip = await JSZip.loadAsync(bytes);
+                if (epoch !== jobRef.current.epoch) return;
+                const newRows = buildImportRows(Object.values(zip.files), categories);
+                replaceRows(newRows);
+                generateImageThumbnails(newRows);
+                toast.success(`Unpacked ${newRows.length} document${newRows.length === 1 ? '' : 's'} from ZIP archive.`);
+                return;
+            }
+
+            // Native File & Folder ingestion (Zero Decompression, Instant Memory Pointers)
+            const newRows = buildImportRowsFromFiles(filesWithPaths, categories);
             if (epoch !== jobRef.current.epoch) return;
-            validateZipDirectory(bytes);
-            const zip = await JSZip.loadAsync(bytes);
-            if (epoch !== jobRef.current.epoch) return;
-            const newRows = buildImportRows(Object.values(zip.files), categories);
             replaceRows(newRows);
             generateImageThumbnails(newRows);
+            toast.success(`Loaded ${newRows.length} document${newRows.length === 1 ? '' : 's'} with folder structure.`);
         } catch (error) {
-            if (epoch === jobRef.current.epoch) toast.error(error.message || 'Could not read the ZIP archive.');
+            if (epoch === jobRef.current.epoch) toast.error(error.message || 'Could not parse the selected folder or files.');
         } finally {
             if (epoch === jobRef.current.epoch) {
                 setIsParsing(false);
                 jobRef.current.busy = false;
             }
+        }
+    };
+
+    const handleFileSelected = async file => {
+        if (!file) return;
+        await handleFilesWithPathsSelected([{ file, path: file.name }]);
+    };
+
+    const handleDrop = async (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (jobRef.current.busy || isTerminated || !employeeId) return;
+
+        setIsParsing(true);
+        try {
+            const filesWithPaths = await extractFilesFromDataTransfer(e.dataTransfer);
+            if (!filesWithPaths || filesWithPaths.length === 0) {
+                toast.error('No readable documents found in the dropped item.');
+                setIsParsing(false);
+                return;
+            }
+            await handleFilesWithPathsSelected(filesWithPaths);
+        } catch (err) {
+            toast.error(err.message || 'Failed to read dropped files or folder.');
+            setIsParsing(false);
         }
     };
 
@@ -530,46 +586,110 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                         <div
                             onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                             onDragLeave={() => setIsDragging(false)}
-                            onDrop={e => {
-                                e.preventDefault();
-                                setIsDragging(false);
-                                const file = e.dataTransfer?.files?.[0];
-                                if (file) handleFileSelected(file);
-                            }}
-                            className={`rounded-xl border-2 border-dashed p-10 text-center transition-colors duration-150 flex flex-col items-center justify-center min-h-[340px] ${
-                                isDragging ? 'border-accent bg-accent-subtle/30' : 'border-line hover:border-line-strong bg-surface'
+                            onDrop={handleDrop}
+                            className={`rounded-xl border-2 border-dashed p-10 text-center transition-all duration-150 flex flex-col items-center justify-center min-h-[360px] ${
+                                isDragging ? 'border-accent bg-accent-subtle/30 ring-2 ring-accent/20' : 'border-line hover:border-line-strong bg-surface'
                             }`}
                         >
-                            <div className="w-14 h-14 rounded-full bg-accent-subtle text-accent flex items-center justify-center mb-3.5 shadow-2xs">
-                                <i className="ti ti-file-zip text-2xl" />
+                            <div className="flex items-center gap-2 mb-3.5">
+                                <div className="w-12 h-12 rounded-xl bg-accent-subtle text-accent flex items-center justify-center shadow-2xs">
+                                    <i className="ti ti-folder text-2xl" />
+                                </div>
+                                <div className="w-10 h-10 rounded-xl bg-surface-muted text-ink-muted flex items-center justify-center border border-line">
+                                    <i className="ti ti-file-zip text-xl" />
+                                </div>
                             </div>
                             <h3 className="text-sm font-semibold text-ink">
-                                Choose or drop a ZIP archive of personnel documents
+                                Drop a Folder, ZIP Archive, or Documents
                             </h3>
                             <p className="mt-1 text-xs text-ink-muted max-w-md">
-                                Files open locally. Analyze sends contents to Google Gemini. Confirmed imports save the original files.
+                                Upload a complete personnel folder, multiple documents, or a ZIP archive. Subfolder structures automatically map into document categories with zero decompression latency.
                             </p>
 
                             <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-ink-subtle">
-                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line">Max 25 MB archive</span>
-                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line">Up to 100 documents</span>
-                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line">PDF, JPG, PNG, WebP, DOCX</span>
+                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line flex items-center gap-1 font-medium">
+                                    <i className="ti ti-folder text-accent" /> Folder Upload (Zero Decompress)
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line flex items-center gap-1 font-medium">
+                                    <i className="ti ti-file-zip text-slate-500" /> ZIP Archive (Up to 50 MB)
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line font-medium">
+                                    Up to 150 documents
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-surface-muted border border-line font-medium">
+                                    PDF, JPG, PNG, WebP, DOCX, XLSX
+                                </span>
                             </div>
 
-                            <label className="mt-6 inline-flex items-center gap-2 cursor-pointer rounded-md bg-accent px-4 py-2 text-xs font-semibold text-surface hover:bg-accent-hover transition-colors shadow-2xs">
-                                <i className={`ti ${isParsing ? 'ti-loader animate-spin' : 'ti-upload'} text-sm`} />
-                                <span>{isParsing ? 'Unpacking archive…' : 'Select ZIP Archive'}</span>
-                                <input
-                                    type="file"
-                                    accept=".zip,application/zip"
+                            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                                {/* Primary: Folder Upload */}
+                                <button
+                                    type="button"
                                     disabled={isParsing || isTerminated || !employeeId}
-                                    className="sr-only"
-                                    onChange={event => {
-                                        handleFileSelected(event.target.files?.[0]);
-                                        event.target.value = '';
-                                    }}
-                                />
-                            </label>
+                                    onClick={() => folderInputRef.current?.click()}
+                                    className="inline-flex items-center gap-2 cursor-pointer rounded-md bg-accent px-4 py-2 text-xs font-semibold text-surface hover:bg-accent-hover transition-colors shadow-2xs disabled:opacity-50"
+                                >
+                                    <i className={`ti ${isParsing ? 'ti-loader animate-spin' : 'ti-folder-plus'} text-sm`} />
+                                    <span>{isParsing ? 'Parsing folder…' : 'Select Folder'}</span>
+                                </button>
+
+                                {/* Secondary: ZIP or Multi-file Upload */}
+                                <button
+                                    type="button"
+                                    disabled={isParsing || isTerminated || !employeeId}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="inline-flex items-center gap-2 cursor-pointer rounded-md bg-surface text-ink border border-line hover:bg-surface-muted px-4 py-2 text-xs font-semibold transition-colors shadow-2xs disabled:opacity-50"
+                                >
+                                    <i className="ti ti-file-upload text-sm text-ink-muted" />
+                                    <span>Select Files or ZIP</span>
+                                </button>
+                            </div>
+
+                            {/* Hidden inputs */}
+                            <input
+                                ref={folderInputRef}
+                                type="file"
+                                webkitdirectory=""
+                                directory=""
+                                multiple
+                                disabled={isParsing || isTerminated || !employeeId}
+                                className="sr-only"
+                                onChange={event => {
+                                    const rawFiles = Array.from(event.target.files || []);
+                                    if (rawFiles.length > 0) {
+                                        const filesWithPaths = rawFiles.map(f => ({
+                                            file: f,
+                                            path: f.webkitRelativePath || f.name
+                                        }));
+                                        handleFilesWithPathsSelected(filesWithPaths);
+                                    }
+                                    event.target.value = '';
+                                }}
+                            />
+
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept=".zip,application/zip,application/pdf,image/*,.docx,.xlsx,.doc,.xls,.txt,.csv"
+                                disabled={isParsing || isTerminated || !employeeId}
+                                className="sr-only"
+                                onChange={event => {
+                                    const rawFiles = Array.from(event.target.files || []);
+                                    if (rawFiles.length > 0) {
+                                        if (rawFiles.length === 1 && rawFiles[0].name.toLowerCase().endsWith('.zip')) {
+                                            handleFileSelected(rawFiles[0]);
+                                        } else {
+                                            const filesWithPaths = rawFiles.map(f => ({
+                                                file: f,
+                                                path: f.name
+                                            }));
+                                            handleFilesWithPathsSelected(filesWithPaths);
+                                        }
+                                    }
+                                    event.target.value = '';
+                                }}
+                            />
                         </div>
                     ) : (
                         /* Active Batch Management View */
@@ -703,7 +823,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                             const isImage = isImageDocument(row.fileName);
                                             const isPdf = isPdfDocument(row.fileName);
                                             const thumbUrl = thumbnails[row.id];
-                                            const uncompressedSize = row.entry?._data?.uncompressedSize;
+                                            const uncompressedSize = row.file?.size ?? row.size ?? row.entry?._data?.uncompressedSize;
 
                                             return (
                                                 <tr
@@ -715,12 +835,12 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                     {/* Checkbox */}
                                                     <td className="p-3 text-center align-top pt-3.5">
                                                         <input
-                                                            type="checkbox"
-                                                            aria-label={`Include ${row.fileName}`}
-                                                            checked={row.include}
-                                                            disabled={isCommitting || !!row.blocked || row.status === 'success'}
-                                                            onChange={event => editRow(row.id, { include: event.target.checked })}
-                                                            className="rounded border-line text-accent cursor-pointer"
+                                                             type="checkbox"
+                                                             aria-label={`Include ${row.fileName}`}
+                                                             checked={row.include}
+                                                             disabled={isCommitting || !!row.blocked || row.status === 'success'}
+                                                             onChange={event => editRow(row.id, { include: event.target.checked })}
+                                                             className="rounded border-line text-accent cursor-pointer"
                                                         />
                                                     </td>
 
@@ -781,6 +901,12 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                                                         </>
                                                                     )}
                                                                 </div>
+                                                                {row.zipPath && row.zipPath !== row.fileName && (
+                                                                    <div className="flex items-center gap-1 mt-0.5 text-[10px] text-ink-subtle font-mono truncate max-w-[220px]" title={`Folder path: ${row.zipPath}`}>
+                                                                        <i className="ti ti-folder text-[10px] text-accent" />
+                                                                        <span className="truncate">{row.zipPath}</span>
+                                                                    </div>
+                                                                )}
                                                                 <button
                                                                     type="button"
                                                                     disabled={isCommitting || !!row.blocked}
@@ -999,7 +1125,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 onClick={resetAll}
                                 className="h-8 px-3 rounded-md text-xs font-medium text-ink-muted hover:text-ink hover:bg-surface-muted border border-line transition-colors cursor-pointer disabled:opacity-50"
                             >
-                                Choose another ZIP
+                                Choose another Folder / ZIP
                             </button>
                         )}
                     </div>

@@ -58,11 +58,17 @@ const clearFailedAttempts = () => {
 };
 
 export default function Login() {
-    // Restore any active 2FA recovery session from page reload or navigation
+    // Restore any active 2FA recovery session from page reload or navigation (only if unexpired)
     const savedSession = (() => {
         try {
             const raw = sessionStorage.getItem('cpoint_login_2fa_session');
-            return raw ? JSON.parse(raw) : null;
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed?.expiresAt && Number(parsed.expiresAt) <= Date.now()) {
+                sessionStorage.removeItem('cpoint_login_2fa_session');
+                return null;
+            }
+            return parsed;
         } catch {
             return null;
         }
@@ -372,11 +378,11 @@ export default function Login() {
                 };
 
                 setEmployeeData(empWithMeta);
-                setLoading(false);
 
                 if (userHasTotp) {
                     setOtpMethod('totp');
                     setStep(3);
+                    setLoading(false);
                     try {
                         sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
                             email: sanitizedEmail,
@@ -390,18 +396,55 @@ export default function Login() {
                     return;
                 }
 
-                setStep(2);
+                // Standard Email 2FA: Dispatch verification code immediately in real time (<200ms)
+                setOtpMethod('email');
+                setStep(3);
 
                 try {
-                    sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
-                        email: sanitizedEmail,
-                        employeeData: empWithMeta,
-                        step: 2,
-                        otpMethod: hasExistingValidOtp ? (savedSession.otpMethod || '') : '',
-                        generatedOtp: hasExistingValidOtp ? (savedSession.generatedOtp || null) : null,
-                        expiresAt: hasExistingValidOtp ? existingExpiresAt : null
-                    }));
-                } catch {}
+                    const res = await fetchWithAuth('/api/auth/otp/send', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            email: sanitizedEmail,
+                            user_id: employee.id,
+                            method: 'email',
+                            purpose: 'login_2fa'
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        if (data.retry_after) {
+                            startCooldown(data.retry_after);
+                        }
+                        throw new Error(data.error || 'Failed to dispatch verification code');
+                    }
+
+                    startCooldown(data.cooldown || 60);
+                    setGeneratedOtp(null);
+                    setOtpCode(['', '', '', '', '', '']);
+
+                    const activeSeconds = data.expiresIn || 300;
+                    const codeExpiresAt = Date.now() + activeSeconds * 1000;
+                    setExpiresAt(codeExpiresAt);
+                    setTimer(activeSeconds);
+
+                    toast.success(`Verification code sent to ${sanitizedEmail}`);
+
+                    try {
+                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                            email: sanitizedEmail,
+                            employeeData: empWithMeta,
+                            step: 3,
+                            otpMethod: 'email',
+                            expiresAt: codeExpiresAt
+                        }));
+                    } catch {}
+                } catch (dispatchErr) {
+                    setError(dispatchErr.message || 'Failed to dispatch verification code');
+                    toast.error(dispatchErr.message || 'Failed to dispatch verification code');
+                } finally {
+                    setLoading(false);
+                }
             }
         } catch (err) {
             setLoading(false);
@@ -439,27 +482,9 @@ export default function Login() {
             return;
         }
 
-        // If an active unexpired code is already dispatched to this method (within 5 mins),
-        // let the user proceed immediately to Step 3 without triggering duplicate dispatch or errors
-        if (!isResend && !isMock && step === 2 && timer > 0 && method === otpMethod) {
-            otpSendLockRef.current = false;
-            toast.success('Resuming verification with your active code sent via Email');
-            setStep(3);
-            try {
-                const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
-                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
-            } catch {}
-            return;
-        }
-
         // Anti-spam 60s cooldown check (bypassed if mock requested for testing)
         if (isCooldown && !isMock) {
             otpSendLockRef.current = false;
-            if (timer > 0 && method === otpMethod) {
-                toast.success('Enter the code already sent to your email');
-                setStep(3);
-                return;
-            }
             if (isResend) {
                 toast.error(`Please wait ${cooldown}s before requesting a new code.`);
                 return;
@@ -1000,14 +1025,7 @@ export default function Login() {
 
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setOtpMethod('email');
-                                        setStep(3);
-                                        try {
-                                            const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
-                                            sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3, otpMethod: 'email' }));
-                                        } catch {}
-                                    }}
+                                    onClick={() => sendOtp('email')}
                                     disabled={loading}
                                     style={{ pointerEvents: loading ? 'none' : 'auto' }}
                                     className={`w-full p-2.5 bg-white border rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs disabled:opacity-50 ${
@@ -1053,88 +1071,7 @@ export default function Login() {
                         </div>
                     )}
 
-                    {step === 3 && otpMethod === 'email' && timer === 0 ? (
-                        <div className="text-center">
-                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-100 border border-slate-200 text-slate-800 mb-2.5 shadow-2xs">
-                                <Mail className="w-5 h-5 text-slate-800" />
-                            </div>
-                            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                                Email Verification
-                            </h2>
-                            <p className="text-xs text-slate-500 mt-0.5 mb-3.5">
-                                Click below to send a 6-digit security code to your registered email
-                            </p>
-
-                            <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs font-semibold text-slate-700"></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Mail className="w-4 h-4 text-accent shrink-0" />
-                                    <span className="font-mono text-xs font-bold text-slate-900 truncate">
-                                        {email}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {error && (
-                                <div role="alert" className="mb-3 p-2.5 rounded-md bg-danger-subtle border border-danger/20 text-danger-ink text-xs font-medium flex items-center gap-2 text-left shadow-2xs">
-                                    <AlertCircle className="w-4 h-4 shrink-0 text-danger-ink" />
-                                    <span>{error}</span>
-                                </div>
-                            )}
-
-                            <button
-                                type="button"
-                                disabled={loading || isCooldown}
-                                style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
-                                onClick={() => sendOtp('email', false, false)}
-                                className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-2xs transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-                            >
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                        <span>Sending Code...</span>
-                                    </>
-                                ) : isCooldown ? (
-                                    <span>Wait {cooldown}s before sending</span>
-                                ) : (
-                                    <>
-                                        <Send className="w-3.5 h-3.5" />
-                                        <span>Send Code</span>
-                                    </>
-                                )}
-                            </button>
-
-                            <button
-                                type="button"
-                                disabled={loading}
-                                onClick={() => sendOtp('email', false, true)}
-                                className="w-full h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer mt-2 border border-slate-200 shadow-2xs"
-                            >
-                                <i className="ti ti-flask text-sm text-slate-500" />
-                                <span>Test OTP</span>
-                            </button>
-
-                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={handleSwitchMethod}
-                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                                >
-                                    Switch Method
-                                </button>
-                                <span className="text-slate-200 text-xs">•</span>
-                                <button
-                                    type="button"
-                                    onClick={handleReturnToLogin}
-                                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                                >
-                                    Return to Login
-                                </button>
-                            </div>
-                        </div>
-                    ) : step === 3 && (
+                    {step === 3 && (
                         <div className="text-center">
                             <div className="inline-flex items-center justify-center w-10 h-10 rounded-md bg-slate-900 text-white mb-2.5 shadow-2xs">
                                 {otpMethod === 'totp' ? (
@@ -1201,23 +1138,33 @@ export default function Login() {
                                     <span>Code rotates every 30s • No cellular signal required</span>
                                 </p>
                             ) : (
-                                <p className="mt-3.5 text-xs text-slate-500 flex items-center justify-center gap-1">
-                                    {timer > 0 ? (
-                                        <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
-                                    ) : (
-                                        <span className="text-danger-ink font-semibold">Code expired.</span>
-                                    )}
-                                    <span className="mx-1 text-slate-300">•</span>
+                                <div className="mt-3.5 flex flex-col items-center gap-1.5">
+                                    <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
+                                        {timer > 0 ? (
+                                            <span>Code expires in <strong className="font-mono text-slate-700">{formattedTimer}</strong></span>
+                                        ) : (
+                                            <span className="text-danger-ink font-semibold">Code expired.</span>
+                                        )}
+                                        <span className="mx-1 text-slate-300">•</span>
+                                        <button
+                                            type="button"
+                                            disabled={loading || isCooldown}
+                                            style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
+                                            onClick={() => sendOtp(otpMethod, true)}
+                                            className="text-accent hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                        >
+                                            {isCooldown ? `Resend (${cooldown}s)` : 'Resend Code'}
+                                        </button>
+                                    </p>
                                     <button
                                         type="button"
-                                        disabled={loading || isCooldown}
-                                        style={{ pointerEvents: (loading || isCooldown) ? 'none' : 'auto' }}
-                                        onClick={() => sendOtp(otpMethod, true)}
-                                        className="text-accent hover:underline font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                        disabled={loading}
+                                        onClick={() => sendOtp('email', true, true)}
+                                        className="text-[11px] text-slate-400 hover:text-slate-600 font-medium underline cursor-pointer"
                                     >
-                                        {isCooldown ? `Resend (${cooldown}s)` : 'Resend'}
+                                        Test Mock OTP
                                     </button>
-                                </p>
+                                </div>
                             )}
 
                             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
@@ -1227,9 +1174,9 @@ export default function Login() {
                                         disabled={loading}
                                         style={{ pointerEvents: loading ? 'none' : 'auto' }}
                                         onClick={() => {
-                                            setOtpMethod('email');
                                             setOtpCode(['', '', '', '', '', '']);
                                             setError(null);
+                                            sendOtp('email');
                                         }}
                                         className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer disabled:opacity-50"
                                     >
