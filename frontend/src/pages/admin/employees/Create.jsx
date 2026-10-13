@@ -209,7 +209,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
         const phoneCheck = validatePhPhone(phone);
         if (!phoneCheck.isValid) {
-            toast.error(phoneCheck.message || 'A valid 11-digit Philippine mobile phone number starting with 09 is required.');
+            toast.error(phoneCheck.message || 'A valid 10-digit Philippine mobile phone number starting with 9 is required.');
             return;
         }
         data.phone = phoneCheck.cleanPhone;
@@ -363,9 +363,10 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         type="tel"
                                         name="phone"
                                         required
+                                        maxLength={12}
                                         value={phone}
                                         onChange={(e) => setPhone(formatPhPhone(e.target.value))}
-                                        placeholder="0917 123 4567"
+                                        placeholder="917 123 4567"
                                         className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 font-mono shadow-2xs ${
                                             phone && phoneValidation.isValid
                                                 ? 'border-line focus:border-line'
@@ -383,8 +384,11 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
                                     <option value="employee">Standard Employee</option>
                                     <option value="security">Security Guard (Scanner Access)</option>
-                                    <option value="admin">System Administrator</option>
                                 </select>
+                                <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+                                    <i className="ti ti-shield-lock text-slate-400 text-xs" />
+                                    <span>Administrator accounts require privileged governance. To provision an admin, use the <Link to="/admin/employees/provision-admin" className="text-accent font-semibold hover:underline">Admin Provisioning Portal</Link>.</span>
+                                </p>
                             </div>
 
                             <div className="md:col-span-2 mt-1">

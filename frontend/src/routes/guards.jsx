@@ -27,8 +27,6 @@ export const isAdmin = (user) => {
   const dept = (user?.department || '').toLowerCase();
   return (
     r === 'admin' ||
-    r === 'superadmin' ||
-    r === 'super_admin' ||
     r === 'hr' ||
     r === 'hr_manager' ||
     dept === 'administration' ||
@@ -46,7 +44,7 @@ export const isDisciplinaryExempt = (user) => {
   const name = `${user?.first_name || ''} ${user?.last_name || ''}`.toLowerCase();
 
   const isAdminRoleOrTitle =
-    ['admin', 'superadmin', 'hr', 'hrmanager'].includes(r) ||
+    ['admin', 'hr', 'hrmanager'].includes(r) ||
     r.includes('admin') || r.includes('hr') ||
     dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
     title.includes('admin') || title.includes('administrator') || title.includes('hr');
@@ -146,7 +144,7 @@ export const ProtectedRoute = ({ children, allowedRoles = null, requireBiometric
 
   if (allowedRoles) {
     const role = getRole(user);
-    // Support aliases: e.g. 'super_admin' <=> 'superadmin', 'hr_manager' <=> 'hr'
+    // Support aliases: e.g. 'hr_manager' <=> 'hr', 'security_guard' <=> 'guard'
     const normalizedAllowed = allowedRoles.map(r => r.toLowerCase().replace(/_/g, ''));
     const normalizedRole = role.replace(/_/g, '');
     const hasRole = normalizedAllowed.includes(normalizedRole);
@@ -183,12 +181,9 @@ export const BiometricSetupRoute = ({ children }) => {
     return <Navigate to="/scanner" replace />;
   }
 
-  if (isAdmin(user)) {
-    return <Navigate to="/" replace />;
-  }
-
   const hasBiometrics = Boolean(user.has_registered_biometrics || user.biometric_baseline_path);
   if (hasBiometrics || isMedicalExempt(user)) {
+    if (isAdmin(user)) return <Navigate to="/" replace />;
     return <Navigate to="/employee/dashboard" replace />;
   }
 

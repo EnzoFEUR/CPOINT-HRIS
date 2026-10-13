@@ -7,8 +7,6 @@
 
 export const SYSTEM_ROLES = [
     'admin', 
-    'superadmin', 
-    'super_admin', 
     'security', 
     'guard', 
     'security_guard',
@@ -18,7 +16,7 @@ export const SYSTEM_ROLES = [
 
 /**
  * Checks if a given employee object or role is an attendance-exempt operator
- * (Admins, Superadmins, HR Administrators, and Security Guards).
+ * (Admins, HR Administrators, and Security Guards).
  * Workforce employees are strictly operational personnel (Factory, Retail, etc.).
  */
 export const isAttendanceExempt = (employee) => {
@@ -32,7 +30,6 @@ export const isAttendanceExempt = (employee) => {
 
     const isSystemRole = [
         'admin', 
-        'superadmin', 
         'security', 
         'guard', 
         'securityguard',

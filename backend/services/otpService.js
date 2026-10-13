@@ -366,44 +366,8 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
     return { success: true, simulated: true, code };
 }
 
-// Send OTP via SMS (Semaphore API for PH mobile numbers)
+// Send OTP via SMS (Decommissioned - SMS Gateway Removed)
 export async function sendSmsOtp(phoneNumber, code) {
-    const apiKey = process.env.SEMAPHORE_API_KEY;
-    const senderName = process.env.SEMAPHORE_SENDER_NAME || 'CPOINT';
-
-    let formattedNumber = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
-    if (formattedNumber.startsWith('63') && formattedNumber.length === 12) {
-        formattedNumber = '0' + formattedNumber.slice(2);
-    }
-
-    const message = `Your C-Point HRIS security code is: ${code}. Valid for 5 minutes. Do not share this code.`;
-
-    if (!apiKey) {
-        console.warn(`[OTP_SMS_SIMULATED] Target: ${formattedNumber || phoneNumber} | Code: ${code}`);
-        return { success: true, simulated: true, code };
-    }
-
-    try {
-        const res = await fetch('https://api.semaphore.co/api/v4/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                apikey: apiKey,
-                number: formattedNumber,
-                message: message,
-                sendername: senderName
-            })
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-            throw new Error(data.message || 'Semaphore SMS gateway error');
-        }
-
-        console.log(`[OTP_SMS_SUCCESS] Successfully sent SMS to ${formattedNumber}`);
-        return { success: true, data };
-    } catch (err) {
-        console.warn(`[OTP_SMS_FALLBACK] SMS dispatch note:`, err.message);
-        return { success: true, simulated: true, code, warning: err.message };
-    }
+    console.info(`[OTP_SMS_SIMULATED] SMS gateway decommissioned. Target: ${phoneNumber} | Code: ${code}`);
+    return { success: true, simulated: true, code };
 }

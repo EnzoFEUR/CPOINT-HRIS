@@ -200,7 +200,7 @@ const Calendar = () => {
         const dept = (emp.department || '').toLowerCase();
         const title = (emp.job_title || emp.position || '').toLowerCase();
         return (
-            ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+            ['admin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
             dept === 'security' || dept === 'administration' || dept === 'human resources' ||
             title.includes('guard') || title.includes('security') || title.includes('administrator')
         );

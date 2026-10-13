@@ -39,6 +39,7 @@ const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'
 // Admin - Employees
 const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
 const EmployeeCreate = lazy(() => import('./pages/admin/employees/Create'));
+const EmployeeProvisionAdmin = lazy(() => import('./pages/admin/employees/ProvisionAdmin'));
 const EmployeeEdit = lazy(() => import('./pages/admin/employees/Edit'));
 const EmployeeShow = lazy(() => import('./pages/admin/employees/Show'));
 const EmployeeQrPrint = lazy(() => import('./pages/admin/employees/QrPrint'));
@@ -114,7 +115,7 @@ function App() {
         <Route
           path="/scanner"
           element={
-            <ProtectedRoute allowedRoles={['security', 'guard', 'security_guard', 'admin', 'superadmin', 'hr']}>
+            <ProtectedRoute allowedRoles={['security', 'guard', 'security_guard', 'admin', 'hr']}>
               <Suspense fallback={<div className="h-screen w-screen bg-black" />}><Scanner /></Suspense>
             </ProtectedRoute>
           }
@@ -122,7 +123,7 @@ function App() {
         <Route
           path="/admin/employees/:id/qr"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics>
+            <ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics>
               <EmployeeModuleGate>
                 <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-accent rounded-full animate-spin" /></div>}>
                   <EmployeeQrPrint />
@@ -146,39 +147,40 @@ function App() {
 
           {/* Admin - Employees Directory & Archive (Strictly Gated by 2FA) */}
           <Route element={<EmployeeModuleGate />}>
-            <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
-            <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
-            <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
-            <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
-            <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
-            <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
+            <Route path="/admin/employees" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeIndex /></ProtectedRoute>} />
+            <Route path="/admin/employees/create" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeCreate /></ProtectedRoute>} />
+            <Route path="/admin/employees/provision-admin" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeProvisionAdmin /></ProtectedRoute>} />
+            <Route path="/admin/employees/:id/edit" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeEdit /></ProtectedRoute>} />
+            <Route path="/admin/employees/:id" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeShow /></ProtectedRoute>} />
+            <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><EmployeeArchive /></ProtectedRoute>} />
+            <Route path="/admin/archive/:id" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><ArchivedEmployeeProfile /></ProtectedRoute>} />
           </Route>
 
           {/* Admin - Attendance */}
-          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
-          <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
+          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
+          <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
 
           {/* Admin - Payroll Ledger & Processing */}
-          <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
-          <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
-          <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
+          <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
+          <Route path="/admin/payroll" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollIndex /></ProtectedRoute>} />
+          <Route path="/admin/payroll/process" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollCreate /></ProtectedRoute>} />
           <Route path="/admin/payroll/create" element={<Navigate to="/admin/payroll/process" replace />} />
-          <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
+          <Route path="/admin/payroll/:id" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><PayrollShow /></ProtectedRoute>} />
 
           {/* Admin - Operations & Governance */}
-          <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><AuditLogsIndex /></ProtectedRoute>} />
-          <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
-          <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
+          <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AuditLogsIndex /></ProtectedRoute>} />
+          <Route path="/admin/leaves" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><LeavesIndex /></ProtectedRoute>} />
+          <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
           
           {/* Admin - Documents */}
-          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
+          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
 
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />
           <Route path="/employee/qr" element={<ProtectedRoute allowedRoles={['employee']}><MyQr /></ProtectedRoute>} />
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
-          <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee']}><MyProfile /></ProtectedRoute>} />
-          <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
+          <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><MyProfile /></ProtectedRoute>} />
+          <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
           <Route path="/profile" element={<MyProfile />} />
         </Route>
       </Routes>

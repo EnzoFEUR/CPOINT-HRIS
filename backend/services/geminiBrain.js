@@ -15,8 +15,8 @@ const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 const inFlightPromises = new Map();
 
 // Model configuration with fallback
-const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
-const getFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite';
+const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const getFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest';
 
 // Initialize GenAI client
 const getGenAI = () => {
@@ -125,8 +125,9 @@ Respond with strictly valid JSON:
           model: modelName,
           generationConfig: { responseMimeType: 'application/json' }
         });
+        const livenessTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Liveness timeout (${modelName})`)), 8000)
+          setTimeout(() => reject(new Error(`Liveness timeout (${modelName})`)), livenessTimeoutMs)
         );
         const contentPromise = model.generateContent([
           prompt,
@@ -219,8 +220,9 @@ Respond with strictly valid JSON:
           model: modelName,
           generationConfig: { responseMimeType: 'application/json' }
         });
+        const matchTimeoutMs = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 15000;
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Dual biometric timeout (${modelName})`)), 10000)
+          setTimeout(() => reject(new Error(`Dual biometric timeout (${modelName})`)), matchTimeoutMs)
         );
         const contentPromise = model.generateContent([
           prompt,
@@ -597,7 +599,7 @@ Provide a structured answer in strictly valid JSON:
       const cleanQuery = query.trim().slice(0, 250);
       const normalizedQuery = cleanQuery.toLowerCase();
       const userRole = (userContext.role || 'employee').toLowerCase();
-      const isAdminUser = userRole === 'admin' || userRole === 'superadmin' || userRole === 'hr';
+      const isAdminUser = userRole === 'admin' || userRole === 'hr';
 
       // 7-Day In-Memory Cache Key (Partitioned by Role)
       const cacheKey = `ai_omnibar_${userRole}_${normalizedQuery}`;

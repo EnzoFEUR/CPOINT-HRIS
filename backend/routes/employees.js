@@ -14,10 +14,11 @@ const router = express.Router();
 export function sanitizePhPhone(phone) {
     if (!phone) return null;
     let clean = String(phone).replace(/\D/g, '');
-    if (clean.startsWith('63') && clean.length === 12) {
-        clean = '0' + clean.slice(2);
+    if (clean.startsWith('63') && (clean.length === 12 || clean.length === 11)) {
+        clean = clean.slice(2);
     }
-    if (/^09\d{9}$/.test(clean)) {
+    clean = clean.replace(/^0+/, '');
+    if (/^[89]\d{9}$/.test(clean)) {
         return clean;
     }
     return null;
@@ -343,18 +344,27 @@ router.post('/', async (req, res) => {
         // Sanitize Residential Address
         const sanitizedAddr = address ? sanitizeAddress(address) : null;
 
-        // Enterprise Phone Number Validation (Philippine Standard: 09XXXXXXXXX)
+        // Enterprise Phone Number Validation (Philippine Standard: 9XXXXXXXXX)
         const sanitizedPhone = sanitizePhPhone(phone);
         if (!sanitizedPhone) {
             return res.status(400).json({
                 success: false,
-                error: 'A valid 11-digit Philippine mobile phone number starting with 09 is required (e.g. 0917 123 4567).'
+                error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required (e.g. 917 123 4567).'
             });
         }
 
         if (!department || typeof department !== 'string') return res.status(400).json({ success: false, error: 'Invalid department' });
         if (!job_title || typeof job_title !== 'string') return res.status(400).json({ success: false, error: 'Invalid job title' });
-        if (!['admin', 'employee', 'security'].includes(role)) return res.status(400).json({ success: false, error: 'Invalid role' });
+        
+        if (role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Privilege Escalation Blocked: Administrator accounts cannot be created through standard workforce onboarding. Use the dedicated Admin Provisioning Portal.'
+            });
+        }
+        if (!['employee', 'security'].includes(role)) {
+            return res.status(400).json({ success: false, error: 'Invalid role selection for workforce onboarding.' });
+        }
 
         let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
             ? parseFloat(daily_rate)
@@ -642,6 +652,174 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Dedicated Administrator Account Provisioning Endpoint
+router.post('/provision-admin', async (req, res) => {
+    try {
+        const {
+            first_name,
+            last_name,
+            email,
+            phone,
+            department = 'Human Resources',
+            job_title = 'System Administrator',
+            admin_notes = ''
+        } = req.body;
+
+        if (!first_name || typeof first_name !== 'string' || first_name.trim().length > 255) {
+            return res.status(400).json({ success: false, error: 'Valid first name is required for administrator provisioning.' });
+        }
+        if (!last_name || typeof last_name !== 'string' || last_name.trim().length > 255) {
+            return res.status(400).json({ success: false, error: 'Valid last name is required for administrator provisioning.' });
+        }
+        if (!email || !email.includes('@')) {
+            return res.status(400).json({ success: false, error: 'Valid corporate email address is required.' });
+        }
+
+        const sanitizedPhone = sanitizePhPhone(phone);
+        if (!sanitizedPhone) {
+            return res.status(400).json({
+                success: false,
+                error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required for multi-factor security alerts.'
+            });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+        const crypto = await import('crypto');
+        const APP_KEY = process.env.APP_KEY || 'default_fallback_key';
+        const lookupHash = crypto.createHash('sha256').update(normalizedEmail + APP_KEY).digest('hex');
+
+        // Check for existing account with this email
+        const { data: existingEmp } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, status, is_active, role')
+            .or(`email_hash.eq.${lookupHash},email.eq.${normalizedEmail}`)
+            .maybeSingle();
+
+        if (existingEmp) {
+            return res.status(409).json({
+                success: false,
+                conflict: true,
+                error: `An active account already exists with this email address (${existingEmp.first_name} ${existingEmp.last_name}, Role: ${existingEmp.role}).`
+            });
+        }
+
+        // Generate high-entropy temporary password
+        const defaultPassword = `Adm@${crypto.randomBytes(4).toString('hex')}#2026`;
+
+        // Create Supabase Auth administrator user
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+            email: normalizedEmail,
+            password: defaultPassword,
+            email_confirm: true,
+            user_metadata: {
+                first_name: first_name.trim(),
+                last_name: last_name.trim(),
+                role: 'admin',
+                phone: sanitizedPhone,
+                temp_password: defaultPassword,
+                requires_password_change: true
+            }
+        });
+
+        if (authError) throw authError;
+
+        try {
+            const currentYear = new Date().getFullYear();
+            const { data: latestAdmin } = await supabase
+                .from('employees')
+                .select('company_id')
+                .ilike('company_id', `CP-ADM-${currentYear}-%`)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            let newIdNum = 1;
+            if (latestAdmin && latestAdmin.company_id) {
+                const parts = latestAdmin.company_id.split('-');
+                if (parts.length === 4) {
+                    const lastNum = parseInt(parts[3], 10);
+                    if (!isNaN(lastNum)) newIdNum = lastNum + 1;
+                }
+            }
+
+            const company_id = `CP-ADM-${currentYear}-${String(newIdNum).padStart(3, '0')}`;
+
+            const insertRecord = {
+                id: authData.user.id,
+                auth_user_id: authData.user.id,
+                first_name: first_name.trim(),
+                last_name: last_name.trim(),
+                email: normalizedEmail,
+                company_id,
+                department: department.trim(),
+                job_title: job_title.trim(),
+                role: 'admin',
+                email_hash: lookupHash,
+                status: 'active',
+                is_active: true,
+                requires_password_change: true,
+                date_hired: new Date().toISOString().split('T')[0],
+                phone: sanitizedPhone
+            };
+
+            const { data: empData, error: insertError } = await supabase
+                .from('employees')
+                .insert(insertRecord)
+                .select('*')
+                .single();
+
+            if (insertError) throw insertError;
+
+            // Security audit log for elevated administrative account creation
+            try {
+                const { createAuditLog } = await import('./auditLogs.js');
+                await createAuditLog({
+                    log_name: 'security',
+                    description: `Elevated administrator account provisioned: ${first_name.trim()} ${last_name.trim()} (${company_id}, ${normalizedEmail})`,
+                    subject_type: 'App\\Models\\Employee',
+                    subject_id: authData.user.id,
+                    event: 'created',
+                    causer_id: req.user?.id || authData.user.id,
+                    properties: {
+                        department,
+                        job_title,
+                        company_id,
+                        notes: admin_notes
+                    }
+                });
+            } catch (_) {}
+
+            invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+
+            try {
+                await supabase.channel('employee-updates').send({
+                    type: 'broadcast',
+                    event: 'admin_provisioned',
+                    payload: { id: empData.id, company_id, name: `${first_name} ${last_name}` }
+                });
+            } catch (_) {}
+
+            return res.status(201).json({
+                success: true,
+                data: {
+                    ...empData,
+                    temp_password: defaultPassword
+                },
+                message: 'Administrator account provisioned successfully.',
+                temp_password: defaultPassword
+            });
+        } catch (dbError) {
+            if (authData?.user?.id) {
+                await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+            }
+            throw dbError;
+        }
+    } catch (error) {
+        console.error('[ADMIN PROVISION ERROR]', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Reset or issue a new temporary password for unregistered employee
 router.post('/:id/reset-temp-password', async (req, res) => {
     try {
@@ -828,7 +1006,7 @@ router.put('/:id', async (req, res) => {
             if (!sanitizedPhone) {
                 return res.status(400).json({
                     success: false,
-                    error: 'A valid 11-digit Philippine mobile phone number starting with 09 is required (e.g. 0917 123 4567).'
+                    error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required (e.g. 917 123 4567).'
                 });
             }
             updatePayload.phone = sanitizedPhone;
@@ -837,7 +1015,7 @@ router.put('/:id', async (req, res) => {
             try {
                 const { data: currentAuth } = await supabase.auth.admin.getUserById(req.params.id);
                 await supabase.auth.admin.updateUserById(req.params.id, {
-                    phone: `+63${sanitizedPhone.slice(1)}`,
+                    phone: `+63${sanitizedPhone}`,
                     user_metadata: {
                         ...(currentAuth?.user?.user_metadata || {}),
                         phone: sanitizedPhone
@@ -994,7 +1172,7 @@ router.put('/:id', async (req, res) => {
 // POST /api/employees/:id/archive - Enterprise DOLE Separation & Cold Storage Archival
 router.post('/:id/archive', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Administrative privileges required to separate and archive personnel.' });
         }
@@ -1149,7 +1327,7 @@ router.post('/:id/archive', async (req, res) => {
 // POST /api/employees/:id/restore - Enterprise reinstatement from Pending Termination
 router.post('/:id/restore', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Administrative privileges required to reinstate employees.' });
         }
@@ -1307,7 +1485,7 @@ router.post('/:id/restore', async (req, res) => {
 // PATCH /api/employees/:id/biometric-exemption - Enterprise Medical Grace / Trauma Exemption
 router.patch('/:id/biometric-exemption', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Unauthorized: Administrative privileges required.' });
         }
@@ -1445,7 +1623,7 @@ router.patch('/:id/biometric-exemption', async (req, res) => {
 // POST /api/employees/:id/reset-biometrics - Wipe baseline for post-healing re-registration
 router.post('/:id/reset-biometrics', async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.role === 'superadmin';
+        const isAdmin = req.user?.role === 'admin' || req.user?.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ success: false, error: 'Unauthorized: Administrative privileges required.' });
         }

@@ -12,7 +12,7 @@ const broadcasts = new WeakMap();
 export class DocumentError extends Error {
     constructor(status, message, code) { super(message); this.status = status; this.code = code; }
 }
-export const isDocumentAdmin = user => ['admin', 'hr', 'superadmin'].includes(String(user?.role || '').toLowerCase());
+export const isDocumentAdmin = user => ['admin', 'hr'].includes(String(user?.role || '').toLowerCase());
 export function requireDocumentAdmin(req, res, next) {
     if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
     if (!isDocumentAdmin(req.user)) return res.status(403).json({ success: false, message: 'Only HR administrators can perform this action.' });
@@ -29,7 +29,7 @@ export function assertDocumentId(value) {
 export function assertDocumentOwner(user, employeeId) {
     if (!user) throw new DocumentError(401, 'Authentication required.');
     if (isDocumentAdmin(user)) return;
-    if (![user.id, user.employee_id].some(id => id && String(id).toLowerCase() === String(employeeId).toLowerCase())) throw new DocumentError(403, 'You can only access your own documents.');
+    if (![user.id, user.employee_id, user.auth_user_id].some(id => id && String(id).toLowerCase() === String(employeeId).toLowerCase())) throw new DocumentError(403, 'You can only access your own documents.');
 }
 export function getDocumentScope(user, requestedId) {
     if (!user) throw new DocumentError(401, 'Authentication required.');
@@ -103,9 +103,17 @@ export function validateDocumentInput(body = {}, file) {
 }
 export const isEmployeeUploadLocked = employee => Boolean(employee?.archived_at) || employee?.is_active === false || ['inactive', 'terminated', 'separated', 'archived'].includes(String(employee?.status || '').toLowerCase());
 export async function ensureWritableEmployee(client, employeeId) {
-    const { data, error } = await client.from('employees').select('id, first_name, last_name, company_id, department, status, is_active, archived_at').eq('id', employeeId).maybeSingle();
+    let { data, error } = await client.from('employees').select('id, auth_user_id, first_name, last_name, company_id, department, role, status, is_active, archived_at').eq('id', employeeId).maybeSingle();
     if (error) throw error;
+    if (!data) {
+        const { data: authData, error: authError } = await client.from('employees').select('id, auth_user_id, first_name, last_name, company_id, department, role, status, is_active, archived_at').eq('auth_user_id', employeeId).maybeSingle();
+        if (authError) throw authError;
+        data = authData;
+    }
     if (!data) throw new DocumentError(404, 'Employee record not found.');
+    if (String(data?.role || '').toLowerCase() === 'admin') {
+        throw new DocumentError(403, 'Document uploads are disabled for administrator governance accounts.');
+    }
     if (isEmployeeUploadLocked(data)) throw new DocumentError(403, 'Document uploads are disabled for separated or inactive employee accounts.');
     return data;
 }
@@ -154,6 +162,7 @@ export async function uploadDocument(client, user, body, file, { notify = create
     if (approvedImport && !isDocumentAdmin(user)) throw new DocumentError(403, 'Only HR administrators can approve bulk imports.');
     if (approvedImport && body.review_confirmed !== 'true') throw new DocumentError(400, 'Confirm the document and intended employee before importing.');
     const emp = await ensureWritableEmployee(client, metadata.employee_id);
+    metadata.employee_id = emp.id;
     let docRequest = null;
     if (approvedImport && metadata.request_id) {
         const { data: request, error: requestError } = await client.from('document_requests').select('*').eq('id', metadata.request_id).maybeSingle();
@@ -210,7 +219,6 @@ export async function uploadDocument(client, user, body, file, { notify = create
 
     // Enterprise Real-Time Document Submission Notifications
     try {
-        const isEmployeeSelfSubmit = !isDocumentAdmin(user) || String(user.id).toLowerCase() === String(metadata.employee_id).toLowerCase();
         const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
         const docTitle = metadata.title || cleanFileName || 'Document';
         const requestSuffix = docRequest?.document_type ? ` (Fulfilling request: ${docRequest.document_type})` : '';

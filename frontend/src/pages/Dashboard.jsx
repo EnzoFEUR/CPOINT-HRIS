@@ -92,7 +92,7 @@ export default function Dashboard() {
                 const title = (emp.job_title || emp.position || '').toLowerCase();
                 return (
                     (r && r !== 'employee') ||
-                    ['admin', 'superadmin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
+                    ['admin', 'security', 'guard', 'securityguard', 'hr', 'hrmanager'].includes(r) ||
                     r.includes('admin') || r.includes('security') || r.includes('guard') || r.includes('hr') ||
                     dept.includes('security') || dept.includes('admin') || dept.includes('hr') || dept.includes('human resources') || dept.includes('administration') ||
                     title.includes('guard') || title.includes('security') || title.includes('administrator') || title.includes('admin') || title.includes('gate attendant') || title.includes('hr')
@@ -108,7 +108,7 @@ export default function Dashboard() {
                     .from('employees')
                     .select('id, department, role, shift, company_id, first_name, last_name, daily_rate, hourly_rate, status, job_title')
                     .not('company_id', 'is', null)
-                    .not('role', 'in', '("admin","superadmin","super_admin","security","guard","security_guard","hr","hr_manager")'),
+                    .not('role', 'in', '("admin","security","guard","security_guard","hr","hr_manager")'),
                 supabase
                     .from('attendances')
                     .select('id, employee_id, date, status, created_at, time_in, time_out')

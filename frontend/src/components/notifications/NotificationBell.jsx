@@ -130,7 +130,7 @@ export const NotificationBell = ({ user }) => {
     const visuals = getNotificationVisuals(notif.type);
     let targetPath = visuals.path;
     const userRole = (user?.role || '').toLowerCase();
-    const isAdminRole = ['admin', 'superadmin', 'super_admin', 'hr', 'hr_manager'].includes(userRole);
+    const isAdminRole = ['admin', 'hr', 'hr_manager'].includes(userRole);
 
     if (!isAdminRole) {
       if (notif.type === 'disciplinary' || notif.type === 'warning') {

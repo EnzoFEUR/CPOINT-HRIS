@@ -107,7 +107,7 @@ export const verifyToken = async (req, res, next) => {
     // Operational credentials (attendance clock-in, leave filing, profile mutations) are strictly revoked.
     const isSuspended = resolvedUser.status === 'Suspended' || resolvedUser.status === 'suspended';
     const isTerminated = resolvedUser.status === 'Terminated' || resolvedUser.status === 'terminated';
-    const isSeparated = resolvedRole !== 'admin' && resolvedRole !== 'superadmin' && !isSuspended && (
+    const isSeparated = resolvedRole !== 'admin' && !isSuspended && (
         isTerminated || 
         Boolean(resolvedUser.archived_at) || 
         resolvedUser.is_active === false ||
@@ -174,7 +174,7 @@ export const checkAdminOrOwnership = (req, res, next) => {
     return checkOwnership(req, res, next);
 };
 
-export const hasVerifiedManagerRole = user => user?.role_verified === true && user?.employee_identity_verified === true && user.is_active !== false && !user.archived_at && !['inactive', 'terminated', 'resigned', 'separated', 'suspended'].includes(String(user.status || '').toLowerCase()) && ['admin', 'superadmin', 'hr'].includes(user.role);
+export const hasVerifiedManagerRole = user => user?.role_verified === true && user?.employee_identity_verified === true && user.is_active !== false && !user.archived_at && !['inactive', 'terminated', 'resigned', 'separated', 'suspended'].includes(String(user.status || '').toLowerCase()) && ['admin', 'hr'].includes(user.role);
 
 export const checkVerifiedManagerOrOwnership = (req, res, next) => {
     if (hasVerifiedManagerRole(req.user)) return next();

@@ -334,7 +334,7 @@ function isDisciplinaryExempt(employee) {
     const name = `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase();
 
     const isAdmin =
-        ['admin', 'superadmin', 'super_admin', 'hr', 'hrmanager', 'hr_manager'].includes(r) ||
+        ['admin', 'hr', 'hrmanager', 'hr_manager'].includes(r) ||
         r.includes('admin') || r.includes('hr') ||
         dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
         title.includes('admin') || title.includes('administrator') || title.includes('hr');
@@ -357,7 +357,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
             .select('*, employees:employee_id(id, company_id, first_name, last_name, department, email, status, is_active, biometric_baseline_path, job_title, date_hired, shift, role)')
             .order('created_at', { ascending: false });
 
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             query = query.eq('employee_id', req.user.id);
         } else if (req.query.employee_id) {
@@ -410,7 +410,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
 // POST /api/disciplinary - Issue Warning, Suspension (3-7 days), or Termination
 router.post('/', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ error: 'Administrative privileges required to issue disciplinary actions.' });
         }
@@ -725,7 +725,7 @@ router.post('/', async (req, res) => {
 // Update disciplinary status and handle employee reinstatement
 router.put('/:id/status', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ error: 'Administrative privileges required.' });
         }
@@ -855,7 +855,7 @@ router.put('/:id/status', async (req, res) => {
 // Resolve and reinstate employee
 router.put('/:id/resolve', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ error: 'Administrative privileges required.' });
         }
@@ -978,7 +978,7 @@ router.put('/:id/resolve', async (req, res) => {
 // PUT /api/disciplinary/:id/overturn - Clear disciplinary record & restore employee standing
 router.put('/:id/overturn', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ error: 'Administrative privileges required to clear disciplinary records.' });
         }
@@ -1154,7 +1154,7 @@ router.put('/:id/acknowledge', async (req, res) => {
             return res.status(404).json({ error: 'Disciplinary record not found.' });
         }
 
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin && existing.employee_id !== req.user.id) {
             return res.status(403).json({ error: 'You are only authorized to acknowledge your own disciplinary notices.' });
         }
@@ -1201,7 +1201,7 @@ router.put('/:id/acknowledge', async (req, res) => {
 // DELETE /api/disciplinary/:id - Permanently remove disciplinary log (Admin only)
 router.delete('/:id', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
         if (!isAdmin) {
             return res.status(403).json({ error: 'Administrative privileges required to delete disciplinary records.' });
         }
