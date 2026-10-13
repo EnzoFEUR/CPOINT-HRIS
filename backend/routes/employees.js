@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
+import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
 
@@ -39,7 +40,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
 
         const logStatus = (l.status || '').toLowerCase();
         // If HR marked it Resolved, Closed, Dismissed, or Cancelled, it is lifted
-        if (logStatus === 'resolved' || logStatus === 'dismissed' || logStatus === 'cancelled' || logStatus === 'closed') {
+        if (logStatus === 'resolved' || logStatus === 'dismissed' || logStatus === 'cancelled' || logStatus === 'closed' || logStatus === 'overturned') {
             return false;
         }
 
@@ -50,7 +51,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
             if (endDate < now) return false;
         }
 
-        return l.status === 'Active' || l.status === 'Under Review';
+        return ['active', 'action required', 'under review', 'acknowledged'].includes(logStatus);
     });
 
     const isSuspended = (emp.status === 'suspended' || Boolean(activeSuspension)) && !Boolean(termLog);
@@ -59,7 +60,7 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
     const isTerminated = !isSuspended && Boolean(
         emp.status === 'terminated' ||
         Boolean(termLog) || 
-        (Boolean(emp.archived_at) && emp.status !== 'active')
+        (Boolean(emp.archived_at) && emp.status !== 'active' && emp.status !== 'suspended')
     );
 
     let operational_status = 'Active';
@@ -203,7 +204,7 @@ router.get('/check-email', async (req, res) => {
     }
 });
 
-// Get employee details and 201 documents in a single parallel batch
+// Get employee details and documents in a single parallel batch
 router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
@@ -253,7 +254,31 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
             disciplinary_logs: logs
         };
 
-        res.json({ success: true, data: enrichedEmp, documents: docsRes.data || [] });
+        const empDocs = docsRes.data || [];
+        if (empDocs.length > 0) {
+            try {
+                const paths = empDocs
+                    .filter(d => d.file_path)
+                    .map(d => {
+                        let p = d.file_path;
+                        if (p.includes('/')) return p;
+                        return `${id}/${p}`;
+                    })
+                    .filter(Boolean);
+                if (paths.length > 0) {
+                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], DOCUMENT_URL_TTL);
+                    if (Array.isArray(signedList)) {
+                        const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
+                        for (const doc of empDocs) {
+                            let p = doc.file_path;
+                            doc.preview_url = signedMap.get(p) || signedMap.get(`${id}/${p}`) || null;
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        res.json({ success: true, data: enrichedEmp, documents: empDocs });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -1516,12 +1541,20 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const { data: empData } = await supabase.from('employees').select('company_id').eq('id', req.params.id).single();
+        const empId = req.params.id;
 
+        // 1. Fetch employee metadata prior to deletion for storage and audit cleanup
+        const { data: empData } = await supabase
+            .from('employees')
+            .select('id, company_id, first_name, last_name, auth_user_id')
+            .eq('id', empId)
+            .maybeSingle();
+
+        // 2. Fetch biometric/attendance photos from attendances
         const { data: attendanceLogs } = await supabase
             .from('attendances')
             .select('time_in_photo, time_out_photo')
-            .eq('employee_id', req.params.id);
+            .eq('employee_id', empId);
 
         let photosToShred = [];
         if (attendanceLogs) {
@@ -1532,52 +1565,120 @@ router.delete('/:id', async (req, res) => {
         }
 
         if (empData?.company_id) {
-            photosToShred.push(`face-baselines/${empData.company_id}/${req.params.id}.jpg`);
-        } else {
-            photosToShred.push(`face-baselines/${req.params.id}/${req.params.id}.jpg`);
+            photosToShred.push(`face-baselines/${empData.company_id}/${empId}.jpg`);
         }
+        photosToShred.push(`face-baselines/${empId}/${empId}.jpg`);
 
         if (photosToShred.length > 0) {
             await supabase.storage.from('public-bucket').remove(photosToShred).catch(() => { });
         }
 
-        const tablesToClean = [
-            'attendances',
-            'schedules',
-            'leave_requests',
-            'payrolls',
-            'audit_logs',
-            'disciplinary_logs',
-            'employees'
-        ];
+        // 3. Fetch uploaded documents from employee_documents and vault
+        const { data: docLogs } = await supabase
+            .from('employee_documents')
+            .select('file_path')
+            .eq('employee_id', empId);
 
-        for (const table of tablesToClean) {
-            await supabase.from(table).delete().eq('employee_id', req.params.id);
-            await supabase.from(table).delete().eq('user_id', req.params.id);
-            await supabase.from(table).delete().eq('id', req.params.id);
+        let docsToShred = [];
+        if (docLogs) {
+            docLogs.forEach(doc => {
+                if (doc.file_path) docsToShred.push(doc.file_path);
+            });
         }
 
-        const { error } = await supabase.auth.admin.deleteUser(req.params.id);
-        if (error && !error.message.includes('User not found')) throw error;
+        try {
+            const { data: folderFiles } = await supabase.storage.from('documents').list(empId);
+            if (folderFiles && folderFiles.length > 0) {
+                folderFiles.forEach(f => {
+                    docsToShred.push(`${empId}/${f.name}`);
+                });
+            }
+        } catch (_) { }
 
+        if (docsToShred.length > 0) {
+            await supabase.storage.from('documents').remove(docsToShred).catch(() => { });
+        }
+
+        // 4. Execute atomic PostgreSQL cascading purge via stored procedure
+        const { data: cascadeResult, error: cascadeError } = await supabase.rpc('purge_employee_cascade', {
+            target_emp_id: empId
+        });
+
+        if (cascadeError) {
+            console.error('[EMPLOYEE PURGE] Cascading database purge error:', cascadeError);
+            throw new Error(`Database error during cascading purge: ${cascadeError.message}`);
+        }
+
+        // 5. Invalidate auth user cache in authMiddleware
+        invalidateAuthUser(empId);
+        if (empData?.auth_user_id && empData.auth_user_id !== empId) {
+            invalidateAuthUser(empData.auth_user_id);
+        }
+
+        // 6. Delete user account from Supabase Auth admin
+        const authUserIds = [empId];
+        if (empData?.auth_user_id && empData.auth_user_id !== empId) {
+            authUserIds.push(empData.auth_user_id);
+        }
+
+        for (const authId of authUserIds) {
+            try {
+                const { error: authError } = await supabase.auth.admin.deleteUser(authId);
+                if (authError && !authError.message.includes('User not found')) {
+                    console.warn(`[EMPLOYEE PURGE] Auth user deletion notice for ${authId}:`, authError.message);
+                }
+            } catch (err) {
+                console.warn(`[EMPLOYEE PURGE] Non-fatal auth deletion warning for ${authId}:`, err.message);
+            }
+        }
+
+        // 7. Record enterprise audit log if admin_id is provided
+        const totalShredded = photosToShred.length + docsToShred.length;
         if (req.body.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
-                description: `Deleted employee record ID ${req.params.id}. Shredded ${photosToShred.length} associated biometric/attendance files.`,
+                description: `Forensically purged employee record ${empData?.first_name || ''} ${empData?.last_name || ''} (ID: ${empId}). Shredded ${totalShredded} associated biometric/document files.`,
                 subject_type: 'App\\Models\\Employee',
-                subject_id: req.params.id,
+                subject_id: empId,
                 event: 'deleted',
                 causer_id: req.body.admin_id,
-                properties: { files_shredded: photosToShred.length }
-            });
+                properties: {
+                    files_shredded: totalShredded,
+                    company_id: empData?.company_id,
+                    cascade_result: cascadeResult
+                }
+            }).catch(() => { });
         }
 
-        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups']);
+        // 8. Real-time broadcast to all connected administrative dashboards
+        try {
+            await supabase.channel('employee-updates').send({
+                type: 'broadcast',
+                event: 'employee_purged',
+                payload: {
+                    id: empId,
+                    company_id: empData?.company_id,
+                    purged_at: new Date().toISOString()
+                }
+            });
+        } catch (_) { }
 
-        res.json({ success: true, message: `Employee deleted permanently. Shredded ${photosToShred.length} orphaned files.` });
+        // 9. Invalidate server-side cached queries
+        invalidateCache(['/api/employees', '/api/dashboard', '/api/production-groups', '/api/documents/admin-overview']);
+
+        return res.json({
+            success: true,
+            message: `Employee forensically purged successfully. Shredded ${totalShredded} orphaned storage artifacts.`,
+            details: {
+                employee_id: empId,
+                files_shredded: totalShredded,
+                cascade_result: cascadeResult
+            }
+        });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[EMPLOYEE PURGE] Critical error during deletion:', error);
+        return res.status(500).json({ success: false, error: error.message });
     }
 });
 

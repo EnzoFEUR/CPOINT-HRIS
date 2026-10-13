@@ -1,14 +1,16 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { normalizeDocumentId } from './documentIntelligence.js';
 import { invalidateCache } from '../middleware/cacheMiddleware.js';
+import { createNotification } from '../routes/notifications.js';
 
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
-export const DOCUMENT_URL_TTL = 300;
+export const DOCUMENT_URL_TTL = 900;
 const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
 const FILE_TYPES = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff']);
 const broadcasts = new WeakMap();
 
 export class DocumentError extends Error {
-    constructor(status, message) { super(message); this.status = status; }
+    constructor(status, message, code) { super(message); this.status = status; this.code = code; }
 }
 export const isDocumentAdmin = user => ['admin', 'hr', 'superadmin'].includes(String(user?.role || '').toLowerCase());
 export function requireDocumentAdmin(req, res, next) {
@@ -48,6 +50,37 @@ export function normalizeDocumentPath(value, employeeId, projectUrl) {
     if (path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || !path.startsWith(`${employeeId}/`)) throw new DocumentError(400, 'Invalid document storage path.');
     return path;
 }
+export function formatCleanDocumentFileName(title = '', originalName = '') {
+    const rawExt = String(originalName || '').split('.').pop() || '';
+    const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const safeExt = ext ? `.${ext}` : '';
+
+    let cleanTitle = String(title || '').trim();
+    if (ext && cleanTitle.toLowerCase().endsWith(`.${ext}`)) {
+        cleanTitle = cleanTitle.slice(0, -(ext.length + 1));
+    }
+
+    const cleanBase = cleanTitle
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    if (cleanBase) {
+        return `${cleanBase}${safeExt}`;
+    }
+
+    const origBase = String(originalName || '')
+        .replace(/\.[^/.]+$/, '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_\-\s]/g, ' ')
+        .replace(/[\s\-_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 100);
+
+    return `${origBase || 'document'}${safeExt}`;
+}
+
 export function validateDocumentInput(body = {}, file) {
     const employeeId = assertUuid(body.employee_id, 'Employee ID');
     if (typeof body.title !== 'string') throw new DocumentError(400, 'Document title is required.');
@@ -64,7 +97,9 @@ export function validateDocumentInput(body = {}, file) {
         if (!file.size || file.size > DOCUMENT_MAX_BYTES) throw new DocumentError(400, 'Files must be nonempty and no larger than 10 MB.');
         if (['text/html', 'image/svg+xml', 'application/javascript', 'text/javascript'].includes(file.mimetype)) throw new DocumentError(400, 'Active web content is not accepted as a personnel document.');
     }
-    return { employee_id: employeeId, title, category, expiry_date: expiryDate };
+    const documentType = body.document_type ? String(body.document_type).trim() : null;
+    const requestId = body.request_id ? assertUuid(body.request_id, 'Request ID') : null;
+    return { employee_id: employeeId, title, category, expiry_date: expiryDate, document_type: documentType, request_id: requestId };
 }
 export const isEmployeeUploadLocked = employee => Boolean(employee?.archived_at) || employee?.is_active === false || ['inactive', 'terminated', 'separated', 'archived'].includes(String(employee?.status || '').toLowerCase());
 export async function ensureWritableEmployee(client, employeeId) {
@@ -74,7 +109,7 @@ export async function ensureWritableEmployee(client, employeeId) {
     if (isEmployeeUploadLocked(data)) throw new DocumentError(403, 'Document uploads are disabled for separated or inactive employee accounts.');
     return data;
 }
-export function documentChanged(client, employeeId, documentId, action, actor, review = {}) {
+export function documentChanged(client, employeeId, documentId, action, actor, review = {}, audit = {}) {
     invalidateCache(['/api/profile', '/api/employees', '/api/documents', '/api/employee-documents']);
     // Audit and broadcast failures are reported without turning a committed write into a retry.
     Promise.resolve().then(() => client.from('activity_log').insert({
@@ -82,33 +117,156 @@ export function documentChanged(client, employeeId, documentId, action, actor, r
         subject_type: 'App\\Models\\EmployeeDocument', subject_id: documentId,
         causer_type: 'App\\Models\\User', causer_id: actor?.id || null,
         event: action === 'uploaded' ? 'created' : action === 'deleted' ? 'deleted' : 'updated',
-        properties: { employee_id: employeeId, document_id: documentId, action, ...review }
-    })).then(({ error }) => { if (error) console.error('[DOCUMENT_AUDIT]', error.message); })
-        .catch(error => console.error('[DOCUMENT_AUDIT]', error.message));
+        properties: { employee_id: employeeId, document_id: documentId, action, ...review, ...audit }
+    })).then(({ error }) => { if (error) console.error('[DOCUMENT_AUDIT] Activity write failed.'); })
+        .catch(() => console.error('[DOCUMENT_AUDIT] Activity write failed.'));
+    if (review.import_source === 'bulk_import') {
+        Promise.resolve().then(() => client.from('audit_logs').insert({
+            employee_id: actor?.id || null, action: 'BULK_DOCUMENT_IMPORTED', severity: 'info',
+            details: JSON.stringify({ actor_id: actor?.id || null, employee_id: employeeId, document_id: documentId, ...review, ...audit }),
+        })).then(({ error }) => { if (error) console.error('[DOCUMENT_AUDIT] Bulk audit write failed.'); })
+            .catch(() => console.error('[DOCUMENT_AUDIT] Bulk audit write failed.'));
+    }
     try {
         let channel = broadcasts.get(client);
         if (!channel) { channel = client.channel('document-updates'); broadcasts.set(client, channel); }
-        Promise.resolve(channel.httpSend('DOCUMENT_CHANGED', { employee_id: employeeId, document_id: documentId, action }, { timeout: 2000 })).catch(error => console.warn('[DOCUMENT_REALTIME]', error.message));
+        const payload = { employee_id: employeeId, document_id: documentId, action, ...review };
+        if (typeof channel.send === 'function') {
+            channel.send({ type: 'broadcast', event: 'DOCUMENT_CHANGED', payload }).catch(() => {});
+        }
+        if (typeof channel.httpSend === 'function') {
+            channel.httpSend('DOCUMENT_CHANGED', payload, { timeout: 2000 }).catch(() => {});
+        }
+        if (employeeId) {
+            client.channel(`myprofile-realtime-${employeeId}`).send({
+                type: 'broadcast',
+                event: 'DOCUMENT_CHANGED',
+                payload
+            }).catch(() => {});
+        }
     } catch (error) { console.warn('[DOCUMENT_REALTIME]', error.message); }
 }
-export async function uploadDocument(client, user, body, file) {
+export async function uploadDocument(client, user, body, file, { notify = createNotification } = {}) {
     if (!file) throw new DocumentError(400, 'No file uploaded.');
     const metadata = validateDocumentInput(body, file);
     assertDocumentOwner(user, metadata.employee_id);
-    await ensureWritableEmployee(client, metadata.employee_id);
+    const approvedImport = body.import_source === 'bulk_import';
+    if (approvedImport && !isDocumentAdmin(user)) throw new DocumentError(403, 'Only HR administrators can approve bulk imports.');
+    if (approvedImport && body.review_confirmed !== 'true') throw new DocumentError(400, 'Confirm the document and intended employee before importing.');
+    const emp = await ensureWritableEmployee(client, metadata.employee_id);
+    let docRequest = null;
+    if (approvedImport && metadata.request_id) {
+        const { data: request, error: requestError } = await client.from('document_requests').select('*').eq('id', metadata.request_id).maybeSingle();
+        if (requestError) throw requestError;
+        if (!request) throw new DocumentError(404, 'Document request not found.');
+        if (request.employee_id !== metadata.employee_id) throw new DocumentError(403, 'This document request belongs to a different employee.');
+        if (!['pending', 'submitted'].includes(request.status)) throw new DocumentError(409, 'This document request is already closed.');
+        docRequest = request;
+    }
+    const extractedId = body.import_source === 'bulk_import' ? normalizeDocumentId(body.document_type, body.extracted_id_number) : null;
+    if (body.import_source === 'bulk_import' && body.extracted_id_number && !extractedId) throw new DocumentError(400, 'The reviewed identifier does not match the selected document type. Analyze again or clear the suggestion.');
+    if (body.import_source === 'bulk_import') {
+        const { data: bucketInfo, error: bucketError } = await client.storage.getBucket('documents');
+        const status = Number(bucketError?.statusCode || bucketError?.status);
+        if ([401, 403].includes(status)) throw new DocumentError(503, 'The backend cannot access document storage settings. Check its server-side Supabase credentials and storage permissions.', 'DOCUMENT_VAULT_ACCESS');
+        if (status === 404 || (!bucketError && !bucketInfo)) throw new DocumentError(503, 'The documents storage bucket was not found. Create a private documents bucket in this Supabase project.', 'DOCUMENT_VAULT_MISSING');
+        if (bucketError) throw new DocumentError(503, 'Document storage settings are temporarily unavailable. Retry when Supabase storage is reachable.', 'DOCUMENT_VAULT_UNAVAILABLE');
+        if (bucketInfo.public === true) throw new DocumentError(503, 'The documents bucket is public. In Supabase Storage, change documents to Private, then retry the import.', 'DOCUMENT_VAULT_PUBLIC');
+        if (bucketInfo.public !== false) throw new DocumentError(503, 'Document storage returned incomplete privacy settings. Check the documents bucket configuration.', 'DOCUMENT_VAULT_UNAVAILABLE');
+    }
     const filePath = `${metadata.employee_id}/${randomUUID()}.${file.originalname.split('.').pop().toLowerCase()}`;
     const bucket = client.storage.from('documents');
     const { error: storageError } = await bucket.upload(filePath, file.buffer, { contentType: file.mimetype || 'application/octet-stream', upsert: false });
     if (storageError) throw storageError;
-    const { data, error } = await client.from('employee_documents').insert({ ...metadata, file_name: file.originalname, file_path: filePath, file_size: file.size, status: 'pending' }).select().single();
+    const cleanFileName = formatCleanDocumentFileName(metadata.title, file.originalname);
+    const approval = approvedImport ? { status: 'approved', reviewed_by: user.id, reviewed_at: new Date().toISOString(), rejection_reason: null } : { status: 'pending' };
+    const { data, error } = await client.from('employee_documents').insert({ ...metadata, file_name: cleanFileName, file_path: filePath, file_size: file.size, ...approval }).select().single();
     if (error || !data) {
         const { error: cleanupError } = await bucket.remove([filePath]);
         if (cleanupError) console.error('[DOCUMENT_ORPHAN]', filePath, cleanupError.message);
         throw error || new Error('Document record was not saved.');
     }
+    try {
+        const { data: signed } = await bucket.createSignedUrl(filePath, DOCUMENT_URL_TTL);
+        if (signed?.signedUrl) data.preview_url = signed.signedUrl;
+    } catch (_) {}
+    if (metadata.request_id) {
+        try {
+            if (!docRequest) {
+                const { data: reqData } = await client.from('document_requests').select('*').eq('id', metadata.request_id).maybeSingle();
+                docRequest = reqData;
+            }
+            const { error: requestError } = await client.from('document_requests').update({
+                status: approvedImport ? 'approved' : 'submitted',
+                fulfilled_document_id: data.id,
+                fulfilled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', metadata.request_id);
+            if (requestError) throw requestError;
+        } catch (reqErr) {
+            console.warn('[DOCUMENT_REQUEST_LINK_WARN]', reqErr.message);
+        }
+    }
+
+    // Enterprise Real-Time Document Submission Notifications
+    try {
+        const isEmployeeSelfSubmit = !isDocumentAdmin(user) || String(user.id).toLowerCase() === String(metadata.employee_id).toLowerCase();
+        const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
+        const docTitle = metadata.title || cleanFileName || 'Document';
+        const requestSuffix = docRequest?.document_type ? ` (Fulfilling request: ${docRequest.document_type})` : '';
+
+        if (approvedImport) {
+            notify({
+                target: metadata.employee_id,
+                title: `Document Approved: ${docTitle}`,
+                text: `HR has verified and imported your ${docTitle} into your personnel records.`,
+                type: 'document_approved', sender_id: user.id,
+            }).catch(() => console.warn('[NOTIF_APPROVAL_WARN] Approval notification unavailable.'));
+        } else {
+            // 1. Notify Admin/HR of incoming submission for review
+            notify({
+                target: 'admin',
+                title: `Document Submitted: ${empName}`,
+                text: `${empName} (${emp.company_id || 'ID Pending'}) submitted "${docTitle}"${requestSuffix}. Ready for HR review.`,
+                type: 'document_submission',
+                sender_id: metadata.employee_id,
+                sender_name: empName,
+                company_id: emp.company_id
+            }).catch(err => console.warn('[NOTIF_SUBMISSION_WARN]', err.message));
+
+            // If a specific admin requested it, also notify them directly
+            if (docRequest?.requested_by && docRequest.requested_by !== 'admin') {
+                notify({
+                    target: docRequest.requested_by,
+                    title: `Requested Document Submitted: ${empName}`,
+                    text: `${empName} has uploaded "${docTitle}" for your request (${docRequest.document_type}).`,
+                    type: 'document_submission',
+                    sender_id: metadata.employee_id,
+                    sender_name: empName,
+                    company_id: emp.company_id
+                }).catch(err => console.warn('[NOTIF_SPECIFIC_ADMIN_WARN]', err.message));
+            }
+
+            // 2. Immediate submission confirmation receipt for the employee
+            if (isEmployeeSelfSubmit) {
+                notify({
+                    target: metadata.employee_id,
+                    title: `Document Submitted: ${docTitle}`,
+                    text: `Your ${docTitle} has been submitted successfully and is now pending HR review.`,
+                    type: 'document_submission_receipt',
+                    sender_id: metadata.employee_id,
+                    sender_name: 'Document Vault'
+                }).catch(err => console.warn('[NOTIF_RECEIPT_WARN]', err.message));
+            }
+        }
+    } catch (notifErr) {
+        console.warn('[DOCUMENT_NOTIF_DISPATCH_WARN]', notifErr.message);
+    }
+
     // The reviewed type is a human selection, not proof of authenticity or AI accuracy.
-    const review = body.import_source === 'bulk_import' ? { import_source: 'bulk_import', document_type: body.document_type, review_confirmed: true, import_id: body.import_id } : {};
-    documentChanged(client, data.employee_id, data.id, 'uploaded', user, review);
+    const review = approvedImport ? { import_source: 'bulk_import', document_type: body.document_type, review_confirmed: true, import_id: body.import_id, ...approval } : {};
+    const audit = body.import_source === 'bulk_import' ? { extracted_id_number: extractedId, identifier_source: 'reviewer_confirmed_extraction', file_sha256: createHash('sha256').update(file.buffer).digest('hex') } : {};
+    documentChanged(client, data.employee_id, data.id, 'uploaded', user, review, audit);
     return data;
 }
 export async function findDocument(client, id) {
@@ -133,7 +291,8 @@ export async function listDocuments(client, user, filters = {}) {
     if (employeeId) query = query.eq('employee_id', employeeId);
     if (filters.status) {
         if (filters.status === 'to_review') query = query.is('status', null);
-        else if (['pending', 'approved', 'rejected'].includes(filters.status)) query = query.eq('status', filters.status);
+        else if (filters.status === 'pending') query = query.or('status.eq.pending,status.is.null');
+        else if (['approved', 'rejected'].includes(filters.status)) query = query.eq('status', filters.status);
         else throw new DocumentError(400, 'Invalid document status filter.');
     }
     if (filters.category) query = query.eq('category', filters.category);
@@ -157,6 +316,43 @@ export async function listDocuments(client, user, filters = {}) {
         employees = lookup.data || [];
     }
     const byId = new Map(employees.map(employee => [employee.id, employee]));
+
+    if (documents.length > 0) {
+        try {
+            const pathEntries = [];
+            for (const doc of documents) {
+                if (doc.file_path) {
+                    try {
+                        const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                        pathEntries.push(norm);
+                    } catch (_) {}
+                }
+            }
+            if (pathEntries.length > 0) {
+                const uniquePaths = [...new Set(pathEntries)];
+                const { data: signedList } = await client.storage.from('documents').createSignedUrls(uniquePaths, DOCUMENT_URL_TTL);
+                if (Array.isArray(signedList)) {
+                    const signedMap = new Map();
+                    for (const item of signedList) {
+                        if (item?.path && item?.signedUrl) {
+                            signedMap.set(item.path, item.signedUrl);
+                        }
+                    }
+                    for (const doc of documents) {
+                        try {
+                            const norm = normalizeDocumentPath(doc.file_path, doc.employee_id, client.supabaseUrl);
+                            doc.preview_url = signedMap.get(norm) || null;
+                        } catch {
+                            doc.preview_url = null;
+                        }
+                    }
+                }
+            }
+        } catch (signErr) {
+            console.warn('[DOC_BATCH_SIGN_WARN]', signErr.message);
+        }
+    }
+
     return { documents: documents.map(doc => ({ ...doc, employees: byId.get(doc.employee_id) || null })), employee: employeeResult.data, upload_locked: employeeResult.data ? isEmployeeUploadLocked(employeeResult.data) : false, meta: { page, limit, total: result.count ?? documents.length, has_more: paginated && page * limit < (result.count ?? 0) } };
 }
 export function documentRoute(handler) {
@@ -164,7 +360,7 @@ export function documentRoute(handler) {
         try { await handler(req, res, next); }
         catch (error) {
             if (!(error instanceof DocumentError)) console.error('[DOCUMENT_API]', error.message);
-            res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Document request failed. Please try again.', error: error.status ? error.message : 'Document service unavailable.' });
+            res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Document request failed. Please try again.', error: error.status ? error.message : 'Document service unavailable.', ...(error instanceof DocumentError && error.code ? { code: error.code } : {}) });
         }
     };
 }

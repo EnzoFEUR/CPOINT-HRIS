@@ -25,6 +25,23 @@ getRealtimeChannel();
 
 // Low-latency non-blocking broadcast helper (<5ms execution overhead)
 // Dispatches to admin dashboards, physical gate scanners, and employee private channels
+const dynamicChannelPool = new Map();
+function getChannelForTopic(topic) {
+    if (topic === 'disciplinary_realtime_sync') return getRealtimeChannel();
+    let ch = dynamicChannelPool.get(topic);
+    if (!ch) {
+        ch = supabase.channel(topic);
+        ch.subscribe();
+        dynamicChannelPool.set(topic, ch);
+        if (dynamicChannelPool.size > 100) {
+            const oldestKey = dynamicChannelPool.keys().next().value;
+            try { supabase.removeChannel(dynamicChannelPool.get(oldestKey)); } catch (_) {}
+            dynamicChannelPool.delete(oldestKey);
+        }
+    }
+    return ch;
+}
+
 function broadcastDisciplinaryUpdate(event, payload = {}) {
     const timestamp = new Date().toISOString();
     const enrichedPayload = { ...payload, broadcast_timestamp: timestamp };
@@ -51,7 +68,7 @@ function broadcastDisciplinaryUpdate(event, payload = {}) {
     // Concurrent non-blocking dispatch across all target channels
     targetTopics.forEach(topic => {
         try {
-            const ch = (topic === 'disciplinary_realtime_sync') ? getRealtimeChannel() : supabase.channel(topic);
+            const ch = getChannelForTopic(topic);
             ch.send({
                 type: 'broadcast',
                 event,
@@ -308,12 +325,36 @@ async function dispatchClearanceEmail(employee, { exoneration_reason, investigat
 }
 const dispatchExonerationEmail = dispatchClearanceEmail;
 
+// Senior-Fullstack Policy: Disciplinary exemption check for administrative and security guard personnel
+function isDisciplinaryExempt(employee) {
+    if (!employee) return false;
+    const r = (employee.role || '').toLowerCase().replace(/[\s_-]/g, '');
+    const dept = (employee.department || '').toLowerCase();
+    const title = (employee.job_title || employee.position || '').toLowerCase();
+    const name = `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase();
+
+    const isAdmin =
+        ['admin', 'superadmin', 'super_admin', 'hr', 'hrmanager', 'hr_manager'].includes(r) ||
+        r.includes('admin') || r.includes('hr') ||
+        dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
+        title.includes('admin') || title.includes('administrator') || title.includes('hr');
+
+    const isGuard =
+        ['security', 'guard', 'securityguard', 'security_guard'].includes(r) ||
+        r.includes('guard') || r.includes('security') ||
+        dept.includes('security') ||
+        title.includes('guard') || title.includes('security') || title.includes('gate attendant') || title.includes('watchman') ||
+        name.includes('guard');
+
+    return Boolean(isAdmin || isGuard);
+}
+
 // GET /api/disciplinary - Fetch disciplinary logs with employee metadata
 router.get('/', cacheResponse(15), async (req, res) => {
     try {
         let query = supabase
             .from('disciplinary_logs')
-            .select('*, employees:employee_id(id, company_id, first_name, last_name, department, email, status, is_active, biometric_baseline_path, job_title, date_hired, shift)')
+            .select('*, employees:employee_id(id, company_id, first_name, last_name, department, email, status, is_active, biometric_baseline_path, job_title, date_hired, shift, role)')
             .order('created_at', { ascending: false });
 
         const isAdmin = req.user.role === 'admin' || req.user.role === 'hr' || req.user.role === 'superadmin';
@@ -334,7 +375,9 @@ router.get('/', cacheResponse(15), async (req, res) => {
         const { data: records, error } = await query;
         if (error) throw error;
         
-        const enrichedRecords = (records || []).map(record => {
+        const enrichedRecords = (records || [])
+            .filter(record => !isDisciplinaryExempt(record.employees))
+            .map(record => {
             const emp = record.employees;
             const photoPath = emp?.biometric_baseline_path || (emp?.company_id && emp?.id ? `face-baselines/${emp.company_id}/${emp.id}.jpg` : null);
             const avatarUrl = photoPath ? `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${photoPath.replace(/^\/+/, '')}` : null;
@@ -378,6 +421,23 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Employee, type, and detailed reason are required.' });
         }
 
+        // Validate target employee existence and disciplinary exemption policy
+        const { data: targetEmp, error: empErr } = await supabase
+            .from('employees')
+            .select('id, status, is_active, first_name, last_name, role, department, job_title')
+            .eq('id', employee_id)
+            .single();
+
+        if (empErr || !targetEmp) {
+            return res.status(404).json({ error: 'Target employee not found.' });
+        }
+
+        if (isDisciplinaryExempt(targetEmp)) {
+            return res.status(400).json({ 
+                error: `Disciplinary actions cannot be issued to administrative or security guard personnel (${targetEmp.first_name} ${targetEmp.last_name}).` 
+            });
+        }
+
         // Standardize types Warning, Suspension, Termination
         const validTypes = ['Warning', 'Suspension', 'Termination'];
         const resolvedType = validTypes.find(t => t.toLowerCase() === type.toLowerCase()) || 'Warning';
@@ -389,22 +449,12 @@ router.post('/', async (req, res) => {
         let endDateStr = null;
 
         // 1. Logic for Warning Account remains active
-        // 1. Logic for Warning Account remains active
         if (resolvedType === 'Warning') {
             resolvedSeverity = severity || 'Low';
         } 
         // 2. Logic for Suspension - Temporarily locked out (Mananatili sa Personnel Directory as Suspended)
         else if (resolvedType === 'Suspension') {
             // Enterprise Rule: Prevent double-suspending an employee who is already suspended or deactivated
-            const { data: targetEmp, error: empErr } = await supabase
-                .from('employees')
-                .select('id, status, is_active, first_name, last_name')
-                .eq('id', employee_id)
-                .single();
-
-            if (empErr || !targetEmp) {
-                return res.status(404).json({ error: 'Target employee not found.' });
-            }
 
             if (targetEmp.status?.toLowerCase() === 'suspended') {
                 return res.status(400).json({ 
@@ -574,25 +624,45 @@ router.post('/', async (req, res) => {
 
         if (resolvedType === 'Termination') {
             broadcastDisciplinaryUpdate('EMPLOYEE_TERMINATED', {
+                id: newRecord.id,
                 employee_id,
                 company_id: emp?.company_id,
                 date: todayStr,
                 employee_name: empName,
+                type: 'Termination',
+                severity: resolvedSeverity,
                 reason: formattedReason,
                 separation_reason: reason.trim(),
                 separation_type: 'Disciplinary Termination',
                 separation_date: todayStr,
-                archived_at: new Date().toISOString()
+                archived_at: new Date().toISOString(),
+                status: 'inactive',
+                is_active: false,
+                is_terminated: true,
+                is_suspended: false,
+                operational_status: 'Terminated',
+                record: enrichedCreatedRecord,
+                employees: enrichedEmployeeState
             });
         } else if (resolvedType === 'Suspension') {
             broadcastDisciplinaryUpdate('EMPLOYEE_SUSPENDED', {
+                id: newRecord.id,
                 employee_id,
                 company_id: emp?.company_id,
                 date: todayStr,
                 employee_name: empName,
+                type: 'Suspension',
+                severity: resolvedSeverity,
                 duration_days: durationDays,
                 end_date: endDateStr,
-                reason: formattedReason
+                reason: formattedReason,
+                status: 'suspended',
+                is_active: false,
+                is_suspended: true,
+                is_terminated: false,
+                operational_status: 'Suspended',
+                record: enrichedCreatedRecord,
+                employees: enrichedEmployeeState
             });
         }
 

@@ -8,6 +8,7 @@
     "backend"
   ],
   "scripts": {
+    "test:documents": "node --test tests/document*.test.mjs",
     "install:all": "npm install",
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "build": "npm run build --workspaces"

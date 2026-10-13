@@ -79,7 +79,7 @@ export default function OfficialRemunerationHistoryDocument({
                 </div>
             </div>
 
-            {/* 2. Employee 201 Demographics & Statutory Profile Grid */}
+            {/* 2. Employee Demographics & Statutory Profile Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3.5 border-b border-slate-300 text-xs bg-slate-50/70 -mx-6 sm:-mx-8 px-6 sm:px-8 print:-mx-6 print:px-6">
                 <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">

@@ -223,6 +223,15 @@ export function createLeaveCreditsRouter(client = supabase, notify = createNotif
 
     router.post('/cash-out-requests', async (req, res) => {
         if (req.body.employee_id !== req.user.id) return res.status(403).json({ error: 'You may only request your own SIL cash-out.' });
+        const userStatus = String(req.user?.status || '').toLowerCase();
+        const isSusp = userStatus === 'suspended' || Boolean(req.user?.is_suspended) || req.user?.operational_status === 'Suspended';
+        const isTerm = userStatus === 'terminated' || Boolean(req.user?.is_terminated) || Boolean(req.user?.archived_at) || req.user?.is_active === false || Boolean(req.user?.separation_type) || req.user?.operational_status === 'Terminated' || req.isSeparated;
+        if (isTerm) {
+            return res.status(403).json({ error: 'Service Incentive Leave cash-out is disabled for separated or inactive accounts. Remaining credits are resolved via final pay clearance.' });
+        }
+        if (isSusp) {
+            return res.status(403).json({ error: 'Service Incentive Leave cash-out is paused during disciplinary suspension.' });
+        }
         try {
             const command = validateCashOutRequest(req.body);
             const { data, error } = await client.rpc('request_sil_cash_out', { p_actor_id: req.user.id, p_employee_id: command.employee_id, p_request_id: command.request_id, p_days: command.days });

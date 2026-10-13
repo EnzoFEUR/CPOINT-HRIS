@@ -9,8 +9,12 @@ import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
 import bannerCover from '../../assets/employee-cover.jpg';
 import useEmployeeDocuments from '../../utils/useEmployeeDocuments';
+import useDocumentRequests from '../../utils/useDocumentRequests';
 import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/documentApi';
-import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry } from '../../utils/documentUtils';
+import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry, formatCleanDocumentFileName } from '../../utils/documentUtils';
+import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../../shared/documentTypes.mjs';
+import DocumentThumbnail from '../../components/DocumentThumbnail';
+import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -350,16 +354,25 @@ export default function MyProfile() {
     const [openingDocument, setOpeningDocument] = useState(null);
     const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id), status: docStatus, category: docCategory, sort: docSort, search: docSearch });
     const documents = documentQuery.documents;
+    const requestQuery = useDocumentRequests({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) });
+    const activeRequests = (requestQuery.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
     useEffect(() => {
         if (location.hash !== '#documents' || !profile?.id) return;
         const frame = requestAnimationFrame(() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         return () => cancelAnimationFrame(frame);
     }, [location.hash, profile?.id]);
-    const handleOpenDocument = async (id) => {
-        setOpeningDocument(id);
-        try { await openEmployeeDocument(id); }
-        catch (error) { toast.error(error.message); }
-        finally { setOpeningDocument(null); }
+    const [activePreviewDoc, setActivePreviewDoc] = useState(null);
+    const handleOpenDocument = (docOrId) => {
+        if (typeof docOrId === 'object' && docOrId !== null) {
+            setActivePreviewDoc(docOrId);
+            return;
+        }
+        const found = documents.find(d => d.id === docOrId);
+        if (found) {
+            setActivePreviewDoc(found);
+        } else {
+            setActivePreviewDoc({ id: docOrId });
+        }
     };
     const fileInputRef = useRef(null);
     const dragCounter = useRef(0);
@@ -576,15 +589,26 @@ export default function MyProfile() {
     // Modal & Upload States
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [selectedDocTypeId, setSelectedDocTypeId] = useState('tin');
     const [uploadForm, setUploadForm] = useState({
         title: '',
-        category: 'General',
+        category: 'Government ID',
+        documentType: 'BIR Form 1902 / 2316 (TIN Document)',
+        requestId: null,
         expiryDate: '',
         file: null
     });
 
     const resetUploadForm = () => {
-        setUploadForm({ title: '', category: 'General', expiryDate: '', file: null });
+        setSelectedDocTypeId('tin');
+        setUploadForm({
+            title: '',
+            category: 'Government ID',
+            documentType: 'BIR Form 1902 / 2316 (TIN Document)',
+            requestId: null,
+            expiryDate: '',
+            file: null
+        });
     };
 
     const openUploadModal = (file = null) => {
@@ -592,8 +616,49 @@ export default function MyProfile() {
             toast.error('Document uploads are disabled for separated/terminated accounts.');
             return;
         }
-        if (file) setUploadForm((prev) => ({ ...prev, file, title: prev.title || file.name.replace(/\.[^/.]+$/, '') }));
+        const defaultType = DOCUMENT_TYPES[0];
+        setSelectedDocTypeId(defaultType.id);
+        const suggestedTitle = file ? file.name.replace(/\.[^/.]+$/, '') : `${defaultType.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
+        setUploadForm({
+            title: suggestedTitle,
+            category: defaultType.category,
+            documentType: defaultType.label,
+            requestId: null,
+            expiryDate: '',
+            file: file || null
+        });
         setShowUploadModal(true);
+    };
+
+    const openUploadForRequest = (req) => {
+        if (isTerminated) {
+            toast.error('Document uploads are disabled for separated/terminated accounts.');
+            return;
+        }
+        const matched = getDocumentType(req.document_type);
+        setSelectedDocTypeId(matched.id !== 'unknown' ? matched.id : 'unknown');
+        setUploadForm({
+            title: `${req.document_type} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+            category: req.category || (matched.id !== 'unknown' ? matched.category : 'Other'),
+            documentType: req.document_type,
+            requestId: req.id,
+            expiryDate: '',
+            file: null
+        });
+        setShowUploadModal(true);
+    };
+
+    const handleUploadDocTypeChange = (typeId) => {
+        setSelectedDocTypeId(typeId);
+        const meta = getDocumentType(typeId);
+        if (meta) {
+            setUploadForm(prev => ({
+                ...prev,
+                category: meta.category,
+                documentType: meta.label,
+                title: prev.requestId ? prev.title : `${meta.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()
+            }));
+        }
     };
 
     const handleUploadSubmit = async (e) => {
@@ -616,11 +681,24 @@ export default function MyProfile() {
 
         setIsUploading(true);
         try {
-            await uploadEmployeeDocument({ employeeId: profile.id, file: uploadForm.file, title: uploadForm.title, category: uploadForm.category, expiryDate: uploadForm.expiryDate });
-            toast.success('Document submitted for review.');
+            const resolvedTitle = uploadForm.title.trim();
+            const cleanFileName = formatCleanDocumentFileName(resolvedTitle, uploadForm.file.name);
+            const renamedFile = uploadForm.file.name === cleanFileName ? uploadForm.file : new File([uploadForm.file], cleanFileName, { type: uploadForm.file.type });
+
+            await uploadEmployeeDocument({
+                employeeId: profile.id,
+                file: renamedFile,
+                title: resolvedTitle,
+                category: uploadForm.category,
+                documentType: uploadForm.documentType,
+                requestId: uploadForm.requestId,
+                expiryDate: uploadForm.expiryDate || null
+            });
+            toast.success(uploadForm.requestId ? 'Requested document submitted to HR for review!' : 'Document submitted for review.');
             setShowUploadModal(false);
             resetUploadForm();
             documentQuery.refresh();
+            requestQuery.refresh();
             queryClient.invalidateQueries({ queryKey: ['myProfile'] });
         } catch (err) {
             console.error('Document upload error:', err);
@@ -1375,11 +1453,87 @@ export default function MyProfile() {
                 )}
             </div>
 
-            {/* 201 documents */}
+            {/* Employee documents */}
             <div id="documents" className="space-y-4 scroll-mt-20">
                 {documentQuery.error && (
                     <div role="alert" className="rounded-md border border-danger/20 bg-danger-subtle p-3 text-xs text-danger-ink">
                         {documentQuery.error.message} <button type="button" onClick={() => documentQuery.refetch()} className="ml-2 font-semibold underline">Retry</button>
+                    </div>
+                )}
+
+                {/* Active Document Requests from HR */}
+                {activeRequests.length > 0 && !isTerminated && (
+                    <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-4 sm:p-5 shadow-2xs space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <div className="h-8 w-8 shrink-0 bg-amber-100 text-amber-700 rounded-md flex items-center justify-center border border-amber-200">
+                                    <i className="ti ti-mail-forward text-base" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-xs sm:text-sm font-bold text-amber-900">
+                                            Action Required: {activeRequests.length} Document{activeRequests.length > 1 ? 's' : ''} Requested by HR
+                                        </h4>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-200/80 text-amber-800">
+                                            Compliance Hold
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-800 font-medium mt-0.5">
+                                        Please upload the missing personnel documents below to fulfill your statutory document requirements.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                            {activeRequests.map(req => (
+                                <div
+                                    key={req.id}
+                                    className="p-3 bg-white rounded-lg border border-amber-200/80 flex items-start justify-between gap-3 shadow-2xs"
+                                >
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-bold text-xs text-slate-900">{req.document_type}</span>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                                                req.priority === 'urgent'
+                                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                                    : req.priority === 'high'
+                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                                            }`}>
+                                                {req.priority}
+                                            </span>
+                                        </div>
+                                        {req.due_date && (
+                                            <p className="text-[11px] text-amber-800 font-medium">
+                                                Due: <strong>{req.due_date}</strong>
+                                            </p>
+                                        )}
+                                        {req.notes && (
+                                            <p className="text-[11px] text-slate-600 italic">
+                                                &quot;{req.notes}&quot;
+                                            </p>
+                                        )}
+                                        {req.status === 'submitted' && (
+                                            <span className="inline-flex text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                                Submitted · Under HR Review
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {req.status === 'pending' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openUploadForRequest(req)}
+                                            className="h-7 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded transition-colors shadow-2xs flex items-center gap-1 shrink-0 cursor-pointer"
+                                        >
+                                            <i className="ti ti-upload text-xs" />
+                                            <span>Upload</span>
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
                 {alerts.length > 0 && (
@@ -1505,35 +1659,37 @@ export default function MyProfile() {
                                 const review = getDocumentStatus(doc);
 
                                 return (
-                                    <div key={doc.id} className="p-3.5 rounded-md border border-slate-200 hover:border-slate-300 transition-colors duration-100 flex items-start gap-3 bg-white">
-                                        <div className={`h-10 w-10 shrink-0 rounded-md flex items-center justify-center border ${meta.bg} ${meta.color} ${meta.border}`}>
-                                            <i className={`ti ${meta.icon} text-lg`} />
-                                        </div>
+                                    <div key={doc.id} className="p-3.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all duration-100 flex items-start gap-3 bg-white hover:shadow-2xs">
+                                        <DocumentThumbnail
+                                            document={doc}
+                                            size="md"
+                                            onPreview={() => handleOpenDocument(doc)}
+                                        />
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-xs font-semibold text-slate-800 truncate" title={doc.title || doc.file_name}>{doc.title || doc.file_name}</p>
+                                            <p
+                                                className="text-xs font-semibold text-slate-800 truncate cursor-pointer hover:text-accent transition-colors"
+                                                title={doc.title || doc.file_name}
+                                                onClick={() => handleOpenDocument(doc)}
+                                            >
+                                                {doc.title || doc.file_name}
+                                            </p>
                                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                <span className={`rounded border px-1.5 text-[10px] font-semibold ${review.className}`}>{review.label}</span>
+                                                <span className={`rounded-md border px-1.5 text-[10px] font-semibold ${review.className}`}>{review.label}</span>
                                                 {doc.category && (
-                                                    <span className="inline-block px-1.5 py-0.2 bg-slate-100 text-slate-600 font-semibold text-[10px] rounded">
+                                                    <span className="inline-block px-1.5 py-0.2 bg-surface-muted text-ink-muted font-semibold text-[10px] rounded-md border border-line">
                                                         {doc.category}
                                                     </span>
                                                 )}
                                                 {status && (
-                                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}>
+                                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md border text-[10px] font-semibold ${expiryBadgeStyles[status.level]}`}>
                                                         {status.level === 'valid' ? 'Valid' : status.label}
                                                     </span>
                                                 )}
                                             </div>
                                             {review.key === 'rejected' && doc.rejection_reason && <p className="mt-1 text-xs text-danger-ink">{doc.rejection_reason}</p>}
-                                            <p className="mt-1 text-[10px] text-slate-400">{formatFileSize(doc.file_size)}</p>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenDocument(doc.id)}
-                                                disabled={openingDocument === doc.id}
-                                                className="mt-2 text-[11px] font-semibold text-accent hover:underline flex items-center gap-1"
-                                            >
-                                                <i className="ti ti-external-link text-xs" /> {openingDocument === doc.id ? 'Opening…' : 'View File'}
-                                            </button>
+                                            <p className="mt-1 text-[10px] text-slate-400 font-mono truncate" title={doc.file_name}>
+                                                {doc.file_name} · {formatFileSize(doc.file_size)}
+                                            </p>
                                         </div>
                                     </div>
                                 );
@@ -1706,8 +1862,54 @@ export default function MyProfile() {
                         </div>
 
                         <form onSubmit={handleUploadSubmit} className="space-y-3.5">
+                            {uploadForm.requestId && (
+                                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-950 flex items-start gap-2.5">
+                                    <i className="ti ti-alert-circle text-amber-600 text-sm mt-0.5 shrink-0" />
+                                    <div className="text-xs">
+                                        <div className="font-bold">Fulfilling HR Document Request</div>
+                                        <div className="text-[11px] text-amber-800 mt-0.5">
+                                            Submitting file for <span className="font-semibold underline">{uploadForm.documentType}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Document Title</label>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    Document Type
+                                </label>
+                                <select
+                                    value={selectedDocTypeId}
+                                    onChange={(e) => handleUploadDocTypeChange(e.target.value)}
+                                    className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none cursor-pointer bg-white"
+                                >
+                                    {DOCUMENT_CATEGORIES.map((cat) => {
+                                        const types = DOCUMENT_TYPES.filter(t => t.category === cat);
+                                        if (types.length === 0) return null;
+                                        return (
+                                            <optgroup key={cat} label={cat}>
+                                                {types.map((type) => (
+                                                    <option key={type.id} value={type.id}>
+                                                        {type.label} {type.is201Required ? '(Required Document)' : ''}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        );
+                                    })}
+                                </select>
+                                {(() => {
+                                    const currentMeta = getDocumentType(selectedDocTypeId);
+                                    if (!currentMeta?.description) return null;
+                                    return (
+                                        <p className="text-[11px] text-slate-500 mt-1">
+                                            {currentMeta.description}
+                                        </p>
+                                    );
+                                })()}
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">Document Title</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
@@ -1720,20 +1922,24 @@ export default function MyProfile() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
-                                    <select
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+                                    <input
+                                        type="text"
                                         value={uploadForm.category}
-                                        onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })}
-                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none cursor-pointer"
-                                    >
-                                        {CATEGORIES.map((cat) => (
-                                            <option key={cat} value={cat}>{cat}</option>
-                                        ))}
-                                    </select>
+                                        readOnly
+                                        className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-500 bg-slate-50 cursor-not-allowed"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                                        Expiry Date {!showExpiryField && <span className="font-normal text-slate-400">(opt)</span>}
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                        Expiry Date {(() => {
+                                            const currentMeta = getDocumentType(selectedDocTypeId);
+                                            return currentMeta?.requiresExpiry ? (
+                                                <span className="font-semibold text-amber-600">(Recommended)</span>
+                                            ) : (
+                                                <span className="font-normal text-slate-400">(Optional)</span>
+                                            );
+                                        })()}
                                     </label>
                                     <input
                                         type="date"
@@ -1767,33 +1973,65 @@ export default function MyProfile() {
                                         }}
                                         className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                                     />
-                                    {uploadForm.file && isImageFile(uploadForm.file.name) ? (
-                                        <div className="flex items-center gap-2.5 justify-center z-0">
-                                            <img
-                                                src={URL.createObjectURL(uploadForm.file)}
-                                                alt=""
-                                                className="h-12 w-12 rounded-md object-cover border border-slate-200"
-                                            />
-                                            <div className="text-left">
-                                                <p className="text-xs font-semibold text-slate-800 truncate max-w-[180px]">{uploadForm.file.name}</p>
-                                                <p className="text-[10px] text-slate-500">{formatFileSize(uploadForm.file.size)}</p>
-                                                <p className="text-[10px] text-accent font-semibold mt-0.5">Tap to change file</p>
+                                    {(() => {
+                                        if (!uploadForm.file) {
+                                            return (
+                                                <div className="z-0 py-1">
+                                                    <i className="ti ti-cloud-upload text-2xl text-accent mb-1 block" />
+                                                    <p className="text-xs font-semibold text-slate-700">Tap here to choose file / take photo</p>
+                                                    <p className="text-[10px] text-slate-400 mt-0.5">PDF, Images (JPG, PNG, WebP) up to 10MB</p>
+                                                </div>
+                                            );
+                                        }
+
+                                        const cleanPreviewName = formatCleanDocumentFileName(
+                                            uploadForm.title || uploadForm.documentType || 'document',
+                                            uploadForm.file.name
+                                        );
+                                        const isImage = isImageFile(uploadForm.file.name);
+                                        const isPdf = uploadForm.file.type === 'application/pdf' || uploadForm.file.name.toLowerCase().endsWith('.pdf');
+
+                                        return (
+                                            <div className="w-full flex items-center gap-3 text-left z-0 p-1">
+                                                <div className="relative shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shadow-2xs">
+                                                    {isImage ? (
+                                                        <img
+                                                            src={URL.createObjectURL(uploadForm.file)}
+                                                            alt="Preview"
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : isPdf ? (
+                                                        <div className="flex flex-col items-center justify-center text-rose-600">
+                                                            <i className="ti ti-file-type-pdf text-2xl leading-none" />
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5">PDF</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center justify-center text-slate-500">
+                                                            <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl leading-none ${getFileMeta(uploadForm.file.name).color}`} />
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5">FILE</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-accent bg-accent/10 px-1.5 py-0.5 rounded">
+                                                            <i className="ti ti-wand text-[10px]" />
+                                                            Auto-renamed to
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">({formatFileSize(uploadForm.file.size)})</span>
+                                                    </div>
+                                                    <p className="text-xs font-bold text-slate-800 font-mono truncate" title={cleanPreviewName}>
+                                                        {cleanPreviewName}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={uploadForm.file.name}>
+                                                        Original: {uploadForm.file.name}
+                                                    </p>
+                                                    <p className="text-[10px] text-accent font-semibold mt-1">Tap to change file</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : uploadForm.file ? (
-                                        <div className="z-0">
-                                            <i className={`ti ${getFileMeta(uploadForm.file.name).icon} text-2xl ${getFileMeta(uploadForm.file.name).color} mb-1 block`} />
-                                            <p className="text-xs font-semibold text-slate-800 truncate max-w-[200px] mx-auto">{uploadForm.file.name}</p>
-                                            <p className="text-[10px] text-slate-500 mt-0.5">{formatFileSize(uploadForm.file.size)}</p>
-                                            <p className="text-[10px] text-accent font-semibold mt-0.5">Tap to change file</p>
-                                        </div>
-                                    ) : (
-                                        <div className="z-0">
-                                            <i className="ti ti-cloud-upload text-2xl text-accent mb-1 block" />
-                                            <p className="text-xs font-semibold text-slate-700">Tap here to choose file / take photo</p>
-                                            <p className="text-[10px] text-slate-400 mt-0.5">PDF, Images (JPG, PNG) up to 10MB</p>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
@@ -2146,6 +2384,13 @@ export default function MyProfile() {
                     </div>
                 </div>
             )}
+
+            <DocumentPreviewModal
+                isOpen={Boolean(activePreviewDoc)}
+                onClose={() => setActivePreviewDoc(null)}
+                document={activePreviewDoc}
+                isAdmin={false}
+            />
         </div>
     );
 }

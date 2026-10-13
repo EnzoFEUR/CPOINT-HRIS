@@ -52,6 +52,47 @@ export const getNotificationVisuals = (type) => {
         label: 'Attendance',
         path: '/admin/attendance'
       };
+    case 'document_submission':
+      return {
+        icon: 'ti-file-upload',
+        bg: 'bg-accent-subtle text-accent border-accent/20',
+        badge: 'bg-accent',
+        label: 'Document Review',
+        path: '/admin/documents'
+      };
+    case 'document_submission_receipt':
+      return {
+        icon: 'ti-file-check',
+        bg: 'bg-success-subtle text-success-ink border-success/20',
+        badge: 'bg-success',
+        label: 'Document Sent',
+        path: '/employee/profile#documents'
+      };
+    case 'document_request':
+    case 'document_reminder':
+      return {
+        icon: 'ti-file-alert',
+        bg: 'bg-warning-subtle text-warning-ink border-warning/20',
+        badge: 'bg-warning',
+        label: 'Document Needed',
+        path: '/employee/profile#documents'
+      };
+    case 'document_approved':
+      return {
+        icon: 'ti-file-check',
+        bg: 'bg-success-subtle text-success-ink border-success/20',
+        badge: 'bg-success',
+        label: 'Document Approved',
+        path: '/employee/profile#documents'
+      };
+    case 'document_rejected':
+      return {
+        icon: 'ti-file-x',
+        bg: 'bg-danger-subtle text-danger-ink border-danger/20',
+        badge: 'bg-danger',
+        label: 'Document Rejected',
+        path: '/employee/profile#documents'
+      };
     default:
       return {
         icon: 'ti-bell',

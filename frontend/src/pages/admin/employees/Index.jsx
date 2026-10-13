@@ -9,6 +9,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import ActionMenu from '../../../components/ui/ActionMenu';
 import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
+import { fetchPendingDocumentCounts } from '../../../utils/documentApi';
 
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
@@ -126,6 +127,13 @@ export default function EmployeesIndex() {
         staleTime: 15_000,
         gcTime: 300_000,
         refetchOnWindowFocus: false,
+    });
+
+    const { data: docPendingCounts = {} } = useQuery({
+        queryKey: ['adminDocumentPendingCounts'],
+        queryFn: () => fetchPendingDocumentCounts(),
+        staleTime: 15_000,
+        refetchOnWindowFocus: true,
     });
 
     // Realtime subscriptions for directory updates
@@ -248,11 +256,25 @@ export default function EmployeesIndex() {
             .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleSync)
             .subscribe();
 
+        const docChannel = supabase
+            .channel('admin-doc-badge-sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'document_requests' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
+            })
+            .on('broadcast', { event: 'DOCUMENT_CHANGED' }, () => {
+                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
+            })
+            .subscribe();
+
         return () => {
             window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
             supabase.removeChannel(syncChannel);
             supabase.removeChannel(updatesChannel);
+            supabase.removeChannel(docChannel);
         };
     }, [queryClient]);
 
@@ -302,6 +324,7 @@ export default function EmployeesIndex() {
                 const isActive = !isTerminated && !isSuspended;
 
                 if (filterStatus === 'Active' && !isActive) return false;
+                if (filterStatus === 'Docs Awaiting Review' && !(docPendingCounts?.[emp.id]?.total > 0)) return false;
                 if (filterStatus === 'Suspended' && !isSuspended) return false;
                 if ((filterStatus === 'Terminated' || filterStatus === 'Pending Termination' || filterStatus === 'Separated') && !isTerminated) return false;
                 if (filterStatus === 'Salaried' && isFactory) return false;
@@ -347,6 +370,7 @@ export default function EmployeesIndex() {
         let pendingTermination = 0;
         let salaried = 0;
         let pieceRate = 0;
+        let pendingDocs = 0;
 
         for (let i = 0; i < employees.length; i++) {
             const e = employees[i];
@@ -358,6 +382,9 @@ export default function EmployeesIndex() {
             }
 
             all++;
+            if (docPendingCounts?.[e.id]?.total > 0) {
+                pendingDocs++;
+            }
             const isSusp = Boolean(
                 e.operational_status === 'Suspended' || 
                 e.is_suspended ||
@@ -386,8 +413,8 @@ export default function EmployeesIndex() {
             }
         }
 
-        return { all, active, suspended, pendingTermination, salaried, pieceRate };
-    }, [employees]);
+        return { all, active, suspended, pendingTermination, salaried, pieceRate, pendingDocs };
+    }, [employees, docPendingCounts]);
 
     const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'Active');
     const totalItems = filteredEmployees.length;
@@ -472,6 +499,9 @@ export default function EmployeesIndex() {
                                 {[
                                     { id: 'Active', label: 'Active', count: counts.active },
                                     { id: 'All', label: 'All', count: counts.all },
+                                    ...(counts.pendingDocs > 0 ? [
+                                        { id: 'Docs Awaiting Review', label: 'Docs Submitted', count: counts.pendingDocs, alert: true }
+                                    ] : []),
                                     { id: 'Suspended', label: 'Suspended', count: counts.suspended, alert: counts.suspended > 0 },
                                     ...(counts.pendingTermination > 0 ? [
                                         { id: 'Pending Termination', label: 'Separated', count: counts.pendingTermination, alert: true }
@@ -661,7 +691,22 @@ export default function EmployeesIndex() {
                                                 </div>
 
                                                 {/* Status indicator badge */}
-                                                <div className="shrink-0">
+                                                <div className="shrink-0 flex flex-col items-end gap-1">
+                                                    {(() => {
+                                                        const docInfo = docPendingCounts?.[employee.id];
+                                                        if (!docInfo || docInfo.total <= 0) return null;
+                                                        return (
+                                                            <Link
+                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
+                                                                title={`${docInfo.total} document(s) submitted awaiting HR review: ${docInfo.doc_titles?.join(', ') || ''}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <i className="ti ti-file-certificate text-xs text-amber-700" />
+                                                                <span>{docInfo.total} Doc Submitted</span>
+                                                            </Link>
+                                                        );
+                                                    })()}
                                                     {isTerminated ? (
                                                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-danger" />
@@ -878,7 +923,22 @@ export default function EmployeesIndex() {
                                                     </div>
                                                 </div>
 
-                                                <div className="shrink-0">
+                                                <div className="shrink-0 flex flex-col items-end gap-1">
+                                                    {(() => {
+                                                        const docInfo = docPendingCounts?.[employee.id];
+                                                        if (!docInfo || docInfo.total <= 0) return null;
+                                                        return (
+                                                            <Link
+                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
+                                                                title={`${docInfo.total} document(s) submitted awaiting HR review`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <i className="ti ti-file-certificate text-xs text-amber-700" />
+                                                                <span>{docInfo.total} Doc Submitted</span>
+                                                            </Link>
+                                                        );
+                                                    })()}
                                                     {isTerminated ? (
                                                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
                                                             {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
@@ -1034,19 +1094,36 @@ export default function EmployeesIndex() {
 
                                                     {/* Standing */}
                                                     <td className="px-4 py-3">
-                                                        {isTerminated ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-danger-subtle text-danger-ink text-[11px] font-semibold rounded-md border border-danger/20">
-                                                                <i className="ti ti-circle-x text-xs text-danger-ink" /> {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Terminated'}
-                                                            </span>
-                                                        ) : isSuspended ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-warning-subtle text-warning-ink text-[11px] font-semibold rounded-md border border-warning/20">
-                                                                <i className="ti ti-clock-pause text-xs text-warning-ink" /> Suspended
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-muted text-ink text-[11px] font-semibold rounded-md border border-line">
-                                                                Active
-                                                            </span>
-                                                        )}
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            {(() => {
+                                                                const docInfo = docPendingCounts?.[employee.id];
+                                                                if (!docInfo || docInfo.total <= 0) return null;
+                                                                return (
+                                                                    <Link
+                                                                        to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
+                                                                        title={`${docInfo.total} document(s) submitted awaiting HR review`}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <i className="ti ti-file-certificate text-xs text-amber-700" />
+                                                                        <span>{docInfo.total} Doc Submitted</span>
+                                                                    </Link>
+                                                                );
+                                                            })()}
+                                                            {isTerminated ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-danger-subtle text-danger-ink text-[11px] font-semibold rounded-md border border-danger/20">
+                                                                    <i className="ti ti-circle-x text-xs text-danger-ink" /> {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Terminated'}
+                                                                </span>
+                                                            ) : isSuspended ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-warning-subtle text-warning-ink text-[11px] font-semibold rounded-md border border-warning/20">
+                                                                    <i className="ti ti-clock-pause text-xs text-warning-ink" /> Suspended
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-muted text-ink text-[11px] font-semibold rounded-md border border-line">
+                                                                    Active
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
 
                                                     {/* Department & Craft */}
@@ -1357,6 +1434,7 @@ export default function EmployeesIndex() {
                     navigate('/admin/archive');
                 }}
                 email={currentUser?.email}
+                purpose="modal_stepup"
                 title="Archive Access Verification"
                 subtitle="Confirm your identity to access archived employee records."
                 description="Select a verification method to authenticate access to employee records."

@@ -16,6 +16,7 @@ import EmployeeAvatar from '../../components/EmployeeAvatar';
 import { fetchWithAuth } from '../../utils/api';
 import { supabase } from '../../supabaseClient';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../../utils/disciplinaryCache';
+import { isExoneratedOrCleared } from '../../utils/disciplinaryStanding';
 
 /**
  * Isolated LiveClock leaf component.
@@ -103,7 +104,39 @@ const MyQr = () => {
   useEffect(() => {
     const handleSync = (e) => {
       if (!user?.id || e.detail?.userId === user.id) {
-        setDisciplinaryState(getDisciplinaryCache(user?.id));
+        const cache = getDisciplinaryCache(user?.id);
+        setDisciplinaryState(cache);
+        if (e.detail?.isTerminated) {
+          setUser(prev => ({
+            ...prev,
+            status: 'inactive',
+            is_active: false,
+            is_suspended: false,
+            is_terminated: true,
+            operational_status: 'Terminated',
+            archived_at: e.detail?.archived_at || new Date().toISOString(),
+            separation_reason: e.detail?.reason || e.detail?.record?.reason || 'Account Separated'
+          }));
+        } else if (e.detail?.isSuspended) {
+          setUser(prev => ({
+            ...prev,
+            status: 'suspended',
+            is_active: false,
+            is_suspended: true,
+            is_terminated: false,
+            operational_status: 'Suspended'
+          }));
+        } else if (e.detail?.status === 'Active' && !e.detail?.isTerminated && !e.detail?.isSuspended) {
+          setUser(prev => ({
+            ...prev,
+            status: 'active',
+            is_active: true,
+            is_suspended: false,
+            is_terminated: false,
+            operational_status: 'Active',
+            archived_at: null
+          }));
+        }
       }
     };
     window.addEventListener('hris_disciplinary_sync', handleSync);
@@ -116,28 +149,35 @@ const MyQr = () => {
       const res = await fetchWithAuth(`/api/disciplinary?employee_id=${user.id}`);
       if (res.ok) {
         const logs = await res.json();
-        const activeTerm = (logs || []).find(l => l.type === 'Termination');
-        const activeSusp = (logs || []).find(l => l.type === 'Suspension' && l.status !== 'Resolved');
+        const isActiveSanction = l => !isExoneratedOrCleared(l) && !['resolved', 'overturned', 'dismissed', 'cleared', 'cancelled', 'closed'].includes(String(l.status || '').toLowerCase());
+        const activeTerm = (logs || []).find(l => l.type === 'Termination' && isActiveSanction(l));
+        const activeSusp = (logs || []).find(l => l.type === 'Suspension' && isActiveSanction(l));
 
         if (activeTerm) {
-          const statusObj = { type: 'Termination', record: activeTerm };
+          const statusObj = { type: 'Termination', record: activeTerm, isTerminated: true, isSuspended: false };
           setDisciplinaryCache(user.id, statusObj);
           setDisciplinaryState(getDisciplinaryCache(user.id));
         } else if (activeSusp) {
-          const statusObj = { type: 'Suspension', record: activeSusp };
+          const statusObj = { type: 'Suspension', record: activeSusp, isSuspended: true, isTerminated: false };
           setDisciplinaryCache(user.id, statusObj);
           setDisciplinaryState(getDisciplinaryCache(user.id));
         } else {
-          // If user status itself is terminated or inactive, preserve termination in cache!
           const userStatus = (user?.status || '').toLowerCase();
-          const userIsTerm = userStatus === 'terminated' || userStatus === 'inactive' || Boolean(user?.is_terminated) || user?.operational_status === 'Terminated' || Boolean(user?.archived_at);
-          if (userIsTerm) {
-            const statusObj = { type: 'Termination', record: { type: 'Termination', reason: user?.separation_reason || 'Account Separated' }, isTerminated: true };
+          const userIsSusp = userStatus === 'suspended' || Boolean(user?.is_suspended) || user?.operational_status === 'Suspended';
+          if (userIsSusp) {
+            const statusObj = { type: 'Suspension', record: { type: 'Suspension', reason: 'Operational Suspension' }, isSuspended: true, isTerminated: false };
             setDisciplinaryCache(user.id, statusObj);
             setDisciplinaryState(statusObj);
           } else {
-            clearDisciplinaryCache(user.id);
-            setDisciplinaryState(getDisciplinaryCache(user.id));
+            const userIsTerm = userStatus === 'terminated' || (userStatus === 'inactive' && Boolean(user?.separation_type)) || Boolean(user?.is_terminated) || user?.operational_status === 'Terminated';
+            if (userIsTerm) {
+              const statusObj = { type: 'Termination', record: { type: 'Termination', reason: user?.separation_reason || 'Account Separated' }, isTerminated: true, isSuspended: false };
+              setDisciplinaryCache(user.id, statusObj);
+              setDisciplinaryState(statusObj);
+            } else {
+              clearDisciplinaryCache(user.id);
+              setDisciplinaryState(getDisciplinaryCache(user.id));
+            }
           }
         }
       }
@@ -229,84 +269,83 @@ const MyQr = () => {
       })
       .subscribe();
 
-    const broadcastBus = supabase
-      .channel('disciplinary_realtime_sync')
-      .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, ({ payload }) => {
-        if (payload?.employee_id === user.id) {
-          if (payload.type === 'Suspension') {
-            const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-            setDisciplinaryCache(user.id, statusObj);
-            setDisciplinaryState(statusObj);
-            setUser(prev => ({
-              ...prev,
-              status: 'suspended',
-              is_active: false,
-              is_suspended: true,
-              is_terminated: false,
-              operational_status: 'Suspended'
-            }));
-            toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
-          } else if (payload.type === 'Termination') {
-            const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-            setDisciplinaryCache(user.id, statusObj);
-            setDisciplinaryState(statusObj);
-            setUser(prev => ({
-              ...prev,
-              status: 'inactive',
-              is_active: false,
-              is_suspended: false,
-              is_terminated: true,
-              operational_status: 'Terminated',
-              archived_at: payload.archived_at || new Date().toISOString(),
-              separation_reason: payload.reason
-            }));
-            toast.error('Pass Revoked: Your account has been separated / pending archive.');
-          }
-          checkDisciplinary();
-        }
-      })
-      .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
-          setDisciplinaryCache(user.id, statusObj);
-          setDisciplinaryState(statusObj);
-          setUser(prev => ({
-            ...prev,
+    const broadcastBus = supabase.channel('disciplinary_realtime_sync');
+    const empDashChannel = supabase.channel(`employee-live-dashboard-${user.id}`);
+    const discSyncChannel = supabase.channel(`dashboard-disciplinary-sync-${user.id}`);
+
+    const onDisciplinaryBroadcast = (event, payload) => {
+      if (payload && payload.employee_id !== user.id) return;
+
+      if (event === 'EMPLOYEE_TERMINATED' || (event === 'DISCIPLINARY_CREATED' && payload?.type === 'Termination')) {
+        const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
+        setDisciplinaryCache(user.id, statusObj);
+        setDisciplinaryState(statusObj);
+        setUser(prev => ({
+          ...prev,
+          status: 'inactive',
+          is_active: false,
+          is_suspended: false,
+          is_terminated: true,
+          operational_status: 'Terminated',
+          archived_at: payload?.archived_at || new Date().toISOString(),
+          separation_reason: payload?.reason || payload?.separation_reason
+        }));
+        try {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({
+            ...stored,
+            status: 'inactive',
+            is_active: false,
+            is_suspended: false,
+            is_terminated: true,
+            operational_status: 'Terminated',
+            archived_at: payload?.archived_at || new Date().toISOString(),
+            separation_reason: payload?.reason || payload?.separation_reason
+          }));
+        } catch (_) {}
+        toast.error('Pass Revoked: Your account has been separated / pending archive.', { id: 'qr-term-alert' });
+        checkDisciplinary();
+      } else if (event === 'EMPLOYEE_SUSPENDED' || (event === 'DISCIPLINARY_CREATED' && payload?.type === 'Suspension')) {
+        const statusObj = { type: 'Suspension', record: payload, isSuspended: true, isTerminated: false };
+        setDisciplinaryCache(user.id, statusObj);
+        setDisciplinaryState(statusObj);
+        setUser(prev => ({
+          ...prev,
+          status: 'suspended',
+          is_active: false,
+          is_suspended: true,
+          is_terminated: false,
+          operational_status: 'Suspended'
+        }));
+        try {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({
+            ...stored,
             status: 'suspended',
             is_active: false,
             is_suspended: true,
             is_terminated: false,
             operational_status: 'Suspended'
           }));
-          toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
-          checkDisciplinary();
-        }
-      })
-      .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          const statusObj = { type: 'Termination', record: payload, isSuspended: false, isTerminated: true };
-          setDisciplinaryCache(user.id, statusObj);
-          setDisciplinaryState(statusObj);
-          setUser(prev => ({
-            ...prev,
-            status: 'inactive',
-            is_active: false,
-            is_suspended: false,
-            is_terminated: true,
-            operational_status: 'Terminated',
-            archived_at: payload.archived_at || new Date().toISOString(),
-            separation_reason: payload.reason
-          }));
-          toast.error('Pass Revoked: Your account has been separated / pending archive.');
-          checkDisciplinary();
-        }
-      })
-      .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          clearDisciplinaryCache(user.id);
-          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-          setUser(prev => ({
-            ...prev,
+        } catch (_) {}
+        toast.error('Pass Suspended: Operational access temporarily on hold.', { id: 'qr-susp-alert' });
+        checkDisciplinary();
+      } else if (['DISCIPLINARY_OVERTURNED', 'DISCIPLINARY_RESOLVED', 'EMPLOYEE_RESTORED'].includes(event)) {
+        clearDisciplinaryCache(user.id);
+        setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
+        setUser(prev => ({
+          ...prev,
+          status: 'active',
+          is_active: true,
+          is_suspended: false,
+          is_terminated: false,
+          operational_status: 'Active',
+          archived_at: null
+        }));
+        try {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({
+            ...stored,
             status: 'active',
             is_active: true,
             is_suspended: false,
@@ -314,49 +353,37 @@ const MyQr = () => {
             operational_status: 'Active',
             archived_at: null
           }));
-          toast.success('Pass Restored: Disciplinary action overturned.', { id: 'qr-rest-alert' });
-          checkDisciplinary();
-        }
-      })
-      .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          clearDisciplinaryCache(user.id);
-          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-          setUser(prev => ({
-            ...prev,
-            status: 'active',
-            is_active: true,
-            is_suspended: false,
-            is_terminated: false,
-            operational_status: 'Active',
-            archived_at: null
-          }));
-          toast.success('Pass Restored: Disciplinary record resolved.', { id: 'qr-rest-alert' });
-          checkDisciplinary();
-        }
-      })
-      .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, ({ payload }) => {
-        if (!payload || payload.employee_id === user.id) {
-          clearDisciplinaryCache(user.id);
-          setDisciplinaryState({ isSuspended: false, isTerminated: false, record: null });
-          setUser(prev => ({
-            ...prev,
-            status: 'active',
-            is_active: true,
-            is_suspended: false,
-            is_terminated: false,
-            operational_status: 'Active',
-            archived_at: null
-          }));
-          toast.success('Pass Restored: Operational access active.', { id: 'qr-rest-alert' });
-          checkDisciplinary();
-        }
-      })
-      .subscribe();
+        } catch (_) {}
+        toast.success(event === 'EMPLOYEE_RESTORED' ? 'Pass Restored: Operational access active.' : 'Pass Restored: Disciplinary action resolved.', { id: 'qr-rest-alert' });
+        checkDisciplinary();
+      }
+    };
+
+    const disciplinaryEvents = [
+      'DISCIPLINARY_CREATED',
+      'DISCIPLINARY_STATUS_UPDATED',
+      'EMPLOYEE_SUSPENDED',
+      'EMPLOYEE_TERMINATED',
+      'DISCIPLINARY_OVERTURNED',
+      'DISCIPLINARY_RESOLVED',
+      'EMPLOYEE_RESTORED'
+    ];
+
+    for (const bus of [broadcastBus, empDashChannel, discSyncChannel, channel]) {
+      for (const event of disciplinaryEvents) {
+        bus.on('broadcast', { event }, ({ payload }) => onDisciplinaryBroadcast(event, payload));
+      }
+    }
+
+    broadcastBus.subscribe();
+    empDashChannel.subscribe();
+    discSyncChannel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(broadcastBus);
+      supabase.removeChannel(empDashChannel);
+      supabase.removeChannel(discSyncChannel);
     };
   }, [user?.id, checkDisciplinary, syncProfile]);
 

@@ -36,17 +36,17 @@ export function getDisciplinaryCache(userId) {
     if (rawUser) {
       const u = JSON.parse(rawUser);
       if (u) {
-        const isSusp = Boolean(
-          u.status === 'suspended' ||
-          u.is_suspended ||
-          u.operational_status === 'Suspended'
-        );
-        const isTerm = !isSusp && Boolean(
-          (u.archived_at && u.status !== 'active') ||
+        const isTerm = Boolean(
+          (u.archived_at && u.status !== 'active' && u.status !== 'suspended') ||
           u.status === 'terminated' ||
           u.is_terminated ||
           u.operational_status === 'Terminated' ||
           (u.status === 'inactive' && Boolean(u.separation_type))
+        );
+        const isSusp = !isTerm && Boolean(
+          u.status === 'suspended' ||
+          u.is_suspended ||
+          u.operational_status === 'Suspended'
         );
 
         if (isTerm || isSusp) {

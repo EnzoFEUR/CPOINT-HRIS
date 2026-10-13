@@ -136,6 +136,8 @@ export const NotificationBell = ({ user }) => {
       if (notif.type === 'disciplinary' || notif.type === 'warning') {
         targetPath = '/employee/dashboard?view=disciplinary';
         window.dispatchEvent(new CustomEvent('open_disciplinary_modal', { detail: notif }));
+      } else if (String(notif.type || '').startsWith('document_')) {
+        targetPath = '/employee/profile#documents';
       } else {
         targetPath = '/employee/dashboard';
       }

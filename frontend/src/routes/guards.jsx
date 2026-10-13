@@ -36,6 +36,31 @@ export const isAdmin = (user) => {
   );
 };
 
+export const isDisciplinaryExempt = (user) => {
+  if (!user) return false;
+  if (isAdmin(user) || isSecurity(user)) return true;
+
+  const r = getRole(user).replace(/[\s_-]/g, '');
+  const dept = (user?.department || '').toLowerCase();
+  const title = (user?.job_title || user?.position || '').toLowerCase();
+  const name = `${user?.first_name || ''} ${user?.last_name || ''}`.toLowerCase();
+
+  const isAdminRoleOrTitle =
+    ['admin', 'superadmin', 'hr', 'hrmanager'].includes(r) ||
+    r.includes('admin') || r.includes('hr') ||
+    dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
+    title.includes('admin') || title.includes('administrator') || title.includes('hr');
+
+  const isGuardRoleOrTitle =
+    ['security', 'guard', 'securityguard'].includes(r) ||
+    r.includes('guard') || r.includes('security') ||
+    dept.includes('security') ||
+    title.includes('guard') || title.includes('security') || title.includes('gate attendant') || title.includes('watchman') ||
+    name.includes('guard');
+
+  return Boolean(isAdminRoleOrTitle || isGuardRoleOrTitle);
+};
+
 export const getUser = () => {
   try {
     const raw = localStorage.getItem('user');

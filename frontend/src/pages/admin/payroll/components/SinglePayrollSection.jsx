@@ -309,7 +309,7 @@ const SinglePayrollSection = ({
 
             <button
                 type="submit"
-                disabled={isSubmitting || isCalculating || !formData.employee_id || isInvalidDateRange}
+                disabled={isSubmitting || isCalculating || !formData.employee_id || isInvalidDateRange || Boolean(attendanceBlock)}
                 className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
                 {!isSubmitting ? (

@@ -4,10 +4,9 @@ import { getSssMsc } from '../../shared/sssContribution.mjs';
 import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase } from '../../shared/statutoryTiming.mjs';
 import { computeFactoryHolidayPayAdow, FACTORY_ADOW_LOOKBACK_DAYS } from '../../shared/factoryHolidayPay.mjs';
 import { isLastCutoffOfDecember } from '../../shared/thirteenthMonth.mjs';
-import { isCreditUuid, isLeaveDate } from '../../shared/leaveCredits.mjs';
+import { isCreditUuid, isLeaveDate, assertCreditAttendanceConsistent, getCreditAttendanceConflicts } from '../../shared/leaveCredits.mjs';
 import { fetchPendingSilCash, cashPayForEmployee, fetchPayrollLeavePay, payrollLeaveSignature } from '../utils/payrollCalculations.js';
 import { refreshLeaveCredits, sendCreditError } from './leaves.js';
-import { assertCreditAttendanceConsistent } from '../../shared/leaveCredits.mjs';
 import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
@@ -1194,7 +1193,7 @@ router.post('/preview', async (req, res) => {
         ]);
         // Period-only view for display; the wider lookback set is used for holiday eligibility only.
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
-        assertCreditAttendanceConsistent(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
+        const creditAttendanceConflicts = getCreditAttendanceConflicts(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
         const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
         const restDays = getEmployeeRestDays(employee);
@@ -1243,6 +1242,19 @@ router.post('/preview', async (req, res) => {
         }
 
         const activeWorkPolicy = await getActiveWorkPolicy();
+        const baseEligibility = evaluateAttendanceEligibility({
+            attendanceLogs,
+            approvedPaidLeaveDays: paidLeaveInfo?.totalPaidLeaveDays,
+            periodStart: pStart,
+            periodEnd: pEnd,
+            exempt: isFactoryWorker,
+        });
+        const hasConflict = creditAttendanceConflicts.length > 0;
+        const isBlocked = baseEligibility.blocked || hasConflict;
+        const blockReason = hasConflict
+            ? `Approved credited leave conflicts with attendance punches on ${creditAttendanceConflicts.join(', ')}. Reconcile the leave or attendance before calculating payroll.`
+            : baseEligibility.reason;
+
         res.json({
             ...preview,
             tardiness: calculateTardiness(attendanceLogs, activeWorkPolicy, restDays),
@@ -1250,13 +1262,11 @@ router.post('/preview', async (req, res) => {
             approvedPaidLeaveDays: paidLeaveInfo.totalPaidLeaveDays,
             paidLeaveRecords: paidLeaveInfo.leaveRecords,
             attendanceCheck: {
-                ...evaluateAttendanceEligibility({
-                    attendanceLogs,
-                    approvedPaidLeaveDays: paidLeaveInfo?.totalPaidLeaveDays,
-                    periodStart: pStart,
-                    periodEnd: pEnd,
-                    exempt: isFactoryWorker,
-                }),
+                ...baseEligibility,
+                blocked: isBlocked,
+                conflict: hasConflict,
+                conflictDates: creditAttendanceConflicts,
+                reason: blockReason,
                 // Echoed so the screen can ignore a stale answer for a different employee/period.
                 employee_id,
                 period_start,
@@ -1270,7 +1280,7 @@ router.post('/preview', async (req, res) => {
         });
     } catch (err) {
         console.error('Payroll preview error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 400).json({ error: err.message });
     }
 });
 
@@ -1426,7 +1436,12 @@ router.post('/', requirePayrollManager, async (req, res) => {
         // (allHolidays / allAttendanceLogs / paidLeaveDates) is only used for holiday eligibility.
         const holidayList = (allHolidays || []).filter(h => h?.date && String(h.date).substring(0, 10) >= pStart);
         const attendanceLogs = (allAttendanceLogs || []).filter(l => getRecordDateKey(l) >= pStart);
-        assertCreditAttendanceConsistent(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
+        const creditAttendanceConflicts = getCreditAttendanceConflicts(lookbackLeaveInfo?.leaveRecords, allAttendanceLogs || []);
+        if (creditAttendanceConflicts.length > 0) {
+            return res.status(400).json({
+                error: `Approved credited leave conflicts with attendance punches on ${creditAttendanceConflicts.join(', ')}. Reconcile the leave or attendance before calculating payroll.`
+            });
+        }
         const paidLeaveDates = getPaidLeaveDates(lookbackLeaveInfo?.leaveRecords);
 
 
@@ -1885,7 +1900,14 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 skipped.push({ employee_id, reason: 'Leave payments changed. Refresh the preview before saving.' });
                 continue;
             }
-            assertCreditAttendanceConsistent(cash.leaves, attendanceByEmployee.get(String(employee_id)) || []);
+            const conflicts = getCreditAttendanceConflicts(cash.leaves, attendanceByEmployee.get(String(employee_id)) || []);
+            if (conflicts.length > 0) {
+                skipped.push({
+                    employee_id,
+                    reason: `Approved credited leave conflicts with attendance punches on ${conflicts.join(', ')}. Reconcile the leave or attendance before calculating payroll.`
+                });
+                continue;
+            }
             const holiday = computeFactoryHolidayPay({
                 employee: empMap.get(String(employee_id)),
                 ctx: batchFactoryCtx,

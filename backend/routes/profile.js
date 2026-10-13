@@ -4,10 +4,11 @@ import { verifyToken } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
 import { createAuditLog } from './auditLogs.js';
+import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 
 const router = express.Router();
 
-// Get profile, 201 documents, and disciplinary logs in a single parallel batch
+// Get profile, documents, and disciplinary logs in a single parallel batch
 router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
     try {
         const userId = req.user.id;
@@ -19,6 +20,28 @@ router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
 
         const rawEmployee = empRes.data || req.user;
         const documents = docsRes.data || [];
+        if (documents.length > 0) {
+            try {
+                const paths = documents
+                    .filter(d => d.file_path)
+                    .map(d => {
+                        let p = d.file_path;
+                        if (p.includes('/')) return p;
+                        return `${userId}/${p}`;
+                    })
+                    .filter(Boolean);
+                if (paths.length > 0) {
+                    const { data: signedList } = await supabase.storage.from('documents').createSignedUrls([...new Set(paths)], DOCUMENT_URL_TTL);
+                    if (Array.isArray(signedList)) {
+                        const signedMap = new Map(signedList.filter(s => s?.path && s?.signedUrl).map(s => [s.path, s.signedUrl]));
+                        for (const doc of documents) {
+                            let p = doc.file_path;
+                            doc.preview_url = signedMap.get(p) || signedMap.get(`${userId}/${p}`) || null;
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
         const disciplinary_logs = discRes.data || [];
 
         const termLog = (disciplinary_logs || []).find(d => {

@@ -443,7 +443,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         </div>
                                         <p className="text-[11px] text-warning-ink leading-relaxed font-normal">
                                             A separated personnel record for <strong>"{matchingArchivedEmployee.first_name} {matchingArchivedEmployee.last_name}"</strong> ({matchingArchivedEmployee.job_title || 'Former Employee'}) exists in the Archive Vault. 
-                                            The system will automatically allocate a <strong>distinct new Company ID</strong> and independent biometric facial baseline. No historical attendance, payroll, or 201 records will collide.
+                                            The system will automatically allocate a <strong>distinct new Company ID</strong> and independent biometric facial baseline. No historical attendance, payroll, or personnel records will collide.
                                         </p>
                                     </div>
                                 </div>

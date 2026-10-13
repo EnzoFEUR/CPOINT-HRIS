@@ -91,11 +91,21 @@ export default function ForcePasswordChange() {
             <div className="w-full max-w-[390px] relative z-10 bg-white border border-slate-200 p-6 sm:p-7 rounded-lg shadow-xl">
                 
                 <div className="text-center mb-5 sm:mb-6">
-                    <div className="h-10 w-10 bg-slate-900 rounded-md flex items-center justify-center mx-auto mb-2.5 shadow-2xs text-white">
-                        <i className="ti ti-shield-lock text-lg"></i>
+                    <div className="flex items-center justify-center mb-4">
+                        <picture>
+                            <source srcSet="/logo-dark.webp" type="image/webp" />
+                            <img 
+                                src="/logo-dark.png" 
+                                alt="C-Point HRIS" 
+                                width="200" 
+                                height="44" 
+                                decoding="async" 
+                                className="h-10 sm:h-11 w-auto max-w-[200px] object-contain select-none pointer-events-none" 
+                            />
+                        </picture>
                     </div>
                     <h2 className="text-lg font-bold text-slate-900 tracking-tight">Security Setup</h2>
-                    <p className="text-slate-500 mt-0.5 text-xs">Hello <span className="font-semibold text-slate-800">{user.name}</span>, you must secure your account before proceeding.</p>
+                    <p className="text-slate-500 mt-1 text-xs">Hello <span className="font-semibold text-slate-800">{user.name}</span>, you must secure your account before proceeding.</p>
                 </div>
 
                 {error && (

@@ -217,7 +217,7 @@ export default function ArchivedEmployeeProfile() {
     setDownloadingZip(true);
     setZipProgress({ done: 0, total: documents.length });
     const zip = new JSZip();
-    const folder = zip.folder(`201_File_${getCompanyId()}`);
+    const folder = zip.folder(`Employee_Documents_${getCompanyId()}`);
 
     try {
       let done = 0;
@@ -233,7 +233,7 @@ export default function ArchivedEmployeeProfile() {
       }
 
       const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `201_Archive_${getCompanyId()}_${employee.last_name}.zip`);
+      saveAs(content, `Employee_Documents_${getCompanyId()}_${employee.last_name}.zip`);
     } catch (err) {
       toast.error('Failed to generate ZIP archive: ' + err.message);
     } finally {
@@ -587,9 +587,9 @@ export default function ArchivedEmployeeProfile() {
 
         {activeTab === 'documents' && (
           <div className="space-y-3">
-            <h3 className="font-bold text-slate-900 text-xs border-b pb-2">Archived 201 File Documents</h3>
+            <h3 className="font-bold text-slate-900 text-xs border-b pb-2">Archived Documents</h3>
             {documents.length === 0 ? (
-              <EmptyState icon="ti-folder-open" title="No documents uploaded" hint="Files added to this employee's 201 folder before archiving will appear here." />
+              <EmptyState icon="ti-folder-open" title="No documents uploaded" hint="Files added to this employee's records before archiving will appear here." />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {documents.map((doc) => {

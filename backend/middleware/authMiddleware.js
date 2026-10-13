@@ -100,20 +100,41 @@ export const verifyToken = async (req, res, next) => {
         role_verified: hasVerifiedEmployeeRole(user, employee)
     };
 
-    // Enterprise Security: Revoke access immediately for separated or deactivated accounts
-    // (Suspended employees retain portal access to view disciplinary notices & status)
+    // Enterprise DOLE & BIR 2316 Retention Policy:
+    // Separated personnel retain read-only portal access to their personal archive (dashboard,
+    // disciplinary separation notices, tax records / BIR 2316, payroll history, official profile documents)
+    // and acknowledgment of formal notices.
+    // Operational credentials (attendance clock-in, leave filing, profile mutations) are strictly revoked.
     const isSuspended = resolvedUser.status === 'Suspended' || resolvedUser.status === 'suspended';
     const isTerminated = resolvedUser.status === 'Terminated' || resolvedUser.status === 'terminated';
     const isSeparated = resolvedRole !== 'admin' && resolvedRole !== 'superadmin' && !isSuspended && (
         isTerminated || 
         Boolean(resolvedUser.archived_at) || 
-        resolvedUser.is_active === false
+        resolvedUser.is_active === false ||
+        resolvedUser.status === 'inactive'
     );
 
     if (isSeparated) {
-        return res.status(403).json({ 
-            error: 'ACCESS REVOKED: Personnel account has been separated or deactivated. Contact HR.' 
-        });
+        req.isSeparated = true;
+        const urlPath = req.originalUrl || req.url || '';
+        const isAllowedArchiveRead = req.method === 'GET' && (
+            urlPath.includes('/api/dashboard') ||
+            urlPath.includes('/api/disciplinary') ||
+            urlPath.includes('/api/payroll') ||
+            urlPath.includes('/api/profile') ||
+            urlPath.includes('/api/notifications') ||
+            urlPath.includes('/api/documents') ||
+            urlPath.includes('/api/leave-credits')
+        );
+        const isAllowedNoticeAcknowledge = req.method === 'PUT' && (
+            urlPath.includes('/api/disciplinary') && urlPath.includes('/acknowledge')
+        );
+
+        if (!isAllowedArchiveRead && !isAllowedNoticeAcknowledge) {
+            return res.status(403).json({ 
+                error: 'ACCESS REVOKED: Personnel account has been separated. Operational write actions are disabled under DOLE retention policy.' 
+            });
+        }
     }
 
     authUserCache.set(token, resolvedUser);
