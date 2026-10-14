@@ -416,10 +416,6 @@ export default function EmployeesIndex() {
         return { all, active, suspended, pendingTermination, salaried, pieceRate, pendingDocs };
     }, [employees, docPendingCounts]);
 
-    const totalPendingReviewDocs = useMemo(() => {
-        return Object.values(docPendingCounts || {}).reduce((sum, item) => sum + (Number(item?.total) || 0), 0);
-    }, [docPendingCounts]);
-
     const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'Active');
     const totalItems = filteredEmployees.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
@@ -449,19 +445,6 @@ export default function EmployeesIndex() {
                 breadcrumbs={['Admin', 'Employees', 'Directory']}
                 actions={
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-                        <Link
-                            to="/admin/documents"
-                            className="h-9 flex-1 sm:flex-initial px-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-md font-medium text-sm transition-colors duration-100 flex items-center justify-center gap-1.5 border border-slate-200 shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
-                        >
-                            <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
-                            <span className="whitespace-nowrap">Document Vault</span>
-                            {totalPendingReviewDocs > 0 && (
-                                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-accent-subtle text-accent border border-accent/20 font-mono">
-                                    {totalPendingReviewDocs}
-                                </span>
-                            )}
-                        </Link>
-
                         <button
                             type="button"
                             onClick={handleArchiveAccessClick}

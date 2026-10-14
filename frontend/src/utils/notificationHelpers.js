@@ -58,7 +58,7 @@ export const getNotificationVisuals = (type) => {
         bg: 'bg-accent-subtle text-accent border-accent/20',
         badge: 'bg-accent',
         label: 'Document Review',
-        path: '/admin/documents'
+        path: '/admin/employees'
       };
     case 'document_submission_receipt':
       return {

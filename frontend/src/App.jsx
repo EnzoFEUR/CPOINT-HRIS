@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
@@ -57,6 +57,15 @@ const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 const Documents = lazy(() => import('./pages/admin/documents/Documents'));
+
+const DocumentRouteGate = () => {
+  const [params] = useSearchParams();
+  const employeeId = params.get('employee_id');
+  if (!employeeId) {
+    return <Navigate to="/admin/employees" replace />;
+  }
+  return <Documents />;
+};
 
 // Admin - Archive (Lazy loaded to keep initial bundle lean)
 const EmployeeArchive = lazy(() => import('./pages/admin/archive/EmployeeArchive'));
@@ -179,7 +188,7 @@ function App() {
           <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
           
           {/* Admin - Documents */}
-          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
+          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><DocumentRouteGate /></ProtectedRoute>} />
 
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />
