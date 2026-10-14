@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v2.9.0';
+const CACHE_VERSION = 'v3.0.2-client-update';
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
 
 // Pre-cached static assets
@@ -17,20 +17,24 @@ const APP_SHELL = [
   '/pwa-512x512.png',
   '/pwa-maskable.png',
   '/apple-touch-icon.png',
-  'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css'
 ];
 
 // Fallback timeout helper for network-first strategy
 const timeoutPromise = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), ms));
 
-// Install: Cache app shell and activate immediately
+// Install: Complete the offline shell before activation; existing tabs retain their worker.
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL).catch((err) => {
-        console.warn('[SW] Pre-caching asset issue:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(APP_SHELL.slice(0, 3));
+      await Promise.allSettled(APP_SHELL.slice(3).map(asset => cache.add(asset)));
+      const response = await fetch('/offline-assets.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Offline asset manifest is unavailable.');
+      const manifest = await response.clone().json();
+      if (manifest.schema_version !== 1 || !Array.isArray(manifest.assets) || !manifest.assets.some(asset => typeof asset === 'string' && asset.endsWith('.js')) || !manifest.assets.some(asset => typeof asset === 'string' && asset.endsWith('.css')) || manifest.assets.length > 500 || manifest.assets.some(asset => typeof asset !== 'string' || !asset.startsWith('/assets/') || asset.includes('..'))) throw new Error('Invalid offline asset manifest.');
+      await cache.addAll(manifest.assets);
+      // This marker is written only after every required dependency is cached.
+      await cache.put('/offline-assets.json', response);
     })
   );
 });
@@ -66,6 +70,7 @@ self.addEventListener('fetch', (event) => {
   // Bypass worker for dynamic APIs, Supabase, and external services
   if (
     request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
     !url.protocol.startsWith('http') ||
     url.pathname.startsWith('/api') ||
     url.hostname.includes('onrender.com') ||
@@ -84,14 +89,16 @@ self.addEventListener('fetch', (event) => {
             const clone = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
           }
+          if (!networkResponse || networkResponse.status >= 500) throw new Error('Application unavailable.');
           return networkResponse;
         }),
         timeoutPromise(1200)
       ]).catch(async () => {
+        if (!['/', '/scanner', '/attendance-terminal', '/attendance-terminal/'].includes(url.pathname)) return new Response('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline attendance</title></head><body><h1>This page requires a connection.</h1><p>Only provisioned attendance capture is available offline.</p><a href="/attendance-terminal">Open attendance terminal</a></body></html>', { status: 503, headers: { 'Content-Type': 'text/html' } });
         const cached = await caches.match('/index.html') || await caches.match('/');
         if (cached) return cached;
         return new Response(
-          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body style="background:#090d16;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><p>Reconnecting to C-Point HRIS...</p><script>setTimeout(()=>window.location.reload(), 2000);</script></body></html>',
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body><h1>Attendance terminal unavailable</h1><p>This device has not downloaded the offline application. Use the paper attendance procedure until connected.</p></body></html>',
           { headers: { 'Content-Type': 'text/html' } }
         );
       })
@@ -120,6 +127,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Other static assets: Stale-while-revalidate
+  if (!APP_SHELL.includes(url.pathname)) return;
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {
