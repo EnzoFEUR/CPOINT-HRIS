@@ -137,7 +137,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                     throw Object.assign(new Error(json.message || json.error?.message || 'Monthly attendance access denied.'), { status: res.status });
                 }
                 if (res.ok && (json.success || json.status === 'success') && json.data) {
-                    if (json.data.employee?.id !== activeEmpId || json.data.month !== selectedMonth) throw new Error('Monthly attendance response does not match the selected employee and month.');
+                    if (String(json.data.employee?.id).toLowerCase() !== String(activeEmpId).toLowerCase() || json.data.month !== selectedMonth) throw new Error('Monthly attendance response does not match the selected employee and month.');
                     return json.data;
                 }
             } catch (error) {
@@ -375,6 +375,11 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                         <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                             {isEmployeeView ? 'Work calendar' : 'Monthly Work Schedule & Attendance Audit'}
                         </h3>
+                        {!isEmployeeView && monthlyData?.employee?.shift && (
+                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                Shift: <span className="font-semibold text-slate-700">{monthlyData.employee.shift}</span> · Call Time: <span className="font-semibold text-slate-700">08:00 AM</span>
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -612,7 +617,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                     {/* Weekday Header */}
                     <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider py-2">
                         {WEEKDAYS.map((wd, idx) => (
-                            <div key={wd} className={monthlyData?.employee?.rest_days.includes((idx + 1) % 7) ? 'text-slate-400' : 'text-slate-600'}>
+                            <div key={wd} className={monthlyData?.employee?.rest_days?.includes((idx + 1) % 7) ? 'text-slate-400' : 'text-slate-600'}>
                                 <span className="sm:hidden">{wd[0]}</span>
                                 <span className="hidden sm:inline">{wd}</span>
                             </div>
@@ -973,42 +978,58 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                 </span>
                             </div>
 
-                            {(!isEmployeeView || !selectedDayDetail.leave || selectedDayDetail.time_in) && <>
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Call Time</span>
-                                    <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">08:00 AM</span>
-                                </div>
-                                <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Duration Rendered</span>
-                                    <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">
-                                        {selectedDayDetail.hours_worked ? `${selectedDayDetail.hours_worked} hrs` : '--'}
-                                    </span>
-                                </div>
-                            </div>
+                            {(!selectedDayDetail.leave || selectedDayDetail.time_in) ? (
+                                <>
+                                    <div className="grid grid-cols-2 gap-3 text-xs">
+                                        <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Call Time</span>
+                                            <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">08:00 AM</span>
+                                        </div>
+                                        <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Duration Rendered</span>
+                                            <span className="font-semibold text-slate-800 text-sm mt-0.5 block font-mono">
+                                                {selectedDayDetail.hours_worked ? `${selectedDayDetail.hours_worked} hrs` : '--'}
+                                            </span>
+                                        </div>
+                                    </div>
 
-                            <div className="p-3.5 bg-slate-50 rounded-md border border-slate-200 space-y-2 text-xs">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-slate-500 font-medium">Clock In:</span>
-                                    <span className="font-mono font-semibold text-slate-900">
-                                        {selectedDayDetail.time_in_formatted || <span className="text-slate-400 font-normal">Not Recorded</span>}
-                                    </span>
+                                    <div className="p-3.5 bg-slate-50 rounded-md border border-slate-200 space-y-2 text-xs">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-medium">Clock In:</span>
+                                            <span className="font-mono font-semibold text-slate-900">
+                                                {selectedDayDetail.time_in_formatted || <span className="text-slate-400 font-normal">Not Recorded</span>}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-medium">Clock Out:</span>
+                                            <span className="font-mono font-semibold text-slate-900">
+                                                {selectedDayDetail.time_out_formatted || <span className="text-slate-400 font-normal">Not Recorded</span>}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
+                                            <span className="text-slate-500 font-medium">Tardiness / Delay:</span>
+                                            <span className={`font-mono font-semibold ${selectedDayDetail.minutes_late > 0 ? 'text-warning-ink' : 'text-ink'}`}>
+                                                {selectedDayDetail.minutes_late > 0 ? `+${selectedDayDetail.minutes_late} minutes` : '0 mins (On Time)'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="p-3.5 bg-accent-subtle/30 rounded-md border border-accent/20 space-y-2 text-xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-slate-500 font-medium">Leave Classification:</span>
+                                        <span className="font-semibold text-accent">{selectedDayDetail.leave.type}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-slate-500 font-medium">Compensation Status:</span>
+                                        <span className="font-semibold text-slate-800">{selectedDayDetail.leave.is_paid ? 'With Pay (Authorized)' : 'Without Pay'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-slate-500 font-medium">Filing Schedule:</span>
+                                        <span className="font-mono font-semibold text-slate-700">{selectedDayDetail.date} (Full Day)</span>
+                                    </div>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-slate-500 font-medium">Clock Out:</span>
-                                    <span className="font-mono font-semibold text-slate-900">
-                                        {selectedDayDetail.time_out_formatted || <span className="text-slate-400 font-normal">Not Recorded</span>}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
-                                    <span className="text-slate-500 font-medium">Tardiness / Delay:</span>
-                                    <span className={`font-mono font-semibold ${selectedDayDetail.minutes_late > 0 ? 'text-warning-ink' : 'text-ink'}`}>
-                                        {selectedDayDetail.minutes_late > 0 ? `+${selectedDayDetail.minutes_late} minutes` : '0 mins (On Time)'}
-                                    </span>
-                                </div>
-                            </div>
-
-                            </>}
+                            )}
                             {selectedDayDetail.time_in_photo && (
                                 <div className="space-y-1.5">
                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">

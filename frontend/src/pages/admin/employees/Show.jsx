@@ -775,10 +775,10 @@ export default function Show() {
                                 ) : (
                                     <>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-accent/20 text-accent-on-dark text-xs font-semibold rounded border border-accent/30">
-                                            Regular (08:00 - 20:00 • OT Eligible)
+                                            {employee.shift || 'Regular (08:00 - 20:00 • OT Eligible)'}
                                         </span>
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-surface-muted text-ink text-xs font-semibold rounded border border-line">
-                                            Salaried Monthly
+                                            {employee.daily_rate ? 'Daily & Hourly Wage' : 'Salaried Monthly'}
                                         </span>
                                     </>
                                 )}
@@ -1123,7 +1123,7 @@ export default function Show() {
                                     <p className="font-mono font-semibold text-slate-800 text-xs">
                                         {isFactory
                                             ? `${employee?.production_groups?.name || prodGroup}${employee?.production_groups?.target_output_pairs ? ` · ${employee.production_groups.target_output_pairs} pairs/day quota` : ' (Shoe Craft)'}`
-                                            : '08:00 AM – 08:00 PM'}
+                                            : (employee.shift || '08:00 AM – 08:00 PM')}
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">

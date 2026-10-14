@@ -22,6 +22,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
     const { totalDays } = getAttendanceMonthRange(month);
     const restDays = getEmployeeRestDays(employee);
     const hireDate = String(employee.date_hired || employee.created_at || '').slice(0, 10);
+    const createdAtDate = String(employee.created_at || '').slice(0, 10);
     if (hireDate && !isLeaveDate(hireDate)) throw new Error('Invalid employee commencement date. HR must reconcile the schedule.');
     let medical = null;
     try {
@@ -62,10 +63,10 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         const isRestDay = restDays.includes(weekday);
         const holiday = holidayMap.get(date) || null;
         const nonWorkingHoliday = Boolean(holiday && holiday.type !== 'special_working');
-        const preHire = Boolean(hireDate && date < hireDate);
+        const log = attendanceMap.get(date);
+        const preHire = Boolean((hireDate && date < hireDate) || (createdAtDate && date < createdAtDate && !log?.time_in));
         const isWorkDay = !isRestDay && !nonWorkingHoliday && !preHire;
         const isFuture = date > today;
-        const log = attendanceMap.get(date);
         const rawLeave = isWorkDay ? approvedLeaves.find(leave => date >= leave.start_date && date <= leave.end_date && (!(leave.credit_pool || leave.requested_pay_type) || leave.credit_dates.includes(date))) : null;
         const leave = rawLeave ? {
             id: rawLeave.id, type: rawLeave.type || 'Leave',
@@ -77,7 +78,9 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         let reason = null;
         let minutesLate = 0;
         if (preHire) {
-            status = 'PRE_HIRE'; statusLabel = 'Not Yet Employed'; reason = 'Prior to employee commencement date';
+            status = 'PRE_HIRE';
+            statusLabel = 'Not Yet Employed';
+            reason = (hireDate && date < hireDate) ? 'Prior to employee commencement date' : 'Prior to system enrollment';
         } else if (log?.time_in) {
             minutesLate = getChargeableLateMinutes(log, workPolicy, restDays);
             status = minutesLate > 0 ? 'LATE' : 'PRESENT';
@@ -134,7 +137,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
             days_present: present.length, scheduled_days_present: scheduledPresent.length,
             days_on_time: present.filter(day => day.status === 'PRESENT').length, days_late: present.filter(day => day.status === 'LATE').length,
             total_late_minutes: present.reduce((total, day) => total + day.minutes_late, 0), days_absent: absent,
-            approved_leaves: days.filter(day => day.status === 'APPROVED_LEAVE').length,
+            approved_leaves: days.filter(day => ['APPROVED_LEAVE', 'FUTURE_LEAVE'].includes(day.status)).length,
             rest_days: days.filter(day => day.is_rest_day && !day.is_pre_hire).length,
             holidays: days.filter(day => day.holiday && day.holiday.type !== 'special_working' && !day.is_pre_hire).length,
             attendance_rate_pct: eligible ? Number((scheduledPresent.length / eligible * 100).toFixed(1)) : 100,
