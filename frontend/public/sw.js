@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3.0.3-clean-prod';
+const CACHE_VERSION = 'v3.0.4-live-gate';
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
 
 // Pre-cached static assets

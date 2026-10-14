@@ -5,10 +5,13 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
 import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
+import EmployeeModuleGate from './components/security/EmployeeModuleGate';
+import OfflineRouteGate, { isOfflineFeatureActive } from './routes/OfflineRouteGate.js';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
+const OfflineAttendanceTerminal = lazy(() => import('./components/OfflineAttendanceTerminal'));
 
 // Auth Pages - Login is eagerly loaded for instant initial render
 import Login from './pages/Login';
@@ -99,6 +102,7 @@ function App() {
         }}
       />
       <Routes>
+        <Route element={<OfflineRouteGate />}>
         {/* Public / Authentication Flow */}
         <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
         <Route path="/register" element={<PublicOnlyRoute><Suspense fallback={AuthFallback}><Register /></Suspense></PublicOnlyRoute>} />
@@ -111,6 +115,9 @@ function App() {
         <Route path="/biometric-setup" element={<BiometricSetupRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></BiometricSetupRoute>} />
 
         {/* Standalone Fullscreen Terminal Views */}
+        {isOfflineFeatureActive && (
+          <Route path="/attendance-terminal" element={<Suspense fallback={AuthFallback}><OfflineAttendanceTerminal alwaysShow /></Suspense>} />
+        )}
         <Route
           path="/scanner"
           element={
@@ -181,6 +188,7 @@ function App() {
           <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><MyProfile /></ProtectedRoute>} />
           <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
           <Route path="/profile" element={<MyProfile />} />
+        </Route>
         </Route>
       </Routes>
       <SpeedInsights />
