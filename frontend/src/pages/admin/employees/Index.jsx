@@ -449,19 +449,6 @@ export default function EmployeesIndex() {
                 breadcrumbs={['Admin', 'Employees', 'Directory']}
                 actions={
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-                        <Link
-                            to="/admin/documents"
-                            className="h-9 flex-1 sm:flex-initial px-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-md font-medium text-sm transition-colors duration-100 flex items-center justify-center gap-1.5 border border-slate-200 shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
-                        >
-                            <i className="ti ti-folders text-slate-500 text-sm shrink-0" />
-                            <span className="whitespace-nowrap">Document Vault</span>
-                            {totalPendingReviewDocs > 0 && (
-                                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-accent-subtle text-accent border border-accent/20 font-mono">
-                                    {totalPendingReviewDocs}
-                                </span>
-                            )}
-                        </Link>
-
                         <button
                             type="button"
                             onClick={handleArchiveAccessClick}
@@ -722,7 +709,7 @@ export default function EmployeesIndex() {
                                                         if (!docInfo || docInfo.total <= 0) return null;
                                                         return (
                                                             <Link
-                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                to={`/admin/employees/${employee.id}#documents`}
                                                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
                                                                 title={`${docInfo.total} document(s) submitted awaiting HR review: ${docInfo.doc_titles?.join(', ') || ''}`}
                                                                 onClick={(e) => e.stopPropagation()}
@@ -876,7 +863,7 @@ export default function EmployeesIndex() {
                                                     {
                                                         label: 'Documents',
                                                         icon: 'ti-folders',
-                                                        to: `/admin/documents?employee_id=${employee.id}`,
+                                                        to: `/admin/employees/${employee.id}#documents`,
                                                     },
                                                     ...(!isTerminated ? [
                                                         {
@@ -954,7 +941,7 @@ export default function EmployeesIndex() {
                                                         if (!docInfo || docInfo.total <= 0) return null;
                                                         return (
                                                             <Link
-                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                to={`/admin/employees/${employee.id}#documents`}
                                                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
                                                                 title={`${docInfo.total} document(s) submitted awaiting HR review`}
                                                                 onClick={(e) => e.stopPropagation()}
@@ -1026,7 +1013,7 @@ export default function EmployeesIndex() {
                                                         {
                                                             label: 'Documents',
                                                             icon: 'ti-folders',
-                                                            to: `/admin/documents?employee_id=${employee.id}`,
+                                                            to: `/admin/employees/${employee.id}#documents`,
                                                         },
                                                         ...(!isTerminated ? [
                                                             {
@@ -1125,7 +1112,7 @@ export default function EmployeesIndex() {
                                                                 if (!docInfo || docInfo.total <= 0) return null;
                                                                 return (
                                                                     <Link
-                                                                        to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                                                                        to={`/admin/employees/${employee.id}#documents`}
                                                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
                                                                         title={`${docInfo.total} document(s) submitted awaiting HR review`}
                                                                         onClick={(e) => e.stopPropagation()}
@@ -1233,7 +1220,7 @@ export default function EmployeesIndex() {
                                                                     {
                                                                         label: 'Documents',
                                                                         icon: 'ti-folders',
-                                                                        to: `/admin/documents?employee_id=${employee.id}`,
+                                                                        to: `/admin/employees/${employee.id}#documents`,
                                                                     },
                                                                     ...(!isTerminated ? [
                                                                         {
