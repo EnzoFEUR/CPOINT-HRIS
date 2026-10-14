@@ -5,7 +5,6 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
 import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
-import EmployeeModuleGate from './components/security/EmployeeModuleGate';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
 
