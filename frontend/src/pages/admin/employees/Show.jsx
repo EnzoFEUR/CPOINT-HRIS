@@ -13,10 +13,6 @@ import MonthlyWorkCalendar from '../../../components/attendance/MonthlyWorkCalen
 import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
-import RejectDocumentModal from '../documents/RejectDocumentModal';
-import DocumentPreviewModal from '../../../components/DocumentPreviewModal';
-import { openEmployeeDocument, reviewDocumentStatus } from '../../../utils/documentApi';
-import { formatDocumentSize } from '../../../utils/documentUtils';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
 
 const formatAuthorizer = (authorizer, role) => {
@@ -59,11 +55,6 @@ export default function Show() {
     const [isArchiving, setIsArchiving] = useState(false);
     const [isReinstateModalOpen, setIsReinstateModalOpen] = useState(false);
     const [isReinstating, setIsReinstating] = useState(false);
-
-    // Document inspection and management states
-    const [previewDoc, setPreviewDoc] = useState(null);
-    const [rejectingDoc, setRejectingDoc] = useState(null);
-    const [isReviewingDoc, setIsReviewingDoc] = useState(false);
 
     const handleReinstate = async () => {
         if (!employee) return;
@@ -360,56 +351,6 @@ export default function Show() {
         disciplinaryLogs
     }), [isTerminated, isSuspended, employeeStatus, operationalStatus, disciplinaryLogs]);
 
-    // Employee compliance and ID documents directly on profile
-    const employeeDocuments = useMemo(() => {
-        return Array.isArray(employeeData?.documents) ? employeeData.documents : [];
-    }, [employeeData?.documents]);
-
-    const handleApproveDoc = async (docId) => {
-        setIsReviewingDoc(true);
-        try {
-            await reviewDocumentStatus({ documentId: docId, status: 'approved' });
-            toast.success('Document approved successfully.');
-            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-            if (previewDoc?.id === docId) setPreviewDoc(null);
-        } catch (err) {
-            toast.error(err.message || 'Failed to approve document.');
-        } finally {
-            setIsReviewingDoc(false);
-        }
-    };
-
-    const handleRejectDocConfirm = async (reason) => {
-        if (!rejectingDoc) return;
-        setIsReviewingDoc(true);
-        try {
-            await reviewDocumentStatus({
-                documentId: rejectingDoc.id,
-                status: 'rejected',
-                rejectionReason: reason
-            });
-            toast.success('Document marked as rejected.');
-            queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
-            setRejectingDoc(null);
-            if (previewDoc?.id === rejectingDoc.id) setPreviewDoc(null);
-        } catch (err) {
-            toast.error(err.message || 'Failed to reject document.');
-        } finally {
-            setIsReviewingDoc(false);
-        }
-    };
-
-    // Auto-scroll to documents section if hash is #documents
-    useEffect(() => {
-        if (typeof window !== 'undefined' && window.location.hash === '#documents') {
-            const timer = setTimeout(() => {
-                const el = document.getElementById('employee-documents-section');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-    }, [employeeData]);
-
     // Parse Medical Exemption and Biometric Metadata
     const medicalExemption = useMemo(() => {
         if (!employee?.medical_record_url) return null;
@@ -684,23 +625,11 @@ export default function Show() {
                     </Link>
                     
                     <div className="flex items-center gap-1.5">
-                        {/* Documents Section Scroll Action */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const el = document.getElementById('employee-documents-section');
-                                if (el) el.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
-                        >
+                        {/* Secondary Actions */}
+                        <Link to={`/admin/documents?employee_id=${employee.id}`} className="h-8 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold text-xs rounded-md transition-colors duration-100 shadow-2xs border border-slate-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950">
                             <i className="ti ti-folders text-slate-500 text-sm" />
                             <span className="hidden sm:inline">Documents</span>
-                            {employeeDocuments.length > 0 && (
-                                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">
-                                    {employeeDocuments.length}
-                                </span>
-                            )}
-                        </button>
+                        </Link>
 
                         <button
                             type="button"
@@ -1030,16 +959,12 @@ export default function Show() {
                             >
                                 <i className="ti ti-rotate-clockwise text-sm" /> Reinstate Employee
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const el = document.getElementById('employee-documents-section');
-                                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-medium rounded-md border border-danger/20 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100 cursor-pointer"
+                            <Link
+                                to={`/admin/documents?employee_id=${employee.id}`}
+                                className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-medium rounded-md border border-danger/20 shadow-2xs flex items-center justify-center gap-1.5 transition-colors duration-100"
                             >
                                 <i className="ti ti-folders text-sm" /> Review Documents
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 )}
@@ -1604,181 +1529,6 @@ export default function Show() {
                     )}
                 </div>
 
-                {/* Employee Documents & Compliance Section */}
-                <div id="employee-documents-section" className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                        <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 bg-slate-100 text-slate-700 rounded-md flex items-center justify-center border border-slate-200">
-                                <i className="ti ti-folders text-lg" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
-                                    Employee Documents & Compliance Files
-                                </h3>
-                                <p className="text-xs text-slate-500 font-medium">
-                                    Personal ID submissions, contracts, certificates, and compliance forms
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            {employeeDocuments.length > 0 && (
-                                <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border bg-slate-50 text-slate-700 border-slate-200">
-                                    {employeeDocuments.length} File{employeeDocuments.length === 1 ? '' : 's'} on Record
-                                </span>
-                            )}
-
-                            <button
-                                type="button"
-                                onClick={() => setIsRequestDocModalOpen(true)}
-                                className="h-8 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-md transition-colors duration-100 shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                            >
-                                <i className="ti ti-file-plus text-sm" /> Request Document
-                            </button>
-                        </div>
-                    </div>
-
-                    {employeeDocuments.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center text-center py-8 px-4 bg-surface-muted rounded-md border border-dashed border-line">
-                            <div className="h-10 w-10 bg-white text-ink rounded-md flex items-center justify-center border border-line shadow-2xs mb-2">
-                                <i className="ti ti-folder-off text-2xl text-slate-400" />
-                            </div>
-                            <h4 className="text-sm font-semibold text-slate-900 mb-1">
-                                No Documents on File
-                            </h4>
-                            <p className="text-xs text-slate-500 font-medium max-w-md mb-3">
-                                No official documents, certificates, or compliance files have been uploaded for {employeeFullName} yet.
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setIsRequestDocModalOpen(true)}
-                                className="h-8 px-3 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-md shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                            >
-                                <i className="ti ti-file-plus text-sm" /> Request Document from Employee
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-slate-100 border border-slate-200 rounded-md overflow-hidden bg-white">
-                            {employeeDocuments.map((doc) => {
-                                const isPending = doc.status === 'pending';
-                                const isApproved = doc.status === 'approved';
-                                const isRejected = doc.status === 'rejected';
-
-                                return (
-                                    <div
-                                        key={doc.id}
-                                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
-                                    >
-                                        <div className="flex items-start gap-3 min-w-0">
-                                            <div className="w-9 h-9 rounded-md bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
-                                                <i className={`ti ${
-                                                    doc.category === 'Government ID' ? 'ti-id' :
-                                                    doc.category === 'Medical' ? 'ti-heart-rate-monitor' :
-                                                    doc.category === 'Contract' ? 'ti-file-certificate' :
-                                                    'ti-file-text'
-                                                } text-lg`} />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <h4 className="font-semibold text-slate-900 text-sm truncate">
-                                                        {doc.title || doc.document_type || doc.file_name || 'Document'}
-                                                    </h4>
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                                                        isApproved ? 'bg-success-subtle text-success-ink border-success/30' :
-                                                        isRejected ? 'bg-danger-subtle text-danger-ink border-danger/30' :
-                                                        'bg-amber-500/15 text-amber-900 border-amber-500/30'
-                                                    }`}>
-                                                        {isApproved ? 'Approved' : isRejected ? 'Rejected' : 'Pending Review'}
-                                                    </span>
-                                                    {doc.category && (
-                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                                                            {doc.category}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500 font-medium">
-                                                    {doc.file_name && (
-                                                        <span className="truncate max-w-[200px]" title={doc.file_name}>
-                                                            {doc.file_name}
-                                                        </span>
-                                                    )}
-                                                    {doc.file_size ? (
-                                                        <span>{formatDocumentSize(doc.file_size)}</span>
-                                                    ) : null}
-                                                    {doc.created_at && (
-                                                        <span>Uploaded {new Date(doc.created_at).toLocaleDateString()}</span>
-                                                    )}
-                                                    {doc.expiry_date && (
-                                                        <span className="text-amber-700 font-semibold">
-                                                            Expires: {doc.expiry_date}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {isRejected && doc.rejection_reason && (
-                                                    <p className="mt-1.5 text-xs text-danger-ink bg-danger-subtle/50 px-2.5 py-1 rounded border border-danger/20 leading-relaxed">
-                                                        <strong>Rejection remarks:</strong> {doc.rejection_reason}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                            {doc.preview_url && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPreviewDoc(doc)}
-                                                    className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                                                >
-                                                    <i className="ti ti-eye text-sm" /> Preview
-                                                </button>
-                                            )}
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (doc.preview_url) {
-                                                        window.open(doc.preview_url, '_blank', 'noopener,noreferrer');
-                                                    } else {
-                                                        openEmployeeDocument(doc.id).catch(err => toast.error(err.message || 'Cannot open document.'));
-                                                    }
-                                                }}
-                                                className="h-8 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-md border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                                                title="Open or download original file"
-                                            >
-                                                <i className="ti ti-external-link text-sm" /> Open
-                                            </button>
-
-                                            {isPending && (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        disabled={isReviewingDoc}
-                                                        onClick={() => handleApproveDoc(doc.id)}
-                                                        className="h-8 px-3 bg-success hover:bg-success-ink text-white text-xs font-semibold rounded-md shadow-2xs flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                                                    >
-                                                        <i className="ti ti-check text-sm" /> Approve
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        disabled={isReviewingDoc}
-                                                        onClick={() => setRejectingDoc(doc)}
-                                                        className="h-8 px-3 bg-white hover:bg-danger-subtle text-danger-ink text-xs font-semibold rounded-md border border-danger/20 shadow-2xs flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                                                    >
-                                                        <i className="ti ti-x text-sm" /> Reject
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
             </div>
 
             {/* Enterprise Removal & Archival Modal */}
@@ -2318,29 +2068,6 @@ export default function Show() {
                     toast.success('Document request dispatched to employee.');
                     queryClient.invalidateQueries({ queryKey: ['employeeDetails', id] });
                 }}
-            />
-
-            {/* Document Preview Modal */}
-            <DocumentPreviewModal
-                isOpen={Boolean(previewDoc)}
-                onClose={() => setPreviewDoc(null)}
-                document={previewDoc}
-                isAdmin={true}
-                onApprove={(docId) => handleApproveDoc(docId)}
-                onReject={() => {
-                    const d = previewDoc;
-                    setPreviewDoc(null);
-                    setRejectingDoc(d);
-                }}
-            />
-
-            {/* Document Rejection Modal */}
-            <RejectDocumentModal
-                isOpen={Boolean(rejectingDoc)}
-                onClose={() => setRejectingDoc(null)}
-                document={rejectingDoc}
-                onConfirm={handleRejectDocConfirm}
-                isSubmitting={isReviewingDoc}
             />
 
         </>

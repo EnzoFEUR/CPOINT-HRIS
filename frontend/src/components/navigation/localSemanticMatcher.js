@@ -329,23 +329,23 @@ const ADMIN_INTENTS = [
     ]
   },
   {
-    id: 'employee-documents',
-    title: 'Employee Documents',
-    route: '/admin/employees',
-    icon: 'ti-folders',
-    description: 'Review and manage employee documents directly inside employee profiles',
-    intent_title: 'Employee Documents',
-    ai_answer: 'Employee documents are located directly inside each employee profile. Open any employee record in the directory to review their documents.',
+    id: 'documents-index',
+    title: 'Documents & Forms',
+    route: '/admin/documents',
+    icon: 'ti-file-text',
+    description: 'Employee handbook, form templates, and legal contracts',
+    intent_title: 'Document Templates & Forms',
+    ai_answer: 'Access company document templates, onboarding contracts, compliance memos, and administrative forms.',
     keywords: [
       'document', 'documents', 'contract', 'contracts', 'template',
-      'forms', 'handbook', 'manual', 'memo template', 'vault', 'document vault'
+      'forms', 'handbook', 'manual', 'memo template'
     ],
     suggested_actions: [
       {
-        title: 'Employee Directory',
-        route: '/admin/employees',
-        icon: 'ti-users-group',
-        description: 'Employee directory'
+        title: 'Disciplinary Records',
+        route: '/admin/disciplinary',
+        icon: 'ti-alert-triangle',
+        description: 'Disciplinary records'
       }
     ]
   },
