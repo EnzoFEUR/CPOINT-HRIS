@@ -1013,14 +1013,11 @@ export default function Login() {
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between">
-                                            <p className="font-semibold text-xs text-slate-900">Instant Mock OTP</p>
+                                            <p className="font-semibold text-xs text-slate-900">Mock OTP</p>
                                             <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-sm border border-amber-200">
                                                 Test Mode
                                             </span>
                                         </div>
-                                        <p className="text-[11px] text-slate-500 truncate">
-                                            Instant 6-digit test code without waiting for email
-                                        </p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                                 </button>

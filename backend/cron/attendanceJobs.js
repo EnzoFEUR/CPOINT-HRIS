@@ -34,7 +34,9 @@ cron.schedule('0 0,12 * * *', async () => {
                     notes: 'System auto-reconciled: Unpunched clock-out after shift cutoff (>14h active window).',
                     updated_at: new Date().toISOString()
                 })
-                .in('id', idsToUpdate);
+                .in('id', idsToUpdate)
+                .is('time_out', null)
+                .lte('time_in', cutoffTime);
                 
             if (updateError) {
                 console.error('[CRON] Error updating abandoned punches:', updateError);

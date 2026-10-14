@@ -31,7 +31,13 @@ docs/
 *guide*.md
 
 # Supabase CLI temp files, migrations & local SQL scripts
-supabase/
+supabase/*
+!supabase/migrations/
+supabase/migrations/*
+!supabase/migrations/202610140001_offline_attendance.sql
+!supabase/tests/
+supabase/tests/*
+!supabase/tests/offline_attendance_receipts.sql
 .temp/
 
 # Local regression tests

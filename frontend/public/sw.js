@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3.0.4-live-gate';
+const CACHE_VERSION = 'v3.0.5-mime-guard';
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
 
 // Pre-cached static assets
@@ -99,33 +99,60 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Immutable hashed assets: Cache-first
+  // Immutable hashed assets: Cache-first with strict MIME guard
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((networkResponse) => {
+      caches.match(request).then(async (cached) => {
+        if (cached) {
+          const cachedType = cached.headers.get('content-type') || '';
+          // Purge corrupted HTML cached under JS/CSS URLs
+          if (cachedType.includes('text/html') && /\.(js|css|wasm)$/i.test(url.pathname)) {
+            console.warn('[SW] Purging corrupted HTML cache for asset:', url.pathname);
+            const cache = await caches.open(CACHE_NAME);
+            await cache.delete(request);
+          } else {
+            return cached;
+          }
+        }
+
+        try {
+          const networkResponse = await fetch(request);
           if (networkResponse && networkResponse.status === 200) {
+            const contentType = networkResponse.headers.get('content-type') || '';
+            // Reject HTML fallback for JS/CSS assets
+            if (contentType.includes('text/html') && /\.(js|css|wasm)$/i.test(url.pathname)) {
+              console.error('[SW] Received HTML for asset script:', url.pathname);
+              return new Response('Asset not found (MIME mismatch)', {
+                status: 404,
+                statusText: 'Not Found',
+                headers: { 'Content-Type': 'text/plain' }
+              });
+            }
             const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, clone);
           }
           return networkResponse;
-        }).catch((err) => {
+        } catch (err) {
           console.warn('[SW] Asset fetch error:', url.pathname, err);
-          return cached;
-        });
+          return new Response('Asset unavailable', { status: 408, statusText: 'Request Timeout' });
+        }
       })
     );
     return;
   }
 
-  // Other static assets: Stale-while-revalidate
+  // Other static assets: Stale-while-revalidate with MIME guard
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          const contentType = networkResponse.headers.get('content-type') || '';
+          const isCodeOrMedia = /\.(js|css|json|wasm|png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname);
+          if (!(isCodeOrMedia && contentType.includes('text/html'))) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
         }
         return networkResponse;
       }).catch(() => cachedResponse);

@@ -22,6 +22,20 @@ class RootErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('[RootErrorBoundary] Caught unhandled error:', error, errorInfo);
+    const msg = error?.message || '';
+    if (
+      msg.includes('dynamically imported module') ||
+      msg.includes('Expected a JavaScript-or-Wasm module script') ||
+      msg.includes('Failed to load module script') ||
+      msg.includes('Failed to fetch')
+    ) {
+      const lastReload = sessionStorage.getItem('chunk_reload_ts');
+      const now = Date.now();
+      if (!lastReload || now - Number(lastReload) > 10000) {
+        sessionStorage.setItem('chunk_reload_ts', String(now));
+        window.location.reload();
+      }
+    }
   }
 
   handleGoToLogin = () => {
@@ -196,6 +210,17 @@ window.fetch = async (...args) => {
     }
     return originalFetch(resource, config);
 };
+
+// Auto-recover from Vite stale chunk loading failures across new deployments
+window.addEventListener('vite:preloadError', (event) => {
+  console.warn('[Vite] Preload error detected for chunk. Reloading application...', event);
+  const lastReload = sessionStorage.getItem('chunk_reload_ts');
+  const now = Date.now();
+  if (!lastReload || now - Number(lastReload) > 10000) {
+    sessionStorage.setItem('chunk_reload_ts', String(now));
+    window.location.reload();
+  }
+});
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
