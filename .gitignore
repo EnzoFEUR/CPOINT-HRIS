@@ -47,13 +47,3 @@ supabase/tests/*
 /backend/tests/
 *.test.mjs
 
-# Offline attendance feature (local development only)
-backend/routes/attendanceOffline.js
-backend/services/offlineAttendance.js
-shared/offlineAttendance.mjs
-frontend/offlineAssets.js
-frontend/src/components/OfflineAttendanceReview.jsx
-frontend/src/components/OfflineAttendanceTerminal.jsx
-frontend/src/pages/admin/attendance/Offline*
-frontend/src/utils/offline*
-
