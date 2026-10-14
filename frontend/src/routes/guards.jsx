@@ -1,5 +1,6 @@
 import React, { lazy } from 'react';
 import { Navigate } from 'react-router-dom';
+import { getStoredUser } from '../utils/storedUser.mjs';
 
 const Dashboard = lazy(() => import('../pages/Dashboard'));
 
@@ -59,14 +60,7 @@ export const isDisciplinaryExempt = (user) => {
   return Boolean(isAdminRoleOrTitle || isGuardRoleOrTitle);
 };
 
-export const getUser = () => {
-  try {
-    const raw = localStorage.getItem('user');
-    return (raw && raw !== 'undefined') ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
+export const getUser = getStoredUser;
 
 export const getPageTitle = (pathname) => {
   if (pathname === '/') return 'Dashboard';

@@ -7,6 +7,24 @@ const BASE = '/api/attendance-offline';
 const owner = globalThis.crypto?.randomUUID?.() || `terminal-${Date.now()}`;
 let running;
 
+async function pendingResult(status, count = 0) {
+  const pending = (await listOfflineEvents()).filter(item => ['pending', 'syncing'].includes(item.status));
+  return { status, count, pending: pending.length, retry_at: pending.length ? Math.min(...pending.map(item => item.retry_at || 0)) : null, error: pending.find(item => item.last_error)?.last_error, diagnostic: pending.find(item => item.last_diagnostic)?.last_diagnostic };
+}
+
+export function offlineSyncMessage(result) {
+  if (result.status === 'busy') return 'Another tab is synchronizing. Captures remain saved on this device.';
+  if (result.status === 'failed') return `No captures were uploaded. ${result.pending} remain pending; review the error below.`;
+  if (result.count) return `${result.count} captures received for HR review. ${result.pending} still pending.`;
+  if (result.pending) return `${result.pending} captures remain pending. ${result.retry_at ? `Automatic retry after ${new Date(result.retry_at).toLocaleTimeString()}.` : 'Waiting to retry.'}`;
+  return 'No pending captures to upload.';
+}
+
+export function offlineDiagnosticText(diagnostic) {
+  const fields = { Step: diagnostic?.stage, Code: diagnostic?.database_code, Reason: diagnostic?.reason_code, Constraint: diagnostic?.constraint, Reference: diagnostic?.request_id };
+  return Object.entries(fields).filter(([, value]) => typeof value === 'string' && value).map(([label, value]) => `${label}: ${value}`).join(' · ') || 'Details not available yet. Retry after the displayed time.';
+}
+
 export async function offlineApi(path, options = {}) {
   const connectionSignal = attendanceConnectionSignal();
   const response = await fetchWithAuth(`${BASE}${path}`, { ...options, signal: AbortSignal.any([connectionSignal, options.signal || AbortSignal.timeout(30000)]) });
@@ -49,7 +67,7 @@ export function syncOfflineAttendance({ manual = false } = {}) {
     if (!session?.access_token) throw new Error('Sign in online to synchronize this terminal. Pending captures remain safely stored.');
     // Authenticated roster request proves reachability and current terminal approval.
     const retry = await readMeta('sync_retry');
-    if (!manual && (retry?.held || retry?.retry_at > Date.now())) return { count: 0 };
+    if (!manual && (retry?.held || retry?.retry_at > Date.now())) return pendingResult('waiting');
     const enrollment = await readMeta('enrollment');
     if (!enrollment) throw new Error('This terminal has not been enrolled.');
     try {
@@ -73,16 +91,25 @@ export function syncOfflineAttendance({ manual = false } = {}) {
       await writeMeta('receipt_cursor', (cursor + awaitingReview.length) % reviewEvents.length);
     }
     const batch = await claimSync(owner);
-    if (!batch?.length) { if (batch) await finishSync(owner, batch); return { count: 0 }; }
+    if (!batch?.length) {
+      if (batch) await finishSync(owner, batch);
+      const result = await pendingResult(batch === null ? 'busy' : 'waiting');
+      if (!result.pending && batch !== null) result.status = 'empty';
+      return result;
+    }
     try {
       const response = await offlineApi('/sync', { method: 'POST', body: JSON.stringify({ device_id: enrollment.device.id, events: batch.map(({ payload, signature }) => ({ payload, signature })) }) });
       if (!Array.isArray(response.results)) throw new Error('Server did not acknowledge the uploaded events.');
       validateReceiptIds(response.results, batch.map(item => item.payload.event_id));
       await finishSync(owner, batch, response.results);
-      await writeMeta('last_sync', new Date().toISOString());
-      return { count: batch.filter(item => nextSyncRecord(item, response.results).server_received === true).length };
+      const outcomes = batch.map(item => nextSyncRecord(item, response.results));
+      const count = outcomes.filter(item => item.server_received === true).length;
+      if (count) await writeMeta('last_successful_upload', new Date().toISOString());
+      const result = await pendingResult(count ? 'received' : 'failed', count);
+      result.error ||= outcomes.find(item => item.server_received === false)?.reason_code;
+      return result;
     } catch (error) {
-      await finishSync(owner, batch);
+      await finishSync(owner, batch, [], error.message);
       throw error;
     }
   })().finally(() => { running = null; });

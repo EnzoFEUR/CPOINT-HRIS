@@ -24,6 +24,7 @@ import totpRoutes from './routes/totp.js';
 import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
+import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
 import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
@@ -67,6 +68,7 @@ app.use(securityHeaders);
 app.use(removeExposedHeaders);
 
 // Mount Authenticated Routes
+await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);

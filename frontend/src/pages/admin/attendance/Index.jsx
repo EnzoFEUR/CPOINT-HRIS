@@ -6,8 +6,6 @@ import { fetchWithAuth } from '../../../utils/api';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
-import OfflineAttendanceReview from '../../../components/OfflineAttendanceReview';
-import { isOfflineFeatureActive } from '../../../routes/OfflineRouteGate.js';
 
 const SESSION_CACHE_KEY = 'cpoint_admin_daily_attendance_logs_v2';
 
@@ -245,7 +243,6 @@ const Index = () => {
     return (
         <div className="max-w-7xl mx-auto pb-24 lg:pb-8 px-4 sm:px-6 lg:px-8 font-sans">
             <PageHeader breadcrumbs={['Admin', 'Attendance', 'Daily Logs']} />
-            {isOfflineFeatureActive && <OfflineAttendanceReview />}
 
             <div className="space-y-4 sm:space-y-6">
                 {/* Main Attendance List */}

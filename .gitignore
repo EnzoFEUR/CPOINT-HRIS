@@ -35,13 +35,17 @@ supabase/*
 !supabase/migrations/
 supabase/migrations/*
 !supabase/migrations/202610140001_offline_attendance.sql
+!supabase/migrations/202610140003_offline_attendance_approval.sql
 !supabase/tests/
 supabase/tests/*
 !supabase/tests/offline_attendance_receipts.sql
+!supabase/tests/offline_attendance_approval.sql
 .temp/
+*.sql
 
 # Local regression tests
 /backend/tests/
+*.test.mjs
 
 # Offline attendance feature (local development only)
 backend/routes/attendanceOffline.js
@@ -50,5 +54,6 @@ shared/offlineAttendance.mjs
 frontend/offlineAssets.js
 frontend/src/components/OfflineAttendanceReview.jsx
 frontend/src/components/OfflineAttendanceTerminal.jsx
+frontend/src/pages/admin/attendance/Offline*
 frontend/src/utils/offline*
 

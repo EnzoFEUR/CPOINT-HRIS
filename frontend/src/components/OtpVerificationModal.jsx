@@ -426,11 +426,6 @@ export default function OtpVerificationModal({
                             <div className="p-3 bg-accent-subtle/80 border border-accent/20 rounded-md text-left shadow-2xs">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
-                                        </span>
-                                        <span>Code active via Email</span>
                                     </span>
                                     <span className="text-[11px] font-mono font-bold text-accent bg-accent-subtle/80 px-2 py-0.5 rounded">
                                         {Math.floor(expiryTimer / 60)}:{String(expiryTimer % 60).padStart(2, '0')}

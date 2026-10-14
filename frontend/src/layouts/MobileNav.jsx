@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
+import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
 
 export const MobileNav = ({
   user,
@@ -266,6 +267,22 @@ export const MobileNav = ({
                       <p className="text-[9px] text-slate-400 truncate">Workforce roster</p>
                     </div>
                   </Link>
+
+                  {isOfflineFeatureActive && (
+                    <Link
+                      to="/admin/attendance/offline"
+                      onClick={() => setSidebarOpen(false)}
+                      className="p-3 bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-800 flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-md bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                        <i className="ti ti-device-watch text-lg" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">Offline Captures</p>
+                        <p className="text-[9px] text-slate-400 truncate">Provisional kiosk punches</p>
+                      </div>
+                    </Link>
+                  )}
 
                   <Link
                     to="/admin/leaves?tab=cashouts"

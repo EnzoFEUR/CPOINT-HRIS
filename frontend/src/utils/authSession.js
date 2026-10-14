@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getUser, isAdmin, isSecurity } from '../routes/guards';
+import { USER_CHANGED } from './storedUser.mjs';
 
 const AUTH_SYNC_KEY = 'cpoint_auth_sync_event';
 
@@ -60,6 +61,7 @@ export const performLogout = async (redirectUrl = '/login') => {
  * to all open tabs and windows in real time.
  */
 export const broadcastAuthChange = (user) => {
+  window.dispatchEvent(new Event(USER_CHANGED));
   try {
     localStorage.setItem(
       AUTH_SYNC_KEY,

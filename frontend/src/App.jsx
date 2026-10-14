@@ -37,6 +37,7 @@ const Scanner = lazy(() => import('./pages/Scanner'));
 // Admin - Attendance
 const AttendanceIndex = lazy(() => import('./pages/admin/attendance/Index'));
 const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'));
+const OfflineCaptures = lazy(() => import('./pages/admin/attendance/OfflineCaptures'));
 
 // Admin - Employees
 const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
@@ -174,6 +175,9 @@ function App() {
           {/* Admin - Attendance */}
           <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
           <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
+          {isOfflineFeatureActive && (
+            <Route path="/admin/attendance/offline" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><OfflineCaptures /></ProtectedRoute>} />
+          )}
 
           {/* Admin - Payroll Ledger & Processing */}
           <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />

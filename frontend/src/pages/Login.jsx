@@ -902,10 +902,6 @@ export default function Login() {
                                 <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-md text-left shadow-2xs">
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs font-semibold text-slate-900 flex items-center gap-2">
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-700"></span>
-                                            </span>
                                             <span>Code active via Email</span>
                                         </span>
                                         <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm">

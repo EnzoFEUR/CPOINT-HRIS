@@ -28,6 +28,7 @@ import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
 import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
+import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
 
 const router = express.Router();
 const WORK_POLICY = getWorkPolicy(process.env);
@@ -190,6 +191,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
             PAYROLL_ALREADY_EXISTS: 'A payslip already exists for this employee and period.',
             SIL_PAYOUT_CHANGED: 'Cash-out payments changed. Refresh the preview before saving.',
             PAYROLL_LEAVE_CHANGED: 'Approved leave changed. Refresh the preview before saving.',
+            PAYROLL_ATTENDANCE_CHANGED: 'Attendance changed during calculation. Refresh and calculate payroll again.',
             FORBIDDEN: 'Manager or HR permissions are required to post payroll.',
             INVALID_CREDIT_COMMAND: 'Invalid payroll calculation or period range for SIL cash-out posting.'
         };
@@ -202,6 +204,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
     for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
         const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
         if (!error) return { data, error: null };
+        if (error.message === 'PAYROLL_ATTENDANCE_CHANGED') return { data: null, error: { ...error, status: 409, message: 'Attendance changed during calculation. Refresh and calculate payroll again.' } };
         const missing = OPTIONAL_PAYROLL_COLUMNS.find((col) => col in row && error.message?.includes(col));
         if (!missing) return { data: null, error };
         // Older schemas still retain the full earnings total until breakdown columns are installed.
@@ -1364,6 +1367,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
             return res.status(400).json({ error: 'Employee not found.' });
         }
 
+        const offlineVersions = await getOfflinePayrollVersions(supabase, [employee_id]);
+
         const { data: terminationLog } = await supabase
             .from('disciplinary_logs')
             .select('id, date, reason')
@@ -1743,6 +1748,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             status: 'Paid'
         };
 
+        if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
         const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, pay_frequency);
 
         if (insertError) throw insertError;
@@ -1835,6 +1841,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
         }
 
         const empIds = entries.map(e => e.employee_id).filter(Boolean);
+        const offlineVersions = await getOfflinePayrollVersions(supabase, empIds);
 
         // Optimized single-roundtrip prefetch for existing payrolls and employee metadata
         const [{ data: existingRecords, error: existingError }, { data: empList, error: employeeError }, attendanceLogs] = await Promise.all([
@@ -1999,6 +2006,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 status: 'Paid'
             };
 
+            if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
             const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, frequency);
 
             if (insertError) {

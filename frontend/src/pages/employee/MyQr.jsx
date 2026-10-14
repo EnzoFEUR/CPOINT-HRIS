@@ -596,8 +596,6 @@ const MyQr = () => {
 
             <div className="mt-4 pt-4 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-400 font-medium px-2">
               <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-warning animate-ping" />
-                <span>Live sync</span>
               </span>
               <span className="font-mono text-slate-500">Unlocks instantly</span>
             </div>
