@@ -9,7 +9,6 @@ import { supabase } from './supabaseClient.js';
 // Route Imports
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
-import attendanceOfflineRoutes from './routes/attendanceOffline.js';
 import payrollRoutes from './routes/payroll.js';
 import leaveRoutes, { createLeaveCreditsRouter } from './routes/leaves.js';
 import dashboardRoutes from './routes/dashboard.js';
@@ -71,7 +70,6 @@ app.use(removeExposedHeaders);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
-app.use('/api/attendance-offline', verifyToken, attendanceOfflineRoutes);
 app.use('/api/payroll', verifyToken, checkVerifiedManagerOrOwnership, payrollRoutes);
 app.use('/api/leaves', verifyToken, leaveRoutes);
 app.use('/api/leave-credits', verifyToken, createLeaveCreditsRouter());
