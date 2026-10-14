@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { offlineAssetManifest } from './offlineAssets.js';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), ...(mode === 'development' ? [offlineAssetManifest()] : [])],
   server: {
     proxy: {
       '/api': {

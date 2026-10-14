@@ -19,7 +19,8 @@ import {
   EyeOff,
   AlertCircle,
   ShieldAlert,
-  Send
+  Send,
+  Sparkles
 } from 'lucide-react';
 // Enterprise Anti-Brute-Force & Rate-Limiting Protection
 const MAX_FAILED_ATTEMPTS = 5;
@@ -379,72 +380,19 @@ export default function Login() {
 
                 setEmployeeData(empWithMeta);
 
-                if (userHasTotp) {
-                    setOtpMethod('totp');
-                    setStep(3);
-                    setLoading(false);
-                    try {
-                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
-                            email: sanitizedEmail,
-                            employeeData: empWithMeta,
-                            step: 3,
-                            otpMethod: 'totp',
-                            generatedOtp: null,
-                            expiresAt: null
-                        }));
-                    } catch {}
-                    return;
-                }
-
-                // Standard Email 2FA: Dispatch verification code immediately in real time (<200ms)
-                setOtpMethod('email');
-                setStep(3);
-
+                // Direct user to Step 2 so they choose whether to send via Email, use Mock OTP, or Authenticator
+                setLoading(false);
+                setStep(2);
                 try {
-                    const res = await fetchWithAuth('/api/auth/otp/send', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            email: sanitizedEmail,
-                            user_id: employee.id,
-                            method: 'email',
-                            purpose: 'login_2fa'
-                        })
-                    });
-
-                    const data = await res.json();
-                    if (!res.ok || !data.success) {
-                        if (data.retry_after) {
-                            startCooldown(data.retry_after);
-                        }
-                        throw new Error(data.error || 'Failed to dispatch verification code');
-                    }
-
-                    startCooldown(data.cooldown || 60);
-                    setGeneratedOtp(null);
-                    setOtpCode(['', '', '', '', '', '']);
-
-                    const activeSeconds = data.expiresIn || 300;
-                    const codeExpiresAt = Date.now() + activeSeconds * 1000;
-                    setExpiresAt(codeExpiresAt);
-                    setTimer(activeSeconds);
-
-                    toast.success(`Verification code sent to ${sanitizedEmail}`);
-
-                    try {
-                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
-                            email: sanitizedEmail,
-                            employeeData: empWithMeta,
-                            step: 3,
-                            otpMethod: 'email',
-                            expiresAt: codeExpiresAt
-                        }));
-                    } catch {}
-                } catch (dispatchErr) {
-                    setError(dispatchErr.message || 'Failed to dispatch verification code');
-                    toast.error(dispatchErr.message || 'Failed to dispatch verification code');
-                } finally {
-                    setLoading(false);
-                }
+                    sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                        email: sanitizedEmail,
+                        employeeData: empWithMeta,
+                        step: 2,
+                        otpMethod: null,
+                        expiresAt: hasExistingValidOtp ? existingExpiresAt : null
+                    }));
+                } catch {}
+                return;
             }
         } catch (err) {
             setLoading(false);
@@ -1048,6 +996,30 @@ export default function Login() {
                                         </div>
                                         <p className="text-[11px] text-slate-500 truncate">
                                             {otpMethod === 'email' && timer > 0 ? `Code active for ${email}` : `Send code to ${email}`}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => sendOtp('email', false, true)}
+                                    disabled={loading}
+                                    style={{ pointerEvents: loading ? 'none' : 'auto' }}
+                                    className="w-full p-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 rounded-md transition-colors flex items-center text-left gap-2.5 cursor-pointer shadow-2xs disabled:opacity-50"
+                                >
+                                    <div className="h-8 w-8 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0">
+                                        <Sparkles className="w-4 h-4 text-amber-600" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-xs text-slate-900">Instant Mock OTP</p>
+                                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-sm border border-amber-200">
+                                                Test Mode
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 truncate">
+                                            Instant 6-digit test code without waiting for email
                                         </p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />

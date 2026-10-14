@@ -32,6 +32,7 @@ import { supabase } from '../supabaseClient';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
+import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
 
 // Scanner configuration
 const ENV = {
@@ -1239,6 +1240,9 @@ const Scanner = () => {
   // RENDER
   return (
     <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
+      {isOfflineFeatureActive && (
+        <a href="/attendance-terminal" className="absolute top-3 right-3 z-[100] rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink">Offline attendance terminal</a>
+      )}
 
       {/* Debug corner trigger */}
       <div
