@@ -10,4 +10,14 @@ dotenv.config();
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://lzqshktnrvtlattdiwxf.supabase.co').replace(/\/$/, '');
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 
+// Validate token privilege role
+try {
+  if (supabaseKey && supabaseKey.includes('.')) {
+    const payload = JSON.parse(Buffer.from(supabaseKey.split('.')[1], 'base64').toString('utf8'));
+    if (payload.role === 'anon') {
+      console.error('[CRITICAL] Backend Supabase client is initialized with an "anon" public key instead of "service_role"! Row Level Security (RLS) is blocking attendance queries and cron writes (Error 42501). Please set SUPABASE_SERVICE_ROLE_KEY in your Render dashboard environment variables.');
+    }
+  }
+} catch (_) {}
+
 export const supabase = createClient(supabaseUrl, supabaseKey);
