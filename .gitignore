@@ -34,18 +34,13 @@ docs/
 supabase/*
 !supabase/migrations/
 supabase/migrations/*
-!supabase/migrations/202610140001_offline_attendance.sql
-!supabase/migrations/202610140003_offline_attendance_approval.sql
 !supabase/tests/
 supabase/tests/*
 !supabase/tests/offline_attendance_receipts.sql
 !supabase/tests/offline_attendance_approval.sql
 .temp/
 *.sql
-!supabase/migrations/202610140001_offline_attendance.sql
-!supabase/migrations/202610140003_offline_attendance_approval.sql
 !supabase/migrations/202610140004_offline_attendance_paired_review.sql
-!supabase/migrations/202610160001_timekeeping_effective_date.sql
 
 # Local regression tests
 /backend/tests/
