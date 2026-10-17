@@ -40,7 +40,6 @@ supabase/tests/*
 !supabase/tests/offline_attendance_approval.sql
 .temp/
 *.sql
-!supabase/migrations/202610140004_offline_attendance_paired_review.sql
 
 # Local regression tests
 /backend/tests/
