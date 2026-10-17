@@ -70,7 +70,7 @@ async function resolveAuthUser(identifier) {
 router.get('/status', async (req, res) => {
     try {
         let user = null;
-        const identifier = req.query.identifier || req.query.email || req.headers['x-user-id'];
+        const identifier = req.query.identifier || req.query.email;
 
         // 1. Direct JWT auth token extraction if present
         const authHeader = req.headers.authorization;

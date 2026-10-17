@@ -29,13 +29,12 @@ const Index = () => {
     const [selectedImageType, setSelectedImageType] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Fetch active workforce employees directory for instant metadata resolution and accurate counts
     const { data: employeeList = [] } = useQuery({
         queryKey: ['adminEmployeesListForAttendance'],
         queryFn: async () => {
             const { data } = await supabase
                 .from('employees')
-                .select('id, company_id, first_name, last_name, role, department, job_title, status');
+                .select('id, company_id, first_name, last_name, role, department, job_title, status, date_hired, timekeeping_effective_date, created_at');
             return data || [];
         },
         staleTime: 120000,
@@ -167,6 +166,40 @@ const Index = () => {
                 };
             }
 
+            const hireDate = String(emp.date_hired || emp.created_at || '').slice(0, 10);
+            const isPreHire = Boolean(hireDate && targetDate < hireDate);
+            if (isPreHire) {
+                return {
+                    id: `roster-${emp.id}-${targetDate}`,
+                    employee_id: emp.id,
+                    date: targetDate,
+                    time_in: null,
+                    time_out: null,
+                    status: 'Pre-Hire',
+                    is_absent: false,
+                    is_pre_hire: true,
+                    is_awaiting: false,
+                    employees: emp
+                };
+            }
+
+            const timekeepingStart = String(emp.timekeeping_effective_date || emp.created_at || emp.date_hired || '').slice(0, 10);
+            const isUntracked = Boolean(timekeepingStart && targetDate < timekeepingStart);
+            if (isUntracked) {
+                return {
+                    id: `roster-${emp.id}-${targetDate}`,
+                    employee_id: emp.id,
+                    date: targetDate,
+                    time_in: null,
+                    time_out: null,
+                    status: 'Legacy Tenure',
+                    is_absent: false,
+                    is_not_tracked: true,
+                    is_awaiting: false,
+                    employees: emp
+                };
+            }
+
             return {
                 id: `roster-${emp.id}-${targetDate}`,
                 employee_id: emp.id,
@@ -195,6 +228,7 @@ const Index = () => {
     const getLogStatusVariant = (log) => {
         if (isLogOnLeave(log)) return isLogPaidLeave(log) ? 'paid_leave' : 'leave';
         const s = String(log.status || '').toLowerCase();
+        if (s.includes('legacy') || s.includes('untracked') || s.includes('pre-hire')) return 'neutral';
         if (s.includes('absent')) return 'absent';
         if (s.includes('late')) return 'late';
         if (s.includes('awaiting')) return 'neutral';

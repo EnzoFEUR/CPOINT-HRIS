@@ -134,18 +134,19 @@ const fetchPreviousMonthBases = async (supabase, employees, periodEnd) => {
     const ids = (employees || []).map(e => String(e.id));
     if (ids.length === 0 || !isFirstCutoffOfMonth(periodEnd)) return bases;
     const range = previousMonthRange(periodEnd);
-    const { data, error } = await supabase
-        .from('payrolls')
-        .select('*')
-        .in('employee_id', ids)
-        .gte('period_end', range.start)
-        .lte('period_end', range.end);
-    if (error) throw error;
     const byEmployee = new Map();
-    for (const row of data || []) {
-        const key = String(row.employee_id);
-        if (!byEmployee.has(key)) byEmployee.set(key, []);
-        byEmployee.get(key).push(row);
+    for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await supabase.from('payrolls').select('*').in('employee_id', ids)
+            .gte('period_end', range.start).lte('period_end', range.end)
+            .order('id', { ascending: true }).range(offset, offset + 999);
+        if (error) throw error;
+        if (!Array.isArray(data)) throw new Error('Invalid previous-month payroll response.');
+        for (const row of data) {
+            const key = String(row.employee_id);
+            if (!byEmployee.has(key)) byEmployee.set(key, []);
+            byEmployee.get(key).push(row);
+        }
+        if (data.length < 1000) break;
     }
     for (const [key, rows] of byEmployee) {
         const base = averageMonthlyBase(rows);
@@ -341,16 +342,21 @@ const fetchFactoryHolidayContext = async (employeeIds, pStart, pEnd) => {
     const ctx = { logsByEmployee: new Map(), payslipsByEmployee: new Map() };
     if (ids.length === 0) return ctx;
     const from = shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS);
-    const [logs, { data: payslips, error }] = await Promise.all([
+    const [logs, payslips] = await Promise.all([
         fetchPayrollAttendance(supabase, ids, from, pEnd),
-        supabase
-            .from('payrolls')
-            .select('employee_id, period_start, period_end, basic_pay')
-            .in('employee_id', ids)
-            .gte('period_start', from)
-            .lt('period_start', pStart),
+        (async () => {
+            const rows = [];
+            for (let offset = 0; ; offset += 1000) {
+                const { data, error } = await supabase.from('payrolls').select('employee_id, period_start, period_end, basic_pay')
+                    .in('employee_id', ids).gte('period_start', from).lt('period_start', pStart)
+                    .order('id', { ascending: true }).range(offset, offset + 999);
+                if (error) throw error;
+                if (!Array.isArray(data)) throw new Error('Invalid factory payroll history response.');
+                rows.push(...data);
+                if (data.length < 1000) return rows;
+            }
+        })(),
     ]);
-    if (error) throw error;
     for (const log of logs || []) {
         const key = String(log.employee_id);
         if (!ctx.logsByEmployee.has(key)) ctx.logsByEmployee.set(key, []);
@@ -726,7 +732,7 @@ router.get('/holidays', cacheResponse(60), async (req, res) => {
     }
 });
 
-router.post('/holidays', async (req, res) => {
+router.post('/holidays', requirePayrollManager, async (req, res) => {
     try {
         const { name, date, type } = req.body;
         if (!name || !date || !type) {
@@ -748,7 +754,7 @@ router.post('/holidays', async (req, res) => {
     }
 });
 
-router.delete('/holidays/:id', async (req, res) => {
+router.delete('/holidays/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         const isNumericId = !isNaN(Number(id));
@@ -959,7 +965,7 @@ async function ensureHolidaysGeneratedForRange(startDateStr, endDateStr) {
     }
 }
 
-router.post('/holidays/generate', async (req, res) => {
+router.post('/holidays/generate', requirePayrollManager, async (req, res) => {
     try {
         const year = parseInt(req.body.year, 10);
         if (!year || year < 2020 || year > 2100) {
@@ -1086,6 +1092,9 @@ router.get('/13th-month-report', requirePayrollManager, async (req, res) => {
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
         const { employee_id } = req.params;
+        if (!hasVerifiedManagerRole(req.user) && req.user?.id !== employee_id && req.user?.company_id !== employee_id && req.user?.auth_user_id !== employee_id) {
+            return res.status(403).json({ error: 'You may only view your own 13th-month earnings.' });
+        }
         const year = parseInt(req.query.year, 10) || new Date().getFullYear();
 
         const { data: records, error } = await supabase
@@ -2149,7 +2158,7 @@ router.get('/factory-logs', async (req, res) => {
     }
 });
 
-router.post('/factory-logs', async (req, res) => {
+router.post('/factory-logs', requirePayrollManager, async (req, res) => {
     try {
         const {
             production_group_id,
@@ -2249,7 +2258,7 @@ router.post('/factory-logs', async (req, res) => {
 });
 
 // Single-row direct update by UUID
-router.put('/factory-logs/:id', async (req, res) => {
+router.put('/factory-logs/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {
@@ -2324,7 +2333,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-router.post('/bulk-delete', async (req, res) => {
+router.post('/bulk-delete', requirePayrollManager, async (req, res) => {
     try {
         const { ids } = req.body;
         if (!Array.isArray(ids) || ids.length === 0) {
@@ -2370,7 +2379,7 @@ router.post('/bulk-delete', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {

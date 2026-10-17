@@ -2,6 +2,7 @@ import { getEmployeeRestDays, getChargeableLateMinutes, getManilaWorkDate } from
 import { getLeaveOverlapDays, isLeaveDate } from './leaveCredits.mjs';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const manilaTimeFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: true });
 
 export function getAttendanceMonthRange(month) {
     if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Invalid month. Expected YYYY-MM.');
@@ -14,7 +15,7 @@ export function getAttendanceMonthRange(month) {
 
 export function formatManilaTime(timestamp) {
     if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return null;
-    return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(timestamp));
+    return manilaTimeFormatter.format(new Date(timestamp));
 }
 
 export function reconcileMonthlyAttendance({ employee, attendances = [], leaves = [], holidays = [], month, workPolicy, today = getManilaWorkDate() }) {
@@ -22,7 +23,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
     const { totalDays } = getAttendanceMonthRange(month);
     const restDays = getEmployeeRestDays(employee);
     const hireDate = String(employee.date_hired || employee.created_at || '').slice(0, 10);
-    const createdAtDate = String(employee.created_at || '').slice(0, 10);
+    const timekeepingStartDate = String(employee.timekeeping_effective_date || employee.created_at || employee.date_hired || '').slice(0, 10);
     if (hireDate && !isLeaveDate(hireDate)) throw new Error('Invalid employee commencement date. HR must reconcile the schedule.');
     let medical = null;
     try {
@@ -64,9 +65,10 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         const holiday = holidayMap.get(date) || null;
         const nonWorkingHoliday = Boolean(holiday && holiday.type !== 'special_working');
         const log = attendanceMap.get(date);
-        const preHire = Boolean((hireDate && date < hireDate) || (createdAtDate && date < createdAtDate && !log?.time_in));
+        const preHire = Boolean(hireDate && date < hireDate);
         const isWorkDay = !isRestDay && !nonWorkingHoliday && !preHire;
         const isFuture = date > today;
+        const isNotTracked = Boolean(!preHire && timekeepingStartDate && date < timekeepingStartDate && !log?.time_in);
         const rawLeave = isWorkDay ? approvedLeaves.find(leave => date >= leave.start_date && date <= leave.end_date && (!(leave.credit_pool || leave.requested_pay_type) || leave.credit_dates.includes(date))) : null;
         const leave = rawLeave ? {
             id: rawLeave.id, type: rawLeave.type || 'Leave',
@@ -80,7 +82,7 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         if (preHire) {
             status = 'PRE_HIRE';
             statusLabel = 'Not Yet Employed';
-            reason = (hireDate && date < hireDate) ? 'Prior to employee commencement date' : 'Prior to system enrollment';
+            reason = 'Prior to employee commencement date';
         } else if (log?.time_in) {
             minutesLate = getChargeableLateMinutes(log, workPolicy, restDays);
             status = minutesLate > 0 ? 'LATE' : 'PRESENT';
@@ -99,6 +101,10 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         } else if (isRestDay) {
             status = isFuture ? 'FUTURE_REST_DAY' : 'REST_DAY';
             statusLabel = `${DAY_NAMES[weekday]} Rest Day`; reason = 'Weekly rest day per employee schedule';
+        } else if (isNotTracked) {
+            status = 'NOT_TRACKED';
+            statusLabel = 'Legacy Tenure';
+            reason = 'Prior to digital timekeeping cutover';
         } else if (date === today) {
             status = 'AWAITING_PUNCH'; statusLabel = 'Today - In Progress'; reason = 'Awaiting shift attendance scan';
         } else if (isFuture) {
@@ -109,7 +115,8 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
         const duration = Date.parse(log?.time_out) - Date.parse(log?.time_in);
         days.push({
             date, day_number: dayNumber, day_of_week: weekday, day_name: DAY_NAMES[weekday].slice(0, 3), full_day_name: DAY_NAMES[weekday],
-            is_work_day: isWorkDay, is_rest_day: isRestDay, is_today: date === today, is_past: date < today, is_future: isFuture, is_pre_hire: preHire,
+            is_work_day: isWorkDay, is_rest_day: isRestDay, is_today: date === today, is_past: date < today, is_future: isFuture,
+            is_pre_hire: preHire, is_not_tracked: status === 'NOT_TRACKED',
             status, status_label: statusLabel, reason, minutes_late: minutesLate, hours_worked: duration > 0 ? Number((duration / 3600000).toFixed(2)) : null,
             time_in: log?.time_in || null, time_out: log?.time_out || null,
             time_in_formatted: formatManilaTime(log?.time_in), time_out_formatted: formatManilaTime(log?.time_out),
@@ -120,7 +127,9 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
     const present = days.filter(day => ['PRESENT', 'LATE'].includes(day.status));
     const scheduledPresent = present.filter(day => day.is_work_day && !day.is_future);
     const absent = days.filter(day => day.status === 'ABSENT').length;
+    const notTracked = days.filter(day => day.status === 'NOT_TRACKED').length;
     const scheduledOnTime = scheduledPresent.filter(day => day.status === 'PRESENT').length;
+    const expectedMonitoredWorkDays = days.filter(day => day.is_work_day && day.status !== 'NOT_TRACKED').length;
     const eligible = scheduledPresent.length + absent;
     return {
         employee: {
@@ -129,13 +138,17 @@ export function reconcileMonthlyAttendance({ employee, attendances = [], leaves 
             department: employee.department, job_title: employee.job_title, shift: employee.shift || 'Weekday schedule',
             rest_days: restDays, work_days: [1, 2, 3, 4, 5, 6, 0].filter(day => !restDays.includes(day)),
             schedule_source: Array.isArray(employee.rest_days) ? 'employee' : 'company_default',
-            date_hired: employee.date_hired, is_medical_grace_active: medicalGrace,
+            date_hired: employee.date_hired,
+            timekeeping_effective_date: employee.timekeeping_effective_date || null,
+            is_medical_grace_active: medicalGrace,
         },
         workPolicy, month,
         summary: {
-            total_calendar_days: totalDays, expected_work_days: days.filter(day => day.is_work_day).length,
+            total_calendar_days: totalDays,
+            expected_work_days: expectedMonitoredWorkDays,
+            untracked_work_days: notTracked,
             days_present: present.length, scheduled_days_present: scheduledPresent.length,
-            days_on_time: present.filter(day => day.status === 'PRESENT').length, days_late: present.filter(day => day.status === 'LATE').length,
+            days_on_time: scheduledOnTime, days_late: present.filter(day => day.status === 'LATE').length,
             total_late_minutes: present.reduce((total, day) => total + day.minutes_late, 0), days_absent: absent,
             approved_leaves: days.filter(day => ['APPROVED_LEAVE', 'FUTURE_LEAVE'].includes(day.status)).length,
             rest_days: days.filter(day => day.is_rest_day && !day.is_pre_hire).length,

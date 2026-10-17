@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../supabaseClient';
 import PageHeader from './ui/PageHeader';
-import { captureOfflineBadge, exportOfflineBackup, importOfflineBackup, listOfflineEvents, readMeta } from '../utils/offlineAttendanceStore';
-import { enrollOfflineTerminal, offlineApi, offlineDiagnosticText, offlineSyncMessage, refreshOfflineRoster, syncOfflineAttendance } from '../utils/offlineAttendanceSync';
+import { captureOfflineBadge, exportOfflineBackup, getOfflineStorageStatus, importOfflineBackup, listOfflineEvents, MAX_EVENTS, readMeta } from '../utils/offlineAttendanceStore';
+import { clearAcceptedOfflineCaptures, enrollOfflineTerminal, offlineApi, offlineDiagnosticText, offlineSyncMessage, refreshOfflineRoster, syncOfflineAttendance } from '../utils/offlineAttendanceSync';
 import { isOfflineTestEnabled, offlineTestAvailable, OFFLINE_TEST_CHANGED, setOfflineTestEnabled } from '../utils/offlineAttendanceTestMode.mjs';
 import { isAppOffline, subscribeOfflineAccess } from '../utils/offlineAccess.mjs';
 import { getStoredUser, subscribeStoredUser } from '../utils/storedUser.mjs';
@@ -238,6 +238,14 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
     });
   };
 
+  const cleanupAccepted = () => {
+    if (!window.confirm('Remove accepted attendance copies from this device? Pending and disputed captures will stay. Server attendance and terminal authorization will not change.')) return;
+    perform(async () => {
+      const count = await clearAcceptedOfflineCaptures();
+      setMessage(count ? `${count} accepted copies removed from this device. Pending captures remain saved.` : 'No accepted copies could be removed. Synchronize and ask HR to finish reviewing captures.');
+    });
+  };
+
   const exportBackup = () => perform(async () => {
     const backup = await exportOfflineBackup(password);
     const url = URL.createObjectURL(new Blob([backup], { type: 'application/json' }));
@@ -266,7 +274,8 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
   const pendingCount = events.filter(item => ['pending', 'syncing'].includes(item.status)).length;
   const awaitingHrCount = events.filter(item => ['needs_review', 'needs_verification'].includes(item.status)).length;
   const syncedCount = events.filter(item => item.status === 'synced').length;
-  const storageCapacityPct = Math.min(100, (events.length / 2000) * 100);
+  const storageCapacityPct = Math.min(100, (events.length / MAX_EVENTS) * 100);
+  const storageStatus = getOfflineStorageStatus(events.length);
 
   const terminalContent = (
     <div className="space-y-6">
@@ -304,6 +313,13 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
         }
       />
       <p role="status" className="text-sm text-ink">{offlineReady ? 'Offline app ready on this browser.' : 'Offline page loading is not ready on this browser. Complete online setup before testing a full outage.'}</p>
+
+      {storageStatus.level !== 'normal' && (
+        <div role="alert" className={`rounded-md border p-3 text-xs ${storageStatus.level === 'warning' ? 'bg-warning-subtle text-warning-ink border-warning/20' : 'bg-danger-subtle text-danger-ink border-danger/20'}`}>
+          <p className="font-semibold">{storageStatus.level === 'full' ? 'Storage is full. New offline captures are paused.' : `Storage is nearly full. ${storageStatus.remaining} spaces left.`}</p>
+          <p className="mt-1">Sync pending captures, ask HR to finish reviews, then remove accepted copies.</p>
+        </div>
+      )}
 
       {/* Diagnostic & Error Alert */}
       {error && (
@@ -350,7 +366,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
               <span className="font-bold text-slate-900">Developer Offline Simulator:</span>{' '}
               <span className="text-slate-500">
                 {testOffline
-                  ? 'Cloud uploads blocked. New punches will buffer into local encrypted storage for audit testing.'
+                  ? 'Cloud uploads blocked. New punches will stay on this device for testing.'
                   : 'Turn on to test local capture workflows without disconnecting network.'}
               </span>
             </div>
@@ -585,7 +601,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                     {/* Submit Button */}
                     <button
                       type="submit"
-                      disabled={busy || !badge.trim()}
+                      disabled={busy || !badge.trim() || storageStatus.level === 'full'}
                       className="w-full h-11 px-4 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-2xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <i className="ti ti-check text-base" />
@@ -641,7 +657,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                     Terminal Local Queue
                   </h3>
                   <span className="font-mono text-xs font-bold text-slate-900">
-                    {events.length} / 2000 Records
+                    {events.length} / {MAX_EVENTS} Records
                   </span>
                 </div>
 
@@ -669,6 +685,16 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                     <strong className="text-slate-900 text-sm font-bold">{syncedCount}</strong>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={cleanupAccepted}
+                  disabled={busy || offline || syncedCount === 0}
+                  title={offline ? 'Reconnect to remove accepted copies.' : 'Only HR-approved attendance copies can be removed.'}
+                  className="w-full rounded-md border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {busy ? 'Please wait...' : 'Remove accepted copies'}
+                </button>
               </div>
 
               {/* Recent Local Captures */}

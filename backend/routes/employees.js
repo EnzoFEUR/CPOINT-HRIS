@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { invalidateAuthUser, hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
@@ -209,6 +209,9 @@ router.get('/check-email', async (req, res) => {
 router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
+        if (!hasVerifiedManagerRole(req.user) && id !== req.user?.id && id !== req.user?.auth_user_id) {
+            return res.status(403).json({ success: false, error: 'You may only view your own employee record.' });
+        }
         const [empRes, docsRes, discRes] = await Promise.all([
             supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', id).single(),
             supabase.from('employee_documents').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
@@ -236,7 +239,7 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
         let phone = emp.phone || null;
         try {
             const { data: authUser } = await supabase.auth.admin.getUserById(id);
-            if (emp.requires_password_change) {
+            if (emp.requires_password_change && hasVerifiedManagerRole(req.user)) {
                 tempPassword = authUser?.user?.user_metadata?.temp_password || null;
             }
             if (!phone) {
@@ -287,6 +290,12 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to register employees.' });
+        }
+        if (req.body?.role === 'admin' && req.user?.role !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only administrators can create administrator accounts.' });
+        }
         const {
             first_name,
             last_name,
@@ -305,11 +314,23 @@ router.post('/', async (req, res) => {
             gender,
             birth_date,
             date_hired,
+            timekeeping_effective_date,
             address
         } = req.body;
 
         const hireCheck = validateHireDate(date_hired);
         if (!hireCheck.isValid) return res.status(400).json({ success: false, error: hireCheck.error });
+
+        let validatedTimekeepingDate = null;
+        if (timekeeping_effective_date !== undefined && timekeeping_effective_date !== null && String(timekeeping_effective_date).trim()) {
+            const tkStr = String(timekeeping_effective_date).trim().slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(tkStr) || isNaN(Date.parse(tkStr))) {
+                return res.status(400).json({ success: false, error: 'Invalid timekeeping effective date format. Expected YYYY-MM-DD.' });
+            }
+            validatedTimekeepingDate = tkStr;
+        } else {
+            validatedTimekeepingDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+        }
 
         // Input validation
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
@@ -586,6 +607,7 @@ router.post('/', async (req, res) => {
                 gender: sanitizedGender,
                 birth_date: validatedBirthDate,
                 ...(hireCheck.hireDate ? { date_hired: hireCheck.hireDate } : {}),
+                timekeeping_effective_date: validatedTimekeepingDate,
                 address: sanitizedAddr
             };
 
@@ -655,6 +677,9 @@ router.post('/', async (req, res) => {
 // Dedicated Administrator Account Provisioning Endpoint
 router.post('/provision-admin', async (req, res) => {
     try {
+        if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Only verified administrators can provision administrator accounts.' });
+        }
         const {
             first_name,
             last_name,
@@ -823,6 +848,9 @@ router.post('/provision-admin', async (req, res) => {
 // Reset or issue a new temporary password for unregistered employee
 router.post('/:id/reset-temp-password', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to reset temporary passwords.' });
+        }
         const { id } = req.params;
         const newTempPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
 
@@ -852,6 +880,12 @@ router.post('/:id/reset-temp-password', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to edit employee records.' });
+        }
+        if (req.body?.role !== undefined && req.user?.role !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only administrators can modify employee system roles.' });
+        }
         const {
             first_name,
             last_name,
@@ -869,6 +903,7 @@ router.put('/:id', async (req, res) => {
             gender,
             birth_date,
             date_hired,
+            timekeeping_effective_date,
             address
         } = req.body;
 
@@ -909,6 +944,16 @@ router.put('/:id', async (req, res) => {
         };
 
         if (date_hired !== undefined) updatePayload.date_hired = date_hired;
+        if (timekeeping_effective_date !== undefined) {
+            if (timekeeping_effective_date === null || !String(timekeeping_effective_date).trim()) {
+                updatePayload.timekeeping_effective_date = null;
+            } else {
+                const tkStr = String(timekeeping_effective_date).trim().slice(0, 10);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(tkStr) && !isNaN(Date.parse(tkStr))) {
+                    updatePayload.timekeeping_effective_date = tkStr;
+                }
+            }
+        }
         if (parsedDailyRate !== null) updatePayload.daily_rate = parsedDailyRate;
         if (email !== undefined && email !== null) {
             const normalizedEmail = String(email).trim().toLowerCase();
@@ -1719,6 +1764,9 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Only verified administrators can delete employee accounts.' });
+        }
         const empId = req.params.id;
 
         // 1. Fetch employee metadata prior to deletion for storage and audit cleanup

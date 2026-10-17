@@ -45,6 +45,7 @@ export default function Edit() {
     const [gender, setGender] = useState(cachedEmp?.gender || '');
     const [birthDate, setBirthDate] = useState(cachedEmp?.birth_date ? String(cachedEmp.birth_date).split('T')[0] : '');
     const [hireDate, setHireDate] = useState(cachedEmp?.date_hired?.slice(0, 10) || '');
+    const [timekeepingDate, setTimekeepingDate] = useState(cachedEmp?.timekeeping_effective_date?.slice(0, 10) || '');
     const [address, setAddress] = useState(cachedEmp?.address || '');
 
     const maxBirthDate = useMemo(() => {
@@ -119,6 +120,7 @@ export default function Edit() {
                     const emp = data.data || data;
                     setEmployee(emp);
                     setHireDate(emp.date_hired?.slice(0, 10) || '');
+                    setTimekeepingDate(emp.timekeeping_effective_date?.slice(0, 10) || '');
                     if (emp.department) setDepartment(emp.department);
 
                     const craftMatch = getShoeRoleDetails(emp.job_title);
@@ -303,6 +305,7 @@ export default function Edit() {
             gender: gender || null,
             birth_date: birthDate || null,
             ...(hireDate !== (employee?.date_hired?.slice(0, 10) || '') ? { date_hired: hireDate } : {}),
+            ...(timekeepingDate !== (employee?.timekeeping_effective_date?.slice(0, 10) || '') ? { timekeeping_effective_date: timekeepingDate || null } : {}),
             address: (address || '').trim() || null,
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
@@ -533,6 +536,11 @@ export default function Edit() {
                             <div>
                                 <label htmlFor="date-hired" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date hired</label>
                                 <input id="date-hired" name="date_hired" type="date" required={Boolean(employee?.date_hired)} max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
+                            </div>
+
+                            <div>
+                                <label htmlFor="timekeeping-effective-date" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Timekeeping Cutover Date</label>
+                                <input id="timekeeping-effective-date" name="timekeeping_effective_date" type="date" value={timekeepingDate} onChange={e => setTimekeepingDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
                             </div>
 
                             <div className="md:col-span-2">

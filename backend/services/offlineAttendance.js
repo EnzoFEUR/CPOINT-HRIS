@@ -64,6 +64,7 @@ export function databaseError(error) {
         throw Object.assign(new OfflineError(409, 'The employee record for this saved capture no longer exists. The capture is retained for HR recovery; it cannot be assigned to another employee automatically.'), { database_code: '23503', reason_code: 'OFFLINE_EMPLOYEE_NOT_FOUND', constraint: 'offline_attendance_events_employee_id_fkey' });
     }
     const approvalErrors = {
+        OFFLINE_PAIR_INCOMPLETE: 'A complete, unambiguous Time In and Time Out is required. Missing punches remain available for HR verification.',
         OFFLINE_PAYROLL_ALREADY_SAVED: 'A saved payslip covers this attendance date. Use the authorized payroll adjustment process.',
         OFFLINE_ATTENDANCE_CONFLICT: 'Attendance already exists or conflicts with this capture. HR must reconcile it.',
         OFFLINE_APPROVED_PUNCH_LOCKED: 'This punch was approved from offline evidence. Use an auditable correction rather than overwriting it.',

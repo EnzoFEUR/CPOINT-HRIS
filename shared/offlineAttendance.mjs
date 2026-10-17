@@ -4,6 +4,7 @@ export function canUseAttendanceTerminal(user) {
     return Boolean(user?.id && ['admin', 'security', 'guard', 'securityguard'].includes(role) && user.is_active !== false && !user.archived_at && !['inactive', 'suspended', 'terminated', 'resigned', 'separated'].includes(String(user.status || '').toLowerCase()));
 }
 export const EVENT_FIELDS = Object.freeze(['event_id', 'device_id', 'employee_id', 'company_scope', 'site_id', 'action', 'captured_at', 'capture_timezone', 'captured_local_offset_minutes', 'server_time_anchor', 'local_sequence', 'roster_snapshot_version', 'event_schema_version', 'capture_method']);
+const validatedTimeZones = new Set();
 
 export function validateEvent(event) {
     if (!event || typeof event !== 'object' || Array.isArray(event) || Object.keys(event).some(key => !EVENT_FIELDS.includes(key)) || EVENT_FIELDS.some(key => !(key in event))) throw new Error('Invalid event fields.');
@@ -15,7 +16,10 @@ export function validateEvent(event) {
     }
     if (!Number.isSafeInteger(event.local_sequence) || event.local_sequence < 1 || !Number.isInteger(event.captured_local_offset_minutes) || Math.abs(event.captured_local_offset_minutes) > 840) throw new Error('Invalid sequence or clock offset.');
     if (typeof event.capture_timezone !== 'string' || event.capture_timezone.length > 80) throw new Error('Invalid time zone.');
-    try { new Intl.DateTimeFormat('en', { timeZone: event.capture_timezone }); } catch { throw new Error('Invalid time zone.'); }
+    if (!validatedTimeZones.has(event.capture_timezone)) {
+        try { new Intl.DateTimeFormat('en', { timeZone: event.capture_timezone }); } catch { throw new Error('Invalid time zone.'); }
+        if (validatedTimeZones.size < 64) validatedTimeZones.add(event.capture_timezone);
+    }
     return event;
 }
 
