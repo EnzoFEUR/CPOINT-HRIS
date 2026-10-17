@@ -259,6 +259,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
         if (statusFilter === 'worked') return allDays.filter(d => d.status === 'PRESENT' || d.status === 'LATE');
         if (statusFilter === 'late') return allDays.filter(d => d.status === 'LATE');
         if (statusFilter === 'absent') return allDays.filter(d => d.status === 'ABSENT');
+        if (statusFilter === 'untracked') return allDays.filter(d => d.status === 'NOT_TRACKED');
         if (statusFilter === 'leave') return allDays.filter(d => ['APPROVED_LEAVE', 'FUTURE_LEAVE', 'HOLIDAY', 'FUTURE_HOLIDAY'].includes(d.status));
         return allDays;
     }, [allDays, statusFilter]);
@@ -338,6 +339,16 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                     cardHighlight: 'border-l-2 border-l-accent',
                     tag: 'Today',
                     icon: 'ti-clock'
+                };
+            case 'NOT_TRACKED':
+                return {
+                    badgeBg: 'bg-slate-50 text-slate-500 border-slate-200',
+                    iconBox: 'bg-slate-50 text-slate-500 border-slate-200',
+                    dotBg: 'bg-slate-400',
+                    cardBorder: 'border-slate-200/70 bg-slate-50/40',
+                    cardHighlight: '',
+                    tag: 'Legacy Tenure',
+                    icon: 'ti-history'
                 };
             case 'PRE_HIRE':
                 return {
@@ -470,6 +481,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500 font-medium">
                         {summary.rest_days} Rest · {summary.holidays} Holidays
+                        {summary.untracked_work_days > 0 ? ` · ${summary.untracked_work_days} Legacy` : ''}
                     </div>
                 </div>
 
@@ -486,7 +498,9 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                         <span className="text-[10px] text-slate-400 font-medium">/ {summary.expected_work_days} scheduled</span>
                     </div>
                     <div className="mt-1 text-[10px] font-semibold text-ink">
-                        {summary.days_present} total attended; {summary.attendance_rate_pct}% attendance
+                        {summary.expected_work_days === 0 && summary.untracked_work_days > 0
+                            ? `${summary.untracked_work_days} legacy untracked · Pre-digital cutover`
+                            : `${summary.days_present} total attended; ${summary.attendance_rate_pct}% attendance`}
                     </div>
                 </div>
 
@@ -508,7 +522,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                 </div>
 
                 {/* Unexcused Absences */}
-                <div className="bg-danger-subtle/40 p-3 sm:p-3.5 rounded-md border border-danger/20 flex flex-col justify-between">
+                <div className={`${summary.days_absent > 0 ? 'bg-danger-subtle/40 border-danger/20' : 'bg-surface-muted border-line'} p-3 sm:p-3.5 rounded-md border flex flex-col justify-between`}>
                     <div className="flex items-center justify-between text-danger-ink">
                         <span className="text-[10px] font-semibold uppercase tracking-wider">Absences</span>
                         <i className="ti ti-user-x text-sm text-danger-ink" />
@@ -520,7 +534,9 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                         <span className="text-[10px] text-slate-400 font-medium">days unexcused</span>
                     </div>
                     <div className="mt-1 text-[10px] font-semibold text-danger-ink">
-                        {summary.days_absent === 0 ? 'Zero unexcused absences' : 'Absence deduction applies'}
+                        {summary.days_absent === 0
+                            ? (summary.untracked_work_days > 0 ? 'Digital tracking inactive' : 'Zero unexcused absences')
+                            : 'Absence deduction applies'}
                     </div>
                 </div>
 
@@ -588,6 +604,19 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                 >
                     Absents ({summary.days_absent})
                 </button>
+                {summary.untracked_work_days > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => setStatusFilter('untracked')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer border shrink-0 whitespace-nowrap ${
+                            statusFilter === 'untracked'
+                                ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
+                                : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
+                        }`}
+                    >
+                        Legacy Tenure ({summary.untracked_work_days})
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => setStatusFilter('leave')}
@@ -639,6 +668,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                 (statusFilter === 'worked' && (item.status === 'PRESENT' || item.status === 'LATE')) ||
                                 (statusFilter === 'late' && item.status === 'LATE') ||
                                 (statusFilter === 'absent' && item.status === 'ABSENT') ||
+                                (statusFilter === 'untracked' && item.status === 'NOT_TRACKED') ||
                                 (statusFilter === 'leave' && leaveHolidayStatuses.includes(item.status));
 
                             return (
@@ -672,7 +702,7 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                         {/* Desktop View (sm and up) */}
                                         <div className="hidden sm:block space-y-1">
                                             {item.status === 'PRESENT' && (
-                                                <div className="text-[10px] font-semibold text-white bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 truncate">
+                                                 <div className="text-[10px] font-semibold text-white bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 truncate">
                                                     {item.time_in_formatted}
                                                 </div>
                                             )}
@@ -686,6 +716,18 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                             {item.status === 'ABSENT' && (
                                                 <div className="text-[10px] font-semibold text-danger-ink bg-danger-subtle px-1.5 py-0.5 rounded border border-danger/70 truncate">
                                                     Absent
+                                                </div>
+                                            )}
+
+                                            {item.status === 'NOT_TRACKED' && (
+                                                <div className="text-[10px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 truncate" title={item.reason}>
+                                                    Legacy
+                                                </div>
+                                            )}
+
+                                            {item.status === 'PRE_HIRE' && (
+                                                <div className="text-[10px] font-medium text-slate-400 bg-slate-50/50 px-1.5 py-0.5 rounded border border-slate-100 truncate" title={item.reason}>
+                                                    Pre-Hire
                                                 </div>
                                             )}
 
@@ -735,6 +777,16 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                                             {item.status === 'ABSENT' && (
                                                 <span className="text-[8px] font-bold text-danger-ink bg-danger-subtle border border-danger/30 rounded px-1 py-0.5 truncate block text-center leading-none">
                                                     Abs
+                                                </span>
+                                            )}
+                                            {item.status === 'NOT_TRACKED' && (
+                                                <span className="text-[8px] font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Leg
+                                                </span>
+                                            )}
+                                            {item.status === 'PRE_HIRE' && (
+                                                <span className="text-[8px] font-medium text-slate-400 bg-slate-50 rounded px-1 py-0.5 truncate block text-center leading-none">
+                                                    Pre
                                                 </span>
                                             )}
                                             {(item.status === 'APPROVED_LEAVE' || item.status === 'FUTURE_LEAVE') && (

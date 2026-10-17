@@ -21,6 +21,12 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         databaseError(error);
         return { available: data?.available === true };
     };
+    const reviewPair = async (req, eventId, decision, reason, policy) => {
+        const { data, error } = await client.rpc('review_offline_attendance_pair', { p_actor_id: req.user.id, p_event_id: eventId, p_decision: decision, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites, p_policy: policy });
+        if (error?.code === 'PGRST202') throw new OfflineError(503, 'Install 202610140004_offline_attendance_paired_review.sql before approving or rejecting complete shifts.');
+        databaseError(error);
+        return data;
+    };
     router.get('/approval-status', wrap(async (req, res) => {
         requireOfflineManager(req.user);
         res.json(await approvalReady(req.user.id));
@@ -123,21 +129,32 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         const now = Date.now();
         for (const [actor, window] of syncWindows) if (window.expires <= now) syncWindows.delete(actor);
         const window = syncWindows.get(req.user.id) || { expires: now + 60000, count: 0 };
-        if (window.count >= 6) throw new OfflineError(429, 'Wait before retrying offline synchronization.');
+        if (window.count >= 6) {
+            const error = new OfflineError(429, 'Wait before retrying offline synchronization.');
+            error.retryAfter = Math.max(1, Math.ceil((window.expires - now) / 1000));
+            throw error;
+        }
         window.count++; syncWindows.set(req.user.id, window);
         const { device_id, events } = req.body || {};
         if (!Array.isArray(events) || !events.length || events.length > 100) throw new OfflineError(400, 'Submit between 1 and 100 events.');
         const device = await deviceFor(req, device_id);
         const request_id = randomUUID();
         const results = [];
+        const snapshots = new Map();
         for (const event of events) {
             let stage = 'event_validation';
             try {
                 assertOfflineUuid(event?.payload?.roster_snapshot_version);
                 stage = 'roster_lookup';
-                const { data: snapshot, error } = await client.from('offline_attendance_rosters').select('*').eq('version', event.payload.roster_snapshot_version).eq('device_id', device.id).maybeSingle();
-                databaseError(error);
-                if (!snapshot) throw new OfflineError(403, 'Roster snapshot not found.');
+                const version = event.payload.roster_snapshot_version;
+                let snapshot = snapshots.get(version);
+                if (!snapshot) {
+                    const { data, error } = await client.from('offline_attendance_rosters').select('*').eq('version', version).eq('device_id', device.id).maybeSingle();
+                    databaseError(error);
+                    if (!data) throw new OfflineError(403, 'Roster snapshot not found.');
+                    snapshot = data;
+                    snapshots.set(version, snapshot);
+                }
                 stage = 'signature_validation';
                 const hash = verifyOfflineEvent(event, device, snapshot, req.offlineConfig);
                 stage = 'receipt_transaction';
@@ -194,6 +211,14 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         const { data: employees, error: employeeError } = employeeIds.length ? await client.from('employees').select('id,first_name,last_name,company_id,department,job_title,status,is_active,archived_at').in('id', employeeIds) : { data: [] };
         databaseError(employeeError);
         const empMap = new Map((employees || []).map(employee => [employee.id, employee]));
+        let pairs = {};
+        if (data?.length) {
+            const result = await client.rpc('offline_attendance_review_pairs', { p_actor_id: req.user.id, p_event_ids: data.map(event => event.event_id), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites });
+            if (result.error?.code !== 'PGRST202') {
+                databaseError(result.error);
+                pairs = result.data || {};
+            }
+        }
         res.json({
             events: (data || []).map(event => {
                 const emp = empMap.get(event.employee_id);
@@ -202,6 +227,7 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
                     employee: emp || null,
                     employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown Worker',
                     employee_company_id: emp?.company_id || null,
+                    review_pair: pairs[event.event_id] || { complete: false, can_approve: false, can_reject: false, issue: 'Paired review setup required' },
                     current_eligible: emp?.is_active !== false && !emp?.archived_at && String(emp?.status || '').toLowerCase() === 'active'
                 };
             }),
@@ -222,9 +248,11 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         for (const event_id of event_ids) {
             try {
                 if (decision === 'approve') {
-                    const { data, error } = await client.rpc('approve_offline_attendance_event', { p_actor_id: req.user.id, p_event_id: event_id, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites, p_policy: policy });
-                    databaseError(error);
+                    const data = await reviewPair(req, event_id, decision, reason, policy);
                     results.push({ event_id, status: 'synced', success: true, data });
+                } else if (decision === 'reject') {
+                    const data = await reviewPair(req, event_id, decision, reason, null);
+                    results.push({ event_id, status: data?.status, success: true, data });
                 } else {
                     const { data, error } = await client.rpc('decide_offline_attendance_event', { p_actor_id: req.user.id, p_event_id: event_id, p_decision: decision, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites });
                     databaseError(error);
@@ -266,11 +294,11 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         if (corrected_at != null) throw new OfflineError(400, 'Timestamp corrections are available only with approval.');
         if (decision === 'approve') {
             if (!(await approvalReady(req.user.id)).available) throw new OfflineError(503, 'Install the offline attendance approval migration before approving captures.');
-            const { data, error } = await client.rpc('approve_offline_attendance_event', { p_actor_id: req.user.id, p_event_id: req.params.id, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites, p_policy: await loadWorkPolicy() });
-            databaseError(error);
+            const data = await reviewPair(req, req.params.id, decision, reason, await loadWorkPolicy());
             invalidateCache(['/api/attendance', '/api/dashboard']);
             return res.json(data);
         }
+        if (decision === 'reject') return res.json(await reviewPair(req, req.params.id, decision, reason, null));
         const { data, error } = await client.rpc('decide_offline_attendance_event', { p_actor_id: req.user.id, p_event_id: req.params.id, p_decision: decision, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites });
         databaseError(error); res.json(data);
     }));
@@ -279,7 +307,10 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         const { error } = await client.from('offline_attendance_devices').update({ revoked_at: new Date().toISOString(), revoked_by: req.user.id }).eq('id', device.id);
         databaseError(error); res.json({ id: device.id, revoked: true });
     }));
-    router.use((error, req, res, next) => { res.status(error.status || 500).json({ error: error.status ? error.message : 'Offline attendance request failed.' }); });
+    router.use((error, req, res, next) => {
+        if (error.status === 429 && error.retryAfter) res.setHeader('Retry-After', error.retryAfter);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Offline attendance request failed.' });
+    });
     return router;
 }
 

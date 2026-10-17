@@ -1,11 +1,12 @@
 import { fetchWithAuth } from './api';
 import { supabase } from '../supabaseClient';
 import { attendanceConnectionSignal } from './offlineAttendanceTestMode.mjs';
-import { applyServerReceipts, claimSync, finishSync, getDeviceKeys, listOfflineEvents, nextSyncRecord, readMeta, retryDelay, saveEnrollment, validateReceiptIds, writeMeta } from './offlineAttendanceStore';
+import { applyServerReceipts, claimSync, finishSync, getDeviceKeys, listOfflineEvents, nextSyncRecord, readMeta, removeAcceptedOfflineEvents, retryDelay, saveEnrollment, validateReceiptIds, writeMeta } from './offlineAttendanceStore';
 
 const BASE = '/api/attendance-offline';
 const owner = globalThis.crypto?.randomUUID?.() || `terminal-${Date.now()}`;
 let running;
+let cleaning = false;
 
 async function pendingResult(status, count = 0) {
   const pending = (await listOfflineEvents()).filter(item => ['pending', 'syncing'].includes(item.status));
@@ -13,7 +14,7 @@ async function pendingResult(status, count = 0) {
 }
 
 export function offlineSyncMessage(result) {
-  if (result.status === 'busy') return 'Another tab is synchronizing. Captures remain saved on this device.';
+  if (result.status === 'busy') return 'Terminal storage is busy. Captures remain saved on this device.';
   if (result.status === 'failed') return `No captures were uploaded. ${result.pending} remain pending; review the error below.`;
   if (result.count) return `${result.count} captures received for HR review. ${result.pending} still pending.`;
   if (result.pending) return `${result.pending} captures remain pending. ${result.retry_at ? `Automatic retry after ${new Date(result.retry_at).toLocaleTimeString()}.` : 'Waiting to retry.'}`;
@@ -59,8 +60,35 @@ export async function refreshOfflineRoster() {
   return response;
 }
 
+export async function clearAcceptedOfflineCaptures() {
+  if (running || cleaning) throw new Error('Synchronization or cleanup is running. Please wait.');
+  attendanceConnectionSignal();
+  cleaning = true;
+  try {
+    const enrollment = await readMeta('enrollment');
+    if (!enrollment) throw new Error('This terminal has not been enrolled.');
+    const ids = (await listOfflineEvents()).filter(item => item.status === 'synced' && item.server_received === true && item.payload.device_id === enrollment.device.id).map(item => item.payload.event_id);
+    if (!ids.length) return 0;
+    const receipts = [];
+    // Four bounded read requests at a time; no local deletion until every response succeeds.
+    for (let offset = 0; offset < ids.length; offset += 200) {
+      const groups = [];
+      for (let start = offset; start < Math.min(offset + 200, ids.length); start += 50) groups.push(ids.slice(start, start + 50));
+      const results = await Promise.all(groups.map(async batch => {
+        const response = await offlineApi(`/devices/${encodeURIComponent(enrollment.device.id)}/events?ids=${encodeURIComponent(batch.join(','))}`);
+        validateReceiptIds(response.results, batch);
+        return response.results;
+      }));
+      receipts.push(...results.flat());
+    }
+    const refreshed = await refreshOfflineRoster();
+    return await removeAcceptedOfflineEvents({ deviceId: enrollment.device.id, rosterVersion: refreshed.roster.version, receipts });
+  } finally { cleaning = false; }
+}
+
 export function syncOfflineAttendance({ manual = false } = {}) {
   if (running) return running;
+  if (cleaning) return pendingResult('busy');
   running = (async () => {
     attendanceConnectionSignal();
     const { data: { session } } = await supabase.auth.getSession();

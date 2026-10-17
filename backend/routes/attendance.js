@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
-import { checkVerifiedManagerOrOwnership } from '../middleware/authMiddleware.js';
+import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
@@ -108,6 +108,7 @@ const rateLimiter = ({ windowMs, maxRequests, keyPrefix }) => {
     
     if (timestamps.length >= maxRequests) {
       logger.warn(req.reqId, 'Rate limit exceeded', { key, count: timestamps.length });
+      res.setHeader('Retry-After', Math.max(1, Math.ceil((timestamps[0] + windowMs - now) / 1000)));
       return res.status(429).json({
         status: 'error',
         code: 'RATE_LIMIT_EXCEEDED',
@@ -373,7 +374,7 @@ router.get(
       const [allEmpsRes, dailyLogsRes, dailyLeavesRes] = await Promise.all([
         supabase
           .from('employees')
-          .select('id, company_id, first_name, last_name, role, department, job_title, status'),
+          .select('id, company_id, first_name, last_name, role, department, job_title, status, date_hired, timekeeping_effective_date, created_at'),
         supabase
           .from('attendances')
           .select('*, employees:employee_id(*)')
@@ -448,6 +449,44 @@ router.get(
             employees: emp,
             notes: leave.notes || null,
             created_at: leave.created_at || new Date().toISOString()
+          };
+        }
+
+        const empHireDate = String(emp.date_hired || emp.created_at || '').slice(0, 10);
+        const isPreHire = Boolean(empHireDate && targetDate < empHireDate);
+        if (isPreHire) {
+          return {
+            id: `roster-${emp.id}-${targetDate}`,
+            employee_id: emp.id,
+            date: targetDate,
+            time_in: null,
+            time_out: null,
+            status: 'Pre-Hire',
+            is_absent: false,
+            is_pre_hire: true,
+            is_awaiting: false,
+            employees: emp,
+            notes: 'Prior to employee commencement date',
+            created_at: new Date().toISOString()
+          };
+        }
+
+        const timekeepingStart = String(emp.timekeeping_effective_date || emp.created_at || emp.date_hired || '').slice(0, 10);
+        const isUntracked = Boolean(timekeepingStart && targetDate < timekeepingStart);
+        if (isUntracked) {
+          return {
+            id: `roster-${emp.id}-${targetDate}`,
+            employee_id: emp.id,
+            date: targetDate,
+            time_in: null,
+            time_out: null,
+            status: 'Legacy Tenure',
+            is_absent: false,
+            is_not_tracked: true,
+            is_awaiting: false,
+            employees: emp,
+            notes: 'Prior to digital timekeeping cutover',
+            created_at: new Date().toISOString()
           };
         }
 
@@ -888,7 +927,7 @@ router.post(
         throw new AppError(`Database error: ${insertErr.message}`, 500, 'DB_ERROR');
       }
 
-      logger.info(reqId, 'Time-in recorded', { employee_id, status, isMedicalGrace, minutesLate: status === 'Late' ? Math.floor((now - callTime) / 60_000) : 0 });
+      logger.info(reqId, 'Time-in recorded', { employee_id, status, isMedicalGrace, minutesLate });
 
       await auditLog(reqId, {
         employee_id,
@@ -917,7 +956,7 @@ router.post(
         })
         .eq('id', existing.id)
         .is('time_out', null)
-        .select();
+        .select('id');
 
       if (updateErr) throw new AppError(`Database error: ${updateErr.message}`, 500, 'DB_ERROR');
 
@@ -1132,6 +1171,9 @@ router.post(
     if (!employee_id || !isValidUUID(employee_id)) {
       throw new ValidationError('Valid employee_id (UUID) is required.');
     }
+    if (!hasVerifiedManagerRole(req.user) && req.user?.id !== employee_id && req.user?.auth_user_id !== employee_id) {
+      throw new AuthorizationError('You are not authorized to enroll or modify biometrics for another employee.');
+    }
     if (!company_id || typeof company_id !== 'string') {
       throw new ValidationError('company_id is required.');
     }
@@ -1276,6 +1318,10 @@ router.post(
 
     if (!employee_id || !isValidUUID(employee_id)) {
       throw new ValidationError('Valid employee_id (UUID) is required.');
+    }
+
+    if (!hasVerifiedManagerRole(req.user) && req.user?.id !== employee_id && req.user?.auth_user_id !== employee_id) {
+      throw new AuthorizationError('Unauthorized to update password status for another account.');
     }
 
     const { error } = await supabase

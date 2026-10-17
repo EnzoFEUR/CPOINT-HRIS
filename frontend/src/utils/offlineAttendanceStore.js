@@ -1,7 +1,7 @@
 import { canonicalEvent, validateEvent } from '../../../shared/offlineAttendance.mjs';
 
 const DB_NAME = 'cpoint_offline_attendance_v1';
-const MAX_EVENTS = 2000;
+export const MAX_EVENTS = 2000;
 const encoder = new TextEncoder();
 let database;
 
@@ -46,6 +46,10 @@ export const writeMeta = (key, value) => transaction(['meta'], 'readwrite', tx =
 export const listOfflineEvents = () => transaction(['events'], 'readonly', (tx, done) => {
   tx.objectStore('events').getAll().onsuccess = event => done(event.target.result.sort((a, b) => a.payload.local_sequence - b.payload.local_sequence));
 });
+
+export function getOfflineStorageStatus(count) {
+  return { remaining: Math.max(0, MAX_EVENTS - count), level: count >= MAX_EVENTS ? 'full' : count >= 1900 ? 'critical' : count >= 1600 ? 'warning' : 'normal' };
+}
 
 export async function getDeviceKeys() {
   const existing = await readMeta('keys');
@@ -92,6 +96,42 @@ export function checkEnrollment(enrollment, now = Date.now()) {
 const workDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
 const workDate = value => workDateFormatter.format(new Date(value));
 
+export function canRemoveAcceptedCapture(item, receipt, enrollment) {
+  if (item.status !== 'synced' || item.server_received !== true || receipt?.status !== 'synced' || receipt.event_id !== item.payload.event_id || item.payload.device_id !== enrollment.device.id || !['TIME_IN', 'TIME_OUT'].includes(item.payload.action) || !Number.isFinite(Date.parse(receipt.received_at))) return false;
+  const captured = Date.parse(item.payload.captured_at);
+  const snapshotTime = Date.parse(enrollment.server_time);
+  if (!Number.isFinite(captured) || !Number.isFinite(snapshotTime) || captured > snapshotTime) return false;
+  if (workDate(captured) !== workDate(snapshotTime) && snapshotTime - captured > 18 * 3600000) return true;
+  const field = item.payload.action === 'TIME_IN' ? 'time_in' : 'time_out';
+  // Keep recent evidence unless the refreshed snapshot preserves duplicate-punch checks.
+  return enrollment.roster.attendance?.some(row => row.employee_id === item.payload.employee_id && Date.parse(row[field]) === captured) === true;
+}
+
+export async function removeAcceptedOfflineEvents({ deviceId, rosterVersion, receipts }) {
+  if (!Array.isArray(receipts) || receipts.length > MAX_EVENTS) throw new Error('Invalid cleanup confirmations.');
+  validateReceiptIds(receipts, receipts.map(receipt => receipt.event_id));
+  return transaction(['meta', 'events'], 'readwrite', (tx, done, fail) => {
+    const meta = tx.objectStore('meta');
+    meta.get('enrollment').onsuccess = approved => {
+      meta.get('sync_lease').onsuccess = lease => {
+        const store = tx.objectStore('events');
+        store.getAll().onsuccess = existing => {
+          try {
+            const enrollment = checkEnrollment(approved.target.result);
+            if (enrollment.device.id !== deviceId || enrollment.roster.version !== rosterVersion) throw new Error('Terminal approval changed. Refresh and retry cleanup.');
+            if (lease.target.result?.until > Date.now()) throw new Error('Synchronization is running. Wait before removing accepted copies.');
+            const confirmations = new Map(receipts.map(receipt => [receipt.event_id, receipt]));
+            const removable = existing.target.result.filter(item => canRemoveAcceptedCapture(item, confirmations.get(item.payload.event_id), enrollment));
+            removable.forEach(item => store.delete(item.payload.event_id));
+            if (removable.length) meta.put({ count: removable.length, completed_at: new Date().toISOString() }, 'last_cleanup');
+            done(removable.length);
+          } catch (error) { fail(error); }
+        };
+      };
+    };
+  });
+}
+
 export function assertOfflinePunchAllowed(events, attendance, employeeId, action, capturedAt) {
   const punches = new Map(attendance.filter(row => row.employee_id === employeeId).map(row => [row.date, { ...row }]));
   const openPunches = at => [...punches.values()].filter(row => row.time_in && !row.time_out && Date.parse(row.time_in) <= Date.parse(at) && Date.parse(at) - Date.parse(row.time_in) <= 18 * 3600000);
@@ -125,9 +165,9 @@ export async function captureOfflineBadge({ badge, action, eventId = crypto.rand
   if (!['TIME_IN', 'TIME_OUT'].includes(action)) throw new Error('Choose Time in or Time out.');
   const keys = await readMeta('keys');
   if (!keys?.privateKey || !keys?.publicKey || keys.privateKey.extractable !== false) throw new Error('Terminal signing key is unavailable. Use the manual attendance procedure and contact HR.');
-  const sequence = await transaction(['meta', 'events'], 'readwrite', (tx, done) => {
+  const sequence = await transaction(['meta', 'events'], 'readwrite', (tx, done, fail) => {
     tx.objectStore('events').count().onsuccess = event => {
-      if (event.target.result >= MAX_EVENTS) { tx.abort(); return; }
+      if (event.target.result >= MAX_EVENTS) { fail(new Error('Storage is full. Sync pending captures, ask HR to complete reviews, then remove accepted copies.')); return; }
       const store = tx.objectStore('meta');
       store.get('sequence').onsuccess = response => {
         const next = (response.target.result || 0) + 1;
@@ -153,7 +193,7 @@ export async function captureOfflineBadge({ badge, action, eventId = crypto.rand
     tx.objectStore('meta').get('enrollment').onsuccess = approved => {
       store.getAll().onsuccess = event => {
         try {
-          if (event.target.result.length >= MAX_EVENTS) throw new Error('This device has reached its capture storage limit. Contact HR before recording more attendance.');
+          if (event.target.result.length >= MAX_EVENTS) throw new Error('Storage is full. Sync pending captures, ask HR to complete reviews, then remove accepted copies.');
           assertOfflinePunchAllowed(event.target.result, approved.target.result?.roster.attendance || [], employee.id, action, payload.captured_at);
           store.add(record);
         } catch (error) { fail(error); }

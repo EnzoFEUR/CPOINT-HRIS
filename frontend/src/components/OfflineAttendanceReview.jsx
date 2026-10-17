@@ -6,6 +6,7 @@ import { offlineApi } from '../utils/offlineAttendanceSync';
 import PageHeader from './ui/PageHeader';
 import EmployeeAvatar from './EmployeeAvatar';
 import Badge from './ui/Badge';
+import { collapseOfflineReviewEvents, reviewCanDecide, reviewEventId } from '../utils/offlineReviewPairs.mjs';
 
 // Quick review preset templates for high-speed enterprise HR processing
 const PRESET_REASONS = [
@@ -141,6 +142,7 @@ export default function OfflineAttendanceReview() {
   });
 
   const rawEvents = eventsQuery.data || EMPTY_EVENTS;
+  const reviewEvents = useMemo(() => collapseOfflineReviewEvents(rawEvents), [rawEvents]);
 
   // Dynamic Sites List
   const availableSites = useMemo(() => {
@@ -154,18 +156,18 @@ export default function OfflineAttendanceReview() {
 
   // Client-Side Filtered Events (Zero-latency instant filtering)
   const filteredEvents = useMemo(() => {
-    return rawEvents.filter(event => {
+    return reviewEvents.filter(event => {
       const payload = event.payload || event;
       const employee = event.employee;
       const empName = event.employee_name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim() || 'Unknown';
       const companyId = event.employee_company_id || employee?.company_id || '';
       const action = payload.action || event.action;
       const site = payload.site_id || event.site_id;
-      const eventId = event.event_id || payload.event_id || '';
+      const eventId = reviewEventId(event) || '';
       const deviceId = payload.device_id || event.device_id || '';
 
       // Action Filter
-      if (actionFilter !== 'ALL' && action !== actionFilter) return false;
+      if (actionFilter !== 'ALL' && action !== actionFilter && event.review_pair?.complete !== true) return false;
 
       // Site Filter
       if (siteFilter !== 'ALL' && site !== siteFilter) return false;
@@ -176,7 +178,7 @@ export default function OfflineAttendanceReview() {
         const matchName = empName.toLowerCase().includes(q);
         const matchCpId = companyId.toLowerCase().includes(q);
         const matchSite = (site || '').toLowerCase().includes(q);
-        const matchEventId = eventId.toLowerCase().includes(q);
+        const matchEventId = eventId.toLowerCase().includes(q) || event.review_pair?.event_ids?.some(id => id.toLowerCase().includes(q));
         const matchDeviceId = deviceId.toLowerCase().includes(q);
         if (!matchName && !matchCpId && !matchSite && !matchEventId && !matchDeviceId) {
           return false;
@@ -185,12 +187,16 @@ export default function OfflineAttendanceReview() {
 
       return true;
     });
-  }, [rawEvents, actionFilter, siteFilter, searchQuery]);
+  }, [reviewEvents, actionFilter, siteFilter, searchQuery]);
+  const selectableRows = filteredEvents.filter(ev => ['needs_review', 'needs_verification'].includes(ev.status));
+  const selectedRows = selectableRows.filter(ev => selectedIds.has(reviewEventId(ev)));
+  const canBatchApprove = selectedRows.length === selectedIds.size && selectedRows.length > 0 && selectedRows.every(ev => reviewCanDecide(ev, 'approve'));
+  const canBatchReject = selectedRows.length === selectedIds.size && selectedRows.length > 0 && selectedRows.every(ev => reviewCanDecide(ev, 'reject'));
 
   // Multi-Selection Handlers
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      const allIds = new Set(filteredEvents.map(ev => ev.event_id || ev.payload?.event_id));
+      const allIds = new Set(selectableRows.slice(0, 50).map(reviewEventId));
       setSelectedIds(allIds);
     } else {
       setSelectedIds(new Set());
@@ -198,6 +204,10 @@ export default function OfflineAttendanceReview() {
   };
 
   const handleToggleSelect = (id) => {
+    if (!selectedIds.has(id) && selectedIds.size >= 50) {
+      toast.error('Select up to 50 attendance rows at a time.');
+      return;
+    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -215,8 +225,9 @@ export default function OfflineAttendanceReview() {
 
     const eventId = event.event_id || event.payload?.event_id;
     try {
-      const res = await offlineApi(`/events/${encodeURIComponent(eventId)}/history`);
-      setDrawerHistory(res.decisions || []);
+      const ids = event.review_pair?.event_ids || [eventId];
+      const histories = await Promise.all(ids.map(id => offlineApi(`/events/${encodeURIComponent(id)}/history`)));
+      setDrawerHistory(histories.flatMap(res => res.decisions || []));
     } catch {
       setDrawerHistory([]);
     } finally {
@@ -245,36 +256,7 @@ export default function OfflineAttendanceReview() {
 
     setActionBusy(true);
 
-    // Optimistic Update: Immediately reflect change in UI for 0ms latency feel
-    const previousEvents = queryClient.getQueryData(['offlineAttendanceEvents', activeTab]);
-    const previousCounts = queryClient.getQueryData(['offlineAttendanceCounts']);
-
-    const currentEvent = (previousEvents || []).find(ev => (ev.event_id || ev.payload?.event_id) === eventId);
-    const oldStatus = currentEvent?.status || 'needs_review';
-    const targetStatus = decision === 'approve' ? 'synced' : decision === 'reject' ? 'rejected' : 'needs_verification';
-
-    queryClient.setQueryData(['offlineAttendanceEvents', activeTab], (old) => {
-      if (!Array.isArray(old)) return old;
-      return old.map(ev => {
-        const id = ev.event_id || ev.payload?.event_id;
-        if (id === eventId) {
-          return { ...ev, status: targetStatus };
-        }
-        return ev;
-      });
-    });
-
-    if (oldStatus !== targetStatus) {
-      queryClient.setQueryData(['offlineAttendanceCounts'], (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          [oldStatus]: Math.max(0, (old[oldStatus] || 0) - 1),
-          [targetStatus]: (old[targetStatus] || 0) + 1
-        };
-      });
-    }
-
+    // Reflect approval only after the complete-pair transaction commits.
     try {
       await offlineApi(`/events/${encodeURIComponent(eventId)}/decision`, {
         method: 'POST',
@@ -282,7 +264,7 @@ export default function OfflineAttendanceReview() {
       });
 
       const label = decision === 'approve' ? 'Approved & Synced' : decision === 'reject' ? 'Rejected' : 'Flagged for Verification';
-      toast.success(`Event ${label} successfully`, { id: `offline-${eventId}` });
+      toast.success(`Attendance ${label} successfully`, { id: `offline-${eventId}` });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] }),
@@ -295,12 +277,10 @@ export default function OfflineAttendanceReview() {
 
       broadcastChannelRef.current?.postMessage({ type: 'OFFLINE_ATTENDANCE_CHANGED' });
 
-      if (selectedEvent && (selectedEvent.event_id === eventId || selectedEvent.payload?.event_id === eventId)) {
+      if (selectedEvent && (reviewEventId(selectedEvent) === eventId || selectedEvent.event_id === eventId)) {
         closeInspectDrawer();
       }
     } catch (err) {
-      queryClient.setQueryData(['offlineAttendanceEvents', activeTab], previousEvents);
-      queryClient.setQueryData(['offlineAttendanceCounts'], previousCounts);
       toast.error(err.message || 'Failed to record decision.', { id: 'offline-action-failed' });
     } finally {
       setActionBusy(false);
@@ -310,6 +290,10 @@ export default function OfflineAttendanceReview() {
   // Execute Batch Decision
   const handleExecuteBatch = async () => {
     if (!selectedIds.size) return;
+    if ((batchDecision === 'approve' && !canBatchApprove) || (batchDecision === 'reject' && !canBatchReject)) {
+      toast.error('Only complete attendance pairs can be approved or rejected.');
+      return;
+    }
     const reasonText = batchReason.trim();
     if (!reasonText) {
       toast.error('An audit justification reason is required for batch reconciliation.', { id: 'batch-reason-err' });
@@ -367,7 +351,7 @@ export default function OfflineAttendanceReview() {
       return;
     }
 
-    const headers = ['Event ID', 'Employee Name', 'Company ID', 'Action', 'Captured PST', 'Received PST', 'Site', 'Device ID', 'Sequence', 'Status', 'Payload Hash'];
+    const headers = ['Event ID', 'Employee Name', 'Company ID', 'Action', 'Captured PST', 'Received PST', 'Site', 'Device ID', 'Sequence', 'Status', 'Payload Hash', 'Time In Event', 'Time Out Event', 'Time In ISO', 'Time Out ISO', 'Review Issue'];
     const rows = filteredEvents.map(e => {
       const p = e.payload || e;
       const emp = e.employee;
@@ -384,7 +368,9 @@ export default function OfflineAttendanceReview() {
         p.device_id || e.device_id,
         p.local_sequence || e.local_sequence,
         e.status,
-        e.payload_hash || ''
+        e.payload_hash || '',
+        e.review_pair?.time_in_event_id || '', e.review_pair?.time_out_event_id || '',
+        e.review_pair?.time_in || '', e.review_pair?.time_out || '', e.review_pair?.issue || ''
       ];
     });
 
@@ -575,14 +561,14 @@ export default function OfflineAttendanceReview() {
               <span>{selectedIds.size} capture{selectedIds.size > 1 ? 's' : ''} selected</span>
             </div>
             <div className="flex items-center gap-2">
-              <button
+              {canBatchApprove && <button
                 type="button"
                 onClick={() => { setBatchDecision('approve'); setBatchModalOpen(true); }}
                 disabled={!isApprovalReady}
                 className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Batch Approve
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => { setBatchDecision('needs_verification'); setBatchModalOpen(true); }}
@@ -590,13 +576,13 @@ export default function OfflineAttendanceReview() {
               >
                 Mark Verification
               </button>
-              <button
+              {canBatchReject && <button
                 type="button"
                 onClick={() => { setBatchDecision('reject'); setBatchModalOpen(true); }}
                 className="h-8 px-3 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors cursor-pointer"
               >
                 Batch Reject
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
@@ -643,7 +629,8 @@ export default function OfflineAttendanceReview() {
                   <th className="py-3 px-4 w-10 text-center">
                     <input
                       type="checkbox"
-                      checked={selectedIds.size === filteredEvents.length && filteredEvents.length > 0}
+                      checked={selectedIds.size === Math.min(selectableRows.length, 50) && selectableRows.length > 0}
+                      disabled={selectableRows.length === 0}
                       onChange={handleSelectAll}
                       className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
                     />
@@ -659,7 +646,7 @@ export default function OfflineAttendanceReview() {
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredEvents.map(event => {
                   const payload = event.payload || event;
-                  const eventId = event.event_id || payload.event_id;
+                  const eventId = reviewEventId(event);
                   const employee = event.employee;
                   const empName = event.employee_name || `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim() || 'Unknown Worker';
                   const cpId = event.employee_company_id || employee?.company_id || (event.employee_id ? `CP-${event.employee_id.substring(0, 8).toUpperCase()}` : 'N/A');
@@ -679,6 +666,7 @@ export default function OfflineAttendanceReview() {
                         <input
                           type="checkbox"
                           checked={isSelected}
+                          disabled={!['needs_review', 'needs_verification'].includes(event.status)}
                           onChange={() => handleToggleSelect(eventId)}
                           className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
                         />
@@ -733,12 +721,19 @@ export default function OfflineAttendanceReview() {
                             : 'bg-blue-50 text-blue-700 border-blue-200'
                         }`}>
                           <i className={`ti ${isTimeIn ? 'ti-login' : 'ti-logout'} text-xs`} />
-                          <span>{isTimeIn ? 'Time In' : 'Time Out'}</span>
+                          <span>{event.review_pair?.complete ? 'Time In / Out' : isTimeIn ? 'Time In' : 'Time Out'}</span>
                         </span>
                       </td>
 
                       {/* Captured Instant (PST) */}
                       <td className="py-3 px-4">
+                        {event.review_pair?.complete ? (
+                          <div className="font-mono text-xs text-ink">
+                            <p>In: {new Date(event.review_pair.time_in).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}</p>
+                            <p>Out: {new Date(event.review_pair.time_out).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}</p>
+                            <p className="mt-1 text-[10px]">{event.review_pair.work_date}</p>
+                          </div>
+                        ) : <>
                         <div className="font-mono text-xs font-semibold text-slate-900">
                           {payload.captured_at
                             ? new Date(payload.captured_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -760,6 +755,7 @@ export default function OfflineAttendanceReview() {
                             {driftLabel}
                           </span>
                         )}
+                        </>}
                       </td>
 
                       {/* Location / Kiosk */}
@@ -787,26 +783,26 @@ export default function OfflineAttendanceReview() {
                           variant={STATUS_VARIANTS[event.status] || 'neutral'}
                           size="sm"
                         >
-                          {STATUS_LABELS[event.status] || event.status}
+                          {event.review_pair?.issue || STATUS_LABELS[event.status] || event.status}
                         </Badge>
                       </td>
 
                       {/* Review Actions */}
                       <td className="py-3 px-4 text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
-                          {['needs_review', 'needs_verification'].includes(event.status) && (
+                          {reviewCanDecide(event, 'approve') && (
                             <>
                               <button
                                 type="button"
                                 onClick={() => handleDecision(eventId, 'approve', 'Direct verification by authorized HR administrator.')}
                                 disabled={actionBusy || !isApprovalReady}
                                 className="h-7 px-2.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 transition-colors disabled:opacity-40 cursor-pointer inline-flex items-center gap-1"
-                                title="Approve this capture and commit to attendance"
+                                title="Approve the complete Time In and Time Out together"
                               >
                                 <i className="ti ti-check text-xs" />
                                 <span>Approve</span>
                               </button>
-                              <button
+                              {reviewCanDecide(event, 'reject') && <button
                                 type="button"
                                 onClick={() => handleDecision(eventId, 'reject', 'Identity could not be verified by HR reviewer.')}
                                 disabled={actionBusy}
@@ -814,7 +810,7 @@ export default function OfflineAttendanceReview() {
                                 title="Reject capture"
                               >
                                 <i className="ti ti-x text-xs" />
-                              </button>
+                              </button>}
                             </>
                           )}
 
@@ -974,6 +970,12 @@ export default function OfflineAttendanceReview() {
               </div>
 
               {/* Decision History Audit Trail */}
+              <div className="rounded-md border border-line bg-canvas p-3 text-xs text-ink">
+                {selectedEvent.review_pair?.complete ? <>
+                  <p>Time In: {new Date(selectedEvent.review_pair.time_in).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
+                  <p>Time Out: {new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
+                </> : <p>{selectedEvent.review_pair?.issue || 'Waiting for a complete attendance pair.'}</p>}
+              </div>
               <div className="space-y-2">
                 <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Decision Audit Trail
@@ -1042,15 +1044,15 @@ export default function OfflineAttendanceReview() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                    <button
+                    {reviewCanDecide(selectedEvent, 'approve') && <button
                       type="button"
-                      onClick={() => handleDecision(selectedEvent.event_id || selectedEvent.payload?.event_id, 'approve')}
+                      onClick={() => handleDecision(reviewEventId(selectedEvent), 'approve')}
                       disabled={actionBusy || !reviewReason.trim() || !isApprovalReady}
                       className="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5"
                     >
                       <i className="ti ti-check text-sm" />
                       <span>Approve Attendance</span>
-                    </button>
+                    </button>}
 
                     <button
                       type="button"
@@ -1062,15 +1064,15 @@ export default function OfflineAttendanceReview() {
                       <span>Request Verification</span>
                     </button>
 
-                    <button
+                    {reviewCanDecide(selectedEvent, 'reject') && <button
                       type="button"
-                      onClick={() => handleDecision(selectedEvent.event_id || selectedEvent.payload?.event_id, 'reject')}
+                      onClick={() => handleDecision(reviewEventId(selectedEvent), 'reject')}
                       disabled={actionBusy || !reviewReason.trim()}
                       className="h-9 px-3.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5"
                     >
                       <i className="ti ti-x text-sm" />
-                      <span>Reject Capture</span>
-                    </button>
+                      <span>Reject Attendance</span>
+                    </button>}
                   </div>
                 </div>
               )}
