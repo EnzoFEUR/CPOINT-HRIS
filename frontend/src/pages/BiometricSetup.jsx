@@ -347,18 +347,7 @@ export default function BiometricSetup() {
       if (abortRef.current) abortRef.current.abort();
       wakeLock?.release().catch(() => {});
     };
-  }, [startCameraStream]);
-
-  // Session timeout handler
-  useEffect(() => {
-    clearTimeout(sessionTimerRef.current);
-    if (state.mode === MODES.CALIBRATING || state.mode === MODES.ENROLLING) {
-      sessionTimerRef.current = setTimeout(() => {
-        toast.error('Enrollment session timed out.');
-        handleReset();
-      }, ENV.ENROLL_TIMEOUT_MS);
-    }
-  }, [state.mode]);
+  }, [startCameraStream, user, navigate]);
 
   const snapFrame = async () => {
     const video = videoRef.current;
@@ -635,6 +624,18 @@ export default function BiometricSetup() {
     dispatch({ type: 'SET_MODE', payload: MODES.READY });
     dispatch({ type: 'SET_STATUS', payload: 'Press Start Registration when ready' });
   }, [vault]);
+
+  // Session timeout handler
+  useEffect(() => {
+    clearTimeout(sessionTimerRef.current);
+    if (state.mode === MODES.CALIBRATING || state.mode === MODES.ENROLLING) {
+      sessionTimerRef.current = setTimeout(() => {
+        toast.error('Enrollment session timed out.');
+        handleReset();
+      }, ENV.ENROLL_TIMEOUT_MS);
+    }
+    return () => clearTimeout(sessionTimerRef.current);
+  }, [state.mode, handleReset]);
 
   const handleLogout = useCallback(async () => {
     if (loopRef.current) clearInterval(loopRef.current);

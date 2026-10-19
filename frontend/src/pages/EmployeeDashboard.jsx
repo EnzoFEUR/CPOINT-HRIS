@@ -345,7 +345,7 @@ const EmployeeDashboard = () => {
             window.removeEventListener('open_disciplinary_modal', openDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
         };
-    }, [enabled, storedUser.id, refresh]);
+    }, [enabled, storedUser.id, refresh, queryClient]);
 
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../supabaseClient';
 import { fetchWithAuth } from '../../../utils/api';
@@ -141,11 +141,11 @@ const Calendar = () => {
         setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
     };
 
-    const onSelectDay = (day) => {
+    const onSelectDay = useCallback((day) => {
         hasUserPicked.current = true;
         sessionStorage.setItem('calendar_user_picked', '1');
-        setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day));
-    };
+        setSelectedDate(current => new Date(current.getFullYear(), current.getMonth(), day));
+    }, []);
 
     // Calendar grid calculations
     const { year, month, daysInMonth, firstDayOfWeek, monthYearFormatted } = useMemo(() => {
@@ -197,7 +197,7 @@ const Calendar = () => {
                 </button>
             );
         });
-    }, [daysInMonth, year, month, selectedDate, activeDateSet]);
+    }, [daysInMonth, year, month, selectedDate, activeDateSet, onSelectDay]);
 
     const isExemptOperator = (emp) => {
         if (!emp) return false;

@@ -509,7 +509,7 @@ export default function DisciplinaryIndex() {
             }
             return true;
         });
-    }, [employees, records, personnelFilter, personnelSearch, getEmployeeStanding]);
+    }, [employees, personnelFilter, personnelSearch, getEmployeeStanding]);
 
     // Clear false or unfounded disciplinary record
     const handleClearSubmit = async (e) => {
