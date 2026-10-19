@@ -1,0 +1,8 @@
+.cpoint-toast-region { position: fixed; inset: 16px; z-index: 9999; pointer-events: none; }
+.cpoint-toast-position { position: absolute; left: 0; right: 0; display: flex; transition: transform 200ms ease, opacity 150ms ease; }
+.cpoint-toast-content { display: flex; align-items: center; gap: 10px; max-width: min(100%, 350px); padding: 10px 14px; background: var(--color-surface, white); color: var(--color-ink, #0f172a); border-radius: 8px; box-shadow: 0 3px 10px rgb(0 0 0 / 15%); overflow-wrap: anywhere; }
+.cpoint-toast-content > svg { flex-shrink: 0; }
+.cpoint-toast-content > div { white-space: pre-line; }
+.cpoint-toast-loading { animation: cpoint-toast-spin 800ms linear infinite; }
+@keyframes cpoint-toast-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cpoint-toast-position { transition: none; } .cpoint-toast-loading { animation: none; } }

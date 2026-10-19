@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+export const otpTestMode = (env = process.env) => ['development', 'test'].includes(env.NODE_ENV) && env.ALLOW_MOCK_OTP === 'true';
+const unavailableDelivery = () => Object.assign(new Error('Verification delivery is unavailable. Please use a configured email provider.'), { status: 503, code: 'OTP_DELIVERY_UNAVAILABLE' });
+
 // In-memory OTP storage with 5-minute TTL
 const otpStore = new Map();
 
@@ -33,7 +36,7 @@ setInterval(() => {
             inFlightDispatches.delete(key);
         }
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Check if an identifier is currently in active cooldown
 export function checkOtpCooldown(identifier, cooldownMs = OTP_RESEND_COOLDOWN_MS) {
@@ -411,18 +414,21 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
                 return { success: true, provider: 'brevo', messageId: data.messageId };
             }
         } catch (err) {
-            console.warn(`[OTP_BREVO_ERROR] Brevo dispatch error (${err.message}). Falling back to simulation.`);
+            console.warn('[OTP_BREVO_ERROR] Verification email delivery failed.');
+            if (!otpTestMode()) throw unavailableDelivery();
             return { success: true, simulated: true, code, warning: err.message };
         }
     }
 
     // Local simulation fallback
-    console.warn(`[OTP_EMAIL_SIMULATED] Target: ${email} | Code: ${code}`);
+    if (!otpTestMode()) throw unavailableDelivery();
+    console.warn('[OTP_EMAIL_SIMULATED] Explicit development simulation is enabled.');
     return { success: true, simulated: true, code };
 }
 
 // Send OTP via SMS (Decommissioned - SMS Gateway Removed)
 export async function sendSmsOtp(phoneNumber, code) {
-    console.info(`[OTP_SMS_SIMULATED] SMS gateway decommissioned. Target: ${phoneNumber} | Code: ${code}`);
+    if (!otpTestMode()) throw unavailableDelivery();
+    console.info('[OTP_SMS_SIMULATED] Explicit development simulation is enabled; no SMS was sent.');
     return { success: true, simulated: true, code };
 }

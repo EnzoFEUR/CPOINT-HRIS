@@ -1,4 +1,5 @@
 import express from 'express';
+import { validateApiInput, validateRecordId } from '../middleware/requestValidation.js';
 import multer from 'multer';
 import { supabase } from '../supabaseClient.js';
 import { assertDocumentOwner, assertUuid, DOCUMENT_MAX_BYTES, DOCUMENT_URL_TTL, DocumentError, documentRoute, ensureWritableEmployee, findDocument, listDocuments, normalizeDocumentPath, requireDocumentAdmin, uploadDocument } from '../services/documentService.js';
@@ -7,6 +8,7 @@ import { importEmployeeDocument, requireBulkAdmin } from '../services/bulkDocume
 
 export function createEmployeeDocumentsRouter(client = supabase, classifier = documentClassifier) {
 const router = express.Router();
+router.param('id', validateRecordId);
 router.use((req, res, next) => {
     res.set('Cache-Control', 'private, no-store');
     if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
@@ -88,7 +90,7 @@ router.get('/:id/url', documentRoute(async (req, res) => {
 }));
 
 // Advisory classification only: no storage upload, document write, or draft broadcast.
-router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('file'), documentRoute(async (req, res) => {
+router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('file'), validateApiInput, documentRoute(async (req, res) => {
     if (req.body.analysis_consent !== 'true') throw new DocumentError(400, 'Consent to content analysis is required.');
     const employeeId = req.body.employee_id ? assertUuid(req.body.employee_id, 'Employee ID') : null;
     const targetEmployee = employeeId ? await ensureWritableEmployee(client, employeeId) : null;
@@ -105,7 +107,7 @@ router.post('/classify', requireDocumentAdmin, classifier.admit, upload.single('
     } finally { res.removeListener('close', disconnect); }
 }));
 
-router.post('/', upload.single('file'), requireBulkAdmin, documentRoute(async (req, res) => {
+router.post('/', upload.single('file'), validateApiInput, requireBulkAdmin, documentRoute(async (req, res) => {
     const document = await importEmployeeDocument(client, req.user, req.body, req.file);
     res.json({ success: true, message: 'Document uploaded successfully', document });
 }));
@@ -119,7 +121,7 @@ router.post('/', upload.single('file'), requireBulkAdmin, documentRoute(async (r
  * (e.g. by re-submitting them individually through the existing single-file
  * POST /api/employee-documents route above, once an employee_id is chosen).
  */
-router.post('/hot-folder', requireDocumentAdmin, upload.array('files', 25), async (req, res) => {
+router.post('/hot-folder', requireDocumentAdmin, upload.array('files', 25), validateApiInput, async (req, res) => {
     try {
         const files = req.files || [];
         if (files.length === 0) {

@@ -1,5 +1,21 @@
 export const DEFAULT_REST_DAYS = Object.freeze([0, 6]);
 
+export const WORK_POLICY_INPUT_LIMITS = Object.freeze({
+    late_rate_per_minute: Object.freeze({ min: 0, max: 10000, step: 0.01 }),
+    grace_period_minutes: Object.freeze({ min: 0, max: 1440, step: 1 }),
+    call_time_hour: Object.freeze({ min: 0, max: 23, step: 1 }),
+    call_time_minute: Object.freeze({ min: 0, max: 59, step: 1 }),
+});
+
+export function isValidWorkPolicyInput(name, raw) {
+    const limits = WORK_POLICY_INPUT_LIMITS[name];
+    if (!limits || !['number', 'string'].includes(typeof raw) || String(raw).trim() === '') return false;
+    if (typeof raw === 'string' && !/^\d+(?:\.\d{0,2})?$/.test(raw)) return false;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= limits.min && value <= limits.max
+        && (limits.step === 1 ? Number.isInteger(value) : Math.abs(value * 100 - Math.round(value * 100)) < 1e-8);
+}
+
 export function getEmployeeRestDays(employee) {
     if (!Array.isArray(employee?.rest_days)) return [...DEFAULT_REST_DAYS];
     const days = employee.rest_days.map(Number);
@@ -23,10 +39,10 @@ export function getWorkPolicy(source = {}) {
         return value;
     };
     return Object.freeze({
-        callTimeHour: integer('call_time_hour', 'CALL_TIME_HOUR', 8, 23),
-        callTimeMinute: integer('call_time_minute', 'CALL_TIME_MINUTE', 0, 59),
-        gracePeriodMinutes: integer('grace_period_minutes', 'GRACE_PERIOD_MINUTES', 15, 1440),
-        lateRatePerMinute: number('late_rate_per_minute', 'LATE_RATE_PER_MINUTE', 25, 10000),
+        callTimeHour: integer('call_time_hour', 'CALL_TIME_HOUR', 8, WORK_POLICY_INPUT_LIMITS.call_time_hour.max),
+        callTimeMinute: integer('call_time_minute', 'CALL_TIME_MINUTE', 0, WORK_POLICY_INPUT_LIMITS.call_time_minute.max),
+        gracePeriodMinutes: integer('grace_period_minutes', 'GRACE_PERIOD_MINUTES', 15, WORK_POLICY_INPUT_LIMITS.grace_period_minutes.max),
+        lateRatePerMinute: number('late_rate_per_minute', 'LATE_RATE_PER_MINUTE', 25, WORK_POLICY_INPUT_LIMITS.late_rate_per_minute.max),
         timeZone: 'Asia/Manila',
     });
 }

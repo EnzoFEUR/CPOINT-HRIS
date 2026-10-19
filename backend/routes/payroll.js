@@ -1,4 +1,5 @@
 import express from 'express';
+import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { calculateBIRWithholdingTax } from '../../shared/payrollTax.mjs';
 import { getSssMsc } from '../../shared/sssContribution.mjs';
 import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase } from '../../shared/statutoryTiming.mjs';
@@ -26,11 +27,13 @@ import {
 } from '../utils/payrollCalculations.js';
 import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
-import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness, WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from '../../shared/workPolicy.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
 import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
 
 const router = express.Router();
+router.param('id', validateRecordId);
+router.param('employee_id', validateUuidParam);
 const WORK_POLICY = getWorkPolicy(process.env);
 
 const requirePayrollManager = (req, res, next) => {
@@ -659,17 +662,12 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
         const admin_id = req.user.id;
 
         // Validation for attendance & tardiness policies if provided
-        if (cleanSettings.grace_period_minutes !== undefined) {
-            cleanSettings.grace_period_minutes = Math.max(0, parseInt(cleanSettings.grace_period_minutes, 10) || 0);
-        }
-        if (cleanSettings.late_rate_per_minute !== undefined) {
-            cleanSettings.late_rate_per_minute = Math.max(0, parseFloat(cleanSettings.late_rate_per_minute) || 0);
-        }
-        if (cleanSettings.call_time_hour !== undefined) {
-            cleanSettings.call_time_hour = Math.min(23, Math.max(0, parseInt(cleanSettings.call_time_hour, 10) || 8));
-        }
-        if (cleanSettings.call_time_minute !== undefined) {
-            cleanSettings.call_time_minute = Math.min(59, Math.max(0, parseInt(cleanSettings.call_time_minute, 10) || 0));
+        for (const [name, limits] of Object.entries(WORK_POLICY_INPUT_LIMITS)) {
+            if (!Object.hasOwn(cleanSettings, name)) continue;
+            if (!isValidWorkPolicyInput(name, cleanSettings[name])) {
+                return res.status(400).json({ success: false, code: 'INVALID_WORK_POLICY', error: `${name} must be between ${limits.min} and ${limits.max}, using ${limits.step === 1 ? 'whole numbers' : 'up to two decimal places'}.` });
+            }
+            cleanSettings[name] = Number(cleanSettings[name]);
         }
 
         const { data: existing, error: readError } = await supabase

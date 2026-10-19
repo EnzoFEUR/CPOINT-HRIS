@@ -266,8 +266,11 @@ export default function AuditLogsIndex() {
                                                     </span>
                                                 ) : (
                                                     <div className="flex items-center gap-2.5">
-                                                        <div className="h-7 w-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold text-xs shrink-0">
-                                                            {userNameStr.charAt(0)}
+                                                        <div className="h-7 w-7 rounded-full bg-slate-200 border border-slate-200 overflow-hidden flex items-center justify-center text-slate-400 shrink-0">
+                                                            <svg viewBox="0 0 100 100" fill="currentColor" className="w-full h-full" aria-hidden="true">
+                                                                <circle cx="50" cy="38" r="18" />
+                                                                <path d="M 0 100 L 0 92 C 12 72, 30 64, 50 64 C 70 64, 88 72, 100 92 L 100 100 Z" />
+                                                            </svg>
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <span className="text-xs font-semibold text-slate-900 truncate">{userNameStr}</span>

@@ -1,9 +1,10 @@
 import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { verifyToken } from '../middleware/authMiddleware.js';
+import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
+import { sanitizePhPhone } from './employees.js';
 import { createAuditLog } from './auditLogs.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { getOrGenerateOtp, storeOtp, verifyOtpCode, sendEmailOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
@@ -94,6 +95,11 @@ router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
 
         const employee = {
             ...rawEmployee,
+            sex: rawEmployee?.gender || req.user?.gender || null,
+            phone: rawEmployee?.phone || req.user?.phone || null,
+            emergency_contact_name: rawEmployee?.emergency_contact_name || req.user?.emergency_contact_name || req.user?.user_metadata?.emergency_contact_name || null,
+            emergency_contact_phone: rawEmployee?.emergency_contact_phone || req.user?.emergency_contact_phone || req.user?.user_metadata?.emergency_contact_phone || null,
+            emergency_contact_relationship: rawEmployee?.emergency_contact_relationship || req.user?.emergency_contact_relationship || req.user?.user_metadata?.emergency_contact_relationship || null,
             is_admin: isAdmin,
             role: rawEmployee?.role || req.user?.role || (isAdmin ? 'admin' : 'employee'),
             job_title: isAdmin && (!rawEmployee?.job_title || /super\s*admin/i.test(rawEmployee?.job_title)) ? 'Admin' : (rawEmployee?.job_title || 'Staff Member'),
@@ -118,7 +124,21 @@ router.get('/', verifyToken, cacheResponse(15), async (req, res) => {
 // Update profile
 router.patch('/', verifyToken, async (req, res) => {
     try {
-        const { first_name, last_name, email, gender, birth_date, address } = req.body;
+        const {
+            first_name,
+            last_name,
+            email,
+            phone,
+            gender,
+            sex,
+            birth_date,
+            address,
+            emergency_contact_name,
+            emergency_contact_phone,
+            emergency_contact_relationship
+        } = req.body;
+
+        const candidateSex = sex !== undefined ? sex : gender;
         
         // Update Supabase Auth if email changes
         if (email && email !== req.user.email) {
@@ -131,13 +151,13 @@ router.patch('/', verifyToken, async (req, res) => {
         if (last_name !== undefined) updatePayload.last_name = String(last_name).trim();
         if (email) updatePayload.email = email.trim().toLowerCase();
 
-        // Validate and sanitize Gender
-        if (gender !== undefined) {
-            const sanitizedGender = sanitizeGender(gender);
-            if (gender && !sanitizedGender && String(gender).trim().toUpperCase() !== 'N/A') {
+        // Validate and sanitize Sex
+        if (candidateSex !== undefined) {
+            const sanitizedGender = sanitizeGender(candidateSex);
+            if (candidateSex && !sanitizedGender && String(candidateSex).trim().toUpperCase() !== 'N/A') {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid gender selection. Choose from Male, Female, Other, or Prefer not to say.'
+                    error: 'Invalid selection for Sex. Choose from Male or Female.'
                 });
             }
             updatePayload.gender = sanitizedGender;
@@ -161,31 +181,137 @@ router.patch('/', verifyToken, async (req, res) => {
             updatePayload.address = cleanAddress;
         }
 
-        if (Object.keys(updatePayload).length === 0) {
+        // Sanitize and validate mobile phone (Philippine 10-digit starting with 9)
+        let sanitizedPhone = undefined;
+        if (phone !== undefined) {
+            if (phone === null || String(phone).trim() === '') {
+                sanitizedPhone = null;
+            } else {
+                sanitizedPhone = sanitizePhPhone(phone);
+                if (!sanitizedPhone) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required (e.g. 917 123 4567).'
+                    });
+                }
+            }
+        }
+
+        // Sanitize and validate emergency contact phone
+        let sanitizedEmergencyPhone = undefined;
+        if (emergency_contact_phone !== undefined) {
+            if (emergency_contact_phone === null || String(emergency_contact_phone).trim() === '') {
+                sanitizedEmergencyPhone = null;
+            } else {
+                sanitizedEmergencyPhone = sanitizePhPhone(emergency_contact_phone);
+                if (!sanitizedEmergencyPhone) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required for emergency contact.'
+                    });
+                }
+            }
+        }
+
+        // Synchronize Auth metadata (phone, emergency contacts)
+        const authMetadataUpdates = {};
+        if (sanitizedPhone !== undefined) authMetadataUpdates.phone = sanitizedPhone;
+        if (emergency_contact_name !== undefined) authMetadataUpdates.emergency_contact_name = emergency_contact_name ? String(emergency_contact_name).trim().slice(0, 100) : null;
+        if (sanitizedEmergencyPhone !== undefined) authMetadataUpdates.emergency_contact_phone = sanitizedEmergencyPhone;
+        if (emergency_contact_relationship !== undefined) authMetadataUpdates.emergency_contact_relationship = emergency_contact_relationship ? String(emergency_contact_relationship).trim().slice(0, 50) : null;
+
+        if (Object.keys(authMetadataUpdates).length > 0) {
+            try {
+                const targetAuthUserId = req.user.auth_user_id || req.user.id;
+                const { data: currentAuth } = await supabase.auth.admin.getUserById(targetAuthUserId);
+                const currentMeta = currentAuth?.user?.user_metadata || {};
+                await supabase.auth.admin.updateUserById(targetAuthUserId, {
+                    user_metadata: {
+                        ...currentMeta,
+                        ...authMetadataUpdates
+                    }
+                });
+            } catch (authMetaErr) {
+                console.error('[Profile Update] Auth metadata update error:', authMetaErr);
+            }
+        }
+
+        if (sanitizedPhone !== undefined) {
+            updatePayload.phone = sanitizedPhone;
+        }
+        if (emergency_contact_name !== undefined) {
+            updatePayload.emergency_contact_name = emergency_contact_name ? String(emergency_contact_name).trim().slice(0, 100) : null;
+        }
+        if (sanitizedEmergencyPhone !== undefined) {
+            updatePayload.emergency_contact_phone = sanitizedEmergencyPhone;
+        }
+        if (emergency_contact_relationship !== undefined) {
+            updatePayload.emergency_contact_relationship = emergency_contact_relationship ? String(emergency_contact_relationship).trim().slice(0, 50) : null;
+        }
+
+        if (Object.keys(updatePayload).length === 0 && Object.keys(authMetadataUpdates).length === 0) {
             return res.status(400).json({ success: false, error: 'No valid fields provided for update.' });
         }
 
-        // Update Employees table
-        let updateRes = await supabase
-            .from('employees')
-            .update(updatePayload)
-            .eq('id', req.user.id)
-            .select('*, production_groups (id, code, name, target_output_pairs, is_active)')
-            .maybeSingle();
+        let data = { ...req.user };
 
-        if (!updateRes.data && req.user.auth_user_id) {
-            updateRes = await supabase
+        // Update Employees table if there are DB fields to update
+        if (Object.keys(updatePayload).length > 0) {
+            let updateRes = await supabase
                 .from('employees')
                 .update(updatePayload)
-                .eq('auth_user_id', req.user.auth_user_id)
+                .eq('id', req.user.id)
                 .select('*, production_groups (id, code, name, target_output_pairs, is_active)')
                 .maybeSingle();
+
+            if (updateRes.error && updateRes.error.message?.includes('phone')) {
+                const { phone: _dropPhone, ...payloadWithoutPhone } = updatePayload;
+                updateRes = await supabase
+                    .from('employees')
+                    .update(payloadWithoutPhone)
+                    .eq('id', req.user.id)
+                    .select('*, production_groups (id, code, name, target_output_pairs, is_active)')
+                    .maybeSingle();
+            }
+
+            if (!updateRes.data && req.user.auth_user_id) {
+                updateRes = await supabase
+                    .from('employees')
+                    .update(updatePayload)
+                    .eq('auth_user_id', req.user.auth_user_id)
+                    .select('*, production_groups (id, code, name, target_output_pairs, is_active)')
+                    .maybeSingle();
+
+                if (updateRes.error && updateRes.error.message?.includes('phone')) {
+                    const { phone: _dropPhone, ...payloadWithoutPhone } = updatePayload;
+                    updateRes = await supabase
+                        .from('employees')
+                        .update(payloadWithoutPhone)
+                        .eq('auth_user_id', req.user.auth_user_id)
+                        .select('*, production_groups (id, code, name, target_output_pairs, is_active)')
+                        .maybeSingle();
+                }
+            }
+
+            if (updateRes.error) throw updateRes.error;
+            data = updateRes.data || { ...req.user, ...updatePayload };
         }
 
-        if (updateRes.error) throw updateRes.error;
-        const data = updateRes.data || { ...req.user, ...updatePayload };
+        // Merge updated contact and emergency contact fields
+        data = {
+            ...data,
+            sex: data.gender,
+            phone: sanitizedPhone !== undefined ? sanitizedPhone : (data.phone || req.user?.phone || null),
+            emergency_contact_name: emergency_contact_name !== undefined ? (emergency_contact_name ? String(emergency_contact_name).trim().slice(0, 100) : null) : (req.user?.emergency_contact_name || null),
+            emergency_contact_phone: sanitizedEmergencyPhone !== undefined ? sanitizedEmergencyPhone : (req.user?.emergency_contact_phone || null),
+            emergency_contact_relationship: emergency_contact_relationship !== undefined ? (emergency_contact_relationship ? String(emergency_contact_relationship).trim().slice(0, 50) : null) : (req.user?.emergency_contact_relationship || null)
+        };
 
-        // Invalidate profile and workforce caches for instant consistency
+        // Invalidate auth memory cache (<1ms) and HTTP route cache
+        invalidateAuthUser(req.user.id);
+        if (req.user.auth_user_id && req.user.auth_user_id !== req.user.id) {
+            invalidateAuthUser(req.user.auth_user_id);
+        }
         invalidateCache(['/api/profile', '/api/employees', `/api/employees/${req.user.id}`]);
 
         // Real-time broadcast (<5ms) to update all open client sessions
@@ -195,8 +321,10 @@ router.patch('/', verifyToken, async (req, res) => {
                 first_name: data.first_name,
                 last_name: data.last_name,
                 gender: data.gender,
+                sex: data.gender,
                 birth_date: data.birth_date,
                 address: data.address,
+                phone: data.phone,
                 email: data.email,
                 updated_at: new Date().toISOString()
             };
@@ -220,7 +348,7 @@ router.patch('/', verifyToken, async (req, res) => {
         try {
             await createAuditLog({
                 log_name: 'profile',
-                description: `Employee updated profile information (gender: ${data.gender || 'N/A'}, birth_date: ${data.birth_date || 'N/A'}, address: ${data.address ? 'Registered' : 'None'})`,
+                description: `Employee updated profile information (gender: ${data.gender || 'N/A'}, birth_date: ${data.birth_date || 'N/A'}, address: ${data.address ? 'Registered' : 'None'}, phone: ${data.phone ? 'Registered' : 'None'})`,
                 subject_type: 'App\\Models\\Employee',
                 subject_id: req.user.id,
                 event: 'updated',
@@ -540,6 +668,8 @@ router.post('/change-password', verifyToken, async (req, res) => {
             password_changed_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
         }).eq('id', req.user.id);
+
+        invalidateAuthUser(req.user.id);
 
         // Enterprise audit logging
         const auditLogPayload = {

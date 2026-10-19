@@ -1,3 +1,4 @@
+import scannerStylesUrl from './Scanner.css?url&no-inline';
 import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
@@ -1186,29 +1187,10 @@ const Scanner = () => {
     window.addEventListener('offline', onOffline);
 
     // Dynamic Responsive Camera CSS
-    const style = document.createElement('style');
+    const style = document.createElement('link');
     style.id = 'scanner-css';
-    style.textContent = `
-      #qr-reader {
-        width: 100vw !important;
-        height: 100dvh !important;
-        overflow: hidden !important;
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        background: #000 !important;
-      }
-      #qr-reader video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-        position: absolute !important;
-        inset: 0 !important;
-      }
-      #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
-      #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
-    `;
+    style.rel = 'stylesheet';
+    style.href = scannerStylesUrl;
     document.head.appendChild(style);
 
     // Wake lock (keep screen on)

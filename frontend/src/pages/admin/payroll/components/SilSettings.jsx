@@ -8,6 +8,7 @@ import { readLeaveCreditResponse } from '../../../../utils/useEmployeeLeaveCredi
 import { Link } from 'react-router-dom';
 import { isCreditManager, validateSilPolicy } from '../../../../../../shared/leavePolicy.js';
 import { getManilaWorkDate } from '../../../../../../shared/workPolicy.mjs';
+import EmployeeAvatar from '../../../../components/EmployeeAvatar';
 
 export default function SilSettings() {
     const user = getUser();
@@ -455,7 +456,6 @@ export default function SilSettings() {
                             const last = item.employees?.last_name || '';
                             const companyId = item.employees?.company_id || 'ID Pending';
                             const dept = item.employees?.department;
-                            const initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || 'EM';
                             const isSeparation = item.kind === 'separation';
 
                             return (
@@ -465,9 +465,7 @@ export default function SilSettings() {
                                 >
                                     {/* Left: Employee Identity */}
                                     <div className="flex items-center gap-3 min-w-0">
-                                        <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200/80 flex items-center justify-center font-bold text-xs text-slate-700 shrink-0">
-                                            {initials}
-                                        </div>
+                                        <EmployeeAvatar employee={item.employees} size="w-8 h-8" rounded="rounded-full" />
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="text-xs font-bold text-slate-900 truncate">

@@ -235,8 +235,9 @@ export default function ForgotPassword() {
         }
 
         toast.success('Identity verified. Redirecting to password reset...');
-        navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
+        navigate('/reset-password', {
           replace: true,
+          state: { resetTicket: data.resetTicket, email },
         });
       } catch (err) {
         console.error('[EMERGENCY_KEY_ERROR]', err);
@@ -464,8 +465,9 @@ export default function ForgotPassword() {
         sessionStorage.removeItem('cpoint_forgot_pwd_session');
         sessionStorage.removeItem(`cpoint_forgot_exp_${email.trim().toLowerCase()}`);
       } catch {}
-      navigate(`/reset-password?ticket=${data.resetTicket}&email=${encodeURIComponent(email)}`, {
+      navigate('/reset-password', {
         replace: true,
+        state: { resetTicket: data.resetTicket, email },
       });
     } catch (err) {
       console.error('[OTP_VERIFY_ERROR]', err);

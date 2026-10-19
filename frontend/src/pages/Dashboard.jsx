@@ -228,11 +228,11 @@ export default function Dashboard() {
             }
             return { briefing: null, payrollInsight: null };
         },
-        staleTime: 24 * 60 * 60 * 1000, // 24 hours: Daily briefing is persistent for current shift/day
-        gcTime: 24 * 60 * 60 * 1000,    // Retain in memory across page/tab navigation
-        refetchOnMount: false,          // Never auto-refetch when switching back to Dashboard module
+        staleTime: 60 * 1000,           // 1 minute: Fast cache responsiveness with real-time invalidation
+        gcTime: 30 * 60 * 1000,          // Retain in memory across page/tab navigation
+        refetchOnMount: true,           // Always sync on mount
         refetchOnWindowFocus: false,    // Never auto-refetch when switching browser tabs
-        refetchOnReconnect: false,      // Never auto-refetch on network reconnections
+        refetchOnReconnect: true,       // Sync when reconnecting
     });
 
     const dashboardData = overviewData?.admin || null;
@@ -248,9 +248,25 @@ export default function Dashboard() {
         try {
             const today = getTodayManilaKey();
             const stored = localStorage.getItem(`cpoint_ai_briefing_${today}`);
-            if (stored) return JSON.parse(stored);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // Purge corrupted legacy artifact
+                if (parsed?.executive_summary?.includes('single recorded employee') || parsed?.executive_summary?.includes('critical disruption with a 0%')) {
+                    localStorage.removeItem(`cpoint_ai_briefing_${today}`);
+                    return null;
+                }
+                return parsed;
+            }
             const sessionStored = sessionStorage.getItem('cpoint_ai_briefing_cache');
-            return sessionStored ? JSON.parse(sessionStored) : null;
+            if (sessionStored) {
+                const parsed = JSON.parse(sessionStored);
+                if (parsed?.executive_summary?.includes('single recorded employee') || parsed?.executive_summary?.includes('critical disruption with a 0%')) {
+                    sessionStorage.removeItem('cpoint_ai_briefing_cache');
+                    return null;
+                }
+                return parsed;
+            }
+            return null;
         } catch {
             return null;
         }
@@ -275,6 +291,8 @@ export default function Dashboard() {
         const total = dashboardData.totalStaff || 0;
         const present = dashboardData.presentTodayCount || 0;
         const late = dashboardData.lateTodayCount || 0;
+        const isRestDay = Boolean(dashboardData.isRestDay);
+        const isPreShift = Boolean(dashboardData.isPreShift);
         const rate = total > 0 ? Math.round((present / total) * 100) : 0;
         
         let punctGrade = 'A';
@@ -287,16 +305,30 @@ export default function Dashboard() {
         const deptEntries = Object.entries(dashboardData.deptBreakdown || {});
         const topDept = deptEntries.sort((a, b) => b[1] - a[1])[0]?.[0] || 'Factory Production';
 
+        let summary = `Workforce operational capacity is running at ${rate}% with ${present} of ${total} active staff on site today.`;
+        if (isRestDay && present === 0) {
+            summary = `Facility operations are in scheduled weekend/rest-day standby. Full production resumes next scheduled shift with ${total} active workforce personnel.`;
+            punctGrade = 'A';
+        } else if (isPreShift && present === 0) {
+            summary = `Shift call time begins at 8:00 AM Manila time. Awaiting clock-in logs for ${total} rostered workforce personnel.`;
+        }
+
         return {
-            executive_summary: `Workforce operational capacity is running at ${rate}% with ${present} active staff on site today.`,
+            executive_summary: summary,
             punctuality_grade: punctGrade,
             top_performing_department: topDept,
             department_needs_attention: late > 3 ? 'Production Floor' : 'None',
-            key_insights: [
+            key_insights: isRestDay && present === 0 ? [
+                'Scheduled weekend / rest day operations active.',
+                'Facility monitoring and gate telemetry operational.'
+            ] : [
                 `Active operational capacity operating at ${rate}% across scheduled shifts.`,
                 late > 0 ? `${late} late arrival(s) logged after the 8:00 AM call time.` : 'High morning punctuality maintained across all departments.'
             ],
-            actionable_recommendations: [
+            actionable_recommendations: isRestDay && present === 0 ? [
+                'Maintain regular gate security protocols.',
+                'Verify shift allocations for upcoming production week.'
+            ] : [
                 'Continue monitoring gate scanner biometrics and active shift capacity.',
                 'Review pending leave applications for upcoming payroll cutoffs.'
             ],
@@ -304,10 +336,22 @@ export default function Dashboard() {
         };
     }, [dashboardData]);
 
+    // Filter corrupted or conflicting briefings
+    const isCorruptedBriefing = (b) => {
+        if (!b) return true;
+        if (b.executive_summary?.includes('single recorded employee')) return true;
+        if (dashboardData && dashboardData.totalStaff > 1 && b.executive_summary?.includes('1 active staff') && dashboardData.presentTodayCount > 1) return true;
+        return false;
+    };
+
+    const validAIBriefing = !isCorruptedBriefing(aiQueryData?.briefing) ? aiQueryData?.briefing : null;
+    const validOverviewAI = !isCorruptedBriefing(overviewData?.aiData?.briefing) ? overviewData?.aiData?.briefing : null;
+    const validLocalAI = !isCorruptedBriefing(localAIBriefing) ? localAIBriefing : null;
+
     // Merge AI Data with instant fallback chain: Fresh Query -> Overview AI -> Session Cache -> Live Synthesis
-    const briefing = aiQueryData?.briefing 
-        || overviewData?.aiData?.briefing 
-        || localAIBriefing 
+    const briefing = validAIBriefing 
+        || validOverviewAI 
+        || validLocalAI 
         || liveSynthesizedBriefing;
 
     const payrollInsight = aiQueryData?.payrollInsight || payrollData?.insight || null;
@@ -363,12 +407,15 @@ export default function Dashboard() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendances' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
                 queryClient.invalidateQueries({ queryKey: ['attendanceToday'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardAI'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardAI'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDashboardAI'] });
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'payrolls' }, () => {
                 queryClient.invalidateQueries({ queryKey: ['adminDashboardOverview'], refetchType: 'active' });
@@ -566,12 +613,17 @@ export default function Dashboard() {
                     <div className="absolute right-0 top-0 p-5 opacity-10 group-hover:opacity-20 transition-opacity hidden sm:block">
                         <i className="ti ti-user-check text-5xl text-ink" />
                     </div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Present Rate</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        {dashboardData.isRestDay && presentTodayCount === 0 ? 'Rest Day Status' : 'Present Rate'}
+                    </p>
                     <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-1 tracking-tight font-mono tabular-nums">
-                        {presentPercentage}%
+                        {dashboardData.isRestDay && presentTodayCount === 0 ? 'Rest Day' : `${presentPercentage}%`}
                     </h3>
                     <span className="text-xs font-semibold text-slate-600 mt-2 block">
-                        {presentTodayCount} of {totalStaff} on-site &middot; <span className="text-accent group-hover:underline">View list &rarr;</span>
+                        {dashboardData.isRestDay && presentTodayCount === 0
+                            ? `${totalStaff} active staff · Standby · `
+                            : `${presentTodayCount} of ${totalStaff} on-site · `}
+                        <span className="text-accent group-hover:underline">View list &rarr;</span>
                     </span>
                 </button>
 

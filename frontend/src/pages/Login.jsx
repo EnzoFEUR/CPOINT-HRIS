@@ -6,7 +6,9 @@ import { fetchWithAuth } from '../utils/api';
 import { setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
 import { useOtpCooldown } from '../utils/useOtpCooldown';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { broadcastAuthChange } from '../utils/authSession';
+import { minimalLoginSession, writeLoginSession } from '../utils/browserPrivacy.mjs';
 import {
   Mail,
   Loader2,
@@ -64,11 +66,12 @@ export default function Login() {
         try {
             const raw = sessionStorage.getItem('cpoint_login_2fa_session');
             if (!raw) return null;
-            const parsed = JSON.parse(raw);
+            const parsed = minimalLoginSession(JSON.parse(raw));
             if (parsed?.expiresAt && Number(parsed.expiresAt) <= Date.now()) {
                 sessionStorage.removeItem('cpoint_login_2fa_session');
                 return null;
             }
+            writeLoginSession(sessionStorage, parsed);
             return parsed;
         } catch {
             return null;
@@ -222,7 +225,13 @@ export default function Login() {
         let isMounted = true;
         const syncStatus = async () => {
             try {
-                const res = await fetchWithAuth(`/api/auth/otp/status?identifier=${encodeURIComponent(email.trim().toLowerCase())}`);
+                const res = await fetchWithAuth('/api/auth/otp/status', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        identifier: email.trim().toLowerCase(),
+                        purpose: 'login_2fa'
+                    })
+                });
                 const data = await res.json();
                 if (!isMounted || !res.ok || !data.success) return;
 
@@ -236,11 +245,11 @@ export default function Login() {
                     try {
                         const raw = sessionStorage.getItem('cpoint_login_2fa_session');
                         const s = raw ? JSON.parse(raw) : {};
-                        sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                        writeLoginSession(sessionStorage, {
                             ...s,
                             expiresAt: newExpiresAt,
                             otpMethod: data.method || s.otpMethod || 'email'
-                        }));
+                        });
                     } catch {}
                 }
 
@@ -284,7 +293,7 @@ export default function Login() {
             const raw = sessionStorage.getItem('cpoint_login_2fa_session');
             if (raw) {
                 const s = JSON.parse(raw);
-                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 2 }));
+                writeLoginSession(sessionStorage, { ...s, step: 2 });
             }
         } catch {}
     };
@@ -375,6 +384,10 @@ export default function Login() {
                 const empWithMeta = { 
                     ...employee, 
                     hasTotp: userHasTotp,
+                    phone: employee?.phone || meta.phone || (authData.user.phone ? String(authData.user.phone).replace(/^\+63/, '') : null) || null,
+                    emergency_contact_name: employee?.emergency_contact_name || meta.emergency_contact_name || null,
+                    emergency_contact_phone: employee?.emergency_contact_phone || meta.emergency_contact_phone || null,
+                    emergency_contact_relationship: employee?.emergency_contact_relationship || meta.emergency_contact_relationship || null,
                     _auth_metadata: authData.user.user_metadata 
                 };
 
@@ -384,13 +397,13 @@ export default function Login() {
                 setLoading(false);
                 setStep(2);
                 try {
-                    sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                    writeLoginSession(sessionStorage, {
                         email: sanitizedEmail,
                         employeeData: empWithMeta,
                         step: 2,
                         otpMethod: null,
                         expiresAt: hasExistingValidOtp ? existingExpiresAt : null
-                    }));
+                    });
                 } catch {}
                 return;
             }
@@ -420,12 +433,12 @@ export default function Login() {
             setStep(3);
             try {
                 const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
-                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                writeLoginSession(sessionStorage, {
                     ...s,
                     step: 3,
                     otpMethod: 'totp',
                     expiresAt: null
-                }));
+                });
             } catch {}
             return;
         }
@@ -492,14 +505,14 @@ export default function Login() {
             setStep(3);
 
             try {
-                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({
+                writeLoginSession(sessionStorage, {
                     email: sanitizedEmail,
                     employeeData,
                     step: 3,
                     otpMethod: method,
                     generatedOtp: null,
                     expiresAt: codeExpiresAt
-                }));
+                });
             } catch {}
         } catch (err) {
             setError(err.message || 'Error sending verification code');
@@ -560,9 +573,18 @@ export default function Login() {
                 otpMethod === 'totp'
             );
 
+            const resolvedPhone = dbData?.phone || employeeData?.phone || employeeData?._auth_metadata?.phone || null;
+            const resolvedEmergName = dbData?.emergency_contact_name || employeeData?.emergency_contact_name || employeeData?._auth_metadata?.emergency_contact_name || null;
+            const resolvedEmergPhone = dbData?.emergency_contact_phone || employeeData?.emergency_contact_phone || employeeData?._auth_metadata?.emergency_contact_phone || null;
+            const resolvedEmergRel = dbData?.emergency_contact_relationship || employeeData?.emergency_contact_relationship || employeeData?._auth_metadata?.emergency_contact_relationship || null;
+
             const userData = { 
                 ...employeeData, 
                 ...dbData,
+                phone: resolvedPhone,
+                emergency_contact_name: resolvedEmergName,
+                emergency_contact_phone: resolvedEmergPhone,
+                emergency_contact_relationship: resolvedEmergRel,
                 totp_enabled: isTotpActive,
                 has_totp: isTotpActive,
                 has_registered_biometrics: Boolean(dbData?.has_registered_biometrics || dbData?.biometric_baseline_path || employeeData._auth_metadata?.has_registered_biometrics),
@@ -606,11 +628,15 @@ export default function Login() {
 
             const isSec = isSecurity(userData);
             const isAdm = isAdmin(userData);
+            const needsOnboarding = needsProfileCompletion(userData);
             const needsBio = !userData.has_registered_biometrics && !userData.biometric_baseline_path && !isMedicalExempt(userData) && !isSec && !isAdm;
 
             if (userData.requires_password_change) {
                 toast.success('Please update your password.');
                 navigate('/force-password-change');
+            } else if (needsOnboarding) {
+                toast.success('Please complete your employee profile details.');
+                navigate('/onboarding');
             } else if (needsBio) {
                 toast.success('Please complete your biometric enrollment.');
                 navigate('/biometric-setup');
@@ -917,7 +943,7 @@ export default function Login() {
                                             setStep(3);
                                             try {
                                                 const s = JSON.parse(sessionStorage.getItem('cpoint_login_2fa_session') || '{}');
-                                                sessionStorage.setItem('cpoint_login_2fa_session', JSON.stringify({ ...s, step: 3 }));
+                                                writeLoginSession(sessionStorage, { ...s, step: 3 });
                                             } catch {}
                                         }}
                                         className="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -997,7 +1023,7 @@ export default function Login() {
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                                 </button>
 
-                                <button
+                                {import.meta.env.DEV && <button
                                     type="button"
                                     onClick={() => sendOtp('email', false, true)}
                                     disabled={loading}
@@ -1016,7 +1042,7 @@ export default function Login() {
                                         </div>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-                                </button>
+                                </button>}
                             </div>
 
                             {error && (
@@ -1121,14 +1147,14 @@ export default function Login() {
                                             {isCooldown ? `Resend (${cooldown}s)` : 'Resend Code'}
                                         </button>
                                     </p>
-                                    <button
+                                    {import.meta.env.DEV && <button
                                         type="button"
                                         disabled={loading}
                                         onClick={() => sendOtp('email', true, true)}
                                         className="text-[11px] text-slate-400 hover:text-slate-600 font-medium underline cursor-pointer"
                                     >
                                         Test Mock OTP
-                                    </button>
+                                    </button>}
                                 </div>
                             )}
 

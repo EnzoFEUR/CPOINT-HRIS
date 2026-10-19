@@ -1,4 +1,5 @@
 import express from 'express';
+import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import {
     assertDocumentId,
@@ -23,6 +24,8 @@ import { getStandard201Requirements, getDocumentType } from '../../shared/docume
 // Authentication is applied at the /api/documents mount in index.js.
 export function createDocumentRouter(client = supabase) {
     const router = express.Router();
+    router.param('id', validateRecordId);
+    router.param('employee_id', validateUuidParam);
     router.use((req, res, next) => {
         res.set('Cache-Control', 'private, no-store');
         if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });

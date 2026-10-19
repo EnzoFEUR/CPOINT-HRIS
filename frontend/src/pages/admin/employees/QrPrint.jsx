@@ -1,3 +1,4 @@
+import printStylesUrl from './QrPrint.print.css?url&no-inline';
 import React from 'react';
 import QRCode from '../../../components/QRCode';
 
@@ -12,12 +13,7 @@ export default function QrPrint({ employee = {} }) {
 
     return (
         <div className="bg-gray-100 flex items-center justify-center min-h-screen">
-            <style>{`
-                @media print {
-                    .no-print { display: none; }
-                    body { background: white; }
-                }
-            `}</style>
+            <link rel="stylesheet" href={printStylesUrl} />
             
             <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl text-center max-w-sm w-full border border-slate-200">
                 <div className="mb-6 pb-4 border-b border-slate-100">

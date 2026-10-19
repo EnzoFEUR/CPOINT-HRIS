@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -67,7 +67,7 @@ export default function ProvisionAdmin() {
             return;
         }
 
-        if (phone && !phoneValidation.isValid) {
+        if (!phone || !phoneValidation.isValid) {
             toast.error('Please enter a valid Philippine mobile number (e.g. 917 123 4567).');
             return;
         }
@@ -205,12 +205,13 @@ export default function ProvisionAdmin() {
 
                         <div>
                             <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                Contact Number (+63 Mobile)
+                                Contact Number (+63 Mobile) <span className="text-danger">*</span>
                             </label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">+63</span>
                                 <input
                                     type="tel"
+                                    required
                                     value={phone}
                                     maxLength={12}
                                     onChange={(e) => setPhone(formatPhPhone(e.target.value))}
@@ -402,10 +403,10 @@ export default function ProvisionAdmin() {
                             <div>
                                 <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Temporary Password</span>
                                 <div className="flex items-center justify-between font-mono font-bold text-xs bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-900">
-                                    <span>{createdAdmin.temporary_password}</span>
+                                    <span>{createdAdmin.temp_password}</span>
                                     <button
                                         type="button"
-                                        onClick={() => handleCopy(createdAdmin.temporary_password, 'Temporary Password')}
+                                        onClick={() => handleCopy(createdAdmin.temp_password, 'Temporary Password')}
                                         className="text-slate-400 hover:text-accent p-1"
                                     >
                                         <i className={`ti ${copiedField === 'Temporary Password' ? 'ti-check text-accent' : 'ti-copy'} text-sm`} />

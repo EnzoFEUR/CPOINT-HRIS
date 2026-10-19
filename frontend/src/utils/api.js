@@ -56,6 +56,28 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
             throw new Error('Unauthorized');
         }
 
+        // 6. Global Error Handling for Mandatory Password Change & Tamper Protection
+        if (response.status === 403) {
+            try {
+                const cloned = response.clone();
+                const errData = await cloned.json();
+                if (errData?.code === 'PASSWORD_CHANGE_REQUIRED') {
+                    const stored = localStorage.getItem('user');
+                    if (stored) {
+                        const currentUser = JSON.parse(stored);
+                        currentUser.requires_password_change = true;
+                        localStorage.setItem('user', JSON.stringify(currentUser));
+                    }
+                    if (window.location.pathname !== '/force-password-change') {
+                        toast.error('Password change required.');
+                        window.location.replace('/force-password-change');
+                    }
+                }
+            } catch {
+                // Continue if response body is non-JSON
+            }
+        }
+
         return response;
     } catch (error) {
         // Superseded queries and unmounted views cancel requests intentionally.

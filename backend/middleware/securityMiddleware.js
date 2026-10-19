@@ -1,11 +1,34 @@
+import { API_CONTENT_SECURITY_POLICY, trustedOrigins } from '../../shared/securityPolicy.mjs';
+
 export const securityHeaders = (req, res, next) => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    res.setHeader('Content-Security-Policy', API_CONTENT_SECURITY_POLICY);
+    if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     res.setHeader('Access-Control-Max-Age', '86400');
+    res.removeHeader('Server');
+    res.removeHeader('X-Powered-By');
     next();
 };
+
+export function createCorsOptions(env = process.env) {
+    const allowed = trustedOrigins(env);
+    return {
+        origin(origin, callback) {
+            if (!origin || allowed.has(origin)) return callback(null, true);
+            callback(Object.assign(new Error('This origin is not allowed.'), { status: 403, code: 'CORS_ORIGIN_DENIED', expose: true }));
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
+        exposedHeaders: ['Retry-After', 'X-Request-ID', 'X-Cache'],
+        maxAge: 86400,
+    };
+}
 
 export const removeExposedHeaders = (req, res, next) => {
     res.removeHeader('X-Powered-By');

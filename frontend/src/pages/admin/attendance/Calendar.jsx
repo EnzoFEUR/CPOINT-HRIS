@@ -39,7 +39,6 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
         setStatus('failed');
     };
 
-    const initial = employeeName ? employeeName.charAt(0).toUpperCase() : '?';
     const isLoaded = status === 'loaded';
     const isFailed = status === 'failed';
 
@@ -48,9 +47,15 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
             onContextMenu={(e) => e.preventDefault()}
             className="h-14 w-14 sm:h-16 sm:w-16 rounded-md bg-slate-100 overflow-hidden shadow-2xs shrink-0 relative border border-slate-200 flex items-center justify-center select-none"
         >
-            <span className="font-bold text-slate-400 text-base sm:text-xl select-none pointer-events-none">
-                {initial}
-            </span>
+            <svg
+                viewBox="0 0 100 100"
+                fill="currentColor"
+                className="w-full h-full text-slate-400 select-none pointer-events-none"
+                aria-hidden="true"
+            >
+                <circle cx="50" cy="38" r="18" />
+                <path d="M 0 100 L 0 92 C 12 72, 30 64, 50 64 C 70 64, 88 72, 100 92 L 100 100 Z" />
+            </svg>
             {photoUrl && !isFailed && (
                 <img
                     src={photoUrl}
@@ -61,7 +66,7 @@ const TimelinePhoto = ({ photoPath, employeeName }) => {
                     className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none ${
                         isLoaded ? 'opacity-100' : 'opacity-0'
                     } ${isLoaded ? '' : 'transition-opacity duration-150'}`}
-                    alt="Time In Proof"
+                    alt={employeeName ? `${employeeName} - Time In Proof` : 'Time In Proof'}
                 />
             )}
         </div>

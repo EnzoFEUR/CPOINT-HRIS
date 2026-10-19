@@ -1,10 +1,12 @@
 import express from 'express';
+import { validateRecordId } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
+router.param('id', validateRecordId);
 
 // Real-time high-throughput broadcast bus (Persistent singleton socket connection)
 let realtimeSyncChannel = null;

@@ -6,6 +6,7 @@ import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
 import { offlineApi } from '../utils/offlineAttendanceSync';
 import sidebarCover from '../assets/sidebar-cover.jpg';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 
 export const Sidebar = ({ user, handleLogout }) => {
   const location = useLocation();
@@ -429,9 +430,7 @@ export const Sidebar = ({ user, handleLogout }) => {
           className="flex items-center p-3 rounded-xl mb-2 cursor-pointer hover:bg-white/5 transition-colors"
         >
           <div className="relative shrink-0">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center text-white font-bold shadow-md">
-              {user?.name ? user.name.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : '?')}
-            </div>
+            <EmployeeAvatar employee={user} size="h-10 w-10" rounded="rounded-xl" theme="dark" border="border border-slate-700" />
           </div>
           <div className="ml-3 overflow-hidden min-w-0 flex-1">
             <p className="text-xs font-bold text-white truncate hover:text-accent">

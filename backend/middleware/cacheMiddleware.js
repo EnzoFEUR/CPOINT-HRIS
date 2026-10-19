@@ -1,4 +1,5 @@
 import NodeCache from 'node-cache';
+import { PRIVATE_API_CACHE_CONTROL } from '../../shared/securityPolicy.mjs';
 
 // In-memory cache instance for frequently read endpoints
 export const memoryCache = new NodeCache({ 
@@ -24,7 +25,7 @@ export const cacheResponse = (ttlSeconds = 30) => {
         if (cachedData) {
             res.setHeader('X-Cache', 'HIT');
             res.setHeader('X-Cache-TTL', `${ttlSeconds}s`);
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Cache-Control', PRIVATE_API_CACHE_CONTROL);
             return res.json(cachedData);
         }
 
@@ -35,7 +36,7 @@ export const cacheResponse = (ttlSeconds = 30) => {
                 memoryCache.set(cacheKey, body, ttlSeconds);
             }
             res.setHeader('X-Cache', 'MISS');
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Cache-Control', PRIVATE_API_CACHE_CONTROL);
             return originalJson(body);
         };
 
