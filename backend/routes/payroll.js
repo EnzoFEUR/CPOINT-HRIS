@@ -1,4 +1,5 @@
 import express from 'express';
+import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { calculateBIRWithholdingTax } from '../../shared/payrollTax.mjs';
 import { getSssMsc } from '../../shared/sssContribution.mjs';
 import { isFirstCutoffOfMonth, previousMonthRange, averageMonthlyBase } from '../../shared/statutoryTiming.mjs';
@@ -26,10 +27,13 @@ import {
 } from '../utils/payrollCalculations.js';
 import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
-import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness, WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from '../../shared/workPolicy.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
+import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
 
 const router = express.Router();
+router.param('id', validateRecordId);
+router.param('employee_id', validateUuidParam);
 const WORK_POLICY = getWorkPolicy(process.env);
 
 const requirePayrollManager = (req, res, next) => {
@@ -133,18 +137,19 @@ const fetchPreviousMonthBases = async (supabase, employees, periodEnd) => {
     const ids = (employees || []).map(e => String(e.id));
     if (ids.length === 0 || !isFirstCutoffOfMonth(periodEnd)) return bases;
     const range = previousMonthRange(periodEnd);
-    const { data, error } = await supabase
-        .from('payrolls')
-        .select('*')
-        .in('employee_id', ids)
-        .gte('period_end', range.start)
-        .lte('period_end', range.end);
-    if (error) throw error;
     const byEmployee = new Map();
-    for (const row of data || []) {
-        const key = String(row.employee_id);
-        if (!byEmployee.has(key)) byEmployee.set(key, []);
-        byEmployee.get(key).push(row);
+    for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await supabase.from('payrolls').select('*').in('employee_id', ids)
+            .gte('period_end', range.start).lte('period_end', range.end)
+            .order('id', { ascending: true }).range(offset, offset + 999);
+        if (error) throw error;
+        if (!Array.isArray(data)) throw new Error('Invalid previous-month payroll response.');
+        for (const row of data) {
+            const key = String(row.employee_id);
+            if (!byEmployee.has(key)) byEmployee.set(key, []);
+            byEmployee.get(key).push(row);
+        }
+        if (data.length < 1000) break;
     }
     for (const [key, rows] of byEmployee) {
         const base = averageMonthlyBase(rows);
@@ -190,6 +195,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
             PAYROLL_ALREADY_EXISTS: 'A payslip already exists for this employee and period.',
             SIL_PAYOUT_CHANGED: 'Cash-out payments changed. Refresh the preview before saving.',
             PAYROLL_LEAVE_CHANGED: 'Approved leave changed. Refresh the preview before saving.',
+            PAYROLL_ATTENDANCE_CHANGED: 'Attendance changed during calculation. Refresh and calculate payroll again.',
             FORBIDDEN: 'Manager or HR permissions are required to post payroll.',
             INVALID_CREDIT_COMMAND: 'Invalid payroll calculation or period range for SIL cash-out posting.'
         };
@@ -202,6 +208,7 @@ const insertPayrollRow = async (payload, cash, actorId, frequency = 'weekly') =>
     for (let attempt = 0; attempt <= OPTIONAL_PAYROLL_COLUMNS.length; attempt++) {
         const { data, error } = await supabase.from('payrolls').insert(row).select('id').maybeSingle();
         if (!error) return { data, error: null };
+        if (error.message === 'PAYROLL_ATTENDANCE_CHANGED') return { data: null, error: { ...error, status: 409, message: 'Attendance changed during calculation. Refresh and calculate payroll again.' } };
         const missing = OPTIONAL_PAYROLL_COLUMNS.find((col) => col in row && error.message?.includes(col));
         if (!missing) return { data: null, error };
         // Older schemas still retain the full earnings total until breakdown columns are installed.
@@ -338,16 +345,21 @@ const fetchFactoryHolidayContext = async (employeeIds, pStart, pEnd) => {
     const ctx = { logsByEmployee: new Map(), payslipsByEmployee: new Map() };
     if (ids.length === 0) return ctx;
     const from = shiftDateStr(pStart, -FACTORY_ADOW_LOOKBACK_DAYS);
-    const [logs, { data: payslips, error }] = await Promise.all([
+    const [logs, payslips] = await Promise.all([
         fetchPayrollAttendance(supabase, ids, from, pEnd),
-        supabase
-            .from('payrolls')
-            .select('employee_id, period_start, period_end, basic_pay')
-            .in('employee_id', ids)
-            .gte('period_start', from)
-            .lt('period_start', pStart),
+        (async () => {
+            const rows = [];
+            for (let offset = 0; ; offset += 1000) {
+                const { data, error } = await supabase.from('payrolls').select('employee_id, period_start, period_end, basic_pay')
+                    .in('employee_id', ids).gte('period_start', from).lt('period_start', pStart)
+                    .order('id', { ascending: true }).range(offset, offset + 999);
+                if (error) throw error;
+                if (!Array.isArray(data)) throw new Error('Invalid factory payroll history response.');
+                rows.push(...data);
+                if (data.length < 1000) return rows;
+            }
+        })(),
     ]);
-    if (error) throw error;
     for (const log of logs || []) {
         const key = String(log.employee_id);
         if (!ctx.logsByEmployee.has(key)) ctx.logsByEmployee.set(key, []);
@@ -650,17 +662,12 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
         const admin_id = req.user.id;
 
         // Validation for attendance & tardiness policies if provided
-        if (cleanSettings.grace_period_minutes !== undefined) {
-            cleanSettings.grace_period_minutes = Math.max(0, parseInt(cleanSettings.grace_period_minutes, 10) || 0);
-        }
-        if (cleanSettings.late_rate_per_minute !== undefined) {
-            cleanSettings.late_rate_per_minute = Math.max(0, parseFloat(cleanSettings.late_rate_per_minute) || 0);
-        }
-        if (cleanSettings.call_time_hour !== undefined) {
-            cleanSettings.call_time_hour = Math.min(23, Math.max(0, parseInt(cleanSettings.call_time_hour, 10) || 8));
-        }
-        if (cleanSettings.call_time_minute !== undefined) {
-            cleanSettings.call_time_minute = Math.min(59, Math.max(0, parseInt(cleanSettings.call_time_minute, 10) || 0));
+        for (const [name, limits] of Object.entries(WORK_POLICY_INPUT_LIMITS)) {
+            if (!Object.hasOwn(cleanSettings, name)) continue;
+            if (!isValidWorkPolicyInput(name, cleanSettings[name])) {
+                return res.status(400).json({ success: false, code: 'INVALID_WORK_POLICY', error: `${name} must be between ${limits.min} and ${limits.max}, using ${limits.step === 1 ? 'whole numbers' : 'up to two decimal places'}.` });
+            }
+            cleanSettings[name] = Number(cleanSettings[name]);
         }
 
         const { data: existing, error: readError } = await supabase
@@ -723,7 +730,7 @@ router.get('/holidays', cacheResponse(60), async (req, res) => {
     }
 });
 
-router.post('/holidays', async (req, res) => {
+router.post('/holidays', requirePayrollManager, async (req, res) => {
     try {
         const { name, date, type } = req.body;
         if (!name || !date || !type) {
@@ -745,7 +752,7 @@ router.post('/holidays', async (req, res) => {
     }
 });
 
-router.delete('/holidays/:id', async (req, res) => {
+router.delete('/holidays/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         const isNumericId = !isNaN(Number(id));
@@ -956,7 +963,7 @@ async function ensureHolidaysGeneratedForRange(startDateStr, endDateStr) {
     }
 }
 
-router.post('/holidays/generate', async (req, res) => {
+router.post('/holidays/generate', requirePayrollManager, async (req, res) => {
     try {
         const year = parseInt(req.body.year, 10);
         if (!year || year < 2020 || year > 2100) {
@@ -1083,6 +1090,9 @@ router.get('/13th-month-report', requirePayrollManager, async (req, res) => {
 router.get('/13th-month/:employee_id', async (req, res) => {
     try {
         const { employee_id } = req.params;
+        if (!hasVerifiedManagerRole(req.user) && req.user?.id !== employee_id && req.user?.company_id !== employee_id && req.user?.auth_user_id !== employee_id) {
+            return res.status(403).json({ error: 'You may only view your own 13th-month earnings.' });
+        }
         const year = parseInt(req.query.year, 10) || new Date().getFullYear();
 
         const { data: records, error } = await supabase
@@ -1363,6 +1373,8 @@ router.post('/', requirePayrollManager, async (req, res) => {
         if (!employee) {
             return res.status(400).json({ error: 'Employee not found.' });
         }
+
+        const offlineVersions = await getOfflinePayrollVersions(supabase, [employee_id]);
 
         const { data: terminationLog } = await supabase
             .from('disciplinary_logs')
@@ -1743,6 +1755,7 @@ router.post('/', requirePayrollManager, async (req, res) => {
             status: 'Paid'
         };
 
+        if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
         const { data: insertedRecord, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, pay_frequency);
 
         if (insertError) throw insertError;
@@ -1835,6 +1848,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
         }
 
         const empIds = entries.map(e => e.employee_id).filter(Boolean);
+        const offlineVersions = await getOfflinePayrollVersions(supabase, empIds);
 
         // Optimized single-roundtrip prefetch for existing payrolls and employee metadata
         const [{ data: existingRecords, error: existingError }, { data: empList, error: employeeError }, attendanceLogs] = await Promise.all([
@@ -1999,6 +2013,7 @@ router.post('/batch', requirePayrollManager, async (req, res) => {
                 status: 'Paid'
             };
 
+            if (offlineVersions.has(String(employee_id))) insertPayload.offline_attendance_version = offlineVersions.get(String(employee_id));
             const { data: insertedRec, error: insertError } = await insertPayrollRow(insertPayload, cash, req.user.id, frequency);
 
             if (insertError) {
@@ -2141,7 +2156,7 @@ router.get('/factory-logs', async (req, res) => {
     }
 });
 
-router.post('/factory-logs', async (req, res) => {
+router.post('/factory-logs', requirePayrollManager, async (req, res) => {
     try {
         const {
             production_group_id,
@@ -2241,7 +2256,7 @@ router.post('/factory-logs', async (req, res) => {
 });
 
 // Single-row direct update by UUID
-router.put('/factory-logs/:id', async (req, res) => {
+router.put('/factory-logs/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {
@@ -2316,7 +2331,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-router.post('/bulk-delete', async (req, res) => {
+router.post('/bulk-delete', requirePayrollManager, async (req, res) => {
     try {
         const { ids } = req.body;
         if (!Array.isArray(ids) || ids.length === 0) {
@@ -2362,7 +2377,7 @@ router.post('/bulk-delete', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePayrollManager, async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || !isValidUUID(id)) {

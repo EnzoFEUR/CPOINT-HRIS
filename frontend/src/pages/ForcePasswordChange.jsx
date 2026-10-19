@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
 
 export default function ForcePasswordChange() {
@@ -58,9 +59,11 @@ export default function ForcePasswordChange() {
                 localStorage.setItem('user', JSON.stringify(currentUser));
             }
 
-            const isSec = isSecurity(user);
-            const isAdm = isAdmin(user);
-            const needsBio = !user.has_registered_biometrics && !user.biometric_baseline_path && !isMedicalExempt(user) && !isSec && !isAdm;
+            const isSec = isSecurity(currentUser || user);
+            const isAdm = isAdmin(currentUser || user);
+            const activeUser = currentUser || user;
+            const needsProfile = needsProfileCompletion(activeUser);
+            const needsBio = !activeUser.has_registered_biometrics && !activeUser.biometric_baseline_path && !isMedicalExempt(activeUser) && !isSec && !isAdm;
 
             if (isSec) {
                 toast.success("Password secured!");
@@ -68,6 +71,9 @@ export default function ForcePasswordChange() {
             } else if (isAdm) {
                 toast.success("Password secured!");
                 navigate('/');
+            } else if (needsProfile) {
+                toast.success("Password secured! Please complete your employee onboarding.");
+                navigate('/onboarding');
             } else if (needsBio) {
                 toast.success("Password secured! Proceeding to Biometrics enrollment.");
                 navigate('/biometric-setup');

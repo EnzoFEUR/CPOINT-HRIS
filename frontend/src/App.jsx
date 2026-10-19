@@ -1,15 +1,17 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import Toaster from './components/CspToaster';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
-import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
+import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute, OnboardingRoute, ForcePasswordChangeRoute } from './routes/guards';
 import EmployeeModuleGate from './components/security/EmployeeModuleGate';
+import OfflineRouteGate, { isOfflineFeatureActive } from './routes/OfflineRouteGate.js';
 import useBiometricProtection from './utils/useBiometricProtection';
 import './index.css';
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
+const OfflineAttendanceTerminal = lazy(() => import('./components/OfflineAttendanceTerminal'));
 
 // Auth Pages - Login is eagerly loaded for instant initial render
 import Login from './pages/Login';
@@ -19,6 +21,7 @@ const Register = lazy(() => import('./pages/Register'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const ForcePasswordChange = lazy(() => import('./pages/ForcePasswordChange'));
+const EmployeeOnboarding = lazy(() => import('./pages/EmployeeOnboarding'));
 const BiometricSetup = lazy(() => import('./pages/BiometricSetup'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
@@ -35,6 +38,7 @@ const Scanner = lazy(() => import('./pages/Scanner'));
 // Admin - Attendance
 const AttendanceIndex = lazy(() => import('./pages/admin/attendance/Index'));
 const AttendanceCalendar = lazy(() => import('./pages/admin/attendance/Calendar'));
+const OfflineCaptures = lazy(() => import('./pages/admin/attendance/OfflineCaptures'));
 
 // Admin - Employees
 const EmployeeIndex = lazy(() => import('./pages/admin/employees/Index'));
@@ -55,6 +59,15 @@ const AuditLogsIndex = lazy(() => import('./pages/admin/audit-logs/Index'));
 const LeavesIndex = lazy(() => import('./pages/admin/leaves/Index'));
 const DisciplinaryIndex = lazy(() => import('./pages/admin/disciplinary/Index'));
 const Documents = lazy(() => import('./pages/admin/documents/Documents'));
+
+const DocumentRouteGate = () => {
+  const [params] = useSearchParams();
+  const employeeId = params.get('employee_id');
+  if (!employeeId) {
+    return <Navigate to="/admin/employees" replace />;
+  }
+  return <Documents />;
+};
 
 // Admin - Archive (Lazy loaded to keep initial bundle lean)
 const EmployeeArchive = lazy(() => import('./pages/admin/archive/EmployeeArchive'));
@@ -100,6 +113,7 @@ function App() {
         }}
       />
       <Routes>
+        <Route element={<OfflineRouteGate />}>
         {/* Public / Authentication Flow */}
         <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
         <Route path="/register" element={<PublicOnlyRoute><Suspense fallback={AuthFallback}><Register /></Suspense></PublicOnlyRoute>} />
@@ -108,10 +122,14 @@ function App() {
         <Route path="/verify-email" element={<Suspense fallback={AuthFallback}><VerifyEmail /></Suspense>} />
 
         {/* Mandatory Setup Routes */}
-        <Route path="/force-password-change" element={<Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense>} />
+        <Route path="/force-password-change" element={<ForcePasswordChangeRoute><Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense></ForcePasswordChangeRoute>} />
+        <Route path="/onboarding" element={<OnboardingRoute><Suspense fallback={AuthFallback}><EmployeeOnboarding /></Suspense></OnboardingRoute>} />
         <Route path="/biometric-setup" element={<BiometricSetupRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></BiometricSetupRoute>} />
 
         {/* Standalone Fullscreen Terminal Views */}
+        {isOfflineFeatureActive && (
+          <Route path="/attendance-terminal" element={<Suspense fallback={AuthFallback}><OfflineAttendanceTerminal alwaysShow /></Suspense>} />
+        )}
         <Route
           path="/scanner"
           element={
@@ -159,6 +177,9 @@ function App() {
           {/* Admin - Attendance */}
           <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceIndex /></ProtectedRoute>} />
           <Route path="/admin/attendance/calendar" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><AttendanceCalendar /></ProtectedRoute>} />
+          {isOfflineFeatureActive && (
+            <Route path="/admin/attendance/offline" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><OfflineCaptures /></ProtectedRoute>} />
+          )}
 
           {/* Admin - Payroll Ledger & Processing */}
           <Route path="/admin/payroll/statutory-settings" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><StatutorySettings /></ProtectedRoute>} />
@@ -173,7 +194,7 @@ function App() {
           <Route path="/admin/disciplinary" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><DisciplinaryIndex /></ProtectedRoute>} />
           
           {/* Admin - Documents */}
-          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><Documents /></ProtectedRoute>} />
+          <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin', 'hr']} requireBiometrics><DocumentRouteGate /></ProtectedRoute>} />
 
           {/* Employee Flow */}
           <Route path="/employee/dashboard" element={<ProtectedRoute allowedRoles={['employee']}><EmployeeDashboard /></ProtectedRoute>} />
@@ -181,10 +202,14 @@ function App() {
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
           <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><MyProfile /></ProtectedRoute>} />
           <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
-          <Route path="/profile" element={<MyProfile />} />
+          <Route path="/profile" element={<Navigate to="/employee/profile" replace />} />
+        </Route>
+        
+        {/* Anti-Bypass Catch-All Fallback: Redirects any unknown or probed URLs to root gateway */}
+        <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-      <SpeedInsights />
+      {import.meta.env.PROD && import.meta.env.VERCEL_DEPLOYMENT && <SpeedInsights />}
     </Router>
   );
 }

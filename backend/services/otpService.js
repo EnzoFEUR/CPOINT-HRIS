@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+export const otpTestMode = (env = process.env) => ['development', 'test'].includes(env.NODE_ENV) && env.ALLOW_MOCK_OTP === 'true';
+const unavailableDelivery = () => Object.assign(new Error('Verification delivery is unavailable. Please use a configured email provider.'), { status: 503, code: 'OTP_DELIVERY_UNAVAILABLE' });
+
 // In-memory OTP storage with 5-minute TTL
 const otpStore = new Map();
 
@@ -33,7 +36,7 @@ setInterval(() => {
             inFlightDispatches.delete(key);
         }
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Check if an identifier is currently in active cooldown
 export function checkOtpCooldown(identifier, cooldownMs = OTP_RESEND_COOLDOWN_MS) {
@@ -130,25 +133,29 @@ export function generateOtpCode() {
 
 /**
  * Retrieve active unexpired OTP code or generate a new one.
- * Enterprise standard: If an unexpired code exists (< 5 minutes) and attempts < 5,
+ * Enterprise standard: If an unexpired code exists (< 5 minutes) and attempts < 5 across ANY alias,
  * we reuse the active code so that resends and retries deliver the exact same code.
  */
-export function getOrGenerateOtp(identifier) {
-    if (!identifier) {
+export function getOrGenerateOtp(identifiers) {
+    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+
+    if (keys.length === 0) {
         return { code: generateOtpCode(), isExisting: false, remainingSeconds: 300 };
     }
 
-    const key = identifier.toLowerCase().trim();
-    const existing = otpStore.get(key);
     const now = Date.now();
 
-    if (existing && existing.expiresAt > now && existing.attempts < 5 && existing.code) {
-        return {
-            code: existing.code,
-            isExisting: true,
-            expiresAt: existing.expiresAt,
-            remainingSeconds: Math.ceil((existing.expiresAt - now) / 1000)
-        };
+    for (const key of keys) {
+        const existing = otpStore.get(key);
+        if (existing && existing.expiresAt > now && existing.attempts < 5 && existing.code) {
+            return {
+                code: existing.code,
+                isExisting: true,
+                expiresAt: existing.expiresAt,
+                remainingSeconds: Math.ceil((existing.expiresAt - now) / 1000)
+            };
+        }
     }
 
     const newCode = generateOtpCode();
@@ -161,85 +168,136 @@ export function getOrGenerateOtp(identifier) {
 }
 
 /**
- * Store OTP in memory with a 5-minute expiration.
- * Retains previous valid codes so delayed SMS/emails can still be verified ("use the old one").
+ * Store OTP in memory across one or more alias keys with a 5-minute expiration.
+ * Retains previous valid codes so delayed SMS/emails can still be verified.
  */
-export function storeOtp(identifier, code, method = 'email') {
-    const key = identifier.toLowerCase().trim();
-    const now = Date.now();
-    const existing = otpStore.get(key);
+export function storeOtp(identifiers, code, method = 'email', options = {}) {
+    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+    if (keys.length === 0) return;
 
-    const previousCodes = [];
-    if (existing && existing.expiresAt > now) {
-        if (existing.code && existing.code !== code) {
-            previousCodes.push(existing.code);
-        }
-        if (Array.isArray(existing.previousCodes)) {
-            for (const prev of existing.previousCodes) {
-                if (prev && prev !== code && !previousCodes.includes(prev)) {
-                    previousCodes.push(prev);
+    const now = Date.now();
+    const expiresAt = options.expiresAt || (now + 5 * 60 * 1000);
+
+    for (const key of keys) {
+        const existing = otpStore.get(key);
+        const previousCodes = [];
+        if (existing && existing.expiresAt > now) {
+            if (existing.code && existing.code !== code) {
+                previousCodes.push(existing.code);
+            }
+            if (Array.isArray(existing.previousCodes)) {
+                for (const prev of existing.previousCodes) {
+                    if (prev && prev !== code && !previousCodes.includes(prev)) {
+                        previousCodes.push(prev);
+                    }
                 }
             }
         }
+
+        otpStore.set(key, {
+            code,
+            method: method || existing?.method || 'email',
+            previousCodes: previousCodes.slice(0, 5),
+            expiresAt: (existing && existing.code === code && existing.expiresAt > now)
+                ? existing.expiresAt
+                : expiresAt,
+            attempts: 0,
+            linkedKeys: keys
+        });
+    }
+}
+
+/**
+ * Purge OTP records across all alias keys.
+ */
+export function deleteOtp(identifiers) {
+    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+    const allKeysToDelete = new Set(keys);
+    for (const key of keys) {
+        const record = otpStore.get(key);
+        if (record?.linkedKeys) {
+            for (const k of record.linkedKeys) allKeysToDelete.add(k);
+        }
+    }
+    for (const key of allKeysToDelete) {
+        otpStore.delete(key);
+    }
+}
+
+// Get active unexpired OTP status across any candidate alias key
+export function getActiveOtp(identifiers) {
+    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+    if (keys.length === 0) return null;
+
+    const now = Date.now();
+    for (const key of keys) {
+        const record = otpStore.get(key);
+        if (record && record.expiresAt > now) {
+            return {
+                code: record.code,
+                method: record.method || 'email',
+                expiresAt: record.expiresAt,
+                remainingSeconds: Math.ceil((record.expiresAt - now) / 1000)
+            };
+        }
+    }
+    return null;
+}
+
+// Verify OTP against memory store across all candidate alias keys
+export function verifyOtpCode(identifiers, code) {
+    const rawKeys = Array.isArray(identifiers) ? identifiers : [identifiers];
+    const keys = rawKeys.filter(Boolean).map(id => String(id).toLowerCase().trim());
+
+    if (keys.length === 0 || !code) {
+        return { valid: false, error: 'Missing identifier or code' };
     }
 
-    otpStore.set(key, {
-        code,
-        method: method || existing?.method || 'email',
-        previousCodes: previousCodes.slice(0, 5),
-        expiresAt: (existing && existing.code === code && existing.expiresAt > now)
-            ? existing.expiresAt
-            : now + 5 * 60 * 1000,
-        attempts: 0
-    });
-}
+    const now = Date.now();
+    let foundRecord = null;
+    let matchingKey = null;
 
-// Get active unexpired OTP status without modifying state
-export function getActiveOtp(identifier) {
-    if (!identifier) return null;
-    const key = identifier.toLowerCase().trim();
-    const record = otpStore.get(key);
-    if (!record || Date.now() > record.expiresAt) return null;
-    return {
-        code: record.code,
-        method: record.method || 'email',
-        expiresAt: record.expiresAt,
-        remainingSeconds: Math.ceil((record.expiresAt - Date.now()) / 1000)
-    };
-}
+    for (const key of keys) {
+        const record = otpStore.get(key);
+        if (record) {
+            foundRecord = record;
+            matchingKey = key;
+            break;
+        }
+    }
 
-// Verify OTP against memory store (accepts current active code or recent unexpired codes)
-export function verifyOtpCode(identifier, code) {
-    if (!identifier || !code) return { valid: false, error: 'Missing identifier or code' };
-
-    const key = identifier.toLowerCase().trim();
-    const record = otpStore.get(key);
-
-    if (!record) {
+    if (!foundRecord) {
         return { valid: false, error: 'No active OTP found or code expired. Please request a new one.' };
     }
 
-    if (Date.now() > record.expiresAt) {
-        otpStore.delete(key);
+    const allLinkedKeys = new Set([...keys, ...(foundRecord.linkedKeys || [])]);
+
+    if (now > foundRecord.expiresAt) {
+        for (const key of allLinkedKeys) otpStore.delete(key);
         return { valid: false, error: 'Verification code has expired. Please request a new one.' };
     }
 
-    if (record.attempts >= 5) {
-        otpStore.delete(key);
+    if (foundRecord.attempts >= 5) {
+        for (const key of allLinkedKeys) otpStore.delete(key);
         return { valid: false, error: 'Too many incorrect attempts. Please request a new code.' };
     }
 
     const enteredCode = String(code).trim();
-    const matchesCurrent = record.code === enteredCode;
-    const matchesPrevious = Array.isArray(record.previousCodes) && record.previousCodes.includes(enteredCode);
+    const matchesCurrent = foundRecord.code === enteredCode;
+    const matchesPrevious = Array.isArray(foundRecord.previousCodes) && foundRecord.previousCodes.includes(enteredCode);
 
     if (!matchesCurrent && !matchesPrevious) {
-        record.attempts++;
-        return { valid: false, error: `Invalid code. ${5 - record.attempts} attempts remaining.` };
+        foundRecord.attempts++;
+        return { valid: false, error: `Invalid code. ${5 - foundRecord.attempts} attempts remaining.` };
     }
 
-    // Burn token after successful verification (single-use)
-    otpStore.delete(key);
+    // Burn token across ALL linked aliases after successful verification (single-use)
+    for (const key of allLinkedKeys) {
+        otpStore.delete(key);
+    }
     return { valid: true };
 }
 
@@ -356,18 +414,21 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
                 return { success: true, provider: 'brevo', messageId: data.messageId };
             }
         } catch (err) {
-            console.warn(`[OTP_BREVO_ERROR] Brevo dispatch error (${err.message}). Falling back to simulation.`);
+            console.warn('[OTP_BREVO_ERROR] Verification email delivery failed.');
+            if (!otpTestMode()) throw unavailableDelivery();
             return { success: true, simulated: true, code, warning: err.message };
         }
     }
 
     // Local simulation fallback
-    console.warn(`[OTP_EMAIL_SIMULATED] Target: ${email} | Code: ${code}`);
+    if (!otpTestMode()) throw unavailableDelivery();
+    console.warn('[OTP_EMAIL_SIMULATED] Explicit development simulation is enabled.');
     return { success: true, simulated: true, code };
 }
 
 // Send OTP via SMS (Decommissioned - SMS Gateway Removed)
 export async function sendSmsOtp(phoneNumber, code) {
-    console.info(`[OTP_SMS_SIMULATED] SMS gateway decommissioned. Target: ${phoneNumber} | Code: ${code}`);
+    if (!otpTestMode()) throw unavailableDelivery();
+    console.info('[OTP_SMS_SIMULATED] Explicit development simulation is enabled; no SMS was sent.');
     return { success: true, simulated: true, code };
 }

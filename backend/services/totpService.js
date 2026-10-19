@@ -62,7 +62,7 @@ setInterval(() => {
             replayCache.delete(key);
         }
     }
-}, 30 * 1000);
+}, 30 * 1000).unref();
 
 /**
  * Generates an RFC 6238 TOTP 6-digit code for a given secret and timestamp
@@ -218,7 +218,7 @@ setInterval(() => {
             rateLimitCache.delete(key);
         }
     }
-}, 60 * 1000);
+}, 60 * 1000).unref();
 
 /**
  * Checks if an identifier or IP is rate-limited for TOTP verification

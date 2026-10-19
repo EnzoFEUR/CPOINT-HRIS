@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 
 export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
@@ -13,6 +14,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Form state
+    const [role, setRole] = useState(defaultValues.role || 'employee');
+    const isSecurityRole = role === 'security';
+    const [stationLocation, setStationLocation] = useState(defaultValues.job_title || 'Main Gate Terminal');
     const [department, setDepartment] = useState(defaultValues.department || 'Factory');
     const [selectedCraft, setSelectedCraft] = useState(defaultValues.job_title || 'Sapatero (Lapat/Swelas)');
     const [selectedGroup, setSelectedGroup] = useState('Line A');
@@ -22,9 +26,10 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
     const [firstName, setFirstName] = useState(defaultValues.first_name || '');
     const [lastName, setLastName] = useState(defaultValues.last_name || '');
-    const [gender, setGender] = useState(defaultValues.gender || '');
+    const [sex, setSex] = useState(defaultValues.sex || defaultValues.gender || '');
     const [birthDate, setBirthDate] = useState(defaultValues.birth_date || '');
     const [hireDate, setHireDate] = useState(defaultValues.date_hired || '');
+    const [timekeepingDate, setTimekeepingDate] = useState(defaultValues.timekeeping_effective_date || getManilaWorkDate());
     const [address, setAddress] = useState(defaultValues.address || '');
 
     const maxBirthDate = useMemo(() => {
@@ -175,7 +180,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     const copyAllCredentials = () => {
         if (!createdEmployee) return;
-        const text = `C-POINT HRIS Account Credentials\nName: ${createdEmployee.first_name || ''} ${createdEmployee.last_name || ''}\nCompany ID: ${createdEmployee.company_id || ''}\nEmail: ${createdEmployee.email || ''}\nTemporary Password: ${createdEmployee.temp_password || ''}\nLogin Portal: ${window.location.origin}/login`;
+        const roleLabel = createdEmployee.role === 'security' ? 'Security Guard (Scanner Access)' : 'Employee';
+        const targetApp = createdEmployee.role === 'security' ? 'Attendance Scanner Kiosk (/scanner)' : 'Employee Self-Service Portal';
+        const text = `C-POINT HRIS Account Credentials\nRole: ${roleLabel}\nName: ${createdEmployee.first_name || ''} ${createdEmployee.last_name || ''}\nCompany ID: ${createdEmployee.company_id || ''}\nEmail: ${createdEmployee.email || ''}\nTemporary Password: ${createdEmployee.temp_password || ''}\nLogin Portal: ${window.location.origin}/login\nDesignated Access: ${targetApp}`;
         navigator.clipboard.writeText(text);
         setCopiedAll(true);
         toast.success('All credentials copied to clipboard!');
@@ -192,10 +199,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setDisplayHourlyPay('');
         setRawHourlyPay('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
-        setGender('');
+        setSex('');
         setBirthDate('');
         setHireDate('');
         setAddress('');
+        setRole('employee');
+        setStationLocation('Main Gate Terminal');
         const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
         setSelectedGroupId(defaultLine?.id || '');
         setSelectedGroup(defaultLine?.name || 'Line A');
@@ -207,50 +216,78 @@ export default function Create({ errors = [], defaultValues = {} }) {
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
-        const phoneCheck = validatePhPhone(phone);
-        if (!phoneCheck.isValid) {
-            toast.error(phoneCheck.message || 'A valid 10-digit Philippine mobile phone number starting with 9 is required.');
-            return;
-        }
-        data.phone = phoneCheck.cleanPhone;
-        data.gender = gender || null;
-        data.birth_date = birthDate || null;
-        data.date_hired = hireDate;
-        data.address = (address || '').trim() || null;
-
-        const isFactory = department === 'Factory';
-        data.department = department;
-
-        if (isFactory) {
-            data.job_title = selectedCraft;
-            data.pay_type = 'piece_rate';
-            data.monthly_salary = null;
-            data.daily_rate = null;
-            data.hourly_rate = null;
-            data.piece_rate = null;
-
-            if (isCustomLine) {
-                const customName = (selectedGroup || '').trim();
-                data.production_group_name = customName;
-                data.production_group_id = null;
-                data.shift = `${customName} · Factory (08:00 AM - 05:00 PM)`;
-            } else {
-                const activeGroup = productionGroups.find(g => g.id === selectedGroupId) ||
-                    productionGroups.find(g => g.name === selectedGroup);
-                const resolvedId = activeGroup?.id || selectedGroupId || null;
-                const resolvedName = activeGroup?.name || selectedGroup || 'Line A';
-                data.production_group_id = resolvedId;
-                data.production_group_name = resolvedName;
-                data.shift = `${resolvedName} · Factory (08:00 AM - 05:00 PM)`;
+        if (phone && phone.trim()) {
+            const phoneCheck = validatePhPhone(phone);
+            if (!phoneCheck.isValid) {
+                toast.error(phoneCheck.message || 'A valid 10-digit Philippine mobile phone number starting with 9 is required.');
+                return;
             }
+            data.phone = phoneCheck.cleanPhone;
         } else {
+            data.phone = null;
+        }
+
+        data.role = role;
+
+        if (isSecurityRole) {
+            data.department = 'Security';
+            data.job_title = (stationLocation || 'Security Guard').trim();
+            data.shift = 'Security Shift · Gate Terminal';
             data.production_group_id = null;
+            data.production_group_name = null;
             data.pay_type = 'daily';
-            data.daily_rate = parseFloat(rawDailyPay || 0);
-            data.hourly_rate = parseFloat(rawHourlyPay || 0);
-            data.monthly_salary = parseFloat(rawDailyPay || 0) * 26;
+            data.daily_rate = 0;
+            data.hourly_rate = 0;
+            data.monthly_salary = null;
             data.piece_rate = null;
-            data.shift = 'Regular Worker (08:00 AM - 08:00 PM)';
+            data.sex = null;
+            data.gender = null;
+            data.birth_date = null;
+            data.address = null;
+            data.date_hired = hireDate || getManilaWorkDate();
+            data.timekeeping_effective_date = getManilaWorkDate();
+        } else {
+            data.sex = sex || null;
+            data.gender = sex || null;
+            data.birth_date = birthDate || null;
+            data.date_hired = hireDate;
+            data.timekeeping_effective_date = timekeepingDate || getManilaWorkDate();
+            data.address = (address || '').trim() || null;
+
+            const isFactory = department === 'Factory';
+            data.department = department;
+
+            if (isFactory) {
+                data.job_title = selectedCraft;
+                data.pay_type = 'piece_rate';
+                data.monthly_salary = null;
+                data.daily_rate = null;
+                data.hourly_rate = null;
+                data.piece_rate = null;
+
+                if (isCustomLine) {
+                    const customName = (selectedGroup || '').trim();
+                    data.production_group_name = customName;
+                    data.production_group_id = null;
+                    data.shift = `${customName} · Factory (08:00 AM - 05:00 PM)`;
+                } else {
+                    const activeGroup = productionGroups.find(g => g.id === selectedGroupId) ||
+                        productionGroups.find(g => g.name === selectedGroup);
+                    const resolvedId = activeGroup?.id || selectedGroupId || null;
+                    const resolvedName = activeGroup?.name || selectedGroup || 'Line A';
+                    data.production_group_id = resolvedId;
+                    data.production_group_name = resolvedName;
+                    data.shift = `${resolvedName} · Factory (08:00 AM - 05:00 PM)`;
+                }
+            } else {
+                data.production_group_id = null;
+                data.pay_type = 'daily';
+                data.daily_rate = parseFloat(rawDailyPay || 0);
+                data.hourly_rate = parseFloat(rawHourlyPay || 0);
+                data.monthly_salary = parseFloat(rawDailyPay || 0) * 26;
+                data.piece_rate = null;
+                data.shift = 'Regular Worker (08:00 AM - 08:00 PM)';
+            }
         }
 
         setIsSubmitting(true);
@@ -317,8 +354,22 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
             <div className="bg-white p-5 sm:p-6 rounded-lg shadow-2xs border border-slate-200">
                 <div className="mb-6 text-center">
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Onboard Personnel</h2>
-                    <p className="text-slate-500 font-medium text-xs mt-1">Create a new employee profile and system account.</p>
+                    <div className="inline-flex items-center gap-2 mb-2">
+                        {isSecurityRole && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-900 text-white shadow-2xs flex items-center gap-1.5">
+                                <i className="ti ti-scan text-xs" />
+                                Scanner Kiosk Provisioning Mode
+                            </span>
+                        )}
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                        {isSecurityRole ? 'Provision Security Guard Terminal' : 'Onboard Personnel'}
+                    </h2>
+                    <p className="text-slate-500 font-medium text-xs mt-1">
+                        {isSecurityRole 
+                            ? 'Provision an attendance terminal account configured for gate QR code scanning.' 
+                            : 'Create a new employee profile and system account.'}
+                    </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -332,16 +383,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email Address</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    Email Address <span className="text-danger-ink">*</span>
+                                </label>
                                 <input type="email" name="email" required defaultValue={defaultValues.email || ''}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
-                                    placeholder="employee@company.com" />
+                                    placeholder={isSecurityRole ? "guard-gate1@c-point.com" : "employee@company.com"} />
                             </div>
 
                             <div>
                                 <div className="flex items-center justify-between mb-1.5">
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                        Mobile Phone <span className="text-danger-ink">*</span>
+                                        Mobile Phone <span className="text-slate-400 font-normal lowercase">(optional)</span>
                                     </label>
                                     {phone && (
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-100 ${
@@ -362,7 +415,6 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     <input
                                         type="tel"
                                         name="phone"
-                                        required
                                         maxLength={12}
                                         value={phone}
                                         onChange={(e) => setPhone(formatPhPhone(e.target.value))}
@@ -379,17 +431,58 @@ export default function Create({ errors = [], defaultValues = {} }) {
                             </div>
 
                             <div className="md:col-span-2">
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">System Privilege</label>
-                                <select name="role" defaultValue={defaultValues.role || 'employee'}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs">
-                                    <option value="employee">Standard Employee</option>
-                                    <option value="security">Security Guard (Scanner Access)</option>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    System Privilege <span className="text-danger-ink">*</span>
+                                </label>
+                                <select 
+                                    name="role" 
+                                    value={role}
+                                    onChange={(e) => setRole(e.target.value)}
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                >
+                                    <option value="employee">Standard Employee (Portal, Leaves, Payslips)</option>
+                                    <option value="security">Security Guard (Scanner Access Only)</option>
                                 </select>
                                 <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
                                     <i className="ti ti-shield-lock text-slate-400 text-xs" />
                                     <span>Administrator accounts require privileged governance. To provision an admin, use the <Link to="/admin/employees/provision-admin" className="text-accent font-semibold hover:underline">Admin Provisioning Portal</Link>.</span>
                                 </p>
                             </div>
+
+                            {isSecurityRole && (
+                                <div className="md:col-span-2 space-y-3 pt-1">
+                                    <div className="p-3.5 bg-accent-subtle/80 border border-accent/20 rounded-md text-xs text-accent-strong flex items-start gap-3 shadow-2xs">
+                                        <div className="w-8 h-8 rounded-md bg-accent-subtle flex items-center justify-center shrink-0 text-accent font-bold mt-0.5">
+                                            <i className="ti ti-scan text-base" />
+                                        </div>
+                                        <div className="space-y-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-900">Dedicated Scanner Operator Account</span>
+                                                <span className="px-1.5 py-0.5 bg-accent-subtle text-accent font-semibold text-[10px] rounded uppercase tracking-wider border border-accent/20">
+                                                    Kiosk Streamlined
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-600 leading-relaxed font-normal">
+                                                This account is provisioned strictly to operate the Attendance QR Scanner. In compliance with enterprise data minimization, personal HR fields (Philippine address, birth date, sex) and payroll compensation configurations are automatically bypassed.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Assigned Station / Gate Location <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={stationLocation}
+                                            onChange={(e) => setStationLocation(e.target.value)}
+                                            placeholder="e.g. Main Gate Terminal, Turnstile A, Warehouse Entrance"
+                                            className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">Identifies the physical gate or scanner station in audit logs and terminal headers.</p>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="md:col-span-2 mt-1">
                                 <div className="inline-flex items-center gap-2 p-2.5 bg-accent-subtle text-accent rounded-md border border-accent/20 text-xs font-medium">
@@ -400,15 +493,19 @@ export default function Create({ errors = [], defaultValues = {} }) {
                         </div>
                     </div>
 
-                    {/* EMPLOYEE INFORMATION */}
+                    {/* EMPLOYEE / OPERATOR INFORMATION */}
                     <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
                         <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs"><i className="ti ti-id text-base" /></span>
-                            Personal Profile
+                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs">
+                                <i className={`ti ${isSecurityRole ? 'ti-device-tablet' : 'ti-id'} text-base`} />
+                            </span>
+                            {isSecurityRole ? 'Operator / Station Identity' : 'Personal Profile'}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    {isSecurityRole ? 'Station Label / First Name' : 'First Name'} <span className="text-danger-ink">*</span>
+                                </label>
                                 <input 
                                     type="text" 
                                     name="first_name" 
@@ -416,11 +513,13 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     value={firstName}
                                     onChange={(e) => setFirstName(e.target.value)}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
-                                    placeholder="John" 
+                                    placeholder={isSecurityRole ? "Main Gate" : "John"} 
                                 />
                             </div>
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                    {isSecurityRole ? 'Terminal Name / Last Name' : 'Last Name'} <span className="text-danger-ink">*</span>
+                                </label>
                                 <input 
                                     type="text" 
                                     name="last_name" 
@@ -428,7 +527,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     value={lastName}
                                     onChange={(e) => setLastName(e.target.value)}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
-                                    placeholder="Doe" 
+                                    placeholder={isSecurityRole ? "Guard" : "Doe"} 
                                 />
                             </div>
 
@@ -472,305 +571,348 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 </div>
                             )}
 
-                            <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Gender</label>
-                                <select 
-                                    name="gender" 
-                                    value={gender}
-                                    onChange={(e) => setGender(e.target.value)}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
-                                >
-                                    <option value="">Select Gender</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                    <option value="Prefer not to say">Prefer not to say</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date of Birth</label>
-                                <input 
-                                    type="date" 
-                                    name="birth_date" 
-                                    max={maxBirthDate}
-                                    min="1920-01-01"
-                                    value={birthDate}
-                                    onChange={(e) => setBirthDate(e.target.value)}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="date-hired" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Date hired</label>
-                                <input id="date-hired" name="date_hired" type="date" required max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Residential Address</label>
-                                    <span className="text-[10px] text-slate-400 font-mono">{address.length} / 300</span>
-                                </div>
-                                <textarea 
-                                    name="address" 
-                                    rows={2}
-                                    maxLength={300}
-                                    value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
-                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs resize-none" 
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Department</label>
-                                <select
-                                    name="department"
-                                    value={department}
-                                    onChange={(e) => setDepartment(e.target.value)}
-                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
-                                >
-                                    <option value="Factory">Factory Floor (Shoe Production)</option>
-                                    <option value="Retail">Retail Store</option>
-                                    <option value="Security">Security</option>
-                                    <option value="HR/Admin">HR & Admin</option>
-                                    <option value="IT">IT Department</option>
-                                    <option value="Logistics">Logistics</option>
-                                </select>
-                            </div>
-
-                            {department !== 'Factory' ? (
-                                <div>
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
-                                    <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
-                                        className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
-                                        placeholder="e.g. Sales Associate, HR Officer" />
-                                </div>
-                            ) : null}
-
-                            {/* FACTORY SHOE PRODUCTION CRAFT & GROUP SELECTION */}
-                            {department === 'Factory' && (
-                                <div className="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/80">
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <label className="block text-[10px] sm:text-xs font-bold text-warning-ink uppercase tracking-widest">
-                                                Shoe Production Station (Select 1 of 6 Crafts)
-                                            </label>
+                            {isSecurityRole ? (
+                                <div className="md:col-span-2 p-3.5 bg-white rounded-md border border-slate-200 space-y-2.5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                                            <i className="ti ti-shield-check text-accent text-sm" />
+                                            Terminal Deployment & Privilege Binding
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                            Attendance Verifier
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-100 text-[11px]">
+                                        <div className="p-2.5 bg-slate-50 rounded border border-slate-200/60">
+                                            <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Authorized Route</span>
+                                            <span className="font-mono font-semibold text-accent">/scanner (Direct)</span>
                                         </div>
+                                        <div className="p-2.5 bg-slate-50 rounded border border-slate-200/60">
+                                            <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Department</span>
+                                            <span className="font-semibold text-slate-800">Security</span>
+                                        </div>
+                                        <div className="p-2.5 bg-slate-50 rounded border border-slate-200/60">
+                                            <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">HR Onboarding</span>
+                                            <span className="font-semibold text-emerald-700">Exempt (Bypassed)</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 font-normal">
+                                        Personal DOLE compliance forms (Philippine residential address, birth date, gender) and compensation configurations are unnecessary for scanner operators and have been bypassed under data minimization principles.
+                                    </p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Sex <span className="text-slate-400 font-normal lowercase">(optional — self-service eligible)</span>
+                                        </label>
+                                        <select 
+                                            name="sex" 
+                                            value={sex}
+                                            onChange={(e) => setSex(e.target.value)}
+                                            className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                        >
+                                            <option value="">Select Sex</option>
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                        </select>
+                                    </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                                            {FACTORY_SHOE_ROLES.map((craft) => {
-                                                const isSelected = selectedCraft === craft.id;
-                                                return (
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Date of Birth <span className="text-slate-400 font-normal lowercase">(optional — self-service eligible)</span>
+                                        </label>
+                                        <input 
+                                            type="date" 
+                                            name="birth_date" 
+                                            max={maxBirthDate}
+                                            min="1920-01-01"
+                                            value={birthDate}
+                                            onChange={(e) => setBirthDate(e.target.value)}
+                                            className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 font-mono transition-colors duration-100 shadow-2xs" 
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="date-hired" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Date hired <span className="text-danger-ink">*</span>
+                                        </label>
+                                        <input id="date-hired" name="date_hired" type="date" required max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="timekeeping-effective-date" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Timekeeping Cutover Date <span className="text-slate-400 font-normal lowercase">(defaults to today)</span>
+                                        </label>
+                                        <input id="timekeeping-effective-date" name="timekeeping_effective_date" type="date" value={timekeepingDate} onChange={e => setTimekeepingDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <PhilippineAddressSelector
+                                            value={address}
+                                            onChange={(nextAddress) => setAddress(nextAddress)}
+                                            idPrefix="create_emp_address"
+                                            label="Residential Address (optional — employee can complete in onboarding)"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Department <span className="text-danger-ink">*</span>
+                                        </label>
+                                        <select
+                                            name="department"
+                                            value={department}
+                                            onChange={(e) => setDepartment(e.target.value)}
+                                            className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
+                                        >
+                                            <option value="Factory">Factory Floor (Shoe Production)</option>
+                                            <option value="Retail">Retail Store</option>
+                                            <option value="Security">Security</option>
+                                            <option value="HR/Admin">HR & Admin</option>
+                                            <option value="IT">IT Department</option>
+                                            <option value="Logistics">Logistics</option>
+                                        </select>
+                                    </div>
+
+                                    {department !== 'Factory' ? (
+                                        <div>
+                                            <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                                Job Title <span className="text-danger-ink">*</span>
+                                            </label>
+                                            <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
+                                                className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
+                                                placeholder="e.g. Sales Associate, HR Officer" />
+                                        </div>
+                                    ) : null}
+
+                                    {/* FACTORY SHOE PRODUCTION CRAFT & GROUP SELECTION */}
+                                    {department === 'Factory' && (
+                                        <div className="md:col-span-2 space-y-4 pt-2 border-t border-slate-200/80">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <label className="block text-[10px] sm:text-xs font-bold text-warning-ink uppercase tracking-widest">
+                                                        Shoe Production Station (Select 1 of 6 Crafts) <span className="text-danger-ink">*</span>
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                    {FACTORY_SHOE_ROLES.map((craft) => {
+                                                        const isSelected = selectedCraft === craft.id;
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={craft.id}
+                                                                onClick={() => setSelectedCraft(craft.id)}
+                                                                className={`p-2.5 rounded-md border text-left transition-colors duration-100 flex items-center justify-between gap-2.5 cursor-pointer ${isSelected
+                                                                    ? 'bg-warning/10 border-warning ring-1 ring-warning/30 shadow-2xs'
+                                                                    : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <span className={`w-7 h-7 rounded-md flex items-center justify-center text-xs shrink-0 ${isSelected ? 'bg-warning text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                        <i className={`ti ${craft.icon}`} />
+                                                                    </span>
+                                                                    <div className="min-w-0">
+                                                                        <p className="font-bold text-xs text-slate-800 leading-tight truncate">{craft.label}</p>
+                                                                        <p className="text-[10px] text-slate-400 font-medium truncate">{craft.filipino}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 border border-slate-200/60">
+                                                                    {craft.stage.split(':')[0]}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* PRODUCTION LINE ASSIGNMENT */}
+                                            <div className="p-3 bg-white rounded-md border border-warning/20">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
+                                                    <div>
+                                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
+                                                            Assigned Production Line / Group <span className="text-danger-ink">*</span>
+                                                        </label>
+                                                    </div>
                                                     <button
                                                         type="button"
-                                                        key={craft.id}
-                                                        onClick={() => setSelectedCraft(craft.id)}
-                                                        className={`p-2.5 rounded-md border text-left transition-colors duration-100 flex items-center justify-between gap-2.5 cursor-pointer ${isSelected
-                                                            ? 'bg-warning/10 border-warning ring-1 ring-warning/30 shadow-2xs'
-                                                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                                            }`}
+                                                        onClick={() => {
+                                                            const nextState = !isCustomLine;
+                                                            setIsCustomLine(nextState);
+                                                            if (nextState) {
+                                                                setSelectedGroupId('');
+                                                                setSelectedGroup('');
+                                                            } else {
+                                                                const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
+                                                                setSelectedGroupId(defaultLine?.id || '');
+                                                                setSelectedGroup(defaultLine?.name || 'Line A');
+                                                            }
+                                                        }}
+                                                        className="self-start sm:self-auto text-[11px] font-bold text-warning-ink hover:text-warning-ink flex items-center gap-1 cursor-pointer transition-colors duration-100"
                                                     >
-                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                            <span className={`w-7 h-7 rounded-md flex items-center justify-center text-xs shrink-0 ${isSelected ? 'bg-warning text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                                                <i className={`ti ${craft.icon}`} />
-                                                            </span>
-                                                            <div className="min-w-0">
-                                                                <p className="font-bold text-xs text-slate-800 leading-tight truncate">{craft.label}</p>
-                                                                <p className="text-[10px] text-slate-400 font-medium truncate">{craft.filipino}</p>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 border border-slate-200/60">
-                                                            {craft.stage.split(':')[0]}
-                                                        </span>
+                                                        <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
+                                                        <span>{isCustomLine ? 'Choose from existing lines' : '+ Create new line'}</span>
                                                     </button>
-                                                );
-                                            })}
+                                                </div>
+
+                                                {isCustomLine ? (
+                                                    <div>
+                                                        <input
+                                                            type="text"
+                                                            value={selectedGroup}
+                                                            onChange={(e) => setSelectedGroup(e.target.value)}
+                                                            placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
+                                                            autoFocus
+                                                            className="w-full h-9 px-3 bg-warning-subtle/50 border border-warning/20 focus:border-warning rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <select
+                                                            value={selectedGroupId || (productionGroups.find(g => g.name === selectedGroup)?.id || '')}
+                                                            onChange={(e) => {
+                                                                if (e.target.value === '__NEW__') {
+                                                                    setIsCustomLine(true);
+                                                                    setSelectedGroupId('');
+                                                                    setSelectedGroup('');
+                                                                } else {
+                                                                    setSelectedGroupId(e.target.value);
+                                                                    const found = productionGroups.find(g => g.id === e.target.value);
+                                                                    if (found) setSelectedGroup(found.name);
+                                                                }
+                                                            }}
+                                                            className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-warning transition-colors duration-100 cursor-pointer shadow-2xs"
+                                                        >
+                                                            {productionGroups.length > 0 ? (
+                                                                productionGroups.map(group => (
+                                                                    <option key={group.id} value={group.id}>
+                                                                        {group.name} ({group.code}) {group.member_count !== undefined ? `· ${group.member_count} active workers` : ''}
+                                                                    </option>
+                                                                ))
+                                                            ) : (
+                                                                <option value="">Loading production lines...</option>
+                                                            )}
+                                                            <option value="__NEW__">+ Create new production line...</option>
+                                                        </select>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="md:col-span-2">
+                                        <div className={`p-3 rounded-md border flex items-center justify-between gap-3 ${department === 'Factory' ? 'bg-warning-subtle/70 border-warning/20 text-warning-ink' : 'bg-accent-subtle/70 border-accent/20 text-accent-strong'
+                                            }`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-warning-ink' : 'ti-clock-play text-accent'} text-base shrink-0`} />
+                                                <div>
+                                                    <p className="text-xs font-bold">
+                                                        {department === 'Factory' ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${department === 'Factory' ? 'bg-warning-subtle/80 text-warning-ink border-warning/20' : 'bg-accent-subtle/80 text-accent-strong border-accent/20'
+                                                }`}>
+                                                {department === 'Factory' ? 'No OT' : 'OT Eligible'}
+                                            </span>
                                         </div>
                                     </div>
-
-                                    {/* PRODUCTION LINE ASSIGNMENT */}
-                                    <div className="p-3 bg-white rounded-md border border-warning/20">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
-                                            <div>
-                                                <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-widest">
-                                                    Assigned Production Line / Group
-                                                </label>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const nextState = !isCustomLine;
-                                                    setIsCustomLine(nextState);
-                                                    if (nextState) {
-                                                        setSelectedGroupId('');
-                                                        setSelectedGroup('');
-                                                    } else {
-                                                        const defaultLine = productionGroups.find(g => g.name === 'Line A') || productionGroups[0];
-                                                        setSelectedGroupId(defaultLine?.id || '');
-                                                        setSelectedGroup(defaultLine?.name || 'Line A');
-                                                    }
-                                                }}
-                                                className="self-start sm:self-auto text-[11px] font-bold text-warning-ink hover:text-warning-ink flex items-center gap-1 cursor-pointer transition-colors duration-100"
-                                            >
-                                                <i className={`ti ${isCustomLine ? 'ti-list' : 'ti-plus'} text-xs`} />
-                                                <span>{isCustomLine ? 'Choose from existing lines' : '+ Create new line'}</span>
-                                            </button>
-                                        </div>
-
-                                        {isCustomLine ? (
-                                            <div>
-                                                <input
-                                                    type="text"
-                                                    value={selectedGroup}
-                                                    onChange={(e) => setSelectedGroup(e.target.value)}
-                                                    placeholder="Type new line name (e.g. Line 7, Sneaker Line Alpha)"
-                                                    autoFocus
-                                                    className="w-full h-9 px-3 bg-warning-subtle/50 border border-warning/20 focus:border-warning rounded-md text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs"
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div>
-                                                <select
-                                                    value={selectedGroupId || (productionGroups.find(g => g.name === selectedGroup)?.id || '')}
-                                                    onChange={(e) => {
-                                                        if (e.target.value === '__NEW__') {
-                                                            setIsCustomLine(true);
-                                                            setSelectedGroupId('');
-                                                            setSelectedGroup('');
-                                                        } else {
-                                                            setSelectedGroupId(e.target.value);
-                                                            const found = productionGroups.find(g => g.id === e.target.value);
-                                                            if (found) setSelectedGroup(found.name);
-                                                        }
-                                                    }}
-                                                    className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 focus:outline-none focus:border-warning transition-colors duration-100 cursor-pointer shadow-2xs"
-                                                >
-                                                    {productionGroups.length > 0 ? (
-                                                        productionGroups.map(group => (
-                                                            <option key={group.id} value={group.id}>
-                                                                {group.name} ({group.code}) {group.member_count !== undefined ? `· ${group.member_count} active workers` : ''}
-                                                            </option>
-                                                        ))
-                                                    ) : (
-                                                        <option value="">Loading production lines...</option>
-                                                    )}
-                                                    <option value="__NEW__">+ Create new production line...</option>
-                                                </select>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                </>
                             )}
-
-                            <div className="md:col-span-2">
-                                <div className={`p-3 rounded-md border flex items-center justify-between gap-3 ${department === 'Factory' ? 'bg-warning-subtle/70 border-warning/20 text-warning-ink' : 'bg-accent-subtle/70 border-accent/20 text-accent-strong'
-                                    }`}>
-                                    <div className="flex items-center gap-2.5">
-                                        <i className={`ti ${department === 'Factory' ? 'ti-clock-pause text-warning-ink' : 'ti-clock-play text-accent'} text-base shrink-0`} />
-                                        <div>
-                                            <p className="text-xs font-bold">
-                                                {department === 'Factory' ? 'Factory Worker Schedule: 08:00 AM - 05:00 PM' : 'Regular Worker Schedule: 08:00 AM - 08:00 PM'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${department === 'Factory' ? 'bg-warning-subtle/80 text-warning-ink border-warning/20' : 'bg-accent-subtle/80 text-accent-strong border-accent/20'
-                                        }`}>
-                                        {department === 'Factory' ? 'No OT' : 'OT Eligible'}
-                                    </span>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
-                    {/* DYNAMIC PAYROLL DETAILS */}
-                    <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
-                            <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs">
-                                <i className="ti ti-cash-banknote text-base" />
-                            </span>
-                            Payroll Configuration
-                        </h3>
+                    {/* DYNAMIC PAYROLL DETAILS - ONLY FOR STANDARD EMPLOYEES */}
+                    {!isSecurityRole && (
+                        <div className="p-4 sm:p-5 bg-slate-50/50 rounded-lg border border-slate-200">
+                            <h3 className="text-sm font-bold text-slate-900 tracking-tight mb-4 flex items-center gap-2.5">
+                                <span className="w-7 h-7 bg-white text-slate-700 rounded-md flex items-center justify-center border border-slate-200 shadow-2xs">
+                                    <i className="ti ti-cash-banknote text-base" />
+                                </span>
+                                Payroll Configuration
+                            </h3>
 
-                        {department === 'Factory' ? (
-                            <div className="space-y-3">
-                                <div className="p-3.5 rounded-md border border-warning/20 bg-warning-subtle/70 text-warning-ink space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 font-bold text-xs text-warning-ink">
-                                            <i className="ti ti-box-multiple text-base text-warning-ink" />
-                                            Group Output Piece-Rate Model (Shoe Production Pool)
+                            {department === 'Factory' ? (
+                                <div className="space-y-3">
+                                    <div className="p-3.5 rounded-md border border-warning/20 bg-warning-subtle/70 text-warning-ink space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 font-bold text-xs text-warning-ink">
+                                                <i className="ti ti-box-multiple text-base text-warning-ink" />
+                                                Group Output Piece-Rate Model (Shoe Production Pool)
+                                            </div>
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-warning-subtle/80 text-warning-ink border border-warning/20">
+                                                Pakyawan Pool
+                                            </span>
                                         </div>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-warning-subtle/80 text-warning-ink border border-warning/20">
-                                            Pakyawan Pool
-                                        </span>
-                                    </div>
-                                    <div className="pt-2 border-t border-warning/80 flex flex-wrap items-center gap-3 text-[11px] text-warning-ink font-medium">
-                                        <span className="flex items-center gap-1">
-                                            <i className="ti ti-check text-warning-ink" /> No fixed salary set at onboarding
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <i className="ti ti-users text-warning-ink" /> Production line batch pool
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <i className="ti ti-clock-off text-warning-ink" /> Strictly no overtime policy
-                                        </span>
+                                        <div className="pt-2 border-t border-warning/80 flex flex-wrap items-center gap-3 text-[11px] text-warning-ink font-medium">
+                                            <span className="flex items-center gap-1">
+                                                <i className="ti ti-check text-warning-ink" /> No fixed salary set at onboarding
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <i className="ti ti-users text-warning-ink" /> Production line batch pool
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <i className="ti ti-clock-off text-warning-ink" /> Strictly no overtime policy
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        Daily Pay Rate
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={displayDailyPay}
-                                            onChange={handleDailyPayChange}
-                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
-                                            placeholder="0.00"
-                                        />
-                                        <input type="hidden" name="daily_rate" value={rawDailyPay} />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Daily Pay Rate <span className="text-danger-ink">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={displayDailyPay}
+                                                onChange={handleDailyPayChange}
+                                                className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
+                                                placeholder="0.00"
+                                            />
+                                            <input type="hidden" name="daily_rate" value={rawDailyPay} />
+                                        </div>
+                                        <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                            <i className="ti ti-calendar" /> Base daily compensation rate
+                                        </p>
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
-                                        <i className="ti ti-calendar" /> Base daily compensation rate
-                                    </p>
-                                </div>
 
-                                <div>
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        Hourly Pay Rate
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={displayHourlyPay}
-                                            onChange={handleHourlyPayChange}
-                                            className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
-                                            placeholder="0.00"
-                                        />
-                                        <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                            Hourly Pay Rate <span className="text-slate-400 font-normal lowercase">(auto-calculated)</span>
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={displayHourlyPay}
+                                                onChange={handleHourlyPayChange}
+                                                className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
+                                                placeholder="0.00"
+                                            />
+                                            <input type="hidden" name="hourly_rate" value={rawHourlyPay} />
+                                        </div>
+                                        <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
+                                            <i className="ti ti-clock" /> Calculated per 8-hour workday standard
+                                        </p>
                                     </div>
-                                    <p className="text-[10px] sm:text-xs font-semibold text-slate-400 mt-1.5 uppercase tracking-widest flex items-center gap-1">
-                                        <i className="ti ti-clock" /> Calculated per 8-hour workday standard
-                                    </p>
                                 </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* SUBMIT */}
                     <div className="pt-2">
                         <button type="submit" disabled={isSubmitting} className="w-full h-10 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-semibold text-xs tracking-wide rounded-md shadow-2xs transition-colors duration-100 flex items-center justify-center gap-2 cursor-pointer">
                             {isSubmitting ? (
-                                <><i className="ti ti-loader animate-spin text-sm" /> Creating Profile...</>
+                                <><i className="ti ti-loader animate-spin text-sm" /> {isSecurityRole ? 'Provisioning Scanner Operator...' : 'Creating Profile...'}</>
                             ) : (
-                                <><i className="ti ti-user-plus text-sm" /> Create Profile & Account</>
+                                <><i className={`ti ${isSecurityRole ? 'ti-shield-check' : 'ti-user-plus'} text-sm`} /> {isSecurityRole ? 'Provision Security Guard Terminal' : 'Create Profile & Account'}</>
                             )}
                         </button>
                     </div>
@@ -790,7 +932,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 Account Created Successfully
                             </h3>
                             <p className="text-xs text-slate-500 font-medium">
-                                Provide these temporary login credentials to the employee.
+                                Provide these temporary login credentials to the {createdEmployee.role === 'security' ? 'scanner operator or gate personnel' : 'employee'}.
                             </p>
                         </div>
 
@@ -799,7 +941,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
                             {/* Name */}
                             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Employee</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                    {createdEmployee.role === 'security' ? 'Scanner Operator' : 'Employee'}
+                                </span>
                                 <span className="text-xs font-bold text-slate-900">
                                     {createdEmployee.first_name} {createdEmployee.last_name}
                                 </span>

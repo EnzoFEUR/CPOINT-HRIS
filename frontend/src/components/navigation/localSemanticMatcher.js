@@ -330,22 +330,22 @@ const ADMIN_INTENTS = [
   },
   {
     id: 'documents-index',
-    title: 'Documents & Forms',
-    route: '/admin/documents',
+    title: 'Employee Documents',
+    route: '/admin/employees',
     icon: 'ti-file-text',
-    description: 'Employee handbook, form templates, and legal contracts',
-    intent_title: 'Document Templates & Forms',
-    ai_answer: 'Access company document templates, onboarding contracts, compliance memos, and administrative forms.',
+    description: 'Select an employee from the directory to view and manage their documents',
+    intent_title: 'Employee Documents',
+    ai_answer: 'To view or manage an employee\'s documents, open their profile from the Employee Directory and click Documents.',
     keywords: [
       'document', 'documents', 'contract', 'contracts', 'template',
-      'forms', 'handbook', 'manual', 'memo template'
+      'forms', 'handbook', 'manual', 'memo template', 'document vault'
     ],
     suggested_actions: [
       {
-        title: 'Disciplinary Records',
-        route: '/admin/disciplinary',
-        icon: 'ti-alert-triangle',
-        description: 'Disciplinary records'
+        title: 'Employee Directory',
+        route: '/admin/employees',
+        icon: 'ti-users-group',
+        description: 'View employee directory'
       }
     ]
   },

@@ -3,7 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { isAdmin, isSecurity, isMedicalExempt } from '../routes/guards';
+import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
+import { offlineApi } from '../utils/offlineAttendanceSync';
 import sidebarCover from '../assets/sidebar-cover.jpg';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 
 export const Sidebar = ({ user, handleLogout }) => {
   const location = useLocation();
@@ -64,6 +67,36 @@ export const Sidebar = ({ user, handleLogout }) => {
     return () => {
       supabase.removeChannel(channel);
     };
+  }, [queryClient, user]);
+
+  // Offline provisional captures pending count (zero overhead, real-time sync)
+  const { data: offlineStats } = useQuery({
+    queryKey: ['sidebarOfflinePendingCount'],
+    queryFn: async () => {
+      try {
+        const res = await offlineApi('/stats');
+        return res?.counts || null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(isAdmin(user) && isOfflineFeatureActive),
+    staleTime: 15000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true
+  });
+  const offlinePendingCount = offlineStats?.needs_review || 0;
+
+  // Real-time listener for offline attendance mutations across tabs
+  useEffect(() => {
+    if (!isAdmin(user) || !isOfflineFeatureActive) return;
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('cpoint_offline_attendance_channel');
+      channel.onmessage = () => {
+        queryClient.invalidateQueries({ queryKey: ['sidebarOfflinePendingCount'] });
+      };
+      return () => channel.close();
+    }
   }, [queryClient, user]);
 
   const totalPendingLeaves = (leaveCounts?.pendingLeaves || 0) + (leaveCounts?.pendingCash || 0);
@@ -217,6 +250,26 @@ export const Sidebar = ({ user, handleLogout }) => {
                     <i className="ti ti-calendar text-lg"></i>
                     <span className="ml-3 text-sm font-medium">Calendar View</span>
                   </Link>
+                  {isOfflineFeatureActive && (
+                    <Link
+                      to="/admin/attendance/offline"
+                      className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-colors ${
+                        location.pathname === '/admin/attendance/offline'
+                          ? 'bg-accent text-white shadow-md font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center min-w-0">
+                        <i className="ti ti-device-watch text-lg shrink-0"></i>
+                        <span className="ml-3 text-sm font-medium truncate">Offline Captures</span>
+                      </div>
+                      {offlinePendingCount > 0 && (
+                        <span className="ml-2 px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                          {offlinePendingCount}
+                        </span>
+                      )}
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -377,9 +430,7 @@ export const Sidebar = ({ user, handleLogout }) => {
           className="flex items-center p-3 rounded-xl mb-2 cursor-pointer hover:bg-white/5 transition-colors"
         >
           <div className="relative shrink-0">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center text-white font-bold shadow-md">
-              {user?.name ? user.name.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : '?')}
-            </div>
+            <EmployeeAvatar employee={user} size="h-10 w-10" rounded="rounded-xl" theme="dark" border="border border-slate-700" />
           </div>
           <div className="ml-3 overflow-hidden min-w-0 flex-1">
             <p className="text-xs font-bold text-white truncate hover:text-accent">

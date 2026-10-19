@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
 import FactoryPiece from './FactoryPiece';
+import { factorySaveResult } from '../../../utils/factorySaveResult.mjs';
 
 // Payroll utilities & constants
 import {
@@ -536,8 +537,9 @@ const PayrollCreate = () => {
                     rows: updatedRows
                 })
             });
+            const result = await res.json();
+            factorySaveResult(res, result);
             if (res.ok) {
-                const result = await res.json();
                 if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                     if (selectedGroupRef.current === groupToSave) {
                         setFactoryRows(result.data);
@@ -549,6 +551,8 @@ const PayrollCreate = () => {
             }
         } catch (err) {
             console.error('Cloud sync error:', err);
+            setError(err.message || 'Factory records were not saved. Keep the form open and retry when connected.');
+            throw err;
         }
 
         if (shouldClose) {

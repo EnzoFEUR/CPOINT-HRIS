@@ -1,8 +1,16 @@
 import express from 'express';
+import { postgrestValue, postgrestLikeValue } from '../middleware/requestValidation.js';
+import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
+
+export function requireProductionManager(req, res, next) {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || hasVerifiedManagerRole(req.user)) return next();
+    return res.status(403).json({ success: false, error: 'Only authorized HR administrators can change production groups.' });
+}
+router.use(requireProductionManager);
 
 // GET all active production groups with member counts
 router.get('/', cacheResponse(30), async (req, res) => {
@@ -64,7 +72,7 @@ router.post('/', async (req, res) => {
         const { data: existing } = await supabase
             .from('production_groups')
             .select('*')
-            .or(`code.eq.${generatedCode},name.ilike.${trimmedName}`)
+            .or(`code.eq.${postgrestValue(generatedCode)},name.ilike.${postgrestLikeValue(trimmedName)}`)
             .maybeSingle();
 
         if (existing) {

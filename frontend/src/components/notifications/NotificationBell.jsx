@@ -71,7 +71,7 @@ export const NotificationBell = ({ user }) => {
 
     const loadNotifications = async () => {
       try {
-        const res = await fetchWithAuth(`/api/notifications?user_id=${user.id}&role=${user.role}`);
+        const res = await fetchWithAuth('/api/notifications');
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && !isCancelled) {

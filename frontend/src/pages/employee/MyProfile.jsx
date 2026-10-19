@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../utils/api';
+import { readProfileCache, writeProfileCache, clearProfileCache } from '../../utils/browserPrivacy.mjs';
 import EmployeeAvatar from '../../components/EmployeeAvatar';
 import QRCode from '../../components/QRCode';
 import { supabase } from '../../supabaseClient';
@@ -16,6 +17,7 @@ import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../.
 import { formatPhDisplay } from '../../utils/phoneUtils';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
+import PhilippineAddressSelector from '../../components/PhilippineAddressSelector';
 
 const CATEGORIES = ['General', 'Government ID', 'Educational', 'Medical', 'Clearance', 'Contract / Agreement'];
 const EXPIRABLE_CATEGORIES = ['Government ID', 'Clearance'];
@@ -74,13 +76,9 @@ export default function MyProfile() {
     const [totpBackupCodes, setTotpBackupCodes] = useState([]);
     const [totpStep, setTotpStep] = useState(1); // 1 = QR & Code, 2 = Backup Codes
 
-    const fetchTotpStatus = async (uid) => {
+    const fetchTotpStatus = async () => {
         try {
-            const targetId = uid || storedUser?.id || storedUser?.email || '';
-            const url = targetId
-                ? `/api/auth/totp/status?identifier=${encodeURIComponent(targetId)}`
-                : '/api/auth/totp/status';
-            const res = await fetchWithAuth(url);
+            const res = await fetchWithAuth('/api/auth/totp/status');
             const data = await res.json();
             if (res.ok && data.success) {
                 setTotpStatus({
@@ -110,7 +108,7 @@ export default function MyProfile() {
 
     // Auto-fetch TOTP status on component mount and whenever user identity changes
     useEffect(() => {
-        fetchTotpStatus(storedUser?.id || storedUser?.email);
+        fetchTotpStatus();
     }, [storedUser?.id, storedUser?.email]);
 
     const executeTotpSetup = async (pwd = '') => {
@@ -168,7 +166,7 @@ export default function MyProfile() {
             toast.success('Google Authenticator 2FA activated!');
             setTotpBackupCodes(data.backupCodes || []);
             setTotpStep(2);
-            fetchTotpStatus(storedUser?.id || storedUser?.email);
+            fetchTotpStatus();
         } catch (err) {
             toast.error(err.message || 'Invalid code.');
         } finally {
@@ -201,7 +199,7 @@ export default function MyProfile() {
             setShowDisableModal(false);
             setDisablePassword('');
             setDisableCode('');
-            await fetchTotpStatus(storedUser?.id || storedUser?.email);
+            await fetchTotpStatus();
         } catch (err) {
             toast.error(err.message || 'Error disabling 2FA.');
         } finally {
@@ -238,7 +236,8 @@ const normalizeJobTitle = (title, isAdmin) => {
             last_name: storedUser.last_name || (storedUser.name ? storedUser.name.split(' ').slice(1).join(' ') : ''),
             email: storedUser.email || 'N/A',
             phone: storedUser.phone || storedUser.contact_no || '',
-            gender: storedUser.gender || 'N/A',
+            sex: storedUser.sex || storedUser.gender || 'N/A',
+            gender: storedUser.sex || storedUser.gender || 'N/A',
             birth_date: storedUser.birth_date || null,
             address: storedUser.address || '',
             department: storedUser.department || 'Operations',
@@ -274,19 +273,18 @@ const normalizeJobTitle = (title, isAdmin) => {
             }
             if (cacheStorageKey) {
                 const cached = sessionStorage.getItem(cacheStorageKey);
-                if (cached && /super\s*admin/i.test(cached)) {
+                if (cached) {
                     sessionStorage.removeItem(cacheStorageKey);
                 }
             }
         } catch (_) {}
     }, [cacheStorageKey]);
 
-    // Query profile and documents with 0ms SWR session cache scoped strictly to the authenticated user ID
+    // Query profile and documents with an in-memory SWR cache scoped strictly to the authenticated user ID
     const initialProfileData = (() => {
         try {
-            const cachedRaw = sessionStorage.getItem(cacheStorageKey);
-            if (cachedRaw) {
-                const cached = JSON.parse(cachedRaw);
+            const cached = readProfileCache(cacheStorageKey);
+            if (cached) {
                 const cachedId = cached?.user?.id || cached?.employee?.id || cached?.data?.id || cached?.id;
                 // Strict validation: Only accept cache if it precisely matches the current user
                 if (!currentUserId || !cachedId || cachedId === currentUserId) {
@@ -313,7 +311,7 @@ const normalizeJobTitle = (title, isAdmin) => {
             try {
                 const fetchedId = profileResponse?.user?.id || profileResponse?.employee?.id || profileResponse?.data?.id;
                 if (!currentUserId || !fetchedId || fetchedId === currentUserId) {
-                    sessionStorage.setItem(cacheStorageKey, JSON.stringify(profileResponse));
+                    writeProfileCache(cacheStorageKey, profileResponse);
                 }
             } catch (_) {}
         }
@@ -337,6 +335,7 @@ const normalizeJobTitle = (title, isAdmin) => {
             last_name: raw.last_name || raw.lastname || (raw.name ? raw.name.split(' ').slice(1).join(' ') : ''),
             email: raw.email || raw.user?.email || 'N/A',
             phone: raw.phone || raw.contact_no || raw.phone_number || raw.mobile || '',
+            sex: raw.sex || raw.gender || 'N/A',
             gender: raw.gender || raw.sex || 'N/A',
             birth_date: raw.birth_date || raw.dob || raw.birthdate || null,
             address: raw.address || raw.home_address || raw.present_address || '',
@@ -659,6 +658,7 @@ const normalizeJobTitle = (title, isAdmin) => {
     const [personalForm, setPersonalForm] = useState({
         first_name: '',
         last_name: '',
+        sex: '',
         gender: '',
         birth_date: '',
         address: ''
@@ -675,10 +675,12 @@ const normalizeJobTitle = (title, isAdmin) => {
             toast.error('Profile modifications are disabled for separated/terminated accounts.');
             return;
         }
+        const currentSex = profile?.sex || profile?.gender;
         setPersonalForm({
             first_name: profile?.first_name || '',
             last_name: profile?.last_name || '',
-            gender: profile?.gender && profile.gender !== 'N/A' ? profile.gender : '',
+            sex: currentSex && currentSex !== 'N/A' ? currentSex : '',
+            gender: currentSex && currentSex !== 'N/A' ? currentSex : '',
             birth_date: profile?.birth_date ? profile.birth_date.split('T')[0] : '',
             address: profile?.address || ''
         });
@@ -689,10 +691,12 @@ const normalizeJobTitle = (title, isAdmin) => {
         e.preventDefault();
         setIsSavingPersonal(true);
         try {
+            const selectedSex = personalForm.sex || personalForm.gender || null;
             const payload = {
                 first_name: (personalForm.first_name || '').trim(),
                 last_name: (personalForm.last_name || '').trim(),
-                gender: personalForm.gender || null,
+                sex: selectedSex,
+                gender: selectedSex,
                 birth_date: personalForm.birth_date || null,
                 address: (personalForm.address || '').trim() || null
             };
@@ -724,12 +728,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                     const parsed = JSON.parse(rawUser);
                     parsed.first_name = updatedEmp.first_name;
                     parsed.last_name = updatedEmp.last_name;
-                    parsed.gender = updatedEmp.gender;
+                    parsed.sex = updatedEmp.sex || updatedEmp.gender;
+                    parsed.gender = updatedEmp.sex || updatedEmp.gender;
                     parsed.birth_date = updatedEmp.birth_date;
                     parsed.address = updatedEmp.address;
                     localStorage.setItem('user', JSON.stringify(parsed));
                 }
                 sessionStorage.removeItem(cacheStorageKey);
+                clearProfileCache(cacheStorageKey);
             } catch (_) {}
 
             queryClient.invalidateQueries({ queryKey: ['myProfile'] });
@@ -1218,8 +1224,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <p className="font-mono font-semibold text-slate-900">{formatPhDisplay(profile?.phone) || 'Not configured'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Gender</p>
-                                    <p className="font-semibold text-slate-900 capitalize">{profile?.gender || 'N/A'}</p>
+                                    <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Sex</p>
+                                    <p className="font-semibold text-slate-900 capitalize">{profile?.sex || profile?.gender || 'N/A'}</p>
                                 </div>
                                 <div className="col-span-2">
                                     <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Corporate Email</p>
@@ -1311,11 +1317,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                                         <i className="ti ti-device-mobile text-slate-500" />
                                         Two-Factor Authenticator (TOTP)
                                     </p>
-                                    <p className="text-slate-600 mt-1 leading-relaxed">
-                                        {totpStatus.enabled 
-                                            ? 'Your administrative session is protected with offline TOTP codes (Google Authenticator).'
-                                            : 'Protect elevated administrative access against credential theft with mandatory 2FA.'}
-                                    </p>
+                                    {totpStatus.enabled && (
+                                        <p className="text-slate-600 mt-1 leading-relaxed">
+                                            Your administrative session is protected with offline TOTP codes (Google Authenticator).
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="pt-2 flex items-center gap-2">
                                     {totpStatus.enabled ? (
@@ -1360,9 +1366,6 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <p className="font-bold text-slate-900 flex items-center gap-1.5">
                                         <i className="ti ti-key text-slate-500" />
                                         Administrative Password
-                                    </p>
-                                    <p className="text-slate-600 mt-1 leading-relaxed">
-                                        Maintain high entropy credentials. NIST SP 800-63B standards require minimum 8 characters with periodic rotation.
                                     </p>
                                 </div>
                                 <div className="pt-2">
@@ -1467,8 +1470,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                             <p className="font-semibold text-slate-900">{profile?.last_name || 'N/A'}</p>
                         </div>
                         <div>
-                            <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Gender</p>
-                            <p className="font-semibold text-slate-900 capitalize">{profile?.gender || 'N/A'}</p>
+                            <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Sex</p>
+                            <p className="font-semibold text-slate-900 capitalize">{profile?.sex || profile?.gender || 'N/A'}</p>
                         </div>
                         <div>
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Birth Date</p>
@@ -1485,6 +1488,28 @@ const normalizeJobTitle = (title, isAdmin) => {
                             <p className="font-semibold text-slate-900">
                                 {profile?.address || 'No address registered'}
                             </p>
+                        </div>
+                        <div className="col-span-2 pt-2 border-t border-slate-100">
+                            <div className="mb-0.5">
+                                <p className="text-slate-500 font-semibold uppercase text-[10px]">Emergency Contact</p>
+                            </div>
+                            {profile?.emergency_contact_name ? (
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-semibold text-slate-900">
+                                    <span>{profile.emergency_contact_name}</span>
+                                    {profile.emergency_contact_relationship && (
+                                        <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded font-normal">
+                                            {profile.emergency_contact_relationship}
+                                        </span>
+                                    )}
+                                    {profile.emergency_contact_phone && (
+                                        <span className="font-mono text-xs text-slate-600">
+                                            +63 {profile.emergency_contact_phone}
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">No emergency contact designated</p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2208,18 +2233,16 @@ const normalizeJobTitle = (title, isAdmin) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                                        Gender
+                                        Sex
                                     </label>
                                     <select
-                                        value={personalForm.gender}
-                                        onChange={(e) => setPersonalForm({ ...personalForm, gender: e.target.value })}
+                                        value={personalForm.sex || personalForm.gender}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, sex: e.target.value, gender: e.target.value })}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs cursor-pointer"
                                     >
-                                        <option value="">Select Gender</option>
+                                        <option value="">Select Sex</option>
                                         <option value="Male">Male</option>
                                         <option value="Female">Female</option>
-                                        <option value="Other">Other</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
                                     </select>
                                 </div>
 
@@ -2239,23 +2262,12 @@ const normalizeJobTitle = (title, isAdmin) => {
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
-                                        Residential Address
-                                    </label>
-                                    <span className="text-[10px] text-slate-400 font-mono">
-                                        {personalForm.address?.length || 0} / 300
-                                    </span>
-                                </div>
-                                <textarea
-                                    rows={2}
-                                    maxLength={300}
+                                <PhilippineAddressSelector
                                     value={personalForm.address}
-                                    onChange={(e) => setPersonalForm({ ...personalForm, address: e.target.value })}
-                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
-                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs resize-none"
+                                    onChange={(nextAddress) => setPersonalForm(prev => ({ ...prev, address: nextAddress }))}
+                                    idPrefix="profile_edit_address"
                                 />
-                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-2">
                                     <i className="ti ti-shield-check text-accent" />
                                     <span>Encrypted with strict XSS sanitization and enterprise access controls.</span>
                                 </div>
@@ -2916,9 +2928,6 @@ const normalizeJobTitle = (title, isAdmin) => {
                                         <i className="ti ti-shield-lock text-accent text-sm" />
                                         <span>Multi-Factor Verification</span>
                                     </div>
-                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent-on-dark border border-accent/30">
-                                        NIST SP 800-63B
-                                    </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                     Enter the 6-digit code sent to your email or from your Google Authenticator app.

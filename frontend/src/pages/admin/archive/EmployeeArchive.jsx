@@ -186,8 +186,8 @@ const fetchArchivedEmployees = async () => {
         </div>
 
         {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[240px]">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto flex-1 sm:flex-initial min-w-0 sm:min-w-[240px]">
             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
             <input
               type="text"
@@ -200,7 +200,7 @@ const fetchArchivedEmployees = async () => {
 
           <button
             onClick={handleExportCSV}
-            className="h-9 inline-flex items-center gap-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold transition-colors duration-100 shadow-2xs cursor-pointer"
+            className="h-9 inline-flex items-center justify-center gap-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold transition-colors duration-100 shadow-2xs cursor-pointer w-full sm:w-auto shrink-0"
           >
             <i className="ti ti-download text-sm"></i>
             EXPORT CSV
@@ -208,9 +208,107 @@ const fetchArchivedEmployees = async () => {
         </div>
       </div>
 
-      {/* Table Section */}
+      {/* Content Section */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Stacked Card View (Phones < 768px) */}
+        <div className="block md:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="py-12 text-center text-slate-400">
+              <i className="ti ti-loader animate-spin text-2xl mb-2 inline-block"></i>
+              <p className="text-xs font-medium">Loading archived records...</p>
+            </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div className="py-12 text-center px-4">
+              <div className="w-10 h-10 bg-slate-50 rounded-md flex items-center justify-center mx-auto mb-2 text-slate-400 border border-slate-200">
+                <i className="ti ti-archive-off text-xl"></i>
+              </div>
+              <p className="text-xs font-semibold text-slate-700">No terminated employees found</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your search terms.</p>
+            </div>
+          ) : (
+            filteredEmployees.map((emp) => {
+              const initials = `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase() || 'EM';
+              const avatarUrl = getAvatarUrl(emp);
+              const inactive = isTerminatedStatus(emp);
+              const { inCooldown, remainingDays } = getTerminationCooldown(emp.updated_at || emp.created_at, 30);
+              const compMode = emp.compensation_mode || emp.wage_structure || (Number(emp.daily_rate) > 0 ? 'Daily Rate' : Number(emp.hourly_rate) > 0 ? 'Hourly Rate' : '—');
+
+              return (
+                <div key={`mobile-${emp.id}`} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={`${emp.first_name} ${emp.last_name}`}
+                          className={`w-10 h-10 rounded-md object-cover shadow-2xs shrink-0 ${inactive ? 'grayscale opacity-60' : ''}`}
+                        />
+                      ) : (
+                        <div
+                          className={`w-10 h-10 rounded-md font-bold text-xs flex items-center justify-center shadow-2xs shrink-0 ${
+                            inactive ? 'bg-slate-400 text-slate-100' : 'bg-slate-900 text-white'
+                          }`}
+                        >
+                          {initials}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {emp.first_name} {emp.last_name}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-medium truncate font-mono">
+                          {getCompanyId(emp)} &bull; {emp.department || 'General'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {inCooldown ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-warning-subtle text-warning-ink border border-warning/20">
+                          <i className="ti ti-clock-hour-4 text-xs animate-pulse" />
+                          {remainingDays}d cooldown
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-danger-subtle text-danger-ink border border-danger/20">
+                          <span className="w-1 h-1 rounded-full bg-danger" />
+                          Archived
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-2.5 rounded-md border border-slate-200 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Station / Line</span>
+                      <span className="text-xs font-medium text-slate-700">
+                        {emp.line_group || emp.line_assignment || emp.shoe_production_station || emp.station || emp.job_title || '—'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Pay Mode</span>
+                      <span className="text-xs font-medium text-slate-700 font-mono">
+                        {compMode}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <button
+                      onClick={() => navigate(`/admin/archive/${emp.id}`)}
+                      className="w-full h-8 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <i className="ti ti-eye text-xs" />
+                      <span>View Full Archived Record</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Table View (>= 768px) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold uppercase tracking-wider text-slate-400">

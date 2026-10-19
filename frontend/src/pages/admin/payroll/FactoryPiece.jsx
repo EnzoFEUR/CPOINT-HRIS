@@ -134,11 +134,16 @@ export default function FactoryPiece({
         }
 
         if (onSave) {
-            const otherEntries = Object.entries(drafts).filter(([grp]) => grp !== selectedGroup);
-            for (const [grpName, rows] of otherEntries) {
-                await onSave(rows, false, grpName);
+            try {
+                const otherEntries = Object.entries(drafts).filter(([grp]) => grp !== selectedGroup);
+                for (const [grpName, rows] of otherEntries) {
+                    await onSave(rows, false, grpName);
+                }
+                await onSave(localRows, true, selectedGroup);
+            } catch (error) {
+                setSaveError(error.message || 'Factory records were not saved. Your form is still open.');
+                return;
             }
-            await onSave(localRows, true, selectedGroup);
         } else if (onClose) {
             onClose();
         }

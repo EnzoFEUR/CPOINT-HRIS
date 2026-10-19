@@ -1,4 +1,6 @@
 import express from 'express';
+import { postgrestLikeValue } from '../middleware/requestValidation.js';
+import { otpTestMode } from '../services/otpService.js';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
 import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
@@ -109,7 +111,7 @@ router.post('/verify-workplace-account', async (req, res) => {
         const { data: emp, error } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, email, role, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
-            .or(`email.ilike.${clean},company_id.ilike.${clean}`)
+            .or(`email.ilike.${postgrestLikeValue(clean)},company_id.ilike.${postgrestLikeValue(clean)}`)
             .maybeSingle();
 
         if (error || !emp) {
@@ -222,7 +224,7 @@ router.post('/forgot-password', async (req, res) => {
         const { data: emp, error: empErr } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, email, role, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
-            .or(`email.ilike.${normalizedEmail},company_id.ilike.${normalizedEmail}`)
+            .or(`email.ilike.${postgrestLikeValue(normalizedEmail)},company_id.ilike.${postgrestLikeValue(normalizedEmail)}`)
             .maybeSingle();
 
         // 3. Strict Workplace Verification: Account MUST exist and have an active registered workplace email
@@ -310,7 +312,7 @@ router.post('/forgot-password', async (req, res) => {
 
                 const smsResult = await sendSmsOtp(userPhone, code);
                 const isSimulated = Boolean(smsResult?.simulated);
-                const previewCode = code;
+                const previewCode = otpTestMode() && isSimulated ? code : undefined;
 
                 releaseOtpLock(lockKeys, true);
 
@@ -374,10 +376,9 @@ router.post('/forgot-password', async (req, res) => {
                 }
             });
 
-        // Email OTP is 100% REAL delivered via Brevo.
-        // We only expose previewCode if Brevo failed/fallback simulation is active.
+        // Production requires delivery; previews are restricted to explicit development simulations.
         const isSimulated = Boolean(emailResult?.simulated);
-        const previewCode = isSimulated ? emailCode : undefined;
+        const previewCode = otpTestMode() && isSimulated ? emailCode : undefined;
 
             return res.json({
                 success: true,

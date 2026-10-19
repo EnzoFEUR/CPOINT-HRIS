@@ -89,7 +89,7 @@ export const Badge = ({
 
     return (
         <span className={`inline-flex items-center gap-1.5 rounded-md border font-semibold tracking-wide select-none ${sizeClasses[size] || sizeClasses.sm} ${style} ${className}`}>
-            {withDot && (
+            {withDot && v !== 'acknowledged' && (
                 <span className={`h-1.5 w-1.5 rounded-full ${dot} shrink-0`} />
             )}
             <span>{children}</span>

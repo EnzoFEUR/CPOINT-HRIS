@@ -24,9 +24,12 @@ import totpRoutes from './routes/totp.js';
 import authSecurityRoutes from './routes/authSecurity.js';
 import productionGroupRoutes from './routes/productionGroups.js';
 import documentRouter from './routes/document.js';
+import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
-import { securityHeaders, removeExposedHeaders } from './middleware/securityMiddleware.js';
+import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions } from './middleware/securityMiddleware.js';
+import { validateApiInput } from './middleware/requestValidation.js';
+import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
 import { verifyToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
 import './cron/attendanceJobs.js';
@@ -37,6 +40,12 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 const port = process.env.PORT || 5000;
+app.disable('x-powered-by');
+app.set('query parser', 'simple');
+app.use(securityHeaders);
+app.use(removeExposedHeaders);
+app.use('/api', protectApiResponses);
+app.use(cors(createCorsOptions()));
 
 // Response compression
 app.use(compression({
@@ -45,15 +54,11 @@ app.use(compression({
 }));
 
 // Core Middleware
-app.use(cors({
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-user-id', 'Cache-Control', 'Pragma', 'Expires'],
-    maxAge: 86400 // Cache OPTIONS preflight for 24 hours
-}));
+app.use('/api', apiRateLimiter({ windowMs: 60 * 1000, max: 350 }));
+app.use('/api/auth', authRateLimiter());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb', parameterLimit: 1000 }));
+app.use('/api', validateApiInput);
 
 // Static brand and email assets (zero-latency WebP caching)
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '30d', immutable: true }));
@@ -62,11 +67,8 @@ app.use(express.static(path.join(__dirname, '../frontend/public'), { maxAge: '30
 // Start background workers
 startCronJobs();
 
-// Global Security Middleware
-app.use(securityHeaders);
-app.use(removeExposedHeaders);
-
 // Mount Authenticated Routes
+await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
 app.use('/api/attendance', verifyToken, attendanceRoutes);
@@ -91,25 +93,27 @@ app.get('/', (req, res) => {
     res.status(200).json({ status: 'online', service: 'C-Point HRIS API', timestamp: new Date().toISOString() });
 });
 
-// Basic Health Check Route to Verify Supabase Connection
+// Sanitized Health Check: Verifies DB connectivity without leaking PII or internal table rows
 app.get('/api/health', async (req, res) => {
     try {
-        const { data, error } = await supabase.from('employees').select('*').limit(5);
+        const { error } = await supabase.from('employees').select('id', { head: true, count: 'exact' }).limit(1);
         if (error) throw error;
         
         res.status(200).json({ 
             status: 'ok', 
-            message: 'Supabase DB Connection Successful', 
-            rows: data 
+            service: 'C-Point HRIS API',
+            timestamp: new Date().toISOString()
         });
-    } catch (err) {
+    } catch (_) {
         res.status(500).json({ 
             status: 'error', 
-            message: 'Failed to connect to Supabase', 
-            error: err.message 
+            message: 'Database service unavailable'
         });
     }
 });
+
+app.use('/api', apiNotFound);
+app.use(apiErrorHandler);
 
 app.listen(port, () => {
     console.log('HRIS server running on port ' + port);

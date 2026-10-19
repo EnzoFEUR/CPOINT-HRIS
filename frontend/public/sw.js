@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'v2.9.0';
+const CACHE_VERSION = 'v3.0.6-offline-mime-guard';
+const OFFLINE_BUILD_ENABLED = false;
+const OFFLINE_FEATURE_ENABLED = OFFLINE_BUILD_ENABLED || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(self.location.hostname);
 const CACHE_NAME = `cpoint-hris-${CACHE_VERSION}`;
 
 // Pre-cached static assets
@@ -17,20 +19,31 @@ const APP_SHELL = [
   '/pwa-512x512.png',
   '/pwa-maskable.png',
   '/apple-touch-icon.png',
-  'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css'
 ];
 
 // Fallback timeout helper for network-first strategy
 const timeoutPromise = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), ms));
 
-// Install: Cache app shell and activate immediately
+// Install: Complete offline assets before activation; do not interrupt existing tabs.
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL).catch((err) => {
-        console.warn('[SW] Pre-caching asset issue:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(APP_SHELL.slice(0, 3));
+      await Promise.allSettled(APP_SHELL.slice(3).map(asset => cache.add(asset)));
+      if (!OFFLINE_FEATURE_ENABLED) return;
+      const response = await fetch('/offline-assets.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Offline asset manifest is unavailable.');
+      const manifest = await response.clone().json();
+      if (manifest.schema_version !== 1 || !Array.isArray(manifest.assets) || !manifest.assets.some(asset => typeof asset === 'string' && asset.endsWith('.js')) || !manifest.assets.some(asset => typeof asset === 'string' && asset.endsWith('.css')) || manifest.assets.length > 500 || manifest.assets.some(asset => typeof asset !== 'string' || !/^\/assets\/[A-Za-z0-9_./-]+$/.test(asset) || asset.includes('..'))) throw new Error('Invalid offline asset manifest.');
+      for (let offset = 0; offset < manifest.assets.length; offset += 10) {
+        await Promise.all(manifest.assets.slice(offset, offset + 10).map(async asset => {
+          const file = await fetch(asset, { cache: 'no-store' });
+          if (!file.ok || file.headers.get('content-type')?.includes('text/html')) throw new Error('Offline asset download failed or returned HTML.');
+          await cache.put(asset, file);
+        }));
+      }
+      // Write readiness only after all dependencies passed download and MIME checks.
+      await cache.put('/offline-assets.json', response);
     })
   );
 });
@@ -66,6 +79,7 @@ self.addEventListener('fetch', (event) => {
   // Bypass worker for dynamic APIs, Supabase, and external services
   if (
     request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
     !url.protocol.startsWith('http') ||
     url.pathname.startsWith('/api') ||
     url.hostname.includes('onrender.com') ||
@@ -84,14 +98,16 @@ self.addEventListener('fetch', (event) => {
             const clone = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
           }
+          if (!networkResponse || networkResponse.status >= 500) throw new Error('Application unavailable.');
           return networkResponse;
         }),
         timeoutPromise(1200)
       ]).catch(async () => {
+        if (OFFLINE_FEATURE_ENABLED && !['/', '/scanner', '/attendance-terminal', '/attendance-terminal/'].includes(url.pathname)) return new Response('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline attendance</title></head><body><h1>This page requires a connection.</h1><p>Only provisioned attendance capture is available offline.</p><a href="/attendance-terminal">Open attendance terminal</a></body></html>', { status: 503, headers: { 'Content-Type': 'text/html' } });
         const cached = await caches.match('/index.html') || await caches.match('/');
         if (cached) return cached;
         return new Response(
-          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body style="background:#090d16;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><p>Reconnecting to C-Point HRIS...</p><script>setTimeout(()=>window.location.reload(), 2000);</script></body></html>',
+          '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>C-Point HRIS</title></head><body><h1>Application unavailable offline</h1><p>This browser has not downloaded the required application. Use the paper attendance procedure until connected.</p></body></html>',
           { headers: { 'Content-Type': 'text/html' } }
         );
       })
@@ -99,33 +115,61 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Immutable hashed assets: Cache-first
+  // Immutable hashed assets: Cache-first with strict MIME guard
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((networkResponse) => {
+      caches.match(request).then(async (cached) => {
+        if (cached) {
+          const cachedType = cached.headers.get('content-type') || '';
+          // Purge corrupted HTML cached under JS/CSS URLs
+          if (cachedType.includes('text/html') && /\.(js|css|wasm)$/i.test(url.pathname)) {
+            console.warn('[SW] Purging corrupted HTML cache for asset:', url.pathname);
+            const cache = await caches.open(CACHE_NAME);
+            await cache.delete(request);
+          } else {
+            return cached;
+          }
+        }
+
+        try {
+          const networkResponse = await fetch(request);
           if (networkResponse && networkResponse.status === 200) {
+            const contentType = networkResponse.headers.get('content-type') || '';
+            // Reject HTML fallback for JS/CSS assets
+            if (contentType.includes('text/html') && /\.(js|css|wasm)$/i.test(url.pathname)) {
+              console.error('[SW] Received HTML for asset script:', url.pathname);
+              return new Response('Asset not found (MIME mismatch)', {
+                status: 404,
+                statusText: 'Not Found',
+                headers: { 'Content-Type': 'text/plain' }
+              });
+            }
             const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, clone);
           }
           return networkResponse;
-        }).catch((err) => {
+        } catch (err) {
           console.warn('[SW] Asset fetch error:', url.pathname, err);
-          return cached;
-        });
+          return new Response('Asset unavailable', { status: 408, statusText: 'Request Timeout' });
+        }
       })
     );
     return;
   }
 
-  // Other static assets: Stale-while-revalidate
+  // Other static assets: Stale-while-revalidate with MIME guard
+  if (!APP_SHELL.includes(url.pathname)) return;
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          const contentType = networkResponse.headers.get('content-type') || '';
+          const isCodeOrMedia = /\.(js|css|json|wasm|png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname);
+          if (!(isCodeOrMedia && contentType.includes('text/html'))) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
         }
         return networkResponse;
       }).catch(() => cachedResponse);

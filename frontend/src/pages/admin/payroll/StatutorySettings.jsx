@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
+import { WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from '../../../../../shared/workPolicy.mjs';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -35,7 +36,6 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
         <label htmlFor={name} className="block text-xs font-medium text-slate-700 mb-1.5">{label}</label>
         <input
             type="number"
-            inputMode="decimal"
             min="0"
             id={name}
             name={name}
@@ -43,6 +43,9 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
             onChange={onChange}
             className={`w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none ${FOCUS_STYLES[focusColor] || FOCUS_STYLES.blue} transition-colors duration-100 shadow-2xs`}
             {...props}
+            {...WORK_POLICY_INPUT_LIMITS[name]}
+            required={Boolean(WORK_POLICY_INPUT_LIMITS[name]) || props.required}
+            inputMode={WORK_POLICY_INPUT_LIMITS[name]?.step === 1 ? 'numeric' : 'decimal'}
         />
         {hint && <p className="text-[11px] text-slate-400 mt-1">{hint}</p>}
     </div>
@@ -116,6 +119,12 @@ export default function StatutorySettings({ onBack }) {
             return;
         }
 
+        if (WORK_POLICY_INPUT_LIMITS[name]) {
+            if (!isValidWorkPolicyInput(name, value)) return;
+            setSettings(prev => ({ ...prev, [name]: value }));
+            return;
+        }
+
         const numVal = Number(value);
         if (numVal < 0) return;
 
@@ -148,24 +157,11 @@ export default function StatutorySettings({ onBack }) {
             return;
         }
 
-        if (Number(settings.call_time_hour) < 0 || Number(settings.call_time_hour) > 23) {
-            setErrorMessage("Shift call time hour must be between 0 and 23 (e.g. 8 for 8:00 AM).");
-            return;
-        }
-
-        if (Number(settings.call_time_minute) < 0 || Number(settings.call_time_minute) > 59) {
-            setErrorMessage("Shift call time minute must be between 0 and 59 (e.g. 0 for 8:00 AM).");
-            return;
-        }
-
-        if (Number(settings.grace_period_minutes) < 0 || Number(settings.grace_period_minutes) > 1440) {
-            setErrorMessage("Grace period must be between 0 and 1440 minutes.");
-            return;
-        }
-
-        if (Number(settings.late_rate_per_minute) < 0 || Number(settings.late_rate_per_minute) > 10000) {
-            setErrorMessage("Tardiness deduction rate must be between ₱0 and ₱10,000 per minute.");
-            return;
+        for (const name of Object.keys(WORK_POLICY_INPUT_LIMITS)) {
+            if (!isValidWorkPolicyInput(name, settings[name])) {
+                setErrorMessage('Enter attendance policy values within the allowed limits. Use whole minutes and up to two decimal places for the deduction rate.');
+                return;
+            }
         }
 
         setLoading(true);

@@ -1,3 +1,4 @@
+import scannerStylesUrl from './Scanner.css?url&no-inline';
 import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as faceapi from 'face-api.js';
@@ -32,6 +33,7 @@ import { supabase } from '../supabaseClient';
 import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCamera';
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
+import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
 
 // Scanner configuration
 const ENV = {
@@ -1185,29 +1187,10 @@ const Scanner = () => {
     window.addEventListener('offline', onOffline);
 
     // Dynamic Responsive Camera CSS
-    const style = document.createElement('style');
+    const style = document.createElement('link');
     style.id = 'scanner-css';
-    style.textContent = `
-      #qr-reader {
-        width: 100vw !important;
-        height: 100dvh !important;
-        overflow: hidden !important;
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        background: #000 !important;
-      }
-      #qr-reader video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-        position: absolute !important;
-        inset: 0 !important;
-      }
-      #qr-reader__dashboard_section_csr, #qr-reader__dashboard_section_swaplink,
-      #qr-reader__status_span, #qr-reader__header_message { display:none!important; }
-    `;
+    style.rel = 'stylesheet';
+    style.href = scannerStylesUrl;
     document.head.appendChild(style);
 
     // Wake lock (keep screen on)
@@ -1239,6 +1222,9 @@ const Scanner = () => {
   // RENDER
   return (
     <div className="h-[100dvh] w-screen bg-black text-white relative overflow-hidden font-sans select-none">
+      {isOfflineFeatureActive && (
+        <a href="/attendance-terminal" className="absolute top-3 right-3 z-[100] rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink">Offline attendance terminal</a>
+      )}
 
       {/* Debug corner trigger */}
       <div

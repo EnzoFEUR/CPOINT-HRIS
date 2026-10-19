@@ -634,7 +634,6 @@ const EmployeeDashboard = () => {
         finally { setAcknowledgingId(null); }
     };
 
-    const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
     const getFirstName = (name) => name ? name.split(' ')[0] : '';
     const formattedToday = new Date(now).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'long', month: 'short', day: 'numeric' });
 
@@ -1741,8 +1740,14 @@ const EmployeeDashboard = () => {
                             </div>
                         ) : (
                             <div>
-                                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-accent flex items-center justify-center text-white font-bold text-2xl sm:text-3xl mb-3 sm:mb-4 border border-accent/20">
-                                    {getInitial(user.name)}
+                                <div className="mx-auto mb-3 sm:mb-4 flex justify-center">
+                                    <EmployeeAvatar
+                                        employee={user}
+                                        photoUrl={photoUrl}
+                                        size="w-16 h-16 sm:w-20 sm:h-20"
+                                        rounded="rounded-full"
+                                        border="border-2 border-slate-200"
+                                    />
                                 </div>
                                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{user.name}</h2>
                                 <p className="text-slate-500 font-medium mt-0.5 text-sm">{user.department}</p>

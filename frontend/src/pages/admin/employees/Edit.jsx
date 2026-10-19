@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
 
 export default function Edit() {
     const { id } = useParams();
@@ -42,9 +43,10 @@ export default function Edit() {
     const [selectedGroupId, setSelectedGroupId] = useState(cachedEmp?.production_group_id || '');
     const [isCustomLine, setIsCustomLine] = useState(false);
 
-    const [gender, setGender] = useState(cachedEmp?.gender || '');
+    const [sex, setSex] = useState(cachedEmp?.sex || cachedEmp?.gender || '');
     const [birthDate, setBirthDate] = useState(cachedEmp?.birth_date ? String(cachedEmp.birth_date).split('T')[0] : '');
     const [hireDate, setHireDate] = useState(cachedEmp?.date_hired?.slice(0, 10) || '');
+    const [timekeepingDate, setTimekeepingDate] = useState(cachedEmp?.timekeeping_effective_date?.slice(0, 10) || '');
     const [address, setAddress] = useState(cachedEmp?.address || '');
 
     const maxBirthDate = useMemo(() => {
@@ -119,6 +121,7 @@ export default function Edit() {
                     const emp = data.data || data;
                     setEmployee(emp);
                     setHireDate(emp.date_hired?.slice(0, 10) || '');
+                    setTimekeepingDate(emp.timekeeping_effective_date?.slice(0, 10) || '');
                     if (emp.department) setDepartment(emp.department);
 
                     const craftMatch = getShoeRoleDetails(emp.job_title);
@@ -144,8 +147,8 @@ export default function Edit() {
                     if (emp.email) {
                         setEmailInput(emp.email);
                     }
-                    if (emp.gender) {
-                        setGender(emp.gender);
+                    if (emp.sex || emp.gender) {
+                        setSex(emp.sex || emp.gender);
                     }
                     if (emp.birth_date) {
                         setBirthDate(String(emp.birth_date).split('T')[0]);
@@ -300,9 +303,11 @@ export default function Edit() {
             role: data.role,
             first_name: data.first_name,
             last_name: data.last_name,
-            gender: gender || null,
+            sex: sex || null,
+            gender: sex || null,
             birth_date: birthDate || null,
             ...(hireDate !== (employee?.date_hired?.slice(0, 10) || '') ? { date_hired: hireDate } : {}),
+            ...(timekeepingDate !== (employee?.timekeeping_effective_date?.slice(0, 10) || '') ? { timekeeping_effective_date: timekeepingDate || null } : {}),
             address: (address || '').trim() || null,
             job_title: isFactory ? selectedCraft : data.job_title,
             department: department,
@@ -502,18 +507,16 @@ export default function Edit() {
                             </div>
 
                             <div>
-                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Gender</label>
+                                <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Sex</label>
                                 <select 
-                                    name="gender" 
-                                    value={gender}
-                                    onChange={(e) => setGender(e.target.value)}
+                                    name="sex" 
+                                    value={sex}
+                                    onChange={(e) => setSex(e.target.value)}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 appearance-none cursor-pointer shadow-2xs"
                                 >
-                                    <option value="">Select Gender</option>
+                                    <option value="">Select Sex</option>
                                     <option value="Male">Male</option>
                                     <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                    <option value="Prefer not to say">Prefer not to say</option>
                                 </select>
                             </div>
 
@@ -535,19 +538,16 @@ export default function Edit() {
                                 <input id="date-hired" name="date_hired" type="date" required={Boolean(employee?.date_hired)} max={getManilaWorkDate()} value={hireDate} onChange={e => setHireDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
                             </div>
 
+                            <div>
+                                <label htmlFor="timekeeping-effective-date" className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Timekeeping Cutover Date</label>
+                                <input id="timekeeping-effective-date" name="timekeeping_effective_date" type="date" value={timekeepingDate} onChange={e => setTimekeepingDate(e.target.value)} className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 shadow-2xs" />
+                            </div>
+
                             <div className="md:col-span-2">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Residential Address</label>
-                                    <span className="text-[10px] text-slate-400 font-mono">{address.length} / 300</span>
-                                </div>
-                                <textarea 
-                                    name="address" 
-                                    rows={2}
-                                    maxLength={300}
+                                <PhilippineAddressSelector
                                     value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    placeholder="Unit / House No., Street, Barangay, City / Municipality, Province, Postal Code"
-                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs resize-none" 
+                                    onChange={(nextAddress) => setAddress(nextAddress)}
+                                    idPrefix="edit_emp_address"
                                 />
                             </div>
 

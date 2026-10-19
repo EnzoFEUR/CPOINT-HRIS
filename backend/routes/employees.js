@@ -1,15 +1,18 @@
 import express from 'express';
+import { postgrestValue, postgrestLikeValue, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { invalidateAuthUser, hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { createNotification } from './notifications.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
+import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
 
 import { isVerifiedCreditManager, isMissingCreditSchema, sendCreditError, refreshLeaveCredits } from './leaves.js';
 
 const router = express.Router();
+router.param('id', validateUuidParam);
 
 export function sanitizePhPhone(phone) {
     if (!phone) return null;
@@ -136,6 +139,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
             const standing = evaluateOperationalStanding(emp, logs, now);
             return {
                 ...emp,
+                sex: emp.gender,
                 phone: emp.phone || userPhoneMap.get(emp.id) || null,
                 ...standing
             };
@@ -209,6 +213,9 @@ router.get('/check-email', async (req, res) => {
 router.get('/:id', cacheResponse(15), async (req, res) => {
     try {
         const { id } = req.params;
+        if (!hasVerifiedManagerRole(req.user) && id !== req.user?.id && id !== req.user?.auth_user_id) {
+            return res.status(403).json({ success: false, error: 'You may only view your own employee record.' });
+        }
         const [empRes, docsRes, discRes] = await Promise.all([
             supabase.from('employees').select('*, production_groups (id, code, name, target_output_pairs, is_active)').eq('id', id).single(),
             supabase.from('employee_documents').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
@@ -236,7 +243,7 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
         let phone = emp.phone || null;
         try {
             const { data: authUser } = await supabase.auth.admin.getUserById(id);
-            if (emp.requires_password_change) {
+            if (emp.requires_password_change && hasVerifiedManagerRole(req.user)) {
                 tempPassword = authUser?.user?.user_metadata?.temp_password || null;
             }
             if (!phone) {
@@ -248,6 +255,7 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
 
         const enrichedEmp = {
             ...emp,
+            sex: emp.gender,
             phone,
             ...standing,
             temp_password: tempPassword,
@@ -287,6 +295,12 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to register employees.' });
+        }
+        if (req.body?.role === 'admin' && req.user?.role !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only administrators can create administrator accounts.' });
+        }
         const {
             first_name,
             last_name,
@@ -303,27 +317,46 @@ router.post('/', async (req, res) => {
             piece_rate,
             role = 'employee',
             gender,
+            sex,
             birth_date,
             date_hired,
+            timekeeping_effective_date,
             address
         } = req.body;
 
-        const hireCheck = validateHireDate(date_hired);
+        const isSecurityRole = role === 'security';
+        const effectiveDepartment = isSecurityRole ? (department || 'Security') : department;
+        const effectiveJobTitle = isSecurityRole ? (job_title || 'Security Guard') : job_title;
+
+        const effectiveHireDate = (isSecurityRole && !date_hired) ? (getManilaWorkDate ? getManilaWorkDate() : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })) : date_hired;
+        const hireCheck = validateHireDate(effectiveHireDate);
         if (!hireCheck.isValid) return res.status(400).json({ success: false, error: hireCheck.error });
+
+        let validatedTimekeepingDate = null;
+        if (timekeeping_effective_date !== undefined && timekeeping_effective_date !== null && String(timekeeping_effective_date).trim()) {
+            const tkStr = String(timekeeping_effective_date).trim().slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(tkStr) || isNaN(Date.parse(tkStr))) {
+                return res.status(400).json({ success: false, error: 'Invalid timekeeping effective date format. Expected YYYY-MM-DD.' });
+            }
+            validatedTimekeepingDate = tkStr;
+        } else {
+            validatedTimekeepingDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+        }
 
         // Input validation
         if (!first_name || typeof first_name !== 'string' || first_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid first name' });
         if (!last_name || typeof last_name !== 'string' || last_name.length > 255) return res.status(400).json({ success: false, error: 'Invalid last name' });
         if (!email || !email.includes('@')) return res.status(400).json({ success: false, error: 'Invalid email' });
 
-        // Validate and sanitize Gender
+        // Validate and sanitize Sex
+        const candidateSex = sex !== undefined ? sex : gender;
         let sanitizedGender = null;
-        if (gender !== undefined && gender !== null && String(gender).trim()) {
-            sanitizedGender = sanitizeGender(gender);
-            if (!sanitizedGender && String(gender).trim().toUpperCase() !== 'N/A') {
+        if (candidateSex !== undefined && candidateSex !== null && String(candidateSex).trim()) {
+            sanitizedGender = sanitizeGender(candidateSex);
+            if (!sanitizedGender && String(candidateSex).trim().toUpperCase() !== 'N/A') {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid gender selection. Choose from Male, Female, Other, or Prefer not to say.'
+                    error: 'Invalid selection for Sex. Choose from Male or Female.'
                 });
             }
         }
@@ -345,16 +378,19 @@ router.post('/', async (req, res) => {
         const sanitizedAddr = address ? sanitizeAddress(address) : null;
 
         // Enterprise Phone Number Validation (Philippine Standard: 9XXXXXXXXX)
-        const sanitizedPhone = sanitizePhPhone(phone);
-        if (!sanitizedPhone) {
-            return res.status(400).json({
-                success: false,
-                error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required (e.g. 917 123 4567).'
-            });
+        let sanitizedPhone = null;
+        if (phone !== undefined && phone !== null && String(phone).trim()) {
+            sanitizedPhone = sanitizePhPhone(phone);
+            if (!sanitizedPhone) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'A valid 10-digit Philippine mobile phone number starting with 9 is required (e.g. 917 123 4567).'
+                });
+            }
         }
 
-        if (!department || typeof department !== 'string') return res.status(400).json({ success: false, error: 'Invalid department' });
-        if (!job_title || typeof job_title !== 'string') return res.status(400).json({ success: false, error: 'Invalid job title' });
+        if (!effectiveDepartment || typeof effectiveDepartment !== 'string') return res.status(400).json({ success: false, error: 'Invalid department' });
+        if (!effectiveJobTitle || typeof effectiveJobTitle !== 'string') return res.status(400).json({ success: false, error: 'Invalid job title' });
         
         if (role === 'admin') {
             return res.status(403).json({
@@ -366,22 +402,24 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid role selection for workforce onboarding.' });
         }
 
-        let parsedDailyRate = daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate)
-            ? parseFloat(daily_rate)
-            : null;
+        let parsedDailyRate = isSecurityRole
+            ? 0
+            : (daily_rate !== undefined && daily_rate !== null && !isNaN(daily_rate) ? parseFloat(daily_rate) : null);
 
-        let parsedHourlyRate = hourly_rate !== undefined && hourly_rate !== null && !isNaN(hourly_rate)
-            ? parseFloat(hourly_rate)
-            : null;
+        let parsedHourlyRate = isSecurityRole
+            ? 0
+            : (hourly_rate !== undefined && hourly_rate !== null && !isNaN(hourly_rate) ? parseFloat(hourly_rate) : null);
 
         // Auto-compute between daily_rate and hourly_rate (Philippine DOLE standard 8-hour workday)
-        if (parsedDailyRate && (!parsedHourlyRate || parsedHourlyRate === 0)) {
-            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
-        } else if (parsedHourlyRate && (!parsedDailyRate || parsedDailyRate === 0)) {
-            parsedDailyRate = parseFloat((parsedHourlyRate * 8).toFixed(2));
-        } else if (!parsedDailyRate && monthly_salary && !isNaN(monthly_salary)) {
-            parsedDailyRate = parseFloat((parseFloat(monthly_salary) / 26).toFixed(2));
-            parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+        if (!isSecurityRole) {
+            if (parsedDailyRate && (!parsedHourlyRate || parsedHourlyRate === 0)) {
+                parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+            } else if (parsedHourlyRate && (!parsedDailyRate || parsedDailyRate === 0)) {
+                parsedDailyRate = parseFloat((parsedHourlyRate * 8).toFixed(2));
+            } else if (!parsedDailyRate && monthly_salary && !isNaN(monthly_salary)) {
+                parsedDailyRate = parseFloat((parseFloat(monthly_salary) / 26).toFixed(2));
+                parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
+            }
         }
 
         // Normalize and hash email
@@ -394,7 +432,7 @@ router.post('/', async (req, res) => {
         const { data: existingEmp } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, status, is_active, archived_at, separation_notes')
-            .or(`email_hash.eq.${lookupHash},email.eq.${normalizedEmail}`)
+            .or(`email_hash.eq.${lookupHash},email.eq.${postgrestValue(normalizedEmail)}`)
             .maybeSingle();
 
         if (existingEmp) {
@@ -534,7 +572,7 @@ router.post('/', async (req, res) => {
                     const { data: matchedGroup } = await supabase
                         .from('production_groups')
                         .select('id, name')
-                        .or(`name.ilike.${candidateName},code.ilike.${generatedCode}`)
+                        .or(`name.ilike.${postgrestLikeValue(candidateName)},code.ilike.${postgrestLikeValue(generatedCode)}`)
                         .maybeSingle();
 
                     if (matchedGroup) {
@@ -561,9 +599,11 @@ router.post('/', async (req, res) => {
             }
 
             const resolvedShift = shift || (
-                department === 'Factory'
-                    ? `${resolvedGroupName} · Factory (08:00 AM - 05:00 PM)`
-                    : 'Regular Worker (08:00 AM - 08:00 PM)'
+                isSecurityRole
+                    ? 'Security Shift · Gate Terminal'
+                    : effectiveDepartment === 'Factory'
+                        ? `${resolvedGroupName} · Factory (08:00 AM - 05:00 PM)`
+                        : 'Regular Worker (08:00 AM - 08:00 PM)'
             );
 
             const insertRecord = {
@@ -574,8 +614,8 @@ router.post('/', async (req, res) => {
                 last_name,
                 email: normalizedEmail,
                 role,
-                department,
-                job_title,
+                department: effectiveDepartment,
+                job_title: effectiveJobTitle,
                 shift: resolvedShift,
                 production_group_id: resolvedGroupId,
                 daily_rate: parsedDailyRate,
@@ -586,6 +626,7 @@ router.post('/', async (req, res) => {
                 gender: sanitizedGender,
                 birth_date: validatedBirthDate,
                 ...(hireCheck.hireDate ? { date_hired: hireCheck.hireDate } : {}),
+                timekeeping_effective_date: validatedTimekeepingDate,
                 address: sanitizedAddr
             };
 
@@ -655,6 +696,9 @@ router.post('/', async (req, res) => {
 // Dedicated Administrator Account Provisioning Endpoint
 router.post('/provision-admin', async (req, res) => {
     try {
+        if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Only verified administrators can provision administrator accounts.' });
+        }
         const {
             first_name,
             last_name,
@@ -689,11 +733,13 @@ router.post('/provision-admin', async (req, res) => {
         const lookupHash = crypto.createHash('sha256').update(normalizedEmail + APP_KEY).digest('hex');
 
         // Check for existing account with this email
-        const { data: existingEmp } = await supabase
+        const { data: existingEmp, error: lookupError } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, status, is_active, role')
-            .or(`email_hash.eq.${lookupHash},email.eq.${normalizedEmail}`)
+            .or(`email_hash.eq.${lookupHash},email.eq.${postgrestValue(normalizedEmail)}`)
             .maybeSingle();
+
+        if (lookupError) throw lookupError;
 
         if (existingEmp) {
             return res.status(409).json({
@@ -725,13 +771,15 @@ router.post('/provision-admin', async (req, res) => {
 
         try {
             const currentYear = new Date().getFullYear();
-            const { data: latestAdmin } = await supabase
+            const { data: latestAdmin, error: latestAdminError } = await supabase
                 .from('employees')
                 .select('company_id')
                 .ilike('company_id', `CP-ADM-${currentYear}-%`)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
+
+            if (latestAdminError) throw latestAdminError;
 
             let newIdNum = 1;
             if (latestAdmin && latestAdmin.company_id) {
@@ -758,9 +806,10 @@ router.post('/provision-admin', async (req, res) => {
                 status: 'active',
                 is_active: true,
                 requires_password_change: true,
-                date_hired: new Date().toISOString().split('T')[0],
-                phone: sanitizedPhone
+                date_hired: new Date().toISOString().split('T')[0]
             };
+
+            // Contact numbers live in Auth metadata; employees.phone is not part of the deployed schema.
 
             const { data: empData, error: insertError } = await supabase
                 .from('employees')
@@ -803,6 +852,7 @@ router.post('/provision-admin', async (req, res) => {
                 success: true,
                 data: {
                     ...empData,
+                    phone: sanitizedPhone,
                     temp_password: defaultPassword
                 },
                 message: 'Administrator account provisioned successfully.',
@@ -810,19 +860,30 @@ router.post('/provision-admin', async (req, res) => {
             });
         } catch (dbError) {
             if (authData?.user?.id) {
-                await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+                try {
+                    const { error: rollbackError } = await supabase.auth.admin.deleteUser(authData.user.id);
+                    if (rollbackError) console.error('[ADMIN PROVISION ROLLBACK]', { code: rollbackError.code || 'AUTH_CLEANUP_FAILED', request_id: req.reqId || null });
+                } catch {
+                    console.error('[ADMIN PROVISION ROLLBACK]', { code: 'AUTH_CLEANUP_FAILED', request_id: req.reqId || null });
+                }
             }
             throw dbError;
         }
     } catch (error) {
-        console.error('[ADMIN PROVISION ERROR]', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (['email_exists', 'user_already_exists', '23505'].includes(error.code)) {
+            return res.status(409).json({ success: false, code: 'ACCOUNT_CONFLICT', error: 'An account with these details already exists. Check existing accounts before retrying.' });
+        }
+        console.error('[ADMIN PROVISION ERROR]', { code: error.code || 'ADMIN_PROVISION_FAILED', request_id: req.reqId || null });
+        res.status(500).json({ success: false, error: 'Administrator account could not be created. Please try again.' });
     }
 });
 
 // Reset or issue a new temporary password for unregistered employee
 router.post('/:id/reset-temp-password', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to reset temporary passwords.' });
+        }
         const { id } = req.params;
         const newTempPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
 
@@ -852,6 +913,12 @@ router.post('/:id/reset-temp-password', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
+        if (!hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Administrative privileges required to edit employee records.' });
+        }
+        if (req.body?.role !== undefined && req.user?.role !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only administrators can modify employee system roles.' });
+        }
         const {
             first_name,
             last_name,
@@ -867,10 +934,14 @@ router.put('/:id', async (req, res) => {
             shift,
             production_group_id,
             gender,
+            sex,
             birth_date,
             date_hired,
+            timekeeping_effective_date,
             address
         } = req.body;
+
+        const candidateSex = sex !== undefined ? sex : gender;
 
         if (date_hired !== undefined) {
             if (req.user?.employee_identity_verified !== true || !isVerifiedCreditManager(req.user)) return res.status(403).json({ success: false, error: 'Only HR or an administrator can change the date hired.' });
@@ -909,6 +980,16 @@ router.put('/:id', async (req, res) => {
         };
 
         if (date_hired !== undefined) updatePayload.date_hired = date_hired;
+        if (timekeeping_effective_date !== undefined) {
+            if (timekeeping_effective_date === null || !String(timekeeping_effective_date).trim()) {
+                updatePayload.timekeeping_effective_date = null;
+            } else {
+                const tkStr = String(timekeeping_effective_date).trim().slice(0, 10);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(tkStr) && !isNaN(Date.parse(tkStr))) {
+                    updatePayload.timekeeping_effective_date = tkStr;
+                }
+            }
+        }
         if (parsedDailyRate !== null) updatePayload.daily_rate = parsedDailyRate;
         if (email !== undefined && email !== null) {
             const normalizedEmail = String(email).trim().toLowerCase();
@@ -1029,12 +1110,12 @@ router.put('/:id', async (req, res) => {
         if (shift) updatePayload.shift = shift;
         if (production_group_id !== undefined) updatePayload.production_group_id = production_group_id;
 
-        if (gender !== undefined) {
-            const sanitizedGender = sanitizeGender(gender);
-            if (gender && !sanitizedGender && String(gender).trim().toUpperCase() !== 'N/A') {
+        if (candidateSex !== undefined) {
+            const sanitizedGender = sanitizeGender(candidateSex);
+            if (candidateSex && !sanitizedGender && String(candidateSex).trim().toUpperCase() !== 'N/A') {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid gender selection. Choose from Male, Female, Other, or Prefer not to say.'
+                    error: 'Invalid selection for Sex. Choose from Male or Female.'
                 });
             }
             updatePayload.gender = sanitizedGender;
@@ -1053,6 +1134,17 @@ router.put('/:id', async (req, res) => {
 
         if (address !== undefined) {
             updatePayload.address = sanitizeAddress(address);
+        }
+
+        if (req.body.emergency_contact_name !== undefined) {
+            updatePayload.emergency_contact_name = req.body.emergency_contact_name ? String(req.body.emergency_contact_name).trim().slice(0, 100) : null;
+        }
+        if (req.body.emergency_contact_phone !== undefined) {
+            const rawEmergPhone = req.body.emergency_contact_phone;
+            updatePayload.emergency_contact_phone = rawEmergPhone ? (sanitizePhPhone(rawEmergPhone) || String(rawEmergPhone).trim().slice(0, 20)) : null;
+        }
+        if (req.body.emergency_contact_relationship !== undefined) {
+            updatePayload.emergency_contact_relationship = req.body.emergency_contact_relationship ? String(req.body.emergency_contact_relationship).trim().slice(0, 50) : null;
         }
 
         let { data: updatedEmployee, error } = await supabase
@@ -1719,6 +1811,9 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
+            return res.status(403).json({ success: false, error: 'Only verified administrators can delete employee accounts.' });
+        }
         const empId = req.params.id;
 
         // 1. Fetch employee metadata prior to deletion for storage and audit cleanup

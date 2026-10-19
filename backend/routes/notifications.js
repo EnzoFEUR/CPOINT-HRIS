@@ -1,19 +1,35 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
+import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
+import { postgrestValue } from '../middleware/requestValidation.js';
 
 const router = express.Router();
 
+export function authorizeNotifications(req, res, next) {
+    if (!req.user) return res.status(401).json({ error: 'Authentication is required.' });
+    const input = req.method === 'GET' ? req.query : req.body || {};
+    const target = req.method === 'POST' ? input.target : input.user_id || (req.method === 'GET' ? req.user.id : undefined);
+    if (!target) return res.status(400).json({ error: 'A notification target is required.' });
+    const manager = hasVerifiedManagerRole(req.user);
+    const own = [req.user.id, req.user.auth_user_id, req.user.company_id].includes(target);
+    if ((!manager && input.role === 'admin') || (!manager && !own && !(req.method === 'POST' && target === 'admin'))) {
+        return res.status(403).json({ error: 'You may only access your own notifications.' });
+    }
+    next();
+}
+
 // GET notifications for a user (15-second in-memory response cache)
-router.get('/', cacheResponse(15), async (req, res) => {
+router.get('/', authorizeNotifications, cacheResponse(15), async (req, res) => {
     try {
-        const { user_id, role } = req.query;
+        const user_id = req.query.user_id || req.user.id;
+        const role = req.query.role || req.user.role;
         if (!user_id) return res.status(400).json({ error: 'User ID is required' });
 
         let query = supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
         
         if (role === 'admin') {
-            query = query.or(`target.eq.admin,target.eq.${user_id}`);
+            query = query.or(`target.eq.admin,target.eq.${postgrestValue(user_id)}`);
         } else {
             query = query.eq('target', user_id);
         }
@@ -182,9 +198,10 @@ export const createNotification = async ({ target, title, text, type, sender_id,
 };
 
 // POST new notification
-router.post('/', async (req, res) => {
+router.post('/', authorizeNotifications, async (req, res) => {
     try {
-        const newNotif = await createNotification(req.body);
+        const payload = hasVerifiedManagerRole(req.user) ? req.body : { ...req.body, sender_id: req.user.id, company_id: req.user.company_id, sender_name: `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() };
+        const newNotif = await createNotification(payload);
         if (!newNotif) return res.status(500).json({ error: 'Failed to create notification' });
         res.json({ success: true, notification: newNotif });
     } catch (err) {
@@ -193,14 +210,14 @@ router.post('/', async (req, res) => {
 });
 
 // Mark all as read for user
-router.put('/read-all', async (req, res) => {
+router.put('/read-all', authorizeNotifications, async (req, res) => {
     try {
         const { user_id, role } = req.body;
         
         let query = supabase.from('notifications').update({ read: true }).eq('read', false);
         
         if (role === 'admin') {
-            query = query.or(`target.eq.admin,target.eq.${user_id}`);
+            query = query.or(`target.eq.admin,target.eq.${postgrestValue(user_id)}`);
         } else {
             query = query.eq('target', user_id);
         }

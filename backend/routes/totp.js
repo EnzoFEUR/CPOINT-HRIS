@@ -1,4 +1,5 @@
 import express from 'express';
+import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import {
     generateTotpSecret,
@@ -37,7 +38,7 @@ async function resolveAuthUser(identifier) {
     if (isUuid) {
         empQuery = empQuery.or(`id.eq.${clean},auth_user_id.eq.${clean}`);
     } else {
-        empQuery = empQuery.or(`email.ilike.${clean},company_id.ilike.${clean}`);
+        empQuery = empQuery.or(`email.ilike.${postgrestLikeValue(clean)},company_id.ilike.${postgrestLikeValue(clean)}`);
     }
 
     const { data: emp } = await empQuery.maybeSingle();
@@ -70,7 +71,7 @@ async function resolveAuthUser(identifier) {
 router.get('/status', async (req, res) => {
     try {
         let user = null;
-        const identifier = req.query.identifier || req.query.email || req.headers['x-user-id'];
+        const identifier = req.query.identifier || req.query.email;
 
         // 1. Direct JWT auth token extraction if present
         const authHeader = req.headers.authorization;
