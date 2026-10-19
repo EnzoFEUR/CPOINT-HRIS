@@ -71,6 +71,8 @@ export const MainLayout = ({ children }) => {
       link.id = id;
       link.rel = 'stylesheet';
       link.href = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css';
+      link.integrity = 'sha384-mY6asDzXlnHeimHHXw8cavPeArhEcAfnCibDFiaDPex3Fudo+edh/hnT7siZz8bg';
+      link.crossOrigin = 'anonymous';
       document.head.appendChild(link);
     }
   }, []);
@@ -165,9 +167,7 @@ export const MainLayout = ({ children }) => {
       <div className="flex-1 flex flex-col min-h-screen w-full lg:pl-[320px] print:pl-0 print:min-h-0">
         <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto print:max-w-none print:w-full">
           {/* Header */}
-          <div className="print:hidden">
-            <Header user={user} />
-          </div>
+          <Header user={user} />
 
           {/* Page Content */}
           <main className="flex-1 p-3.5 sm:p-6 lg:p-8 mt-1 sm:mt-2 w-full relative pb-28 lg:pb-8 print:p-0 print:m-0 print:pb-0">

@@ -3,6 +3,39 @@
   "outputDirectory": "frontend/dist",
   "headers": [
     {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'wasm-unsafe-eval' https://va.vercel-scripts.com; script-src-attr 'none'; style-src 'self' https://cdn.jsdelivr.net; font-src 'self' data: https://cdn.jsdelivr.net; img-src 'self' data: blob: https://lzqshktnrvtlattdiwxf.supabase.co; connect-src 'self' https://cpoint-hris.onrender.com https://lzqshktnrvtlattdiwxf.supabase.co wss://lzqshktnrvtlattdiwxf.supabase.co https://raw.githubusercontent.com https://cdn.jsdelivr.net https://vitals.vercel-insights.com https://va.vercel-insights.com; worker-src 'self' blob:; media-src 'self' blob:; frame-src 'self' blob: https://lzqshktnrvtlattdiwxf.supabase.co"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "same-site"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000"
+        }
+      ]
+    },
+    {
       "source": "/(.*\\.(?:webp|png|jpg|jpeg|svg|ico|woff2?))",
       "headers": [
         {

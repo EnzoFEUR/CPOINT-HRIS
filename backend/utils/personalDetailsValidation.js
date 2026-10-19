@@ -12,10 +12,11 @@ export function validateHireDate(value, now = new Date()) {
  * Enterprise-grade security for PII (Address, Birth Date, Gender)
  */
 
-export const ALLOWED_GENDERS = ['Male', 'Female','Other', 'Prefer not to say'];
+export const ALLOWED_GENDERS = ['Male', 'Female'];
+export const ALLOWED_SEX = ALLOWED_GENDERS;
 
 /**
- * Validates and normalizes gender against the strict enterprise whitelist.
+ * Validates and normalizes sex/gender against the strict enterprise whitelist.
  * Returns normalized string (Title Case) or null if invalid/empty.
  */
 export function sanitizeGender(gender) {
@@ -26,6 +27,7 @@ export function sanitizeGender(gender) {
     const matched = ALLOWED_GENDERS.find(g => g.toLowerCase() === trimmed.toLowerCase());
     return matched || null;
 }
+export const sanitizeSex = sanitizeGender;
 
 /**
  * Validates birth date according to ISO 8601 YYYY-MM-DD format

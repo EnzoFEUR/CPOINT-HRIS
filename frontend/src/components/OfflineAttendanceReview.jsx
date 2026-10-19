@@ -6,7 +6,7 @@ import { offlineApi } from '../utils/offlineAttendanceSync';
 import PageHeader from './ui/PageHeader';
 import EmployeeAvatar from './EmployeeAvatar';
 import Badge from './ui/Badge';
-import { collapseOfflineReviewEvents, reviewCanDecide, reviewEventId } from '../utils/offlineReviewPairs.mjs';
+import { batchReviewOutcome, canResolveMissingTimeOut, collapseOfflineReviewEvents, manilaDateTimeInput, reviewCanDecide, reviewEventId, verifiedTimeOutIso } from '../utils/offlineReviewPairs.mjs';
 
 // Quick review preset templates for high-speed enterprise HR processing
 const PRESET_REASONS = [
@@ -46,6 +46,7 @@ export default function OfflineAttendanceReview() {
   const [drawerHistory, setDrawerHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [reviewReason, setReviewReason] = useState('');
+  const [verifiedTimeOut, setVerifiedTimeOut] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
 
   // Multi-selection for Batch Processing
@@ -107,6 +108,7 @@ export default function OfflineAttendanceReview() {
     retry: false
   });
   const isApprovalReady = approvalQuery.data?.available === true;
+  const isResolutionReady = approvalQuery.data?.missing_time_out === true;
 
   // Dedicated global counts query - independent of activeTab so counts NEVER flash to 0 on tab switch
   const statsQuery = useQuery({
@@ -220,6 +222,7 @@ export default function OfflineAttendanceReview() {
   const openInspectDrawer = useCallback(async (event) => {
     setSelectedEvent(event);
     setReviewReason('');
+    setVerifiedTimeOut('');
     setDrawerHistory([]);
     setHistoryLoading(true);
 
@@ -239,6 +242,32 @@ export default function OfflineAttendanceReview() {
     setSelectedEvent(null);
     setDrawerHistory([]);
     setReviewReason('');
+    setVerifiedTimeOut('');
+  };
+
+  async function refreshAttendanceViews() {
+    await Promise.all(['offlineAttendanceCounts', 'offlineAttendanceEvents', 'adminAttendance', 'employeeMonthlyAttendance', 'attendanceCalendar', 'employeeDashboard'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
+    broadcastChannelRef.current?.postMessage({ type: 'OFFLINE_ATTENDANCE_CHANGED' });
+  }
+
+  const handleResolveTimeOut = async () => {
+    if (actionBusy || !selectedEvent || !canResolveMissingTimeOut(selectedEvent)) return;
+    if (!isResolutionReady) { toast.error('Install the missing Time Out database update first.'); return; }
+    if (!reviewReason.trim()) { toast.error('Enter how HR verified the actual departure time.'); return; }
+    setActionBusy(true);
+    try {
+      const result = await offlineApi(`/events/${encodeURIComponent(selectedEvent.event_id || selectedEvent.payload?.event_id)}/resolve-time-out`, {
+        method: 'POST', body: JSON.stringify({ verified_time_out: verifiedTimeOutIso(verifiedTimeOut), reason: reviewReason.trim() }),
+      });
+      if (result.status !== 'synced' || !result.attendance_reference) throw new Error('The server did not confirm the correction. Refresh before retrying.');
+      toast.success('Verified Time Out saved. Attendance is recorded.');
+      await refreshAttendanceViews();
+      closeInspectDrawer();
+    } catch (error) {
+      toast.error(error.message || 'The correction could not be saved.');
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   // Execute Individual Review Decision
@@ -266,16 +295,7 @@ export default function OfflineAttendanceReview() {
       const label = decision === 'approve' ? 'Approved & Synced' : decision === 'reject' ? 'Rejected' : 'Flagged for Verification';
       toast.success(`Attendance ${label} successfully`, { id: `offline-${eventId}` });
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] }),
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceEvents'] }),
-        queryClient.invalidateQueries({ queryKey: ['adminAttendance'] }),
-        queryClient.invalidateQueries({ queryKey: ['employeeMonthlyAttendance'] }),
-        queryClient.invalidateQueries({ queryKey: ['attendanceCalendar'] }),
-        queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] })
-      ]);
-
-      broadcastChannelRef.current?.postMessage({ type: 'OFFLINE_ATTENDANCE_CHANGED' });
+      await refreshAttendanceViews();
 
       if (selectedEvent && (reviewEventId(selectedEvent) === eventId || selectedEvent.event_id === eventId)) {
         closeInspectDrawer();
@@ -314,29 +334,22 @@ export default function OfflineAttendanceReview() {
         })
       });
 
-      const successful = (res.results || []).filter(r => r.success).length;
-      const failed = (res.results || []).filter(r => !r.success).length;
+      const outcome = batchReviewOutcome(eventIds, batchDecision, res.results);
+      const successful = outcome.successfulIds.length;
+      const failed = outcome.failedIds.length;
 
       if (failed > 0) {
-        toast.error(`Reconciled ${successful} captures, but ${failed} encountered errors.`, { id: toastId });
+        toast.error(`${successful} processed; ${failed} not processed. ${outcome.error}`, { id: toastId, duration: 7000 });
       } else {
         toast.success(`Successfully processed ${successful} captures.`, { id: toastId });
       }
 
-      setSelectedIds(new Set());
-      setBatchModalOpen(false);
-      setBatchReason('');
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceCounts'] }),
-        queryClient.invalidateQueries({ queryKey: ['offlineAttendanceEvents'] }),
-        queryClient.invalidateQueries({ queryKey: ['adminAttendance'] }),
-        queryClient.invalidateQueries({ queryKey: ['employeeMonthlyAttendance'] }),
-        queryClient.invalidateQueries({ queryKey: ['attendanceCalendar'] }),
-        queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] })
-      ]);
-
-      broadcastChannelRef.current?.postMessage({ type: 'OFFLINE_ATTENDANCE_CHANGED' });
+      setSelectedIds(new Set(outcome.failedIds));
+      if (!failed) {
+        setBatchModalOpen(false);
+        setBatchReason('');
+      }
+      await refreshAttendanceViews();
     } catch (err) {
       toast.error(err.message || 'Batch action failed.', { id: toastId });
     } finally {
@@ -423,7 +436,8 @@ export default function OfflineAttendanceReview() {
   const handleRefresh = async () => {
     await Promise.all([
       statsQuery.refetch(),
-      eventsQuery.refetch()
+      eventsQuery.refetch(),
+      approvalQuery.refetch()
     ]);
   };
 
@@ -559,6 +573,7 @@ export default function OfflineAttendanceReview() {
             <div className="flex items-center gap-2 font-semibold">
               <i className="ti ti-checkbox text-emerald-400 text-sm" />
               <span>{selectedIds.size} capture{selectedIds.size > 1 ? 's' : ''} selected</span>
+              {selectedRows.some(event => event.review_pair?.complete !== true) && <span className="text-xs">Complete Time In and Time Out are required for approval.</span>}
             </div>
             <div className="flex items-center gap-2">
               {canBatchApprove && <button
@@ -721,7 +736,7 @@ export default function OfflineAttendanceReview() {
                             : 'bg-blue-50 text-blue-700 border-blue-200'
                         }`}>
                           <i className={`ti ${isTimeIn ? 'ti-login' : 'ti-logout'} text-xs`} />
-                          <span>{event.review_pair?.complete ? 'Time In / Out' : isTimeIn ? 'Time In' : 'Time Out'}</span>
+                          <span>{event.review_pair?.correction ? 'Corrected shift' : event.review_pair?.complete ? 'Time In / Out' : isTimeIn ? 'Time In' : 'Time Out'}</span>
                         </span>
                       </td>
 
@@ -790,6 +805,12 @@ export default function OfflineAttendanceReview() {
                       {/* Review Actions */}
                       <td className="py-3 px-4 text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          {canResolveMissingTimeOut(event) && (
+                            <button type="button" onClick={() => openInspectDrawer(event)} disabled={actionBusy}
+                              className="h-7 rounded border border-line bg-surface px-2.5 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50">
+                              Resolve Time Out
+                            </button>
+                          )}
                           {reviewCanDecide(event, 'approve') && (
                             <>
                               <button
@@ -973,7 +994,7 @@ export default function OfflineAttendanceReview() {
               <div className="rounded-md border border-line bg-canvas p-3 text-xs text-ink">
                 {selectedEvent.review_pair?.complete ? <>
                   <p>Time In: {new Date(selectedEvent.review_pair.time_in).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
-                  <p>Time Out: {new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
+                  <p>Time Out{selectedEvent.review_pair.correction ? ' (HR verified)' : ''}: {new Date(selectedEvent.review_pair.time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>
                 </> : <p>{selectedEvent.review_pair?.issue || 'Waiting for a complete attendance pair.'}</p>}
               </div>
               <div className="space-y-2">
@@ -992,7 +1013,7 @@ export default function OfflineAttendanceReview() {
                           <span className={`font-semibold uppercase tracking-wider text-[10px] ${
                             item.decision === 'approve' ? 'text-emerald-700' : item.decision === 'reject' ? 'text-rose-700' : 'text-blue-700'
                           }`}>
-                            {item.decision}
+                            {item.decision === 'resolve_missing_time_out' ? 'Verified missing Time Out' : item.decision}
                           </span>
                           <span className="text-slate-400">·</span>
                           <span className="font-semibold text-slate-700">{item.actor_name || 'HR Reviewer'}</span>
@@ -1003,6 +1024,7 @@ export default function OfflineAttendanceReview() {
                         <p className="text-slate-600 bg-slate-50 p-2 rounded border border-slate-200">
                           {item.reason}
                         </p>
+                        {item.verified_time_out && <p>Verified departure: {new Date(item.verified_time_out).toLocaleString('en-US', { timeZone: 'Asia/Manila' })}</p>}
                       </div>
                     ))}
                   </div>
@@ -1010,8 +1032,19 @@ export default function OfflineAttendanceReview() {
               </div>
 
               {/* Review & Decision Form */}
-              {['needs_review', 'needs_verification'].includes(selectedEvent.status) && (
+              {(['needs_review', 'needs_verification'].includes(selectedEvent.status) || canResolveMissingTimeOut(selectedEvent)) && (
                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                  {canResolveMissingTimeOut(selectedEvent) && (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-ink" htmlFor="verified-missing-time-out">Verified Time Out (Philippine time)</label>
+                      <input id="verified-missing-time-out" type="datetime-local" value={verifiedTimeOut}
+                        onChange={event => setVerifiedTimeOut(event.target.value)} disabled={actionBusy || !isResolutionReady}
+                        min={manilaDateTimeInput(selectedEvent.payload?.captured_at)}
+                        max={manilaDateTimeInput(Math.min(now, Date.parse(selectedEvent.payload?.captured_at) + 18 * 3600000))}
+                        className="w-full rounded border border-line bg-surface p-2 text-sm text-ink" />
+                      <p className="text-xs text-muted">{isResolutionReady ? 'Enter the actual departure time verified by HR.' : 'Install the missing Time Out database update to enable corrections.'}</p>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-800">
                       HR Verification & Audit Reason <span className="text-rose-600">*</span>
@@ -1044,6 +1077,11 @@ export default function OfflineAttendanceReview() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    {canResolveMissingTimeOut(selectedEvent) && <button type="button" onClick={handleResolveTimeOut}
+                      disabled={actionBusy || !isResolutionReady || !verifiedTimeOut || !reviewReason.trim()}
+                      className="h-9 rounded border border-line bg-surface px-4 text-xs font-semibold text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50">
+                      Save verified Time Out
+                    </button>}
                     {reviewCanDecide(selectedEvent, 'approve') && <button
                       type="button"
                       onClick={() => handleDecision(reviewEventId(selectedEvent), 'approve')}
@@ -1054,7 +1092,7 @@ export default function OfflineAttendanceReview() {
                       <span>Approve Attendance</span>
                     </button>}
 
-                    <button
+                    {['needs_review', 'needs_verification'].includes(selectedEvent.status) && <button
                       type="button"
                       onClick={() => handleDecision(selectedEvent.event_id || selectedEvent.payload?.event_id, 'needs_verification')}
                       disabled={actionBusy || !reviewReason.trim()}
@@ -1062,7 +1100,7 @@ export default function OfflineAttendanceReview() {
                     >
                       <i className="ti ti-user-exclamation text-sm" />
                       <span>Request Verification</span>
-                    </button>
+                    </button>}
 
                     {reviewCanDecide(selectedEvent, 'reject') && <button
                       type="button"

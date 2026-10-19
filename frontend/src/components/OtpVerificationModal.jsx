@@ -77,7 +77,11 @@ export default function OtpVerificationModal({
                 const targetId = email || sessionUser?.email || sessionUser?.id || sessionUser?.company_id;
                 if (!targetId) return;
                 const targetEmail = email || sessionUser?.email || '';
-                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status?identifier=${encodeURIComponent(targetId)}&email=${encodeURIComponent(targetEmail)}&purpose=${encodeURIComponent(purpose)}`);
+                const res = await fetch(`${API_BASE_URL}/api/auth/otp/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: targetId, email: targetEmail, purpose }),
+                });
                 if (res.ok) {
                     const data = await res.json();
                     if (!isMounted || !data.success) return;
@@ -592,7 +596,7 @@ export default function OtpVerificationModal({
                                     )}
                                 </button>
 
-                                <button
+                                {import.meta.env.DEV && <button
                                     type="button"
                                     disabled={isSending}
                                     onClick={() => handleSendEmailOtp(false, true)}
@@ -600,7 +604,7 @@ export default function OtpVerificationModal({
                                 >
                                     <i className="ti ti-flask text-sm text-slate-500" />
                                     <span>Test OTP</span>
-                                </button>
+                                </button>}
 
                                 <div className="text-center pt-1 border-t border-slate-100">
                                     <button

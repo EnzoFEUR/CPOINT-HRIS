@@ -1,7 +1,8 @@
 import express from 'express';
+import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
-import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
+import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
@@ -658,7 +659,7 @@ router.get(
       const { data: fallbackEmp } = await supabase
         .from('employees')
         .select('id, first_name, last_name, company_id, has_registered_biometrics, biometric_baseline_path, is_active, status, job_title, department, role, medical_record_url')
-        .or(`company_id.ilike.${target},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${target}`)
+        .or(`company_id.ilike.${postgrestLikeValue(target)},id.eq.${isUUID ? target : '00000000-0000-0000-0000-000000000000'},email.ilike.${postgrestLikeValue(target)}`)
         .maybeSingle();
 
       employee = fallbackEmp;
@@ -937,6 +938,7 @@ router.post(
       });
 
       invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
+      Brain.Analytics.invalidateBriefing();
 
       return res.status(201).json({
         status: 'success',
@@ -974,6 +976,7 @@ router.post(
       });
 
       invalidateCache(['/api/attendance', '/api/dashboard', '/api/attendance/employee-monthly']);
+      Brain.Analytics.invalidateBriefing();
 
       return res.json({
         status: 'success',
@@ -1184,12 +1187,33 @@ router.post(
     // Verify Employee
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('id, company_id, is_active, role')
+      .select('id, company_id, is_active, role, birth_date, address, phone, emergency_contact_name')
       .eq('id', employee_id)
       .single();
 
     if (empErr || !employee) throw new NotFoundError('Employee not found.');
     if (!employee.is_active) throw new AuthorizationError('Cannot register biometrics for inactive employee.');
+
+    // Enterprise Gatekeeper: Strictly enforce profile completion in DB before biometric registration
+    const isExemptRole = employee.role === 'admin' || employee.role === 'security' || employee.role === 'guard';
+    if (!isExemptRole) {
+      const hasCompletedProfile = Boolean(
+        employee.birth_date &&
+        employee.address &&
+        employee.phone &&
+        employee.emergency_contact_name
+      );
+      if (!hasCompletedProfile) {
+        await logSecurityViolation(
+          reqId,
+          employee_id,
+          'Onboarding Bypass Attempt',
+          'Attempted biometric registration before completing mandatory profile details (birth_date, address, phone, emergency contact).',
+          req.ip
+        );
+        throw new AuthorizationError('Mandatory onboarding incomplete. You must complete your profile details before enrolling biometrics.');
+      }
+    }
 
     // Validate Company ID match
     const isCompanyIdMatch = employee.company_id
@@ -1340,6 +1364,7 @@ router.post(
     }
 
     invalidateCache([`/api/employees/${employee_id}`, '/api/employees', '/api/dashboard']);
+    invalidateAuthUser(employee_id);
 
     logger.info(reqId, 'Password change status cleared', { employee_id });
 

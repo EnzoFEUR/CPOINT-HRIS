@@ -19,7 +19,7 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         const { data, error } = await client.rpc('offline_attendance_approval_ready', { p_actor_id: actor });
         if (error?.code === 'PGRST202') return { available: false };
         databaseError(error);
-        return { available: data?.available === true };
+        return { available: data?.available === true, ...(data?.missing_time_out === true ? { missing_time_out: true } : {}) };
     };
     const reviewPair = async (req, eventId, decision, reason, policy) => {
         const { data, error } = await client.rpc('review_offline_attendance_pair', { p_actor_id: req.user.id, p_event_id: eventId, p_decision: decision, p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites, p_policy: policy });
@@ -164,8 +164,8 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
                 results.push(result.data);
             } catch (error) {
                 const event_id = typeof event?.payload?.event_id === 'string' && /^[0-9a-f-]{36}$/i.test(event.payload.event_id) ? event.payload.event_id : null;
-                const diagnostic = { request_id, stage, database_code: error.database_code, reason_code: error.reason_code, constraint: error.constraint };
-                console.warn(JSON.stringify({ event: 'offline_attendance_sync_failed', event_id, device_id: device.id, http_status: error.status || 400, ...diagnostic }));
+                const diagnostic = { request_id, stage, database_code: error.database_code, reason_code: error.reason_code };
+                console.warn(JSON.stringify({ event: 'offline_attendance_sync_failed', event_id, device_id: device.id, http_status: error.status || 400, ...diagnostic, constraint: error.constraint }));
                 results.push({ event_id: event?.payload?.event_id || null, status: 'error', http_status: error.status || 400, error: error.status ? error.message : 'Invalid offline event.', diagnostic });
             }
         }
@@ -237,7 +237,7 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
     router.post('/events/batch-decision', wrap(async (req, res) => {
         requireOfflineManager(req.user);
         const { event_ids, decision, reason } = req.body || {};
-        if (!Array.isArray(event_ids) || !event_ids.length || event_ids.length > 50) throw new OfflineError(400, 'Submit between 1 and 50 events.');
+        if (!Array.isArray(event_ids) || !event_ids.length || event_ids.length > 50 || new Set(event_ids).size !== event_ids.length) throw new OfflineError(400, 'Submit between 1 and 50 unique events.');
         if (!['approve','reject','needs_verification'].includes(decision) || typeof reason !== 'string' || !reason.trim() || reason.length > 1000) throw new OfflineError(400, 'A review decision and reason are required.');
         event_ids.forEach(assertOfflineUuid);
         const results = [];
@@ -274,10 +274,13 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
         if (!event || event.company_scope !== req.offlineConfig.companyScope || !req.offlineConfig.sites.includes(event.site_id)) throw new OfflineError(404, 'Offline event not found.');
         const { data, error } = await client.from('offline_attendance_decisions').select('actor_id,decision,reason,created_at').eq('event_id', req.params.id).order('created_at', { ascending: false }).limit(100);
         databaseError(error);
-        const actorIds = [...new Set((data || []).map(d => d.actor_id))];
+        const corrections = await client.from('offline_attendance_corrections').select('actor_id,reason,verified_time_out,created_at').eq('event_id', req.params.id);
+        if (!['PGRST205', '42P01'].includes(corrections.error?.code)) databaseError(corrections.error);
+        const history = [...(data || []), ...(corrections.data || []).map(entry => ({ ...entry, decision: 'resolve_missing_time_out' }))].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+        const actorIds = [...new Set(history.map(d => d.actor_id))];
         const { data: actors } = actorIds.length ? await client.from('employees').select('id,first_name,last_name,company_id').in('id', actorIds) : { data: [] };
         const actorMap = new Map((actors || []).map(a => [a.id, a]));
-        const enrichedDecisions = (data || []).map(d => {
+        const enrichedDecisions = history.map(d => {
             const actor = actorMap.get(d.actor_id);
             return {
                 ...d,
@@ -286,6 +289,29 @@ export function createOfflineAttendanceRouter(client = supabase, env = process.e
             };
         });
         res.json({ decisions: enrichedDecisions });
+    }));
+    router.post('/events/:id/resolve-time-out', wrap(async (req, res) => {
+        requireOfflineManager(req.user); assertOfflineUuid(req.params.id);
+        const { verified_time_out, reason } = req.body || {};
+        const timestamp = typeof verified_time_out === 'string' ? Date.parse(verified_time_out) : NaN;
+        const calendar = typeof verified_time_out === 'string' ? Date.parse(`${verified_time_out.slice(0, 10)}T00:00:00Z`) : NaN;
+        if (typeof reason !== 'string' || !reason.trim() || reason.length > 1000
+            || typeof verified_time_out !== 'string' || verified_time_out.length > 40
+            || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(verified_time_out)
+            || verified_time_out.startsWith('0000') || !Number.isFinite(timestamp) || timestamp > Date.now()
+            || !Number.isFinite(calendar) || new Date(calendar).toISOString().slice(0, 10) !== verified_time_out.slice(0, 10)) {
+            throw new OfflineError(400, 'Enter a valid, non-future verified Time Out with a timezone and a reason of up to 1000 characters.');
+        }
+        const { data, error } = await client.rpc('resolve_offline_missing_time_out', {
+            p_actor_id: req.user.id, p_event_id: req.params.id, p_verified_time_out: new Date(timestamp).toISOString(),
+            p_reason: reason.trim(), p_company_scope: req.offlineConfig.companyScope, p_site_ids: req.offlineConfig.sites,
+            p_policy: await loadWorkPolicy(),
+        });
+        if (error?.code === 'PGRST202') throw new OfflineError(503, 'Install 202610180001_offline_missing_time_out.sql before resolving a missing Time Out.');
+        databaseError(error);
+        if (data?.status !== 'synced' || !data.attendance_reference) throw new OfflineError(503, 'The server did not confirm the attendance correction. Refresh before retrying.');
+        invalidateCache(['/api/attendance', '/api/dashboard']);
+        res.json(data);
     }));
     router.post('/events/:id/decision', wrap(async (req, res) => {
         requireOfflineManager(req.user); assertOfflineUuid(req.params.id);

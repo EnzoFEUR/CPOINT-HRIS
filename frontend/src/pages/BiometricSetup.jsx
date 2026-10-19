@@ -8,6 +8,7 @@ import { compressImage } from '../utils/imageCompress';
 import { requestHardwareCamera, stopHardwareStream, getDeviceCameraMetrics } from '../utils/hardwareCamera';
 import { playBiometricSound as playSound } from '../utils/audio';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
+import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
 
 // Primary CDN with high reliability and fallback
@@ -296,6 +297,22 @@ export default function BiometricSetup() {
 
     const boot = async () => {
       try {
+        // Authoritative verification against backend database before booting sensors or neural weights
+        if (user && !isAdmin(user) && !isSecurity(user)) {
+          try {
+            const profileRes = await fetchWithAuth('/api/profile');
+            if (profileRes.ok) {
+              const profileData = await profileRes.json();
+              const authoritativeUser = profileData?.user || profileData?.employee;
+              if (authoritativeUser && needsProfileCompletion(authoritativeUser)) {
+                toast.error('Please complete mandatory profile details before enrolling biometrics.');
+                navigate('/onboarding', { replace: true });
+                return;
+              }
+            }
+          } catch { /* The enrollment endpoint rechecks profile completion if this refresh fails. */ }
+        }
+
         await loadModels();
         if (!mounted) return;
         dispatch({ type: 'SET_MODELS_LOADED' });

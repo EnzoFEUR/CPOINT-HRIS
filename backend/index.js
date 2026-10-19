@@ -27,7 +27,9 @@ import documentRouter from './routes/document.js';
 import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
-import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter } from './middleware/securityMiddleware.js';
+import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions } from './middleware/securityMiddleware.js';
+import { validateApiInput } from './middleware/requestValidation.js';
+import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
 import { verifyToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
 import './cron/attendanceJobs.js';
@@ -38,6 +40,12 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 const port = process.env.PORT || 5000;
+app.disable('x-powered-by');
+app.set('query parser', 'simple');
+app.use(securityHeaders);
+app.use(removeExposedHeaders);
+app.use('/api', protectApiResponses);
+app.use(cors(createCorsOptions()));
 
 // Response compression
 app.use(compression({
@@ -46,19 +54,11 @@ app.use(compression({
 }));
 
 // Core Middleware
-app.use(cors({
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
-    maxAge: 86400 // Cache OPTIONS preflight for 24 hours
-}));
-app.use(securityHeaders);
-app.use(removeExposedHeaders);
 app.use('/api', apiRateLimiter({ windowMs: 60 * 1000, max: 350 }));
 app.use('/api/auth', authRateLimiter());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb', parameterLimit: 1000 }));
+app.use('/api', validateApiInput);
 
 // Static brand and email assets (zero-latency WebP caching)
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '30d', immutable: true }));
@@ -111,6 +111,9 @@ app.get('/api/health', async (req, res) => {
         });
     }
 });
+
+app.use('/api', apiNotFound);
+app.use(apiErrorHandler);
 
 app.listen(port, () => {
     console.log('HRIS server running on port ' + port);

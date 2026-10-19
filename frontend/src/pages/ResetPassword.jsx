@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { API_BASE_URL } from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
-  const ticket = searchParams.get('ticket');
-  const emailParam = searchParams.get('email');
+  const location = useLocation();
+  const ticket = location.state?.resetTicket || searchParams.get('ticket');
+  const emailParam = location.state?.email || searchParams.get('email');
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,6 +21,18 @@ export default function ResetPassword() {
   const [hasValidContext, setHasValidContext] = useState(false);
 
   const navigate = useNavigate();
+
+  // Preserve old recovery links while replacing their sensitive query fields in browser history.
+  useEffect(() => {
+    if (!searchParams.has('ticket')) return;
+    const clean = new URLSearchParams(searchParams);
+    clean.delete('ticket');
+    clean.delete('email');
+    navigate({ pathname: location.pathname, search: clean.toString(), hash: location.hash }, {
+      replace: true,
+      state: { ...location.state, resetTicket: ticket, email: emailParam },
+    });
+  }, [searchParams, ticket, emailParam, location.pathname, location.hash, location.state, navigate]);
 
   // Evaluate validity of context: ticket from SMS/Emergency OR Supabase recovery session
   useEffect(() => {

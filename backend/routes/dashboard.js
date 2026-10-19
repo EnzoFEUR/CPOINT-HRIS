@@ -1,5 +1,6 @@
 import { DEFAULT_REST_DAYS, getEmployeeRestDays, getWorkPolicy, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
 import express from 'express';
+import { validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { checkRole, checkAdminOrOwnership } from '../middleware/authMiddleware.js';
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
@@ -9,6 +10,7 @@ import { isWorkforceEmployee, isAttendanceExempt, applyWorkforceFilter } from '.
 import { computeDisciplinaryStanding, isExoneratedOrCleared } from '../utils/disciplinaryStanding.js';
 
 const router = express.Router();
+router.param('id', validateUuidParam);
 const WORK_POLICY = getWorkPolicy(process.env);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,6 +37,37 @@ function manilaMinutes(iso) {
 const isLateRecord = (r) => {
     const m = manilaMinutes(r?.time_in);
     return m !== null && m > CALL_TIME_MINUTES;
+};
+
+/** True when attendance record represents an actual punch-in or present on-site status (not leave/absent). */
+const isPresentAttendance = (att) => {
+    if (!att) return false;
+    const status = (att.status || '').toLowerCase();
+    if (status === 'on leave' || status === 'absent') return false;
+    return Boolean(att.time_in) || ['present', 'late', 'half day', 'overtime'].includes(status);
+};
+
+/** Get Manila timezone date and scheduled shift context */
+const getManilaScheduleContext = () => {
+    const nowManila = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const dayOfWeek = nowManila.getDay(); // 0 = Sun, 6 = Sat
+    const isRestDay = dayOfWeek === 0 || dayOfWeek === 6;
+    const currentHour = nowManila.getHours();
+    const currentMinute = nowManila.getMinutes();
+    const isPreShift = !isRestDay && (currentHour < 8 || (currentHour === 8 && currentMinute === 0));
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[dayOfWeek];
+
+    let shiftPhase = 'Active Production';
+    if (isRestDay) {
+        shiftPhase = 'Weekend / Rest Day';
+    } else if (isPreShift) {
+        shiftPhase = 'Awaiting Shift Call Time (8:00 AM Manila)';
+    } else if (currentHour >= 17) {
+        shiftPhase = 'Post-Shift / Concluded';
+    }
+
+    return { isRestDay, isPreShift, shiftPhase, dayName };
 };
 
 /**
@@ -583,12 +616,13 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
             else if (dept.includes('HR') || dept.includes('Admin')) deptBreakdown.HR++;
         });
 
+        const scheduleCtx = getManilaScheduleContext();
         let presentTodayCount = 0;
         let lateTodayCount = 0;
         const recentLogs = [];
 
         attendances.forEach(att => {
-            if (att.date === todayStr) {
+            if (att.date === todayStr && isPresentAttendance(att)) {
                 presentTodayCount++;
                 if (isLateRecord(att)) {
                     lateTodayCount++;
@@ -636,22 +670,27 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         const forecast = computePayrollForecastFromData(employees, attendances);
 
         // 5. Cached AI briefing and insights (returns immediately if already generated)
-        const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
+        const briefingData = {
+            totalEmployees: employees.length,
+            presentCount: presentTodayCount,
+            lateCount: lateTodayCount,
+            onLeaveCount,
+            absentCount: scheduleCtx.isRestDay ? 0 : Math.max(0, employees.length - presentTodayCount - onLeaveCount),
+            attendanceRate: employees.length > 0 ? Math.round((presentTodayCount / employees.length) * 100) : 0,
+            isRestDay: scheduleCtx.isRestDay,
+            isPreShift: scheduleCtx.isPreShift,
+            shiftPhase: scheduleCtx.shiftPhase,
+            dayName: scheduleCtx.dayName,
+            departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
+        };
+
+        const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr, briefingData);
         const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal) : null;
         const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || forecast.insight } : null;
 
         // Background pre-warm: if briefing is not yet cached, generate asynchronously without blocking response
         if (!cachedBriefing) {
             setImmediate(() => {
-                const briefingData = {
-                    totalEmployees: employees.length || 1,
-                    presentCount: presentTodayCount,
-                    lateCount: lateTodayCount,
-                    onLeaveCount,
-                    absentCount: Math.max(0, (employees.length || 1) - presentTodayCount - onLeaveCount),
-                    attendanceRate: Math.round((presentTodayCount / (employees.length || 1)) * 100),
-                    departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
-                };
                 Brain.Analytics.generateWorkforceBriefing(briefingData, false, todayStr).catch(err => {
                     console.warn('[DASHBOARD_PREWARM] AI briefing pre-warm skipped:', err.message);
                 });
@@ -670,7 +709,11 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
                 weeklyTrends,
                 monthlyTrends,
                 deptPunctuality,
-                doleCompliance
+                doleCompliance,
+                isRestDay: scheduleCtx.isRestDay,
+                isPreShift: scheduleCtx.isPreShift,
+                shiftPhase: scheduleCtx.shiftPhase,
+                dayName: scheduleCtx.dayName
             },
             payrollData,
             aiData: cachedBriefing ? { briefing: cachedBriefing } : null,
@@ -697,27 +740,7 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
         const forceFresh = req.query.fresh === 'true';
         const todayStr = toDateStr(new Date());
 
-        // Instant cache hit (< 2ms) unless client explicitly requested fresh regeneration
-        if (!forceFresh) {
-            const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr);
-            if (cachedBriefing) {
-                let cachedPayrollInsight = null;
-                try {
-                    const forecast = await computePayrollForecast();
-                    if (forecast) {
-                        cachedPayrollInsight = Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal);
-                    }
-                } catch {
-                    // Non-blocking fallback
-                }
-                return res.json({ 
-                    briefing: cachedBriefing,
-                    payrollInsight: cachedPayrollInsight?.insight || null
-                });
-            }
-        }
-
-        // Parallel fetch of today's operational signals
+        // Parallel fetch of today's operational signals (< 10ms)
         const [
             { data: rawEmployees },
             { data: rawAttendances },
@@ -726,11 +749,11 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, department, role, status, job_title')
+                    .select('id, company_id, department, role, status, job_title, first_name, last_name, shift')
             ),
             supabase
                 .from('attendances')
-                .select('id, employee_id, date, status')
+                .select('id, employee_id, date, status, time_in, time_out')
                 .eq('date', todayStr),
             supabase
                 .from('leave_requests')
@@ -754,9 +777,11 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
         let presentTodayCount = 0;
         let lateTodayCount = 0;
         attendances.forEach(att => {
-            presentTodayCount++;
-            if (isLateRecord(att)) {
-                lateTodayCount++;
+            if (isPresentAttendance(att)) {
+                presentTodayCount++;
+                if (isLateRecord(att)) {
+                    lateTodayCount++;
+                }
             }
         });
 
@@ -767,9 +792,10 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             }
         });
 
-        const totalEmployees = employees.length || 1;
-        const absentCount = Math.max(0, totalEmployees - presentTodayCount - onLeaveCount);
-        const attendanceRate = Math.round((presentTodayCount / totalEmployees) * 100);
+        const scheduleCtx = getManilaScheduleContext();
+        const totalEmployees = employees.length;
+        const absentCount = scheduleCtx.isRestDay ? 0 : Math.max(0, totalEmployees - presentTodayCount - onLeaveCount);
+        const attendanceRate = totalEmployees > 0 ? Math.round((presentTodayCount / totalEmployees) * 100) : 0;
 
         const briefingData = {
             totalEmployees,
@@ -778,8 +804,39 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             onLeaveCount,
             absentCount,
             attendanceRate,
+            isRestDay: scheduleCtx.isRestDay,
+            isPreShift: scheduleCtx.isPreShift,
+            shiftPhase: scheduleCtx.shiftPhase,
+            dayName: scheduleCtx.dayName,
             departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
         };
+
+        // Cache validation check against current live metrics
+        if (!forceFresh) {
+            const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr, briefingData);
+            const isCorruptedBriefing = (b) => {
+                if (!b) return true;
+                if (b.executive_summary?.includes('single recorded employee')) return true;
+                if (b.executive_summary?.includes('critical disruption with a 0%') && totalEmployees > 1) return true;
+                return false;
+            };
+
+            if (cachedBriefing && !isCorruptedBriefing(cachedBriefing)) {
+                let cachedPayrollInsight = null;
+                try {
+                    const forecast = await computePayrollForecast();
+                    if (forecast) {
+                        cachedPayrollInsight = Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal);
+                    }
+                } catch {
+                    // Non-blocking fallback
+                }
+                return res.json({ 
+                    briefing: cachedBriefing,
+                    payrollInsight: cachedPayrollInsight?.insight || null
+                });
+            }
+        }
 
         // Concurrent execution: run workforce briefing and payroll insight in parallel
         const [briefing, payrollInsight] = await Promise.all([
@@ -963,6 +1020,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
         (rawAttendances || []).forEach(att => {
             const emp = empMap.get(att.employee_id);
             if (!emp) return; // Strictly ignore non-workforce system operators
+            if (!isPresentAttendance(att)) return; // Strictly ignore on-leave and absent records from present modal
 
             const lateMinutes = att.time_in ? getChargeableLateMinutes(att, WORK_POLICY, getEmployeeRestDays(emp)) : null;
             const entry = {
@@ -1025,7 +1083,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
             applyWorkforceFilter(
                 supabase
                     .from('employees')
-                    .select('id, department, role, shift, company_id, first_name, last_name, job_title')
+                    .select('id, department, role, shift, company_id, first_name, last_name, job_title, status, is_active')
             ),
             supabase
                 .from('attendances')
@@ -1066,7 +1124,7 @@ router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => 
         const recentLogs = [];
 
         attendances.forEach(att => {
-            if (att.date === todayStr) {
+            if (att.date === todayStr && isPresentAttendance(att)) {
                 presentTodayCount++;
                 if (isLateRecord(att)) {
                     lateTodayCount++;

@@ -1,3 +1,4 @@
+import printStylesUrl from './Show.print.css?url&no-inline';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from '../../../components/QRCode';
@@ -604,17 +605,7 @@ export default function Show() {
 
     return (
         <>
-            <style>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    #qr-print-card, #qr-print-card * { visibility: visible; }
-                    #qr-print-card {
-                        position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 20px;
-                        box-shadow: none !important; border: none !important;
-                    }
-                    .no-print, header, nav, aside { display: none !important; }
-                }
-            `}</style>
+            <link rel="stylesheet" href={printStylesUrl} />
             
             <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-24 lg:pb-6 px-4 sm:px-6 lg:px-8 font-sans relative">
                 
@@ -1060,8 +1051,8 @@ export default function Show() {
                                 <p className="font-mono font-semibold text-slate-800 text-sm">{employee.company_id || employee.id}</p>
                             </div>
                             <div>
-                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Gender</p>
-                                <p className="font-semibold text-slate-800 text-sm capitalize">{employee.gender || 'N/A'}</p>
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Sex</p>
+                                <p className="font-semibold text-slate-800 text-sm capitalize">{employee.sex || employee.gender || 'N/A'}</p>
                             </div>
                             <div>
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Birth Date</p>
@@ -1074,6 +1065,26 @@ export default function Show() {
                                 <p className="font-semibold text-slate-800 text-sm">
                                     {employee.address || 'No address registered'}
                                 </p>
+                            </div>
+                            <div className="col-span-2 pt-2 border-t border-slate-100">
+                                <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Emergency Contact</p>
+                                {employee.emergency_contact_name ? (
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold text-slate-800">
+                                        <span>{employee.emergency_contact_name}</span>
+                                        {employee.emergency_contact_relationship && (
+                                            <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded font-normal">
+                                                {employee.emergency_contact_relationship}
+                                            </span>
+                                        )}
+                                        {employee.emergency_contact_phone && (
+                                            <span className="font-mono text-xs text-slate-600">
+                                                +63 {employee.emergency_contact_phone}
+                                            </span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic">No emergency contact designated</p>
+                                )}
                             </div>
                             <div className="col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                                 <div>
@@ -1490,11 +1501,8 @@ export default function Show() {
                                                     log.status === 'Acknowledged' ? 'bg-accent-subtle text-accent border-accent/20' :
                                                     'bg-danger-subtle text-danger-ink border-danger/20'
                                                 }`}>
-                                                    {log.status !== 'Resolved' && log.status !== 'Overturned' && (
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${
-                                                            log.status === 'Acknowledged' ? 'bg-accent' :
-                                                            'bg-danger'
-                                                        }`} />
+                                                    {log.status !== 'Resolved' && log.status !== 'Overturned' && log.status !== 'Acknowledged' && (
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-danger" />
                                                     )}
                                                     <span>
                                                         {log.status === 'Resolved' ? 'Resolved' :

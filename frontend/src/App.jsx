@@ -1,10 +1,10 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import Toaster from './components/CspToaster';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Route Guards & Layouts
-import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute } from './routes/guards';
+import { ProtectedRoute, PublicOnlyRoute, RootRoute, BiometricSetupRoute, OnboardingRoute, ForcePasswordChangeRoute } from './routes/guards';
 import EmployeeModuleGate from './components/security/EmployeeModuleGate';
 import OfflineRouteGate, { isOfflineFeatureActive } from './routes/OfflineRouteGate.js';
 import useBiometricProtection from './utils/useBiometricProtection';
@@ -21,6 +21,7 @@ const Register = lazy(() => import('./pages/Register'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const ForcePasswordChange = lazy(() => import('./pages/ForcePasswordChange'));
+const EmployeeOnboarding = lazy(() => import('./pages/EmployeeOnboarding'));
 const BiometricSetup = lazy(() => import('./pages/BiometricSetup'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
@@ -121,7 +122,8 @@ function App() {
         <Route path="/verify-email" element={<Suspense fallback={AuthFallback}><VerifyEmail /></Suspense>} />
 
         {/* Mandatory Setup Routes */}
-        <Route path="/force-password-change" element={<Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense>} />
+        <Route path="/force-password-change" element={<ForcePasswordChangeRoute><Suspense fallback={AuthFallback}><ForcePasswordChange /></Suspense></ForcePasswordChangeRoute>} />
+        <Route path="/onboarding" element={<OnboardingRoute><Suspense fallback={AuthFallback}><EmployeeOnboarding /></Suspense></OnboardingRoute>} />
         <Route path="/biometric-setup" element={<BiometricSetupRoute><Suspense fallback={AuthFallback}><BiometricSetup /></Suspense></BiometricSetupRoute>} />
 
         {/* Standalone Fullscreen Terminal Views */}
@@ -200,11 +202,14 @@ function App() {
           <Route path="/employee/scanner" element={<Navigate to="/employee/qr" replace />} />
           <Route path="/employee/profile" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><MyProfile /></ProtectedRoute>} />
           <Route path="/employee/documents" element={<ProtectedRoute allowedRoles={['employee', 'admin', 'hr']}><Navigate to="/employee/profile#documents" replace /></ProtectedRoute>} />
-          <Route path="/profile" element={<MyProfile />} />
+          <Route path="/profile" element={<Navigate to="/employee/profile" replace />} />
         </Route>
+        
+        {/* Anti-Bypass Catch-All Fallback: Redirects any unknown or probed URLs to root gateway */}
+        <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-      <SpeedInsights />
+      {import.meta.env.PROD && import.meta.env.VERCEL_DEPLOYMENT && <SpeedInsights />}
     </Router>
   );
 }

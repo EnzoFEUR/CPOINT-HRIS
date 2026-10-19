@@ -386,11 +386,6 @@ function EmployeeMonthlyWorkCalendar({ employeeId, employeeName = '', className 
                         <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                             {isEmployeeView ? 'Work calendar' : 'Monthly Work Schedule & Attendance Audit'}
                         </h3>
-                        {!isEmployeeView && monthlyData?.employee?.shift && (
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                Shift: <span className="font-semibold text-slate-700">{monthlyData.employee.shift}</span> · Call Time: <span className="font-semibold text-slate-700">08:00 AM</span>
-                            </p>
-                        )}
                     </div>
                 </div>
 

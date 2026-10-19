@@ -10,6 +10,7 @@ import ActionMenu from '../../../components/ui/ActionMenu';
 import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import { fetchPendingDocumentCounts } from '../../../utils/documentApi';
+import { formatPhDisplay } from '../../../utils/phoneUtils';
 
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
@@ -29,6 +30,285 @@ function getDaysUntilArchive(emp) {
     if (!ts) return null;
     const elapsedDays = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24);
     return Math.max(0, Math.ceil(PENDING_TERMINATION_DAYS - elapsedDays));
+}
+
+/**
+ * Responsive Enterprise Employee Card
+ * Engineered for sub-360px mobile viewports through 4K displays.
+ * Features:
+ * - Anti-squish header with dedicated single operational status pill
+ * - Dedicated full-width document review and disciplinary alert callouts
+ * - Structured 3-tier metadata matrix with collision-proof 2-column compensation/shift grid
+ * - Integrated contact channels (Email & Formatted Philippine Mobile Phone)
+ * - Accessible 36px+ touch ergonomics for mobile fingers
+ */
+function EmployeeCard({ employee, docPendingCounts, copyToClipboard }) {
+    const isFactory = (employee.department || '').toLowerCase().includes('factory');
+    const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
+    const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
+    const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
+    const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
+    const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
+    const isSuspended = Boolean(
+        employee.operational_status === 'Suspended' || 
+        employee.is_suspended ||
+        employee.status === 'suspended'
+    );
+    const isTerminated = !isSuspended && Boolean(
+        employee.operational_status === 'Terminated' || 
+        employee.is_terminated ||
+        employee.status === 'terminated' ||
+        (Boolean(employee.archived_at) && employee.status !== 'active')
+    );
+    const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
+    const docInfo = docPendingCounts?.[employee.id];
+    const rawPhone = employee.phone_number || employee.phone || null;
+    const formattedPhone = rawPhone ? formatPhDisplay(rawPhone) : null;
+    const departmentDisplay = isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail Operations');
+
+    return (
+        <div
+            className={`rounded-xl p-4 border shadow-2xs transition-all duration-150 flex flex-col justify-between group ${
+                isTerminated
+                    ? 'bg-slate-50/90 border-slate-300 opacity-80 hover:opacity-100 hover:border-slate-400'
+                    : isSuspended
+                    ? 'bg-amber-50/25 border-amber-300/80 hover:border-amber-400'
+                    : 'bg-white border-slate-200/90 hover:border-slate-300 hover:shadow-xs'
+            }`}
+        >
+            <div className="space-y-3">
+                {/* Header: Avatar, Name, Company ID + Title, and Single Status Pill */}
+                <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                        <div className="relative shrink-0">
+                            <EmployeeAvatar employee={employee} size="h-11 w-11 sm:h-12 sm:w-12" />
+                            {isTerminated ? (
+                                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-rose-600 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="DOLE Separated">
+                                    <i className="ti ti-x" />
+                                </span>
+                            ) : isSuspended ? (
+                                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
+                                    <i className="ti ti-clock-pause" />
+                                </span>
+                            ) : null}
+                        </div>
+                        
+                        <div className="min-w-0 flex-1">
+                            <h4 className={`font-semibold text-sm sm:text-base leading-tight truncate transition-colors ${
+                                isTerminated ? 'text-slate-600' : 'text-slate-900 group-hover:text-accent'
+                            }`}>
+                                {employee.first_name} {employee.last_name}
+                            </h4>
+                            <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500 truncate">
+                                <span className="font-mono text-[10px] sm:text-[11px] font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                                    {companyId}
+                                </span>
+                                <span className="text-slate-300">·</span>
+                                <span className="truncate flex items-center gap-1 font-medium text-slate-600">
+                                    {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-slate-400 shrink-0 text-xs`} />}
+                                    <span className="truncate">{employee.job_title || 'General Staff'}</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Status Badge: only displayed for exception states (Terminated / Suspended) */}
+                    {(isTerminated || isSuspended) && (
+                        <div className="shrink-0 pt-0.5">
+                            {isTerminated ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                    <span className="truncate max-w-[95px]">{getDaysUntilArchive(employee) !== null ? `Archive ${getDaysUntilArchive(employee)}d` : 'Separated'}</span>
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                    Suspended
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Full-width Document Submission Banner (Interactive Callout) */}
+                {docInfo && docInfo.total > 0 && (
+                    <Link
+                        to={`/admin/documents?employee_id=${employee.id}&status=pending`}
+                        className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-900 hover:bg-amber-500/20 text-xs font-medium transition-colors shadow-2xs group/doc"
+                        title={`${docInfo.total} document(s) submitted awaiting HR review: ${docInfo.doc_titles?.join(', ') || ''}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-1.5 truncate mr-2">
+                            <i className="ti ti-file-certificate text-xs text-amber-700 shrink-0" />
+                            <span className="font-semibold text-[11px] truncate">{docInfo.total} Document{docInfo.total > 1 ? 's' : ''} Submitted</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wide shrink-0 flex items-center gap-0.5 group-hover/doc:translate-x-0.5 transition-transform">
+                            Review <i className="ti ti-chevron-right text-[10px]" />
+                        </span>
+                    </Link>
+                )}
+
+                {/* Disciplinary / Separation Notices */}
+                {isTerminated && (
+                    <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-md text-rose-900 space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-rose-700">
+                            <span className="flex items-center gap-1"><i className="ti ti-ban" /> DOLE Separated</span>
+                            <span className="font-mono text-[10px]">Access Revoked</span>
+                        </div>
+                        <p className="text-xs text-rose-800 font-medium line-clamp-1">
+                            {employee.termination_record?.reason || employee.separation_reason || 'Contract Concluded / Terminated'}
+                        </p>
+                    </div>
+                )}
+
+                {isSuspended && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200/80 rounded-md text-amber-900 space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                            <span className="flex items-center gap-1"><i className="ti ti-clock-pause" /> Disciplinary Hold</span>
+                            <span className="font-mono text-amber-700">QR Suspended</span>
+                        </div>
+                        <p className="text-xs text-amber-800 font-medium line-clamp-1">
+                            {employee.active_suspension?.reason || employee.suspension_reason || 'Serving operational suspension'}
+                        </p>
+                    </div>
+                )}
+
+                {/* Structured Details Matrix */}
+                <div className={`rounded-lg p-3 border space-y-2.5 text-xs ${
+                    isTerminated
+                        ? 'bg-slate-100/70 border-slate-200/80 text-slate-500'
+                        : 'bg-slate-50/80 border-slate-200/60'
+                }`}>
+                    {/* Line 1: Department & Biometrics */}
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded-md border truncate max-w-full ${
+                                isTerminated
+                                    ? 'bg-slate-200/70 text-slate-700 border-slate-300'
+                                    : isFactory
+                                    ? 'bg-amber-100/70 text-amber-900 border-amber-300/60'
+                                    : 'bg-blue-100/70 text-blue-900 border-blue-300/60'
+                            }`}>
+                                <i className={`ti ${isFactory ? 'ti-building-factory' : 'ti-briefcase'} text-xs shrink-0`} />
+                                <span className="truncate">{departmentDisplay}</span>
+                            </span>
+                        </div>
+
+                        <div className="shrink-0">
+                            {isBiometricEnrolled ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    <i className="ti ti-face-id text-xs text-emerald-600" /> Biometrics
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                    <i className="ti ti-alert-circle text-xs text-amber-600" /> Face Pending
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Line 2: Compensation & Schedule in a clean 2-column grid */}
+                    <div className="pt-2.5 border-t border-slate-200/70 grid grid-cols-2 gap-2">
+                        <div className="min-w-0">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block truncate">
+                                {isFactory ? 'Wage Structure' : 'Compensation'}
+                            </span>
+                            {isFactory ? (
+                                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                                    <i className="ti ti-box-multiple text-slate-500 text-xs shrink-0" />
+                                    <span className="truncate">Group Piece-Rate</span>
+                                </span>
+                            ) : (
+                                <div className="mt-0.5">
+                                    <div className="font-mono text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                                        ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        <span className="text-[10px] font-normal text-slate-500"> /day</span>
+                                    </div>
+                                    <div className="font-mono text-[10px] font-medium text-slate-500 leading-tight mt-0.5">
+                                        ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="min-w-0 text-right">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block truncate">
+                                Schedule
+                            </span>
+                            <div className="mt-0.5">
+                                <div className="font-mono text-xs font-semibold text-slate-800 leading-tight">
+                                    {isFactory ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM'}
+                                </div>
+                                <div className="text-[10px] font-medium text-slate-500 leading-tight mt-0.5 truncate">
+                                    {isFactory ? 'Factory Shift' : 'Standard Shift'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Line 3: Contact Channels */}
+                    <div className="pt-2.5 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 text-slate-600 truncate" title={employee.email}>
+                            <i className="ti ti-mail text-slate-400 text-xs shrink-0" />
+                            <span className="truncate font-medium">{employee.email || 'No email registered'}</span>
+                        </div>
+                        {formattedPhone ? (
+                            <div className="flex items-center gap-1 shrink-0 text-slate-600 font-mono text-[11px]">
+                                <i className="ti ti-phone text-slate-400 text-xs shrink-0" />
+                                <span>{formattedPhone}</span>
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+
+            {/* Card Actions Footer */}
+            <div className="pt-3 mt-1 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                <Link
+                    to={`/admin/employees/${employee.id}`}
+                    className={`flex-1 h-9 px-3.5 font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-[0.98] ${
+                        isTerminated
+                            ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                            : 'bg-slate-900 hover:bg-accent text-white'
+                    }`}
+                >
+                    <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
+                    <i className="ti ti-arrow-right text-xs shrink-0" />
+                </Link>
+
+                <ActionMenu
+                    align="right"
+                    title={`Actions for ${employee.first_name}`}
+                    triggerClassName="h-9 w-9"
+                    items={[
+                        {
+                            label: 'Documents',
+                            icon: 'ti-folders',
+                            to: `/admin/documents?employee_id=${employee.id}`,
+                        },
+                        ...(!isTerminated ? [
+                            {
+                                label: 'Edit Employee',
+                                icon: 'ti-pencil',
+                                to: `/admin/employees/${employee.id}/edit`,
+                            },
+                            {
+                                label: 'Print Badge',
+                                icon: 'ti-qrcode',
+                                to: `/admin/employees/${employee.id}`,
+                            }
+                        ] : []),
+                        { divider: true },
+                        {
+                            label: 'Copy Company ID',
+                            icon: 'ti-copy',
+                            onClick: () => copyToClipboard(companyId, 'Company ID'),
+                        }
+                    ]}
+                />
+            </div>
+        </div>
+    );
 }
 
 export default function EmployeesIndex() {
@@ -636,405 +916,29 @@ export default function EmployeesIndex() {
                     viewMode === 'grid' ? (
                         /* ── CARD GRID UI ── */
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4.5 items-stretch">
-                            {paginatedEmployees.map((employee) => {
-                                const isFactory = (employee.department || '').toLowerCase().includes('factory');
-                                const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
-                                const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
-                                const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
-                                const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
-                                const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
-                                const isSuspended = Boolean(
-                                    employee.operational_status === 'Suspended' || 
-                                    employee.is_suspended ||
-                                    employee.status === 'suspended'
-                                );
-                                const isTerminated = !isSuspended && Boolean(
-                                    employee.operational_status === 'Terminated' || 
-                                    employee.is_terminated ||
-                                    employee.status === 'terminated' ||
-                                    (Boolean(employee.archived_at) && employee.status !== 'active')
-                                );
-                                const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-
-                                return (
-                                    <div
-                                        key={employee.id}
-                                        className={`rounded-lg p-4 border shadow-2xs transition-colors duration-100 flex flex-col justify-between group ${
-                                            isTerminated
-                                                ? 'bg-slate-50/90 border-slate-300 opacity-75 hover:opacity-100 hover:border-slate-400'
-                                                : isSuspended
-                                                ? 'bg-warning-subtle/15 border-warning/20 hover:border-warning'
-                                                : 'bg-white border-slate-200 hover:border-slate-300'
-                                        }`}
-                                    >
-                                        <div className="space-y-3.5">
-                                            
-                                            {/* Top Row: Avatar & Identification */}
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <div className="relative shrink-0">
-                                                        <EmployeeAvatar employee={employee} size="h-12 w-12" />
-                                                        {isTerminated ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-danger ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="DOLE Separated">
-                                                                <i className="ti ti-x" />
-                                                            </span>
-                                                        ) : isSuspended ? (
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-warning ring-2 ring-white flex items-center justify-center text-[8px] text-white" title="Disciplinary Suspension">
-                                                                <i className="ti ti-clock-pause" />
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                    
-                                                    <div className="min-w-0 flex-1">
-                                                        <h4 className={`font-semibold text-sm sm:text-base leading-tight truncate transition-colors ${
-                                                            isTerminated ? 'text-slate-600' : 'text-slate-900 group-hover:text-accent'
-                                                        }`}>
-                                                            {employee.first_name} {employee.last_name}
-                                                        </h4>
-                                                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-medium text-slate-500 truncate">
-                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle shrink-0`} />}
-                                                            <span className="truncate">{employee.job_title || 'General Staff'}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Status indicator badge */}
-                                                <div className="shrink-0 flex flex-col items-end gap-1">
-                                                    {(() => {
-                                                        const docInfo = docPendingCounts?.[employee.id];
-                                                        if (!docInfo || docInfo.total <= 0) return null;
-                                                        return (
-                                                            <Link
-                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
-                                                                title={`${docInfo.total} document(s) submitted awaiting HR review: ${docInfo.doc_titles?.join(', ') || ''}`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <i className="ti ti-file-certificate text-xs text-amber-700" />
-                                                                <span>{docInfo.total} Doc Submitted</span>
-                                                            </Link>
-                                                        );
-                                                    })()}
-                                                    {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-danger" />
-                                                            {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
-                                                        </span>
-                                                    ) : isSuspended ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-warning-subtle text-warning-ink border border-warning/20">
-                                                            Suspended
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-surface-muted text-ink border border-line">
-                                                            Active
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Separation Notice */}
-                                            {isTerminated && (
-                                                <div className="p-2.5 bg-danger-subtle border border-danger/20 rounded-md text-danger-ink space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-danger-ink">
-                                                        <span className="flex items-center gap-1"><i className="ti ti-ban" /> DOLE Separated</span>
-                                                        <span className="font-mono text-danger-ink">Access Revoked</span>
-                                                    </div>
-                                                    <p className="text-xs text-danger-ink font-medium line-clamp-1">
-                                                        {employee.termination_record?.reason || employee.separation_reason || 'Contract Concluded / Terminated'}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {isSuspended && (
-                                                <div className="p-2.5 bg-warning-subtle border border-warning/20 rounded-md text-warning-ink space-y-0.5">
-                                                    <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-warning-ink">
-                                                        <span className="flex items-center gap-1"><i className="ti ti-clock-pause" /> Disciplinary Hold</span>
-                                                        <span className="font-mono text-warning-ink">QR Suspended</span>
-                                                    </div>
-                                                    <p className="text-xs text-warning-ink font-medium line-clamp-1">
-                                                        {employee.active_suspension?.reason || employee.suspension_reason || 'Serving operational suspension'}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* Employee Details Summary */}
-                                            <div className={`rounded-md p-3 border space-y-2.5 ${
-                                                isTerminated
-                                                    ? 'bg-slate-100/70 border-slate-200/80 text-slate-500'
-                                                    : 'bg-slate-50 border-slate-100'
-                                            }`}>
-                                                
-                                                {/* Line 1: ID & Department Tag */}
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">ID:</span>
-                                                        <span className="font-mono text-xs font-semibold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200/80">
-                                                            {companyId}
-                                                        </span>
-                                                    </div>
-
-                                                    <span className={`px-2 py-0.5 text-[10px] font-semibold uppercase rounded-md border flex items-center gap-1 shrink-0 ${
-                                                        isTerminated
-                                                            ? 'bg-slate-200 text-slate-700 border-slate-300'
-                                                            : isFactory
-                                                            ? 'bg-warning-subtle text-warning-ink border-warning/20'
-                                                            : 'bg-accent-subtle text-accent-strong border-accent/20'
-                                                    }`}>
-                                                        {isFactory ? <i className="ti ti-building-factory text-xs" /> : <i className="ti ti-briefcase text-xs" />}
-                                                        {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail')}
-                                                    </span>
-                                                </div>
-
-                                                {/* Line 2: Compensation & Schedule */}
-                                                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
-                                                    <div>
-                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
-                                                            {isFactory ? 'Wage Structure' : 'Daily / Hourly Rate'}
-                                                        </span>
-                                                        {isFactory ? (
-                                                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
-                                                                <i className="ti ti-box-multiple text-slate-500 text-xs" /> Group Piece-Rate
-                                                            </span>
-                                                        ) : (
-                                                            <span className="font-mono text-xs sm:text-sm font-semibold text-slate-700 block mt-0.5">
-                                                                ₱{daily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day <span className="text-[10px] font-medium text-slate-400">· ₱{hourly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr</span>
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="text-right">
-                                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
-                                                            Standard Schedule
-                                                        </span>
-                                                        <span className="text-[11px] font-medium text-slate-600 block mt-0.5">
-                                                            {isFactory ? '08:00 AM - 05:00 PM' : '08:00 AM - 08:00 PM'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Line 3: Email & Biometrics */}
-                                                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2 text-xs">
-                                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                        <i className="ti ti-mail text-slate-400 text-xs shrink-0" />
-                                                        <span className="text-slate-600 font-medium truncate" title={employee.email}>
-                                                            {employee.email || 'N/A'}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="shrink-0">
-                                                        {isBiometricEnrolled ? (
-                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-200/70 px-2 py-0.5 rounded border border-slate-300">
-                                                                <i className="ti ti-face-id text-xs text-slate-500" /> Biometrics
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-warning-ink bg-warning-subtle px-2 py-0.5 rounded border border-warning/20">
-                                                                <i className="ti ti-alert-circle text-xs text-warning-ink" /> Pending Face
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                            </div>
-
-                                        </div>
-
-                                        {/* Card Actions */}
-                                        <div className="pt-3.5 mt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
-                                            <Link
-                                                to={`/admin/employees/${employee.id}`}
-                                                className={`flex-1 h-8 px-3 font-medium text-xs rounded-md transition-colors duration-100 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${
-                                                    isTerminated
-                                                        ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                                                        : 'bg-slate-900 hover:bg-accent text-white'
-                                                }`}
-                                            >
-                                                <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
-                                                <i className="ti ti-arrow-right text-xs shrink-0" />
-                                            </Link>
-
-                                            <ActionMenu
-                                                align="right"
-                                                title={`Actions for ${employee.first_name}`}
-                                                items={[
-                                                    {
-                                                        label: 'Documents',
-                                                        icon: 'ti-folders',
-                                                        to: `/admin/documents?employee_id=${employee.id}`,
-                                                    },
-                                                    ...(!isTerminated ? [
-                                                        {
-                                                            label: 'Edit Employee',
-                                                            icon: 'ti-pencil',
-                                                            to: `/admin/employees/${employee.id}/edit`,
-                                                        },
-                                                        {
-                                                            label: 'Print Badge',
-                                                            icon: 'ti-qrcode',
-                                                            to: `/admin/employees/${employee.id}`,
-                                                        }
-                                                    ] : []),
-                                                    { divider: true },
-                                                    {
-                                                        label: 'Copy Company ID',
-                                                        icon: 'ti-copy',
-                                                        onClick: () => copyToClipboard(companyId, 'Company ID'),
-                                                    }
-                                                ]}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {paginatedEmployees.map((employee) => (
+                                <EmployeeCard
+                                    key={employee.id}
+                                    employee={employee}
+                                    docPendingCounts={docPendingCounts}
+                                    copyToClipboard={copyToClipboard}
+                                />
+                            ))}
                         </div>
                     ) : (
                         /* ── STACKED LIST / TABLE UI ── */
                         <div className="bg-white rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
                             
                             {/* Mobile Stacked List (Phones) */}
-                            <div className="block md:hidden divide-y divide-slate-100">
-                                {paginatedEmployees.map((employee) => {
-                                    const isFactory = (employee.department || '').toLowerCase().includes('factory');
-                                    const shoeRole = isFactory ? getShoeRoleDetails(employee.job_title) : null;
-                                    const prodGroupName = employee.production_groups?.name || parseProductionGroup(employee.shift) || 'Line A';
-                                    const daily = Number(employee.daily_rate ?? (employee.monthly_salary ? Number(employee.monthly_salary) / 26 : 0));
-                                    const hourly = Number(employee.hourly_rate ?? (daily ? daily / 8 : 0));
-                                    const companyId = employee.company_id || (employee.id ? String(employee.id).substring(0, 8) : 'CP-PASS');
-                                    const isSuspended = Boolean(
-                                        employee.operational_status === 'Suspended' || 
-                                        employee.is_suspended ||
-                                        employee.status === 'suspended'
-                                    );
-                                    const isTerminated = !isSuspended && Boolean(
-                                        employee.operational_status === 'Terminated' || 
-                                        employee.is_terminated ||
-                                        employee.status === 'terminated' ||
-                                        (Boolean(employee.archived_at) && employee.status !== 'active')
-                                    );
-                                    const isBiometricEnrolled = Boolean(employee.has_registered_biometrics || employee.biometric_baseline_path);
-
-                                    return (
-                                        <div key={`mobile-stack-${employee.id}`} className={`p-4 space-y-3 transition-colors ${
-                                            isTerminated ? 'bg-slate-50/90 border-b border-slate-200 opacity-80' : 'hover:bg-slate-50/60'
-                                        }`}>
-                                            {/* Header */}
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <EmployeeAvatar employee={employee} size="h-10 w-10" />
-                                                    <div className="min-w-0">
-                                                        <p className={`font-semibold text-sm truncate ${isTerminated ? 'text-slate-600' : 'text-slate-900'}`}>
-                                                            {employee.first_name} {employee.last_name}
-                                                        </p>
-                                                        <p className="text-xs font-medium text-slate-500 truncate flex items-center gap-1 mt-0.5">
-                                                            {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle`} />}
-                                                            {employee.job_title || 'Staff'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="shrink-0 flex flex-col items-end gap-1">
-                                                    {(() => {
-                                                        const docInfo = docPendingCounts?.[employee.id];
-                                                        if (!docInfo || docInfo.total <= 0) return null;
-                                                        return (
-                                                            <Link
-                                                                to={`/admin/documents?employee_id=${employee.id}&status=pending`}
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shadow-2xs"
-                                                                title={`${docInfo.total} document(s) submitted awaiting HR review`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <i className="ti ti-file-certificate text-xs text-amber-700" />
-                                                                <span>{docInfo.total} Doc Submitted</span>
-                                                            </Link>
-                                                        );
-                                                    })()}
-                                                    {isTerminated ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-danger-subtle text-danger-ink border border-danger/20">
-                                                            {getDaysUntilArchive(employee) !== null ? `Pending Archive (${getDaysUntilArchive(employee)}d)` : 'Separated'}
-                                                        </span>
-                                                    ) : isSuspended ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-warning-subtle text-warning-ink border border-warning/20">
-                                                            Suspended
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-surface-muted text-ink border border-line">
-                                                            Active
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Stack Details Box */}
-                                            <div className="bg-slate-50 rounded-md p-3 border border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                                                <div>
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">ID & Dept</span>
-                                                    <span className="font-mono font-semibold text-slate-700 block">{companyId}</span>
-                                                    <span className="text-[11px] font-medium text-slate-600 block truncate">
-                                                        {isFactory ? `${prodGroupName} · Factory` : (employee.department || 'Retail')}
-                                                    </span>
-                                                </div>
-
-                                                <div className="text-right">
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Wage Basis</span>
-                                                    {isFactory ? (
-                                                        <span className="text-xs font-semibold text-warning-ink block">Group Piece-Rate</span>
-                                                    ) : (
-                                                        <span className="font-mono font-semibold text-ink block">
-                                                            ₱{daily.toFixed(2)}/day <span className="text-[10px] font-medium text-slate-400">· ₱{hourly.toFixed(2)}/hr</span>
-                                                        </span>
-                                                    )}
-                                                    <span className="text-[10px] font-semibold text-slate-400 block">
-                                                        {isBiometricEnrolled ? 'Biometrics Registered' : 'Face Pending'}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Action links */}
-                                            <div className="flex items-center gap-2 pt-1">
-                                                <Link
-                                                    to={`/admin/employees/${employee.id}`}
-                                                    className={`flex-1 h-8 text-center font-medium text-xs rounded-md transition-colors duration-100 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                                                        isTerminated
-                                                            ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                                                            : 'bg-slate-900 hover:bg-accent text-white'
-                                                    }`}
-                                                >
-                                                    <span>{isTerminated ? 'Review Record' : 'View Profile'}</span>
-                                                    <i className="ti ti-arrow-right text-xs" />
-                                                </Link>
-
-                                                <ActionMenu
-                                                    align="right"
-                                                    title={`Actions for ${employee.first_name}`}
-                                                    items={[
-                                                        {
-                                                            label: 'Documents',
-                                                            icon: 'ti-folders',
-                                                            to: `/admin/documents?employee_id=${employee.id}`,
-                                                        },
-                                                        ...(!isTerminated ? [
-                                                            {
-                                                                label: 'Edit Employee',
-                                                                icon: 'ti-pencil',
-                                                                to: `/admin/employees/${employee.id}/edit`,
-                                                            },
-                                                            {
-                                                                label: 'Print Badge',
-                                                                icon: 'ti-qrcode',
-                                                                to: `/admin/employees/${employee.id}`,
-                                                            }
-                                                        ] : []),
-                                                        { divider: true },
-                                                        {
-                                                            label: 'Copy Company ID',
-                                                            icon: 'ti-copy',
-                                                            onClick: () => copyToClipboard(companyId, 'Company ID'),
-                                                        }
-                                                    ]}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div className="block md:hidden p-3.5 sm:p-4 space-y-3 bg-slate-50/50">
+                                {paginatedEmployees.map((employee) => (
+                                    <EmployeeCard
+                                        key={`table-mobile-${employee.id}`}
+                                        employee={employee}
+                                        docPendingCounts={docPendingCounts}
+                                        copyToClipboard={copyToClipboard}
+                                    />
+                                ))}
                             </div>
 
                             {/* Desktop Stacked Table View (Tablet & Desktop) */}

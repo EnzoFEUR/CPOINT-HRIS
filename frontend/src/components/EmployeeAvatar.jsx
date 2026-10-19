@@ -3,8 +3,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 // Global in-memory cache to remember loaded/failed URLs across component mounts and re-renders
 const urlStatusCache = new Map();
 
+// Scalable blank profile silhouette (Facebook / modern enterprise default profile standard)
+export const BlankProfilePhoto = ({ className = 'w-full h-full select-none pointer-events-none' }) => (
+    <svg
+        viewBox="0 0 100 100"
+        fill="currentColor"
+        className={className}
+        aria-hidden="true"
+    >
+        <circle cx="50" cy="38" r="18" />
+        <path d="M 0 100 L 0 92 C 12 72, 30 64, 50 64 C 70 64, 88 72, 100 92 L 100 100 Z" />
+    </svg>
+);
+
 /**
- * Employee avatar component with photo support and initials fallback.
+ * Employee avatar component with photo support and Facebook-style blank profile photo fallback.
  */
 export const EmployeeAvatar = ({
     employee = null,
@@ -16,9 +29,7 @@ export const EmployeeAvatar = ({
     employeeId = '',
     photoUrl = '',
     avatarUrl = '',
-    department = '',
     size = 'h-12 w-12',
-    textSize = '',
     rounded = 'rounded-md',
     theme = 'auto', // 'auto', 'indigo', 'blue', 'amber', 'emerald', 'purple', 'cyan', 'red', 'dark', 'gradient'
     border = 'border border-slate-200',
@@ -27,29 +38,10 @@ export const EmployeeAvatar = ({
     showOnlineStatus = false,
     isOnline = false,
 }) => {
-    // 1. Resolve Name and Initials
+    // 1. Resolve Name
     const resolvedFirstName = firstName || employee?.first_name || '';
     const resolvedLastName = lastName || employee?.last_name || '';
     const resolvedName = name || employeeName || employee?.name || employee?.employee_name || `${resolvedFirstName} ${resolvedLastName}`.trim();
-
-    const initials = useMemo(() => {
-        if (resolvedFirstName && resolvedLastName) {
-            return `${resolvedFirstName.charAt(0)}${resolvedLastName.charAt(0)}`.toUpperCase();
-        }
-        if (resolvedName) {
-            const parts = resolvedName.trim().split(' ').filter(Boolean);
-            if (parts.length > 1) {
-                return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
-            }
-            if (parts.length === 1) {
-                return parts[0].slice(0, 2).toUpperCase();
-            }
-        }
-        if (resolvedFirstName) {
-            return resolvedFirstName.slice(0, 2).toUpperCase();
-        }
-        return 'EM';
-    }, [resolvedFirstName, resolvedLastName, resolvedName]);
 
     // 2. Resolve Avatar Image Source URL
     const resolvedAvatarSrc = useMemo(() => {
@@ -100,38 +92,16 @@ export const EmployeeAvatar = ({
         setImgStatus('failed');
     };
 
-    // 4. Resolve Visual Theme
-    const resolvedDept = (department || employee?.department || '').toLowerCase();
-    const isFactory = resolvedDept.includes('factory') || resolvedDept.includes('plant') || resolvedDept.includes('warehouse');
-
+    // 4. Resolve Visual Theme for Blank Profile Background & Silhouette
     const themeClass = useMemo(() => {
-        if (theme === 'auto') {
-            return isFactory ? 'bg-surface-muted text-ink' : 'bg-accent-subtle text-accent-strong';
+        if (theme === 'dark') {
+            return 'bg-slate-800 text-slate-500';
         }
-        switch (theme) {
-            case 'amber': return 'bg-surface-muted text-ink';
-            case 'blue': return 'bg-accent-subtle text-accent-strong';
-            case 'indigo': return 'bg-accent-subtle text-accent-strong';
-            case 'emerald': return 'bg-surface-muted text-ink';
-            case 'purple': return 'bg-accent-subtle text-accent-strong';
-            case 'cyan': return 'bg-accent-subtle text-accent-strong';
-            case 'red': return 'bg-surface-muted text-ink';
-            case 'dark': return 'bg-slate-900 text-white';
-            case 'gradient': return 'bg-accent text-white';
-            default: return 'bg-surface-muted text-ink';
+        if (theme === 'gradient') {
+            return 'bg-accent/15 text-accent';
         }
-    }, [theme, isFactory]);
-
-    // 5. Resolve Text Size
-    const resolvedTextSize = useMemo(() => {
-        if (textSize) return textSize;
-        if (size.includes('h-9') || size.includes('h-8') || size.includes('w-9')) return 'text-xs';
-        if (size.includes('h-10') || size.includes('w-10')) return 'text-xs sm:text-sm';
-        if (size.includes('h-11') || size.includes('h-12') || size.includes('w-12')) return 'text-sm';
-        if (size.includes('h-14') || size.includes('h-16') || size.includes('w-16')) return 'text-base sm:text-lg';
-        if (size.includes('h-24') || size.includes('h-28') || size.includes('h-32') || size.includes('h-36')) return 'text-3xl sm:text-4xl';
-        return 'text-sm';
-    }, [textSize, size]);
+        return 'bg-slate-200 text-slate-400';
+    }, [theme]);
 
     const isLoaded = imgStatus === 'loaded';
     const isFailed = imgStatus === 'failed';
@@ -141,11 +111,11 @@ export const EmployeeAvatar = ({
             onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); return false; }}
             style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
             className={`relative ${size} ${rounded} overflow-hidden shrink-0 ${border} ${shadow} ${themeClass} flex items-center justify-center select-none ${className}`}
+            title={resolvedName || 'Employee profile'}
+            aria-label={resolvedName || 'Employee profile'}
         >
-            {/* Initials fallback */}
-            <span className={`font-black ${resolvedTextSize} tracking-wide select-none pointer-events-none`}>
-                {initials}
-            </span>
+            {/* Blank profile photo fallback (Facebook style) */}
+            <BlankProfilePhoto className="w-full h-full select-none pointer-events-none" />
 
             {/* Photo */}
             {resolvedAvatarSrc && !isFailed && (

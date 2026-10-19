@@ -474,7 +474,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                 <i className="ti ti-clock text-base" />
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Hardware Lease Expiry</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Terminal approval expires</span>
                 <span className="font-mono text-slate-800 text-xs font-semibold">
                   {new Date(enrollment.device.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(enrollment.device.expires_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -627,6 +627,20 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                     <i className={`ti ti-refresh text-xs ${busy ? 'animate-spin' : ''}`} />
                     <span>Sync Pending Captures</span>
                   </button>
+
+                  {canEnroll && (
+                    <button
+                      type="button"
+                      disabled={busy || offline}
+                      onClick={() => perform(async () => {
+                        await enrollOfflineTerminal(operator, selectedSite);
+                        setMessage('Terminal approval renewed. The employee roster is up to date.');
+                      })}
+                      className="h-9 px-3.5 rounded-md bg-surface border border-line text-ink hover:bg-canvas text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Renew terminal approval
+                    </button>
+                  )}
 
                   <button
                     type="button"

@@ -296,12 +296,34 @@ Respond with strictly valid JSON:
 
   Analytics: {
     /**
-     * Fast retrieval of cached daily executive workforce briefing (aligned to Manila timezone)
+     * Fast retrieval of cached daily executive workforce briefing (aligned to Manila timezone).
+     * If live operational metrics are provided, checks the specific state cache key first.
      */
-    getCachedBriefing(dateStr = null) {
+    getCachedBriefing(dateStr = null, data = null) {
       const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-      const cacheKey = `workforce_briefing_${today}`;
-      return aiCache.get(cacheKey) || null;
+      if (data) {
+        const specificKey = `workforce_briefing_${today}_p${data.presentCount || 0}_l${data.lateCount || 0}_lv${data.onLeaveCount || 0}_tot${data.totalEmployees || 0}`;
+        const specific = aiCache.get(specificKey);
+        if (specific) return specific;
+      }
+      return aiCache.get(`workforce_briefing_${today}`) || null;
+    },
+
+    /**
+     * Bust all daily briefing caches (e.g. when an employee clocks in/out or takes leave)
+     */
+    invalidateBriefing(dateStr = null) {
+      try {
+        const keys = aiCache.keys();
+        const targetPrefix = dateStr ? `workforce_briefing_${dateStr}` : 'workforce_briefing_';
+        keys.forEach(k => {
+          if (k.startsWith(targetPrefix)) {
+            aiCache.del(k);
+          }
+        });
+      } catch (err) {
+        console.warn('[BRAIN_ANALYTICS] Invalidate briefing error:', err.message);
+      }
     },
 
     /**
@@ -315,31 +337,43 @@ Respond with strictly valid JSON:
 
     /**
      * Generate daily executive workforce briefing with Manila timezone alignment
-     * Features: Single-flight promise coalescing and 24-hour cache TTL
+     * Features: Single-flight promise coalescing, dynamic metric-aware cache keys, and schedule context
      */
     async generateWorkforceBriefing(data, forceFresh = false, dateStr = null) {
       const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-      const cacheKey = `workforce_briefing_${today}`;
-      if (!forceFresh && aiCache.has(cacheKey)) {
-        return aiCache.get(cacheKey);
+      const specificKey = `workforce_briefing_${today}_p${data.presentCount || 0}_l${data.lateCount || 0}_lv${data.onLeaveCount || 0}_tot${data.totalEmployees || 0}`;
+      const dateKey = `workforce_briefing_${today}`;
+
+      if (!forceFresh && aiCache.has(specificKey)) {
+        return aiCache.get(specificKey);
       }
 
       // Single-flight coalescing: Attach concurrent requests to in-flight promise to prevent duplicate Gemini calls
-      if (!forceFresh && inFlightPromises.has(cacheKey)) {
-        return await inFlightPromises.get(cacheKey);
+      if (!forceFresh && inFlightPromises.has(specificKey)) {
+        return await inFlightPromises.get(specificKey);
       }
 
       const executionPromise = (async () => {
         const systemInstruction = `You are the Chief Workforce Intelligence AI for C-Point HRIS (a shoe manufacturing enterprise in Marikina, Philippines).
 Transform workforce attendance and leave metrics into concise, highly actionable, executive-level briefings for HR Management. Be direct, professional, and clear.`;
 
-        const prompt = `Analyze today's workforce data:
-Total Employees: ${data.totalEmployees || 0}
-Present Today: ${data.presentCount || 0}
-Late Count: ${data.lateCount || 0}
-On Leave: ${data.onLeaveCount || 0}
-Absent: ${data.absentCount || 0}
-Department Breakdown: ${JSON.stringify(data.departments || [])}
+        const prompt = `Analyze today's workforce operational data:
+Calendar Date: ${today} (${data.dayName || 'Work Day'})
+Operational Phase: ${data.shiftPhase || 'Active Shift'}
+Is Scheduled Rest Day / Weekend: ${data.isRestDay ? 'YES' : 'NO'}
+Total Active Workforce: ${data.totalEmployees || 0}
+Present On-Site: ${data.presentCount || 0}
+Late Count (After 8:00 AM Call Time): ${data.lateCount || 0}
+On Approved Leave: ${data.onLeaveCount || 0}
+Unaccounted / Absent: ${data.absentCount || 0}
+Attendance Rate: ${data.attendanceRate || 0}%
+Department Headcount Distribution: ${JSON.stringify(data.departments || [])}
+
+Operational Directives:
+- If today is a Scheduled Rest Day / Weekend and attendance is 0, report normal weekend standby/rest day operational status. Do NOT report a crisis, disruption, or absence emergency.
+- If it is before the 8:00 AM call time (Pre-Shift), report workforce is awaiting shift start.
+- If Total Active Workforce is greater than 1, never state or imply that there is only 1 employee.
+- When attendance rate is high, highlight high operational readiness and factory throughput.
 
 Provide a comprehensive workforce analysis in strictly valid JSON:
 {
@@ -360,37 +394,59 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
 
         try {
           const raw = await executeGemini(prompt, systemInstruction, { isJson: true, timeoutMs: 6000 });
+
+          const defaultSummary = data.isRestDay
+            ? `Facility operations are on scheduled weekend/rest-day standby. Active production lines resume next scheduled shift with ${data.totalEmployees || 0} rostered personnel.`
+            : (data.isPreShift
+              ? `Shift call time begins at 8:00 AM Manila time. Currently ${data.presentCount || 0} of ${data.totalEmployees || 0} personnel checked in early.`
+              : `Workforce attendance is operating at ${data.attendanceRate || 0}% with ${data.presentCount || 0} of ${data.totalEmployees || 0} active staff on site today.`);
+
           const parsed = safeParseJson(raw, {
-            executive_summary: `Workforce attendance is operating at ${data.attendanceRate || 95}% with ${data.presentCount || 0} active staff on site today.`,
-            punctuality_grade: 'A',
-            attendance_rate_percent: data.attendanceRate || 95,
-            top_performing_department: 'Factory Production',
-            department_needs_attention: 'None',
-            key_insights: ['Attendance levels meet target factory quota.', 'Morning shifts clocked in within standard grace periods.'],
-            actionable_recommendations: ['Monitor afternoon departure logs.', 'Review pending leave approvals for upcoming cutoffs.']
+            executive_summary: defaultSummary,
+            punctuality_grade: data.isRestDay ? 'A' : (data.lateCount > 2 ? 'B' : 'A'),
+            attendance_rate_percent: data.attendanceRate || (data.isRestDay ? 100 : 0),
+            top_performing_department: data.departments?.[0]?.name || 'Factory Production',
+            department_needs_attention: data.lateCount > 2 ? 'Factory Production' : 'None',
+            key_insights: data.isRestDay
+              ? ['Scheduled weekend / rest day operations active.', 'Facility security and maintenance telemetry operational.']
+              : [`${data.presentCount || 0} active personnel logged on site.`, 'Standard shift monitoring active.'],
+            actionable_recommendations: data.isRestDay
+              ? ['Maintain regular gate security protocols.', 'Verify shift allocations for upcoming production week.']
+              : ['Monitor afternoon departure logs.', 'Review pending leave approvals for upcoming cutoffs.']
           });
 
-          // 24-Hour Cache TTL (86,400 seconds) for the current calendar day
-          aiCache.set(cacheKey, parsed, 86400);
+          // Dynamic multi-tiered cache: specific metric state + date fallback
+          aiCache.set(specificKey, parsed, 86400);
+          aiCache.set(dateKey, parsed, 86400);
           return parsed;
         } catch (err) {
           console.warn('[BRAIN_ANALYTICS] Briefing fallback active:', err.message);
+          const defaultSummary = data.isRestDay
+            ? `Facility operations are on scheduled weekend/rest-day standby. Active production lines resume next scheduled shift with ${data.totalEmployees || 0} rostered personnel.`
+            : (data.isPreShift
+              ? `Shift call time begins at 8:00 AM Manila time. Currently ${data.presentCount || 0} of ${data.totalEmployees || 0} personnel checked in early.`
+              : `Workforce operational capacity is stable with ${data.presentCount || 0} of ${data.totalEmployees || 0} active personnel on site.`);
+
           return {
-            executive_summary: `Workforce operational capacity is stable with ${data.presentCount || 0} active personnel on site today.`,
-            punctuality_grade: 'A',
-            attendance_rate_percent: data.attendanceRate || 95,
-            top_performing_department: 'Production',
+            executive_summary: defaultSummary,
+            punctuality_grade: data.isRestDay ? 'A' : (data.lateCount > 2 ? 'B' : 'A'),
+            attendance_rate_percent: data.attendanceRate || (data.isRestDay ? 100 : 0),
+            top_performing_department: data.departments?.[0]?.name || 'Production',
             department_needs_attention: 'None',
-            key_insights: ['Stable daily workforce volume.', 'Real-time telemetry active.'],
-            actionable_recommendations: ['Maintain regular shift monitoring.'],
+            key_insights: data.isRestDay
+              ? ['Weekend rest-day schedule active.', 'Real-time telemetry monitoring.']
+              : ['Stable daily workforce volume.', 'Real-time telemetry active.'],
+            actionable_recommendations: data.isRestDay
+              ? ['Maintain gate security protocols.']
+              : ['Maintain regular shift monitoring.'],
             fallback: true
           };
         } finally {
-          inFlightPromises.delete(cacheKey);
+          inFlightPromises.delete(specificKey);
         }
       })();
 
-      inFlightPromises.set(cacheKey, executionPromise);
+      inFlightPromises.set(specificKey, executionPromise);
       return await executionPromise;
     },
 

@@ -49,7 +49,7 @@ const loadAuthUser = async token => {
         return null;
     }
 
-    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate';
+    const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
 
     // Fetch custom user details omitting heavy biometric vector blobs
     let { data: employee } = await supabase
@@ -79,9 +79,16 @@ const loadAuthUser = async token => {
     const metaRole = user.user_metadata?.role;
     const resolvedRole = employee?.role || metaRole || (user.email === 'admin@c-point.com' ? 'admin' : (user.role === 'admin' ? 'admin' : 'employee'));
 
+    const metaPhone = user.user_metadata?.phone || (user.phone ? String(user.phone).replace(/^\+63/, '') : null);
+
     const resolvedUser = { 
         ...user, 
         ...(employee || {}),
+        sex: employee?.gender || null,
+        phone: employee?.phone || metaPhone || null,
+        emergency_contact_name: employee?.emergency_contact_name || user.user_metadata?.emergency_contact_name || null,
+        emergency_contact_phone: employee?.emergency_contact_phone || user.user_metadata?.emergency_contact_phone || null,
+        emergency_contact_relationship: employee?.emergency_contact_relationship || user.user_metadata?.emergency_contact_relationship || null,
         role: resolvedRole,
         employee_identity_verified: hasVerifiedEmployeeIdentity(user, employee),
         role_verified: hasVerifiedEmployeeRole(user, employee)
@@ -115,7 +122,31 @@ export const verifyToken = async (req, res, next) => {
         finally { if (pendingAuthUsers.get(token) === pending) pendingAuthUsers.delete(token); }
         if (!resolvedUser) return res.status(401).json({ error: 'Unauthorized' });
     }
+    if (resolvedUser.employee_identity_verified !== true || resolvedUser.role_verified !== true) {
+        return res.status(403).json({ error: 'A verified employee account is required.' });
+    }
     const resolvedRole = resolvedUser.role;
+
+    // Enterprise Mandatory Password Change Enforcement:
+    // When a user requires a password change, strictly deny access to all workforce/payroll/attendance APIs
+    // except the acknowledgement endpoint (/api/attendance/password-changed), password-rotation endpoints,
+    // and non-sensitive session metadata.
+    if (resolvedUser.requires_password_change) {
+        const urlPath = req.originalUrl || req.url || '';
+        const isPasswordChangeAllowed = (
+            urlPath.includes('/api/attendance/password-changed') ||
+            urlPath.includes('/api/profile/change-password') ||
+            urlPath.includes('/api/profile/request-password-otp') ||
+            (req.method === 'GET' && (urlPath.includes('/api/profile') || urlPath.includes('/api/notifications')))
+        );
+        if (!isPasswordChangeAllowed) {
+            return res.status(403).json({
+                error: 'PASSWORD_CHANGE_REQUIRED: Mandatory password change required before accessing system resources.',
+                code: 'PASSWORD_CHANGE_REQUIRED',
+                redirectUrl: '/force-password-change'
+            });
+        }
+    }
 
     // Enterprise DOLE & BIR 2316 Retention Policy:
     // Separated personnel retain read-only portal access to their personal archive (dashboard,

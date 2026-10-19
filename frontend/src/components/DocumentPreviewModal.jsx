@@ -187,6 +187,19 @@ export default function DocumentPreviewModal({
                             </>
                         )}
 
+                        {onDelete && (
+                            <button
+                                type="button"
+                                disabled={isReviewing}
+                                onClick={() => onDelete(doc)}
+                                title="Delete document file"
+                                aria-label="Delete document"
+                                className="h-8 w-8 bg-surface hover:bg-danger-subtle text-ink-muted hover:text-danger-ink rounded-md border border-line hover:border-danger/30 transition-colors duration-100 shadow-2xs flex items-center justify-center cursor-pointer disabled:opacity-50"
+                            >
+                                <i className="ti ti-trash text-xs" />
+                            </button>
+                        )}
+
                         <div className="h-4 w-px bg-line mx-0.5 hidden sm:block" />
 
                         <button
@@ -303,23 +316,9 @@ export default function DocumentPreviewModal({
                         )}
                     </div>
 
-                    {/* Admin Approval / Rejection / Reopen / Delete buttons inside the preview */}
+                    {/* Admin Approval / Rejection / Reopen buttons inside the preview */}
                     {isAdmin && (
                         <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                            {onDelete && (
-                                <button
-                                    type="button"
-                                    disabled={isReviewing}
-                                    onClick={() => onDelete(doc)}
-                                    title="Delete document file"
-                                    aria-label="Delete document"
-                                    className="h-8 px-2.5 text-ink-subtle hover:text-danger-ink hover:bg-danger-subtle border border-transparent hover:border-danger/30 rounded-md text-xs font-medium transition-colors duration-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 mr-1"
-                                >
-                                    <i className="ti ti-trash text-xs" />
-                                    <span className="hidden sm:inline">Delete</span>
-                                </button>
-                            )}
-
                             {doc.status === 'approved' ? (
                                 <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-success-subtle text-success-ink border border-success/30 rounded-md text-xs font-medium">

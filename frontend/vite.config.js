@@ -1,19 +1,31 @@
 import { defineConfig, loadEnv } from 'vite';
-import { cwd } from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { env as runtimeEnv } from 'node:process';
 import react from '@vitejs/plugin-react';
 import { offlineAssetManifest } from './offlineAssets.js';
+import { frontendSecurityHeaders } from '../shared/securityPolicy.mjs';
+import { DEV_NONCE_PLACEHOLDER, createBackendProxy, frontendHttpSecurity } from './devSecurity.mjs';
+
+const frontendRoot = fileURLToPath(new URL('.', import.meta.url));
+const allowedFsPaths = [frontendRoot, fileURLToPath(new URL('../shared', import.meta.url)), fileURLToPath(new URL('../node_modules', import.meta.url))];
+
+const securityHeadersFor = mode => {
+  const env = loadEnv(mode, frontendRoot, 'VITE_');
+  return frontendSecurityHeaders({ apiUrl: env.VITE_API_URL, supabaseUrl: env.VITE_SUPABASE_URL, modelUrl: env.VITE_MODEL_URL, development: mode === 'development', nonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined });
+};
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), offlineAssetManifest({ enabled: loadEnv(mode, cwd(), 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
+  plugins: [frontendHttpSecurity(securityHeadersFor(mode), { development: mode === 'development', allowedFsPaths }), react(), offlineAssetManifest({ enabled: loadEnv(mode, frontendRoot, 'VITE_').VITE_ENABLE_OFFLINE_ATTENDANCE === 'true' })],
+  html: { cspNonce: mode === 'development' ? DEV_NONCE_PLACEHOLDER : undefined },
+  resolve: { alias: [{ find: /^react-hot-toast$/, replacement: 'react-hot-toast/headless' }] },
+  define: { 'import.meta.env.VERCEL_DEPLOYMENT': JSON.stringify(runtimeEnv.VERCEL === '1') },
   server: {
+    fs: { allow: allowedFsPaths },
     proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000', // Change 8000 to your backend server port
-        changeOrigin: true,
-        secure: false,
-      },
+      '/api': createBackendProxy(loadEnv(mode, frontendRoot, 'VITE_').VITE_API_URL),
     },
   },
+  preview: { headers: securityHeadersFor(mode) },
   esbuild: {
     drop: mode === 'production' ? ['console', 'debugger'] : [],
   },
@@ -71,6 +83,9 @@ export default defineConfig(({ mode }) => ({
             }
             if (normalizedId.includes('dayjs')) {
               return 'vendor-dayjs';
+            }
+            if (normalizedId.includes('@dropdowns/psgc')) {
+              return 'vendor-psgc';
             }
             return 'vendor-core';
           }

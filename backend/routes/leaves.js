@@ -1,4 +1,5 @@
 import express from 'express';
+import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
 import { createAuditLog } from './auditLogs.js';
@@ -86,6 +87,7 @@ export function refreshLeaveCredits(client, employeeId) {
  */
 export function createLeaveCreditsRouter(client = supabase, notify = createNotification, audit = createAuditLog) {
     const router = express.Router();
+    router.param('id', validateUuidParam);
     router.use((req, res, next) => {
         res.setHeader('Cache-Control', 'no-store');
         if (!req.user?.id) return res.status(401).json({ error: 'Authentication required.' });
@@ -416,6 +418,7 @@ export function createLeaveCreditsRouter(client = supabase, notify = createNotif
  */
 export function createLeavesRouter(client = supabase, notify = createNotification, audit = createAuditLog) {
     const router = express.Router();
+    router.param('id', validateRecordId);
 
     // Authenticated access boundary
     router.use((req, res, next) => {
