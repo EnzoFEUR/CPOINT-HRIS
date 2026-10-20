@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../../shared/passwordPolicy.mjs';
 import { API_BASE_URL } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -104,7 +105,7 @@ export default function ResetPassword() {
 
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'Failed to update password.');
+          throw new Error(isPasswordReuseError(data) ? PASSWORD_REUSE_MESSAGE : data.error || 'Failed to update password.');
         }
 
         await supabase.auth.signOut().catch(() => {});
@@ -117,7 +118,7 @@ export default function ResetPassword() {
       }
 
       const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) throw updateError;
 
       await supabase.auth.signOut().catch(() => {});
       localStorage.removeItem('user');
@@ -127,8 +128,8 @@ export default function ResetPassword() {
       setTimeout(() => navigate('/login', { replace: true }), 2000);
 
     } catch (err) {
-      console.error('[RESET_PASSWORD_ERROR]', err);
-      setError(err.message || 'Error updating password.');
+      console.error('[RESET_PASSWORD_ERROR]', { code: err?.code || 'UNAVAILABLE' });
+      setError(isPasswordReuseError(err) ? PASSWORD_REUSE_MESSAGE : err.message || 'Error updating password.');
     } finally {
       setLoading(false);
     }
@@ -198,6 +199,7 @@ export default function ResetPassword() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
+                  maxLength={1024}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"
@@ -259,6 +261,7 @@ export default function ResetPassword() {
                 <input
                   type={showConfirm ? 'text' : 'password'}
                   value={confirmPassword}
+                  maxLength={1024}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   placeholder="••••••••••••"

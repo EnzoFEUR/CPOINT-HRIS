@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchWithAuth } from '../../../utils/api';
 import { supabase } from '../../../supabaseClient';
-import { WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from '../../../../../shared/workPolicy.mjs';
+import { STATUTORY_INPUT_LIMITS, isValidStatutoryInput, getStatutorySettingsError } from '../../../../../shared/statutorySettings.mjs';
 
 const DEFAULT_SETTINGS = {
     sss_employee_rate: 5,         // 5%
@@ -35,7 +35,7 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
     <div>
         <label htmlFor={name} className="block text-xs font-medium text-slate-700 mb-1.5">{label}</label>
         <input
-            type="number"
+            type="text"
             min="0"
             id={name}
             name={name}
@@ -43,9 +43,9 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
             onChange={onChange}
             className={`w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none ${FOCUS_STYLES[focusColor] || FOCUS_STYLES.blue} transition-colors duration-100 shadow-2xs`}
             {...props}
-            {...WORK_POLICY_INPUT_LIMITS[name]}
-            required={Boolean(WORK_POLICY_INPUT_LIMITS[name]) || props.required}
-            inputMode={WORK_POLICY_INPUT_LIMITS[name]?.step === 1 ? 'numeric' : 'decimal'}
+            {...STATUTORY_INPUT_LIMITS[name]}
+            required={Boolean(STATUTORY_INPUT_LIMITS[name]) || props.required}
+            inputMode={STATUTORY_INPUT_LIMITS[name]?.step === 1 ? 'numeric' : 'decimal'}
         />
         {hint && <p className="text-[11px] text-slate-400 mt-1">{hint}</p>}
     </div>
@@ -119,8 +119,8 @@ export default function StatutorySettings({ onBack }) {
             return;
         }
 
-        if (WORK_POLICY_INPUT_LIMITS[name]) {
-            if (!isValidWorkPolicyInput(name, value)) return;
+        if (STATUTORY_INPUT_LIMITS[name]) {
+            if (!isValidStatutoryInput(name, value)) return;
             setSettings(prev => ({ ...prev, [name]: value }));
             return;
         }
@@ -157,11 +157,10 @@ export default function StatutorySettings({ onBack }) {
             return;
         }
 
-        for (const name of Object.keys(WORK_POLICY_INPUT_LIMITS)) {
-            if (!isValidWorkPolicyInput(name, settings[name])) {
-                setErrorMessage('Enter attendance policy values within the allowed limits. Use whole minutes and up to two decimal places for the deduction rate.');
-                return;
-            }
+        const validationError = getStatutorySettingsError(settings);
+        if (validationError) {
+            setErrorMessage(validationError);
+            return;
         }
 
         setLoading(true);

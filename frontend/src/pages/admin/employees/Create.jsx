@@ -7,6 +7,8 @@ import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines } from '../../../utils/factoryRoles';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
+import EmailDomainWarning from '../../../components/EmailDomainWarning';
+import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
 
 export default function Create({ errors = [], defaultValues = {} }) {
     const navigate = useNavigate();
@@ -23,6 +25,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
     const [selectedGroupId, setSelectedGroupId] = useState('');
     const [isCustomLine, setIsCustomLine] = useState(false);
     const [phone, setPhone] = useState(defaultValues.phone ? formatPhPhone(defaultValues.phone) : '');
+    const [emailInput, setEmailInput] = useState(defaultValues.email || '');
     const phoneValidation = useMemo(() => validatePhPhone(phone), [phone]);
     const [firstName, setFirstName] = useState(defaultValues.first_name || '');
     const [lastName, setLastName] = useState(defaultValues.last_name || '');
@@ -121,6 +124,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     const [rawHourlyPay, setRawHourlyPay] = useState(defaultValues.hourly_rate || '');
     const [displayHourlyPay, setDisplayHourlyPay] = useState(defaultValues.hourly_rate ? formatSalary(defaultValues.hourly_rate) : '');
+    const [payError, setPayError] = useState('');
 
     function formatSalary(value) {
         let strVal = String(value);
@@ -131,7 +135,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
     }
 
     const handleDailyPayChange = (e) => {
-        const value = e.target.value.replace(/[^0-9.]/g, '');
+        const value = e.target.value.replace(/,/g, '').trim();
+        if (!isEmployeePayInput(value)) {
+            setPayError(getEmployeePayError({ daily_rate: value }));
+            return;
+        }
+        setPayError('');
         setRawDailyPay(value);
         setDisplayDailyPay(formatSalary(value));
 
@@ -148,7 +157,18 @@ export default function Create({ errors = [], defaultValues = {} }) {
     };
 
     const handleHourlyPayChange = (e) => {
-        const value = e.target.value.replace(/[^0-9.]/g, '');
+        const value = e.target.value.replace(/,/g, '').trim();
+        if (!isEmployeePayInput(value)) {
+            setPayError(getEmployeePayError({ hourly_rate: value }));
+            return;
+        }
+        const daily = value && value !== '.' ? (Number(value) * 8).toFixed(2) : '';
+        const error = getEmployeePayError({ daily_rate: daily });
+        if (error) {
+            setPayError(error);
+            return;
+        }
+        setPayError('');
         setRawHourlyPay(value);
         setDisplayHourlyPay(formatSalary(value));
 
@@ -194,10 +214,12 @@ export default function Create({ errors = [], defaultValues = {} }) {
         setCreatedEmployee(null);
         setFirstName('');
         setLastName('');
+        setEmailInput('');
         setDisplayDailyPay('');
         setRawDailyPay('');
         setDisplayHourlyPay('');
         setRawHourlyPay('');
+        setPayError('');
         setSelectedCraft('Sapatero (Lapat/Swelas)');
         setSex('');
         setBirthDate('');
@@ -213,8 +235,17 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!isValidPersonnelEmail(emailInput.trim())) {
+            toast.error('Enter a valid email address.');
+            return;
+        }
+        if (!isSecurityRole && department !== 'Factory') {
+            const error = payError || getEmployeePayError({ daily_rate: rawDailyPay, hourly_rate: rawHourlyPay });
+            if (error) { toast.error(error); return; }
+        }
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
+        data.email = emailInput.trim().toLowerCase();
 
         if (phone && phone.trim()) {
             const phoneCheck = validatePhPhone(phone);
@@ -321,7 +352,9 @@ export default function Create({ errors = [], defaultValues = {} }) {
                 setShowSuccessModal(true);
                 setIsSubmitting(false);
             } else {
-                toast.error('Error: ' + result.error);
+                const message = result.error || 'The employee account could not be created.';
+                const requestId = res.headers.get('X-Request-ID');
+                toast.error(res.status >= 500 && requestId ? `${message} Reference: ${requestId}` : message);
                 setIsSubmitting(false);
             }
         } catch (err) {
@@ -386,9 +419,16 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                     Email Address <span className="text-danger-ink">*</span>
                                 </label>
-                                <input type="email" name="email" required defaultValue={defaultValues.email || ''}
+                                <input type="email" name="email" required maxLength={254} value={emailInput} onChange={e => {
+                                        if (!isPersonnelEmailInput(e.target.value)) {
+                                            toast.error('Use letters, numbers, @, dots, hyphens, underscores and plus signs only.', { id: 'personnel-email-characters' });
+                                            return;
+                                        }
+                                        setEmailInput(e.target.value);
+                                    }}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder={isSecurityRole ? "guard-gate1@c-point.com" : "employee@company.com"} />
+                                <EmailDomainWarning email={emailInput} />
                             </div>
 
                             <div>
@@ -475,7 +515,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         <input
                                             type="text"
                                             value={stationLocation}
-                                            onChange={(e) => setStationLocation(e.target.value)}
+                                            maxLength={255}
+                                            onChange={(e) => setStationLocation(sanitizePersonnelText(e.target.value, 'job_title'))}
                                             placeholder="e.g. Main Gate Terminal, Turnstile A, Warehouse Entrance"
                                             className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                         />
@@ -511,7 +552,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     name="first_name" 
                                     required 
                                     value={firstName}
-                                    onChange={(e) => setFirstName(e.target.value)}
+                                    maxLength={255}
+                                    onChange={(e) => setFirstName(sanitizePersonnelText(e.target.value))}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder={isSecurityRole ? "Main Gate" : "John"} 
                                 />
@@ -525,7 +567,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     name="last_name" 
                                     required 
                                     value={lastName}
-                                    onChange={(e) => setLastName(e.target.value)}
+                                    maxLength={255}
+                                    onChange={(e) => setLastName(sanitizePersonnelText(e.target.value))}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder={isSecurityRole ? "Guard" : "Doe"} 
                                 />
@@ -680,7 +723,8 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                                 Job Title <span className="text-danger-ink">*</span>
                                             </label>
-                                            <input type="text" name="job_title" required defaultValue={defaultValues.job_title || ''}
+                                            <input type="text" name="job_title" required maxLength={255} defaultValue={defaultValues.job_title || ''}
+                                                onChange={e => { e.target.value = sanitizePersonnelText(e.target.value, 'job_title'); }}
                                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                                 placeholder="e.g. Sales Associate, HR Officer" />
                                         </div>
@@ -860,6 +904,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {payError && <div role="alert" className="sm:col-span-2 rounded-md border border-danger/20 bg-danger-subtle px-3 py-2 text-xs text-danger-ink">{payError}</div>}
                                     <div>
                                         <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                             Daily Pay Rate <span className="text-danger-ink">*</span>
@@ -870,6 +915,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                 type="text"
                                                 required
                                                 value={displayDailyPay}
+                                                inputMode="decimal"
                                                 onChange={handleDailyPayChange}
                                                 className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                                 placeholder="0.00"
@@ -891,6 +937,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                                 type="text"
                                                 required
                                                 value={displayHourlyPay}
+                                                inputMode="decimal"
                                                 onChange={handleHourlyPayChange}
                                                 className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                                 placeholder="0.00"

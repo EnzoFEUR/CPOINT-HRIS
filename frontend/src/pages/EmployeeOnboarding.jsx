@@ -8,6 +8,7 @@ import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { getStoredUser } from '../utils/storedUser.mjs';
 import { performLogout, broadcastAuthChange } from '../utils/authSession';
 import PhilippineAddressSelector from '../components/PhilippineAddressSelector';
+import { sanitizePersonnelText, isValidPersonnelText, MAX_EMERGENCY_CONTACT_NAME_LENGTH } from '../../../shared/personnelInput.mjs';
 
 const SEX_OPTIONS = ['Male', 'Female'];
 const RELATIONSHIP_OPTIONS = [
@@ -144,7 +145,7 @@ export default function EmployeeOnboarding() {
   }, [address]);
 
   const isStep3Valid = useMemo(() => {
-    if (!emergencyName || emergencyName.trim().length < 2) return false;
+    if (!emergencyName || emergencyName.trim().length < 2 || !isValidPersonnelText(emergencyName, 'emergency_contact_name')) return false;
     if (!emergencyPhoneValidation.isValid) return false;
     if (!emergencyRelationship) return false;
     return true;
@@ -199,8 +200,8 @@ export default function EmployeeOnboarding() {
     }
 
     if (!isStep3Valid) {
-      if (!emergencyName || emergencyName.trim().length < 2) {
-        setError('Please enter the full name of your emergency contact.');
+      if (!emergencyName || emergencyName.trim().length < 2 || !isValidPersonnelText(emergencyName, 'emergency_contact_name')) {
+        setError(`Enter a contact name using letters and normal name punctuation, up to ${MAX_EMERGENCY_CONTACT_NAME_LENGTH} characters.`);
         return;
       }
       if (!emergencyPhoneValidation.isValid) {
@@ -490,9 +491,9 @@ export default function EmployeeOnboarding() {
                 <i className="ti ti-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
                 <input
                   type="text"
-                  maxLength={100}
+                  maxLength={MAX_EMERGENCY_CONTACT_NAME_LENGTH}
                   value={emergencyName}
-                  onChange={(e) => setEmergencyName(e.target.value)}
+                  onChange={(e) => setEmergencyName(sanitizePersonnelText(e.target.value))}
                   className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
                   placeholder="e.g. Maria Santos"
                   required

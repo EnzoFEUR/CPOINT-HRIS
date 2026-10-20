@@ -14,6 +14,8 @@ import useDocumentRequests from '../../utils/useDocumentRequests';
 import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/documentApi';
 import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry, formatCleanDocumentFileName } from '../../utils/documentUtils';
 import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../../shared/documentTypes.mjs';
+import { sanitizePersonnelText } from '../../../../shared/personnelInput.mjs';
+import { PASSWORD_REUSE_MESSAGE, isPasswordReuseError } from '../../../../shared/passwordPolicy.mjs';
 import { formatPhDisplay } from '../../utils/phoneUtils';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
@@ -562,6 +564,7 @@ const normalizeJobTitle = (title, isAdmin) => {
     const [otpCooldown, setOtpCooldown] = useState(0);
     const [otpError, setOtpError] = useState('');
     const [attemptsRemaining, setAttemptsRemaining] = useState(null);
+    const passwordReused = Boolean(currentPassword && newPassword && currentPassword.trim() === newPassword.trim());
 
     useEffect(() => {
         if (otpCooldown <= 0) return;
@@ -605,8 +608,8 @@ const normalizeJobTitle = (title, isAdmin) => {
             toast.error('New password must be at least 8 characters long.');
             return;
         }
-        if (newPassword.trim() === currentPassword.trim()) {
-            toast.error('New password must be different from current password.');
+        if (passwordReused) {
+            toast.error(PASSWORD_REUSE_MESSAGE, { id: 'password-reused' });
             return;
         }
         if (newPassword !== confirmNewPassword) {
@@ -634,7 +637,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 if (data.remainingAttempts !== undefined) {
                     setAttemptsRemaining(data.remainingAttempts);
                 }
-                throw new Error(data.message || 'Failed to update password.');
+                throw new Error(isPasswordReuseError(data) ? PASSWORD_REUSE_MESSAGE : data.message || 'Failed to update password.');
             }
             toast.success(data.message || 'Password updated successfully.');
             setShowChangePasswordModal(false);
@@ -2115,12 +2118,6 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <p className="font-semibold text-slate-700 text-xs sm:text-sm">No documents uploaded yet</p>
                                     <p className="text-[11px] text-slate-500">Click here or drag files to upload government IDs and certificates.</p>
                                 </div>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); openUploadModal(); }}
-                                    className="h-8 px-3 bg-accent text-white hover:bg-accent-hover rounded-md text-xs font-medium transition-colors duration-100 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                >
-                                    <i className="ti ti-upload" /> Upload First Document
-                                </button>
                             </div>
                         )
                     ) : filteredDocuments.length === 0 ? (
@@ -2211,8 +2208,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
+                                        maxLength={255}
                                         value={personalForm.first_name}
-                                        onChange={(e) => setPersonalForm({ ...personalForm, first_name: e.target.value })}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, first_name: sanitizePersonnelText(e.target.value) })}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                                     />
                                 </div>
@@ -2223,8 +2221,9 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
+                                        maxLength={255}
                                         value={personalForm.last_name}
-                                        onChange={(e) => setPersonalForm({ ...personalForm, last_name: e.target.value })}
+                                        onChange={(e) => setPersonalForm({ ...personalForm, last_name: sanitizePersonnelText(e.target.value) })}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                                     />
                                 </div>
@@ -2882,6 +2881,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     type="password"
                                     required
                                     autoComplete="current-password"
+                                    maxLength={1024}
                                     value={currentPassword}
                                     onChange={(e) => setCurrentPassword(e.target.value)}
                                     placeholder="Enter current password"
@@ -2899,10 +2899,14 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     minLength={8}
                                     autoComplete="new-password"
                                     value={newPassword}
+                                    maxLength={1024}
+                                    aria-invalid={passwordReused}
+                                    aria-describedby={passwordReused ? 'password-reuse-warning' : undefined}
                                     onChange={(e) => setNewPassword(e.target.value)}
                                     placeholder="Enter new password (min. 8 characters)"
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                                 />
+                                {passwordReused && <p id="password-reuse-warning" role="status" className="mt-1 text-xs text-danger-ink">{PASSWORD_REUSE_MESSAGE}</p>}
                             </div>
 
                             <div>
@@ -2915,6 +2919,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     minLength={8}
                                     autoComplete="new-password"
                                     value={confirmNewPassword}
+                                    maxLength={1024}
                                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                                     placeholder="Re-enter new password"
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
@@ -2993,7 +2998,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isChangingPassword}
+                                    disabled={isChangingPassword || passwordReused}
                                     className="h-8 px-4 bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
                                 >
                                     {isChangingPassword ? (

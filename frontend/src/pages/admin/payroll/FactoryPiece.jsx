@@ -292,7 +292,6 @@ export default function FactoryPiece({
                                 </div>
                             </div>
                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-accent bg-accent-subtle border-accent/20' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-accent' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}
                             </span>
                         </div>

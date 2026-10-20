@@ -1,6 +1,8 @@
 import express from 'express';
 import crypto from 'crypto';
-import { supabase } from '../supabaseClient.js';
+import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
+import { closePasswordSession } from '../services/passwordService.js';
+import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../shared/passwordPolicy.mjs';
 import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress } from '../utils/personalDetailsValidation.js';
@@ -508,11 +510,13 @@ router.post('/request-password-otp', verifyToken, async (req, res) => {
 router.post('/change-password', verifyToken, async (req, res) => {
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const rateLimitKey = `pwd_change_rate:${req.user.id}:${clientIp}`;
+    let passwordClient;
+    let hasPasswordSession = false;
 
     try {
         const { current_password, new_password, otp } = req.body || {};
 
-        if (!current_password || !new_password) {
+        if (typeof current_password !== 'string' || typeof new_password !== 'string' || !current_password.trim() || !new_password.trim()) {
             return res.status(400).json({ success: false, message: 'Current password and new password are required.' });
         }
 
@@ -526,9 +530,10 @@ router.post('/change-password', verifyToken, async (req, res) => {
         if (typeof new_password !== 'string' || new_password.length < 8) {
             return res.status(400).json({ success: false, message: 'New password must be at least 8 characters long.' });
         }
+        if (current_password.length > 1024 || new_password.length > 1024) return res.status(400).json({ success: false, message: 'Passwords must be at most 1024 characters long.' });
 
         if (String(current_password).trim() === String(new_password).trim()) {
-            return res.status(400).json({ success: false, message: 'New password must be different from current password.' });
+            return res.status(400).json({ success: false, code: 'PASSWORD_REUSED', message: PASSWORD_REUSE_MESSAGE });
         }
 
         // Brute force protection check (max 5 failed attempts per 15 min window, 15 min lockout)
@@ -558,10 +563,13 @@ router.post('/change-password', verifyToken, async (req, res) => {
         }
 
         // Step 1: Verify current password via Supabase Auth
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
+        const targetAuthId = req.user.auth_user_id || req.user.id;
+        passwordClient = createIsolatedAuthClient();
+        const { data: passwordAuth, error: signInErr } = await passwordClient.auth.signInWithPassword({
             email: userEmail,
             password: String(current_password).trim()
         });
+        hasPasswordSession = Boolean(passwordAuth?.session?.access_token);
 
         if (signInErr) {
             const fail = recordTotpFailure(rateLimitKey, 5, 15 * 60 * 1000);
@@ -584,6 +592,10 @@ router.post('/change-password', verifyToken, async (req, res) => {
                 locked: fail.locked,
                 retry_after: fail.retryAfterSeconds
             });
+        }
+
+        if (!hasPasswordSession || passwordAuth?.user?.id !== targetAuthId) {
+            return res.status(403).json({ success: false, message: 'The authenticated account does not match your personnel record. Contact HR.' });
         }
 
         // Step 2: Multi-Factor Verification (Email OTP OR Google Authenticator TOTP OR Backup Code)
@@ -650,14 +662,15 @@ router.post('/change-password', verifyToken, async (req, res) => {
             });
         }
 
-        // Step 3: All verification passed -> Update password via Admin API
-        const targetAuthId = req.user.auth_user_id || req.user.id;
-        const { error: updateErr } = await supabase.auth.admin.updateUserById(targetAuthId, {
-            password: String(new_password).trim()
+        // Step 3: Keep the provider's same-password protection after our OTP/TOTP checks.
+        const { error: updateErr } = await passwordClient.auth.updateUser({
+            password: new_password.trim(),
+            current_password: current_password.trim()
         });
 
         if (updateErr) {
-            return res.status(500).json({ success: false, message: updateErr.message || 'Password update failed.' });
+            if (isPasswordReuseError(updateErr)) return res.status(400).json({ success: false, code: 'PASSWORD_REUSED', message: PASSWORD_REUSE_MESSAGE });
+            return res.status(updateErr.code === 'weak_password' ? 400 : updateErr.status === 429 ? 429 : 503).json({ success: false, message: 'Unable to update your password. Review the password requirements and try again.' });
         }
 
         // Clear rate limiter upon successful update
@@ -715,11 +728,13 @@ router.post('/change-password', verifyToken, async (req, res) => {
             verifiedVia
         });
     } catch (err) {
-        console.error('[CHANGE_PASSWORD_ERROR]', err);
+        console.error('[CHANGE_PASSWORD_ERROR]', { code: err?.code || 'UNAVAILABLE' });
         res.status(500).json({
             success: false,
-            message: err.message || 'An unexpected error occurred during password change.'
+            message: 'An unexpected error occurred during password change.'
         });
+    } finally {
+        if (hasPasswordSession) await closePasswordSession(passwordClient);
     }
 });
 
