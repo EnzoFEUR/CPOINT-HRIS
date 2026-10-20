@@ -409,7 +409,7 @@ export default function EmployeesIndex() {
         refetchOnWindowFocus: false,
     });
 
-    const { data: docPendingCounts = {} } = useQuery({
+    const { data: docPendingCounts } = useQuery({
         queryKey: ['adminDocumentPendingCounts'],
         queryFn: () => fetchPendingDocumentCounts(),
         staleTime: 15_000,
@@ -640,7 +640,7 @@ export default function EmployeesIndex() {
                 const firstNameB = (b.first_name || '').trim();
                 return firstNameA.localeCompare(firstNameB, undefined, { sensitivity: 'base' });
             });
-    }, [employees, filterStatus, selectedDepartment, searchQuery]);
+    }, [employees, filterStatus, selectedDepartment, searchQuery, docPendingCounts]);
 
     // Calculate directory metrics in single pass
     const counts = useMemo(() => {

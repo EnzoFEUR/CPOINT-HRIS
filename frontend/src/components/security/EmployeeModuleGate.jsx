@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getUser } from '../../routes/guards';
@@ -12,13 +12,13 @@ export default function EmployeeModuleGate({ children }) {
     const userIdentifier = user?.id || user?.email || 'admin';
     const unlockKey = `cpoint_employee_module_unlocked_${userIdentifier}`;
 
-    const checkIsUnlocked = () => {
+    const checkIsUnlocked = useCallback(() => {
         try {
             return sessionStorage.getItem(unlockKey) === 'true';
         } catch {
             return false;
         }
-    };
+    }, [unlockKey]);
 
     const [isUnlocked, setIsUnlocked] = useState(checkIsUnlocked);
 
@@ -36,7 +36,7 @@ export default function EmployeeModuleGate({ children }) {
         if (unlocked) {
             setIsModalOpen(false);
         }
-    }, [location.pathname, unlockKey, user?.id, user?.email]);
+    }, [location.pathname, checkIsUnlocked]);
 
     const handleVerificationSuccess = (data) => {
         try {

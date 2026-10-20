@@ -153,48 +153,51 @@ export default function ArchivedEmployeeProfile() {
   const [zipProgress, setZipProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
-    fetchArchivedEmployeeData();
-  }, [id]);
+    let active = true;
+    const fetchArchivedEmployeeData = async () => {
+      setLoading(true);
+      setNotFound(false);
 
-  const fetchArchivedEmployeeData = async () => {
-    setLoading(true);
-    setNotFound(false);
+      try {
+        const { data: empData, error: empError } = await supabase
+          .from('employees')
+          .select('*')
+          .eq('id', id)
+          .single();
 
-    try {
-      const { data: empData, error: empError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('id', id)
-        .single();
+        if (!active) return;
+        if (empError || !empData) {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
 
-      if (empError || !empData) {
-        setNotFound(true);
-        setLoading(false);
-        return;
+        setEmployee(empData);
+
+        const [docsRes, payrollRes, leaveRes, discRes, attRes] = await Promise.all([
+          supabase.from('employee_documents').select('*').eq('employee_id', id),
+          supabase.from('payrolls').select('*').eq('employee_id', id),
+          supabase.from('leave_requests').select('*').eq('employee_id', id),
+          supabase.from('disciplinary_logs').select('*').eq('employee_id', id),
+          supabase.from('attendances').select('*').eq('employee_id', id),
+        ]);
+
+        if (!active) return;
+        setDocuments(docsRes.data || []);
+        setPayroll(payrollRes.data || []);
+        setLeaves(leaveRes.data || []);
+        setDisciplinary(discRes.data || []);
+        setAttendance(attRes.data || []);
+      } catch (err) {
+        console.error('Error fetching archived profile:', err);
+        if (active) setNotFound(true);
+      } finally {
+        if (active) setLoading(false);
       }
-
-      setEmployee(empData);
-
-      const [docsRes, payrollRes, leaveRes, discRes, attRes] = await Promise.all([
-        supabase.from('employee_documents').select('*').eq('employee_id', id),
-        supabase.from('payrolls').select('*').eq('employee_id', id),
-        supabase.from('leave_requests').select('*').eq('employee_id', id),
-        supabase.from('disciplinary_logs').select('*').eq('employee_id', id),
-        supabase.from('attendances').select('*').eq('employee_id', id),
-      ]);
-
-      setDocuments(docsRes.data || []);
-      setPayroll(payrollRes.data || []);
-      setLeaves(leaveRes.data || []);
-      setDisciplinary(discRes.data || []);
-      setAttendance(attRes.data || []);
-    } catch (err) {
-      console.error('Error fetching archived profile:', err);
-      setNotFound(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchArchivedEmployeeData();
+    return () => { active = false; };
+  }, [id]);
 
   const getCompanyId = () => {
     if (!employee) return 'N/A';

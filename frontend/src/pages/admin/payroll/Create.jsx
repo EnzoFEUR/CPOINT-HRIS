@@ -301,6 +301,7 @@ const PayrollCreate = () => {
     }, [entryMode, formData.employee_id, periodStart, periodEnd, attendanceRefreshTick]);
 
     // Automatic Holiday Detection for Cutoff Period
+    const holidayEmployeeId = formData.employee_id || employees[0]?.id || '';
     useEffect(() => {
         const { isInvalidDateRange } = (() => {
             if (!periodStart || !periodEnd) return { isInvalidDateRange: false };
@@ -318,7 +319,7 @@ const PayrollCreate = () => {
         // employee_id: '' to /api/payroll/preview, which the backend
         // correctly rejects with "employee_id, period_start, and
         // period_end are required."
-        const targetEmpId = formData.employee_id || (employees.length > 0 ? employees[0].id : '');
+        const targetEmpId = holidayEmployeeId;
 
         if (!periodStart || !periodEnd || isInvalidDateRange || !targetEmpId) {
             setHolidayPreview({ items: [], totalHolidayPay: 0 });
@@ -360,7 +361,7 @@ const PayrollCreate = () => {
 
         fetchHolidayPreview();
         return () => { isMounted = false; };
-    }, [periodStart, periodEnd, formData.employee_id, entryMode, holidayRefreshTick, attendanceRefreshTick]);
+    }, [periodStart, periodEnd, formData.employee_id, holidayEmployeeId, entryMode, holidayRefreshTick, attendanceRefreshTick]);
 
     // Explicit holiday-generation status check (no side effects on the backend -
     // this is what lets the reminder banner below actually appear, rather than

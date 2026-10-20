@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { matchJobTitle } from './Create';
 
 export default function FactoryPiece({
@@ -93,7 +93,7 @@ export default function FactoryPiece({
     const [viewMode, setViewMode] = useState('compact');
 
     // Close modal WITHOUT saving (discards in-memory session drafts)
-    const handleClose = (e) => {
+    const handleClose = useCallback((e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -103,7 +103,7 @@ export default function FactoryPiece({
         if (onClose) {
             onClose();
         }
-    };
+    }, [factoryRows, onClose]);
 
     // Explicitly commit changes to database and close modal
     const handleSaveAndClose = async (e) => {
@@ -169,7 +169,7 @@ export default function FactoryPiece({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, isOpAssignModalOpen, factoryRows]);
+    }, [isOpen, isOpAssignModalOpen, handleClose]);
 
     // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally
     const handleFactoryRowChange = (id, field, value) => {

@@ -349,7 +349,7 @@ export default function OtpVerificationModal({
             verifyLockRef.current = false;
             setIsVerifying(false);
         }
-    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose, purpose]);
+    }, [digits, email, method, backupMode, backupCode, sessionUser, cooldownKey, onSuccess, onClose, purpose, isVerifying]);
 
     const handleInputChange = (index, value) => {
         const cleanVal = value.replace(/\D/g, '');

@@ -317,7 +317,7 @@ const normalizeJobTitle = (title, isAdmin) => {
         }
     }, [profileResponse, cacheStorageKey, currentUserId]);
 
-    const raw = profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {};
+    const raw = useMemo(() => profileResponse?.employee || profileResponse?.user || profileResponse?.data?.employee || profileResponse?.data?.user || profileResponse?.data || profileResponse || {}, [profileResponse]);
     
     const isAdminAccount = useMemo(() => {
         const role = String(raw?.role || raw?.user?.role || storedUser?.role || initialUser?.role || '').toLowerCase();
@@ -393,7 +393,7 @@ const normalizeJobTitle = (title, isAdmin) => {
     const [docSort, setDocSort] = useState('newest');
     const [openingDocument, setOpeningDocument] = useState(null);
     const documentQuery = useEmployeeDocuments({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount, status: docStatus, category: docCategory, sort: docSort, search: docSearch });
-    const documents = isAdminAccount ? [] : documentQuery.documents;
+    const documents = useMemo(() => isAdminAccount ? [] : documentQuery.documents, [isAdminAccount, documentQuery.documents]);
     const requestQuery = useDocumentRequests({ employeeId: profile?.id, actorId: currentUserId, enabled: Boolean(profile?.id) && !isAdminAccount });
     const activeRequests = isAdminAccount ? [] : (requestQuery.requests || []).filter(r => ['pending', 'submitted'].includes(r.status));
     useEffect(() => {

@@ -50,8 +50,8 @@ export default function RequestDocumentModal({
                         !['inactive', 'terminated', 'separated', 'archived'].includes(String(e.status || '').toLowerCase())
                     );
                     setEmployees(activeList);
-                    if (activeList.length > 0 && !employeeId) {
-                        setEmployeeId(activeList[0].id);
+                    if (activeList.length > 0) {
+                        setEmployeeId(current => current || activeList[0].id);
                     }
                 })
                 .catch(err => {

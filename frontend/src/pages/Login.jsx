@@ -259,9 +259,7 @@ export default function Login() {
 
                 if (typeof data.hasTotp === 'boolean') {
                     setHasTotp(data.hasTotp);
-                    if (!data.hasTotp && otpMethod === 'totp') {
-                        setOtpMethod('');
-                    }
+                    setOtpMethod(current => !data.hasTotp && current === 'totp' ? '' : current);
                 }
             } catch (err) {
                 // Silently fallback to client state

@@ -18,22 +18,27 @@ export default function DocumentPreviewModal({
     const [activeUrl, setActiveUrl] = useState(null);
     const [isLoadingUrl, setIsLoadingUrl] = useState(false);
     const [loadError, setLoadError] = useState(null);
+    const documentId = doc?.id;
+    const previewUrl = doc?.preview_url;
 
     // Reset zoom and rotation when modal opens with a new doc
     useEffect(() => {
-        if (isOpen && doc) {
+        let active = true;
+        if (isOpen && (documentId || previewUrl)) {
             setZoom(1);
             setRotation(0);
             setLoadError(null);
+            setActiveUrl(null);
 
-            if (doc.preview_url) {
-                setActiveUrl(doc.preview_url);
+            if (previewUrl) {
+                setActiveUrl(previewUrl);
                 setIsLoadingUrl(false);
             } else {
                 setIsLoadingUrl(true);
-                fetchWithAuth(`/api/employee-documents/${encodeURIComponent(doc.id)}/url`)
+                fetchWithAuth(`/api/employee-documents/${encodeURIComponent(documentId)}/url`)
                     .then(res => res.json())
                     .then(data => {
+                        if (!active) return;
                         if (data.success && data.url) {
                             setActiveUrl(data.url);
                         } else {
@@ -41,16 +46,17 @@ export default function DocumentPreviewModal({
                         }
                     })
                     .catch(err => {
-                        setLoadError(err.message || 'Error loading preview.');
+                        if (active) setLoadError(err.message || 'Error loading preview.');
                     })
                     .finally(() => {
-                        setIsLoadingUrl(false);
+                        if (active) setIsLoadingUrl(false);
                     });
             }
         } else {
             setActiveUrl(null);
         }
-    }, [isOpen, doc?.id, doc?.preview_url]);
+        return () => { active = false; };
+    }, [isOpen, documentId, previewUrl]);
 
     // Handle ESC key to close
     useEffect(() => {
