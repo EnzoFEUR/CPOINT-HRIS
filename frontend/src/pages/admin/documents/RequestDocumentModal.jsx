@@ -243,7 +243,7 @@ export default function RequestDocumentModal({
                                     <label className="block text-[11px] font-semibold text-ink-muted mb-1">
                                         Custom Document Name <span className="text-danger-ink">*</span>
                                     </label>
-                                    <input
+                                    <input maxLength={100}
                                         type="text"
                                         required
                                         value={customDocType}

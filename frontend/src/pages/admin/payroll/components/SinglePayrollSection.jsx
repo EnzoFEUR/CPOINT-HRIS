@@ -233,10 +233,13 @@ const SinglePayrollSection = ({
                             )}
                         </div>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
+                            maxLength={6}
                             step="0.01"
                             min="0"
                             name="overtime_hours"
+                            pattern="[0-9]+([.][0-9]{0,2})?|[.][0-9]{1,2}"
                             value={formData.overtime_hours}
                             onChange={handleInputChange}
                             className="w-full h-10 px-3 bg-white border border-accent/20 rounded-md font-mono text-accent-strong text-base font-bold outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"
@@ -249,10 +252,13 @@ const SinglePayrollSection = ({
                             Rest-Day OT Hours (1.69x)
                         </label>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
+                            maxLength={6}
                             step="0.01"
                             min="0"
                             name="rest_day_ot_hours"
+                            pattern="[0-9]+([.][0-9]{0,2})?|[.][0-9]{1,2}"
                             value={formData.rest_day_ot_hours ?? ''}
                             onChange={handleInputChange}
                             className="w-full h-10 px-3 bg-white border border-accent/20 rounded-md font-mono text-accent-strong text-base font-bold outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors duration-100"

@@ -15,6 +15,7 @@ import { openEmployeeDocument, uploadEmployeeDocument } from '../../utils/docume
 import { DOCUMENT_STATUSES, formatDocumentSize, getDocumentStatus, getDocumentExpiry, formatCleanDocumentFileName } from '../../utils/documentUtils';
 import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, getDocumentType } from '../../../../shared/documentTypes.mjs';
 import { sanitizePersonnelText } from '../../../../shared/personnelInput.mjs';
+import { HUMAN_TEXT_LIMITS } from '../../../../shared/inputLimits.mjs';
 import { PASSWORD_REUSE_MESSAGE, isPasswordReuseError } from '../../../../shared/passwordPolicy.mjs';
 import { formatPhDisplay } from '../../utils/phoneUtils';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
@@ -789,7 +790,7 @@ const normalizeJobTitle = (title, isAdmin) => {
         setSelectedDocTypeId(defaultType.id);
         const suggestedTitle = file ? file.name.replace(/\.[^/.]+$/, '') : `${defaultType.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
         setUploadForm({
-            title: suggestedTitle,
+            title: suggestedTitle.slice(0, HUMAN_TEXT_LIMITS.title),
             category: defaultType.category,
             documentType: defaultType.label,
             requestId: null,
@@ -807,7 +808,7 @@ const normalizeJobTitle = (title, isAdmin) => {
         const matched = getDocumentType(req.document_type);
         setSelectedDocTypeId(matched.id !== 'unknown' ? matched.id : 'unknown');
         setUploadForm({
-            title: `${req.document_type} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+            title: `${req.document_type} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim().slice(0, HUMAN_TEXT_LIMITS.title),
             category: req.category || (matched.id !== 'unknown' ? matched.category : 'Other'),
             documentType: req.document_type,
             requestId: req.id,
@@ -825,7 +826,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 ...prev,
                 category: meta.category,
                 documentType: meta.label,
-                title: prev.requestId ? prev.title : `${meta.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()
+                title: (prev.requestId ? prev.title : `${meta.label} - ${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()).slice(0, HUMAN_TEXT_LIMITS.title)
             }));
         }
     };
@@ -850,6 +851,11 @@ const normalizeJobTitle = (title, isAdmin) => {
 
         if (!uploadForm.file || !uploadForm.title.trim()) {
             toast.error('Please fill in the title and select a file');
+            return;
+        }
+
+        if (uploadForm.title.length > HUMAN_TEXT_LIMITS.title) {
+            toast.error(`Document title must be at most ${HUMAN_TEXT_LIMITS.title} characters.`, { id: 'document-title-limit' });
             return;
         }
 
@@ -1216,11 +1222,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                             <div className="grid grid-cols-2 gap-3.5 text-xs">
                                 <div>
                                     <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">First Name</p>
-                                    <p className="font-semibold text-slate-900">{profile?.first_name || 'N/A'}</p>
+                                    <p className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]"><bdi>{profile?.first_name || 'N/A'}</bdi></p>
                                 </div>
                                 <div>
                                     <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Last Name</p>
-                                    <p className="font-semibold text-slate-900">{profile?.last_name || 'N/A'}</p>
+                                    <p className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]"><bdi>{profile?.last_name || 'N/A'}</bdi></p>
                                 </div>
                                 <div>
                                     <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Contact Phone</p>
@@ -1466,11 +1472,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                     <div className="grid grid-cols-2 gap-3.5 text-xs">
                         <div>
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">First Name</p>
-                            <p className="font-semibold text-slate-900">{profile?.first_name || 'N/A'}</p>
+                            <p className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]"><bdi>{profile?.first_name || 'N/A'}</bdi></p>
                         </div>
                         <div>
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Last Name</p>
-                            <p className="font-semibold text-slate-900">{profile?.last_name || 'N/A'}</p>
+                            <p className="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]"><bdi>{profile?.last_name || 'N/A'}</bdi></p>
                         </div>
                         <div>
                             <p className="text-slate-500 font-semibold uppercase text-[10px] mb-0.5">Sex</p>
@@ -2208,7 +2214,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
-                                        maxLength={255}
+                                        maxLength={100}
                                         value={personalForm.first_name}
                                         onChange={(e) => setPersonalForm({ ...personalForm, first_name: sanitizePersonnelText(e.target.value) })}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
@@ -2221,7 +2227,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <input
                                         type="text"
                                         required
-                                        maxLength={255}
+                                        maxLength={100}
                                         value={personalForm.last_name}
                                         onChange={(e) => setPersonalForm({ ...personalForm, last_name: sanitizePersonnelText(e.target.value) })}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
@@ -2374,12 +2380,17 @@ const normalizeJobTitle = (title, isAdmin) => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">Document Title</label>
-                                <input
+                                <div className="flex items-center justify-between mb-1">
+                                    <label htmlFor="upload-document-title" className="block text-xs font-semibold text-slate-700">Document Title</label>
+                                    <span id="upload-document-title-count" className="text-[10px] text-ink-muted">{uploadForm.title.length}/{HUMAN_TEXT_LIMITS.title}</span>
+                                </div>
+                                <input maxLength={HUMAN_TEXT_LIMITS.title}
+                                    id="upload-document-title"
+                                    aria-describedby="upload-document-title-count"
                                     type="text"
                                     placeholder="e.g. SSS E-1 Form, Pag-IBIG MID, Valid ID"
                                     value={uploadForm.title}
-                                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value.slice(0, HUMAN_TEXT_LIMITS.title) })}
                                     className="w-full h-9 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-800 focus:border-slate-400 focus:outline-none"
                                     required
                                 />
@@ -2428,7 +2439,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                                 setUploadForm((prev) => ({
                                                     ...prev,
                                                     file,
-                                                    title: prev.title || file.name.replace(/\.[^/.]+$/, '')
+                                                    title: (prev.title || file.name.replace(/\.[^/.]+$/, '')).slice(0, HUMAN_TEXT_LIMITS.title)
                                                 }));
                                             }
                                         }}
@@ -2719,7 +2730,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 <label className="block text-[11px] font-semibold text-slate-700">
                                     Account Password (Required)
                                 </label>
-                                <input
+                                <input maxLength={1024}
                                     type="password"
                                     value={reconfigurePassword}
                                     onChange={(e) => setReconfigurePassword(e.target.value)}
@@ -2795,7 +2806,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 <label className="block text-[11px] font-semibold text-slate-700">
                                     Account Password (Recommended)
                                 </label>
-                                <input
+                                <input maxLength={1024}
                                     type="password"
                                     value={disablePassword}
                                     onChange={(e) => setDisablePassword(e.target.value)}
@@ -2812,7 +2823,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 <label className="block text-[11px] font-semibold text-slate-700">
                                     Emergency Backup Code or Token
                                 </label>
-                                <input
+                                <input maxLength={14}
                                     type="text"
                                     value={disableCode}
                                     onChange={(e) => setDisableCode(e.target.value)}

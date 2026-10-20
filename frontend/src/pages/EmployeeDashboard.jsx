@@ -2053,7 +2053,7 @@ const EmployeeDashboard = () => {
                                 <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
                                     <div className="relative min-w-[130px] flex-1 sm:flex-initial">
                                         <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400" />
-                                        <input
+                                        <input maxLength={200}
                                             type="text"
                                             value={paySearchQuery}
                                             onChange={(e) => setPaySearchQuery(e.target.value)}

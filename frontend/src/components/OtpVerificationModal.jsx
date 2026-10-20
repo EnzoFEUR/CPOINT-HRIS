@@ -656,7 +656,7 @@ export default function OtpVerificationModal({
                                 <div className="space-y-3">
                                     {backupMode ? (
                                         <div>
-                                            <input
+                                            <input maxLength={14}
                                                 type="text"
                                                 placeholder="CP-XXXX-XXXX"
                                                 value={backupCode}

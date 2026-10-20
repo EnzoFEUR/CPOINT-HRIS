@@ -835,7 +835,7 @@ export default function Login() {
                                     <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">
                                         Workplace Email
                                     </label>
-                                    <input
+                                    <input maxLength={254}
                                         id="login-email"
                                         type="email"
                                         value={email}
@@ -861,7 +861,7 @@ export default function Login() {
                                         </Link>
                                     </div>
                                     <div className="relative">
-                                        <input
+                                        <input maxLength={1024}
                                             id="login-password"
                                             type={showPassword ? 'text' : 'password'}
                                             value={password}
@@ -1081,7 +1081,7 @@ export default function Login() {
                             <form onSubmit={verifyOtp}>
                                 <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
                                     {otpCode.map((digit, idx) => (
-                                        <input
+                                        <input maxLength={1}
                                             key={idx}
                                             id={`otp-${idx}`}
                                             type="text"

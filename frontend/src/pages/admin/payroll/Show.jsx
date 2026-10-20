@@ -168,7 +168,7 @@ export default function PayrollShow() {
                             <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
                                 Type <span className="text-danger-ink font-mono select-all">DELETE</span> to confirm
                             </label>
-                            <input
+                            <input maxLength={6}
                                 type="text"
                                 value={deleteConfirmText}
                                 onChange={(e) => setDeleteConfirmText(e.target.value)}

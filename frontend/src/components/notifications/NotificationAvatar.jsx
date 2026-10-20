@@ -39,7 +39,7 @@ export const NotificationAvatar = ({
   return (
     <div className={`relative ${size} shrink-0`}>
       <div className={`w-full h-full rounded-md flex items-center justify-center font-black ${textClass} shadow-inner select-none ${visuals.bg}`}>
-        {initials}
+        <bdi dir="auto">{initials}</bdi>
       </div>
       {avatarSrc && !isFailed && (
         <img

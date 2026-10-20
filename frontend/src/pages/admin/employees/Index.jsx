@@ -762,7 +762,7 @@ export default function EmployeesIndex() {
                         {/* Search input: rigid h-9 (36px) */}
                         <div className="relative flex-1 min-w-0">
                             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
-                            <input
+                            <input maxLength={200}
                                 type="text"
                                 placeholder="Search by name, company ID, email, role, or craft..."
                                 value={searchQuery}

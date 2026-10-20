@@ -7,6 +7,7 @@ import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
 import Badge from '../../../components/ui/Badge';
 import { isDisciplinaryExempt } from '../../../routes/guards';
+import { HUMAN_TEXT_LIMITS } from '../../../../../shared/inputLimits.mjs';
 
 export default function DisciplinaryIndex() {
     const queryClient = useQueryClient();
@@ -618,6 +619,10 @@ export default function DisciplinaryIndex() {
     // Log Infraction Submit
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!reason.trim() || reason.length > HUMAN_TEXT_LIMITS.reason) {
+            toast.error(`Enter incident details using 1-${HUMAN_TEXT_LIMITS.reason} characters.`, { id: 'incident-details-invalid' });
+            return;
+        }
         if (!employeeId) {
             toast.error('Please select an employee.');
             return;
@@ -989,7 +994,7 @@ export default function DisciplinaryIndex() {
                     {/* Search Input */}
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
-                        <input
+                        <input maxLength={200}
                             type="text"
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
@@ -1602,7 +1607,7 @@ export default function DisciplinaryIndex() {
                                             <div className="p-2 border-b border-slate-100 bg-slate-50 shrink-0">
                                                 <div className="relative">
                                                     <i className="ti ti-search absolute left-2.5 top-2 text-slate-400 text-xs" />
-                                                    <input
+                                                    <input maxLength={200}
                                                         type="text"
                                                         placeholder="Search by name, ID, or status..."
                                                         value={personnelSearch}
@@ -1950,15 +1955,18 @@ export default function DisciplinaryIndex() {
                             )}
                             
                             <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Incident details</label>
-                                <textarea 
+                                <label htmlFor="disciplinary-incident-details" className="block text-xs font-medium text-slate-700 mb-1">Incident details</label>
+                                <textarea maxLength={HUMAN_TEXT_LIMITS.reason}
+                                    id="disciplinary-incident-details"
+                                    aria-describedby="disciplinary-incident-count"
                                     required 
                                     rows="3" 
                                     value={reason} 
-                                    onChange={(e) => setReason(e.target.value)}
+                                    onChange={(e) => setReason(e.target.value.slice(0, HUMAN_TEXT_LIMITS.reason))}
                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400 resize-none transition-colors duration-100"
                                     placeholder="Describe what happened, when it occurred, and any witnesses..."
                                 />
+                                <p id="disciplinary-incident-count" className="mt-1 text-right text-[10px] text-ink-muted tabular-nums">{reason.length}/{HUMAN_TEXT_LIMITS.reason}</p>
                             </div>
 
                             <div className="pt-2 flex justify-end gap-2 shrink-0">
@@ -2083,7 +2091,7 @@ export default function DisciplinaryIndex() {
                                 <label className="block text-xs font-medium text-slate-700 mb-1">
                                     Reason for Clearing Record <span className="text-danger-ink">*</span>
                                 </label>
-                                <input 
+                                <input maxLength={1000}
                                     type="text"
                                     required
                                     value={clearReason}
@@ -2098,7 +2106,7 @@ export default function DisciplinaryIndex() {
                                 <label className="block text-xs font-medium text-slate-700 mb-1">
                                     Investigation Notes <span className="text-slate-400 font-normal">(Optional)</span>
                                 </label>
-                                <textarea 
+                                <textarea maxLength={2000}
                                     rows="2"
                                     value={investigationNotes}
                                     onChange={(e) => setInvestigationNotes(e.target.value)}

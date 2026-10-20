@@ -6,9 +6,9 @@ import { getUser } from '../routes/guards';
 import { fetchWithAuth } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import { fetchEmployeeLeaveCredits, leaveCreditKey } from '../utils/useEmployeeLeaveCredits';
-import { getLeaveApprovalBlock, isCreditLeaveType, LEAVE_REQUEST_TYPES, validateLeaveRange, validateLeaveRequest, validateLeaveWorkdayEndpoints } from '../../../shared/leavePolicy.js';
+import { getLeaveApprovalBlock, isCreditLeaveType, LEAVE_REQUEST_TYPES, validateLeaveFilingDates, validateLeaveRequest, validateLeaveWorkdayEndpoints } from '../../../shared/leavePolicy.js';
 import LeaveDatePicker from './LeaveDatePicker';
-import { getEmployeeRestDays } from '../../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getManilaWorkDate } from '../../../shared/workPolicy.mjs';
 
 const emptyForm = { leave_type: 'Sick Leave', start_date: '', end_date: '', reason: '', requested_pay_type: '' };
 const inputClass = 'mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors shadow-2xs';
@@ -42,11 +42,13 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
         refetchOnWindowFocus: true, refetchOnReconnect: true, retry: false,
     });
     const scheduleUnavailable = !schedule.data || schedule.isError || schedule.isFetching;
+    const today = getManilaWorkDate();
+    const minimumDate = schedule.data?.date_hired > today ? schedule.data.date_hired : today;
     let restError = '';
     try { if (schedule.data) validateLeaveWorkdayEndpoints(form, schedule.data); }
     catch (error) { restError = error.message; }
     let rangeError = '';
-    try { validateLeaveRange(form.start_date, form.end_date); }
+    try { validateLeaveFilingDates(form.start_date, form.end_date, today); }
     catch (error) { rangeError = error.message; }
     const previewKey = ['employeeLeaveRequestPreview', actorId, employee.id, form.start_date, form.end_date];
     const preview = useQuery({
@@ -230,18 +232,18 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                         <LeaveDatePicker
                             label="Start Date"
                             value={form.start_date}
-                            min={schedule.data?.date_hired || undefined}
+                            min={minimumDate}
                             restDays={creditType ? schedule.data?.rest_days || [] : []}
                             holidays={schedule.data?.holidays || []}
                             disabled={saving || Boolean(blockedReason) || !statusReady || scheduleUnavailable}
                             align="left"
                             placeholder="Select start date"
-                            onChange={date => { set('start_date', date); if (!form.end_date) set('end_date', date); }}
+                            onChange={date => { set('start_date', date); if (!form.end_date || form.end_date < date) set('end_date', date); }}
                         />
                         <LeaveDatePicker
                             label="End Date"
                             value={form.end_date}
-                            min={form.start_date || schedule.data?.date_hired || undefined}
+                            min={form.start_date > minimumDate ? form.start_date : minimumDate}
                             max={form.start_date ? new Date(Date.parse(form.start_date) + 365 * 86400000).toISOString().slice(0, 10) : undefined}
                             restDays={creditType ? schedule.data?.rest_days || [] : []}
                             holidays={schedule.data?.holidays || []}
@@ -251,6 +253,10 @@ export default function EmployeeLeaveRequest({ open, employee, statusReady, bloc
                             onChange={date => set('end_date', date)}
                         />
                     </div>
+
+                    {form.start_date && form.end_date && rangeError && (
+                        <p role="alert" className="text-xs text-danger-ink">{rangeError}</p>
+                    )}
 
                     {/* Real-time Workdays Estimation */}
                     {preview.data && preview.data.days > 0 && (

@@ -1,11 +1,18 @@
-// Preserve real names and existing factory titles such as Sapatero (Lapat/Swelas).
-export const sanitizePersonnelText = (value, field = 'name') => value.replace(
-    field === 'job_title' ? /[^\p{L}\p{M} .’'()&/\-]/gu : /[^\p{L}\p{M} .’'\-]/gu, '');
+// Latin names with accents and existing factory titles such as Sapatero (Lapat/Swelas).
+export const MAX_PERSONNEL_NAME_LENGTH = 100;
+export const MAX_JOB_TITLE_LENGTH = 120;
+export const sanitizePersonnelText = (value, field = 'name') => value
+    .slice(0, field === 'job_title' ? MAX_JOB_TITLE_LENGTH : MAX_PERSONNEL_NAME_LENGTH)
+    .replace(field === 'job_title' ? /[^\p{L}\p{M} .’'()&/\-]/gu : /[^\p{L}\p{M} .’'\-]/gu, '')
+    .replace(/[^\p{Script=Latin}\u0300-\u036F .’'()&/\-]/gu, '')
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+    .replace(/(^|[ .’'()&/\-])\p{M}+/gu, '$1')
+    .replace(/(\p{M}{3})\p{M}+/gu, '$1');
 
 export const MAX_EMERGENCY_CONTACT_NAME_LENGTH = 100;
 
 export const isValidPersonnelText = (value, field) => typeof value === 'string'
-    && value.length <= (field === 'emergency_contact_name' ? MAX_EMERGENCY_CONTACT_NAME_LENGTH : 255)
+    && value.length <= (field === 'job_title' ? MAX_JOB_TITLE_LENGTH : MAX_PERSONNEL_NAME_LENGTH)
     && /\p{L}/u.test(value) && sanitizePersonnelText(value, field) === value;
 
 export const isPersonnelEmailInput = value => typeof value === 'string'

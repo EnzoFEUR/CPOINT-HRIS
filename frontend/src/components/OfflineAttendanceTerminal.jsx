@@ -811,7 +811,7 @@ export default function OfflineAttendanceTerminal({ canProvision = false, operat
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Backup Master Password (12+ characters)
                       </label>
-                      <input
+                      <input maxLength={1024}
                         type="password"
                         value={password}
                         onChange={e => setPassword(e.target.value)}

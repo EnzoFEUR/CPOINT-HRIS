@@ -529,13 +529,13 @@ export default function Edit() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
-                                <input type="text" name="first_name" required maxLength={255} defaultValue={employee.first_name || ''}
+                                <input type="text" name="first_name" required maxLength={100} defaultValue={employee.first_name || ''}
                                     onChange={e => { e.target.value = sanitizePersonnelText(e.target.value); }}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
-                                <input type="text" name="last_name" required maxLength={255} defaultValue={employee.last_name || ''}
+                                <input type="text" name="last_name" required maxLength={100} defaultValue={employee.last_name || ''}
                                     onChange={e => { e.target.value = sanitizePersonnelText(e.target.value); }}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
@@ -605,7 +605,7 @@ export default function Edit() {
                             {!isFactory ? (
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
-                                    <input type="text" name="job_title" required maxLength={255} defaultValue={employee.job_title || ''}
+                                    <input type="text" name="job_title" required maxLength={120} defaultValue={employee.job_title || ''}
                                         onChange={e => { e.target.value = sanitizePersonnelText(e.target.value, 'job_title'); }}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                                 </div>
@@ -686,7 +686,7 @@ export default function Edit() {
 
                                         {isCustomLine ? (
                                             <div>
-                                                <input
+                                                <input maxLength={100}
                                                     type="text"
                                                     value={selectedGroup}
                                                     onChange={(e) => setSelectedGroup(e.target.value)}
@@ -798,7 +798,7 @@ export default function Edit() {
                                     </label>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
+                                        <input maxLength={11}
                                             type="text"
                                             value={displayDailyPay}
                                             inputMode="decimal"
@@ -819,7 +819,7 @@ export default function Edit() {
                                     </label>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
+                                        <input maxLength={11}
                                             type="text"
                                             value={displayHourlyPay}
                                             inputMode="decimal"

@@ -1669,7 +1669,7 @@ export default function Documents() {
                                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
                                     Custom Document Title (Optional)
                                 </label>
-                                <input
+                                <input maxLength={200}
                                     type="text"
                                     placeholder="e.g. SSS E-1 Verified Copy, 2026 NBI Clearance"
                                     value={documentTitle}

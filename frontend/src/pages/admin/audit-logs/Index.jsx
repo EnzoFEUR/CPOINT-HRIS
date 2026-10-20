@@ -171,7 +171,7 @@ export default function AuditLogsIndex() {
                 <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3">
                     <div className="flex-1 bg-white p-2 sm:p-2.5 rounded-lg shadow-2xs border border-slate-200 relative flex items-center">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        <input 
+                        <input maxLength={200}
                             type="text" 
                             placeholder="Search actions, records, or managers..." 
                             value={searchQuery}

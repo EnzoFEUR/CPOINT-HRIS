@@ -515,7 +515,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         <input
                                             type="text"
                                             value={stationLocation}
-                                            maxLength={255}
+                                            maxLength={120}
                                             onChange={(e) => setStationLocation(sanitizePersonnelText(e.target.value, 'job_title'))}
                                             placeholder="e.g. Main Gate Terminal, Turnstile A, Warehouse Entrance"
                                             className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
@@ -552,7 +552,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     name="first_name" 
                                     required 
                                     value={firstName}
-                                    maxLength={255}
+                                    maxLength={100}
                                     onChange={(e) => setFirstName(sanitizePersonnelText(e.target.value))}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder={isSecurityRole ? "Main Gate" : "John"} 
@@ -567,7 +567,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                     name="last_name" 
                                     required 
                                     value={lastName}
-                                    maxLength={255}
+                                    maxLength={100}
                                     onChange={(e) => setLastName(sanitizePersonnelText(e.target.value))}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                     placeholder={isSecurityRole ? "Guard" : "Doe"} 
@@ -723,7 +723,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                             <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                                 Job Title <span className="text-danger-ink">*</span>
                                             </label>
-                                            <input type="text" name="job_title" required maxLength={255} defaultValue={defaultValues.job_title || ''}
+                                            <input type="text" name="job_title" required maxLength={120} defaultValue={defaultValues.job_title || ''}
                                                 onChange={e => { e.target.value = sanitizePersonnelText(e.target.value, 'job_title'); }}
                                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 placeholder:text-slate-400 shadow-2xs"
                                                 placeholder="e.g. Sales Associate, HR Officer" />
@@ -802,7 +802,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
 
                                                 {isCustomLine ? (
                                                     <div>
-                                                        <input
+                                                        <input maxLength={100}
                                                             type="text"
                                                             value={selectedGroup}
                                                             onChange={(e) => setSelectedGroup(e.target.value)}
@@ -911,7 +911,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                            <input
+                                            <input maxLength={11}
                                                 type="text"
                                                 required
                                                 value={displayDailyPay}
@@ -933,7 +933,7 @@ export default function Create({ errors = [], defaultValues = {} }) {
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                            <input
+                                            <input maxLength={11}
                                                 type="text"
                                                 required
                                                 value={displayHourlyPay}

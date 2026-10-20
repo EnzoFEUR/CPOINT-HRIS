@@ -44,6 +44,7 @@ const FieldInput = ({ label, name, value, onChange, hint, focusColor = 'blue', .
             className={`w-full h-9 bg-white border border-slate-200 rounded-md px-3 text-sm text-slate-800 font-semibold focus:outline-none ${FOCUS_STYLES[focusColor] || FOCUS_STYLES.blue} transition-colors duration-100 shadow-2xs`}
             {...props}
             {...STATUTORY_INPUT_LIMITS[name]}
+            maxLength={STATUTORY_INPUT_LIMITS[name]?.maxLength ?? String(STATUTORY_INPUT_LIMITS[name]?.max ?? 0).length + 3}
             required={Boolean(STATUTORY_INPUT_LIMITS[name]) || props.required}
             inputMode={STATUTORY_INPUT_LIMITS[name]?.step === 1 ? 'numeric' : 'decimal'}
         />

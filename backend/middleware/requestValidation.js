@@ -1,4 +1,5 @@
-import { isValidPersonnelText, MAX_EMERGENCY_CONTACT_NAME_LENGTH, isValidPersonnelEmail, getResidentialAddressError, getEmployeePayError } from '../../shared/personnelInput.mjs';
+import { isValidPersonnelText, MAX_PERSONNEL_NAME_LENGTH, MAX_JOB_TITLE_LENGTH, isValidPersonnelEmail, getResidentialAddressError, getEmployeePayError } from '../../shared/personnelInput.mjs';
+import { HUMAN_TEXT_LIMITS, hasUnsafeDisplayCharacters, PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput } from '../../shared/inputLimits.mjs';
 
 const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -7,15 +8,21 @@ const DATE_FIELDS = new Set(['date', 'date_hired', 'timekeeping_effective_date',
 const TEXT_FIELDS = new Set(['email', 'identifier', 'phone', 'first_name', 'last_name', 'name', 'title', 'password', 'new_password']);
 const PERSONNEL_FIELDS = new Set(['first_name', 'last_name', 'job_title', 'emergency_contact_name']);
 const EMPLOYEE_ACTIONS = new Set(['check-email', 'provision-admin']);
+const AUTH_TEXT_LIMITS = Object.freeze({ password: 1024, current_password: 1024, new_password: 1024, newPassword: 1024, recoveryKey: 1024, resetTicket: 128, otp: 32, code: 64 });
+const PAYROLL_PERIOD_LIMITS = Object.freeze({ overtime_hours: PAYROLL_NUMBER_LIMITS.overtime_hours, rest_day_ot_hours: PAYROLL_NUMBER_LIMITS.rest_day_ot_hours, declared_quantity: PAYROLL_NUMBER_LIMITS.declared_quantity });
 
 function invalid(message) {
   throw Object.assign(new Error(message), { status: 400, code: 'INVALID_INPUT', expose: true });
 }
 
-function validateField(key, value, validDates, validatePersonnel = false) {
+function validateField(key, value, validDates, validatePersonnel = false, payrollLimits = null, validateAuth = false) {
+  if (validatePersonnel && ['first_name', 'last_name'].includes(key) && !isValidPersonnelText(value, key)) invalid(`${key.replaceAll('_', ' ')} must use Latin letters (including accents) and permitted name punctuation, up to ${MAX_PERSONNEL_NAME_LENGTH} characters.`);
+  if (payrollLimits && Object.hasOwn(payrollLimits, key) && !isBoundedDecimalInput(value, payrollLimits[key], value === '')) invalid(`${key.replaceAll('_', ' ')} must be between 0 and ${payrollLimits[key]}, with at most two decimal places.`);
   if (value === null || value === undefined || value === '') return;
+  if (validateAuth && Object.hasOwn(AUTH_TEXT_LIMITS, key) && (typeof value !== 'string' || value.length > AUTH_TEXT_LIMITS[key])) invalid(`${key} must be text of at most ${AUTH_TEXT_LIMITS[key]} characters.`);
+  if (Object.hasOwn(HUMAN_TEXT_LIMITS, key) && (typeof value !== 'string' || value.length > HUMAN_TEXT_LIMITS[key] || hasUnsafeDisplayCharacters(value))) invalid(`${key.replaceAll('_', ' ')} must be readable text of at most ${HUMAN_TEXT_LIMITS[key]} characters, without hidden formatting characters.`);
   if (TEXT_FIELDS.has(key) && (typeof value !== 'string' || value.length > (key.includes('password') ? 1024 : 255))) invalid(`${key} must be bounded text.`);
-  if (validatePersonnel && PERSONNEL_FIELDS.has(key) && !isValidPersonnelText(value, key)) invalid(`${key.replaceAll('_', ' ')} must contain letters and permitted punctuation only, without numbers or symbols, and be at most ${key === 'emergency_contact_name' ? MAX_EMERGENCY_CONTACT_NAME_LENGTH : 255} characters.`);
+  if (validatePersonnel && PERSONNEL_FIELDS.has(key) && !isValidPersonnelText(value, key)) invalid(`${key.replaceAll('_', ' ')} must use Latin letters (including accents) and permitted punctuation, without numbers or symbols, up to ${key === 'job_title' ? MAX_JOB_TITLE_LENGTH : MAX_PERSONNEL_NAME_LENGTH} characters.`);
   if (validatePersonnel && key === 'address') {
     const error = getResidentialAddressError(value);
     if (error) invalid(error);
@@ -48,6 +55,9 @@ export function validateApiInput(req, res, next) {
     const employeePath = /^\/api\/employees\/([^/]+)/.exec(decoded);
     if (employeePath && !EMPLOYEE_ACTIONS.has(employeePath[1]) && !UUID.test(employeePath[1])) invalid('Employee ID must be a valid UUID.');
     const validatePersonnel = ['POST', 'PUT', 'PATCH'].includes(req.method) && /^\/api\/(?:employees|profile)(?:\/|$)/.test(decoded);
+    const validatePayroll = ['POST', 'PUT', 'PATCH'].includes(req.method) && /^\/api\/payroll(?:\/|$)/.test(decoded);
+    const payrollLimits = validatePayroll ? (decoded === '/api/payroll/factory-logs' ? PAYROLL_NUMBER_LIMITS : PAYROLL_PERIOD_LIMITS) : null;
+    const validateAuth = /^\/api\/(?:auth|profile)(?:\/|$)/.test(decoded);
     const query = req.query || {};
     // Payroll rows share period dates; validate each distinct date once per request.
     const validDates = new Set();
@@ -69,7 +79,7 @@ export function validateApiInput(req, res, next) {
         if (UNSAFE_KEYS.has(key) || /(?:^|\[)(?:__proto__|constructor|prototype)(?:\]|$)/.test(key)) invalid('Request contains a forbidden property.');
         const child = value[key];
         if (['mock', 'is_mock'].includes(key) && typeof child !== 'boolean') invalid('Mock flags must be Boolean values.');
-        validateField(key, child, validDates, validatePersonnel);
+        validateField(key, child, validDates, validatePersonnel, payrollLimits, validateAuth);
         if (child && typeof child === 'object') pending.push([child, depth + 1]);
       }
     }

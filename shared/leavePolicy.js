@@ -194,10 +194,15 @@ export function validateLeaveRange(start, end) {
     if (!isLeaveDate(start) || !isLeaveDate(end) || end < start || Date.parse(end) - Date.parse(start) > 365 * 86400000) invalid('Choose valid first and last dates, in order, covering at most 366 calendar days.', 400);
 }
 
+export function validateLeaveFilingDates(start, end, today = getManilaWorkDate()) {
+    validateLeaveRange(start, end);
+    if (start < today || end < today) invalid('Choose today or a future date (Philippine time).', 400);
+}
+
 export function validateLeaveRequest(input) {
     if (!isCreditUuid(input.employee_id)) invalid('A valid employee ID is required.', 400);
     if (typeof input.leave_type !== 'string' || !input.leave_type.trim() || input.leave_type.trim().length > 100) invalid('A valid leave type is required.', 400);
-    validateLeaveRange(input.start_date, input.end_date);
+    validateLeaveFilingDates(input.start_date, input.end_date);
     if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 255) invalid('Enter a reason using 1-255 characters.', 400);
     const result = { employee_id: input.employee_id, leave_type: input.leave_type.trim(), start_date: input.start_date, end_date: input.end_date, reason: input.reason.trim() };
     if (input.requested_pay_type !== undefined) {

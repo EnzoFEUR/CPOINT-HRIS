@@ -189,7 +189,7 @@ const fetchArchivedEmployees = async () => {
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <div className="relative w-full sm:w-auto flex-1 sm:flex-initial min-w-0 sm:min-w-[240px]">
             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-            <input
+            <input maxLength={200}
               type="text"
               placeholder="Search archive..."
               value={searchQuery}

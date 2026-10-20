@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../supabaseClient';
 import { fetchWithAuth } from '../../utils/api';
 import { playNotificationChime } from '../../utils/audio';
-import { getNotificationVisuals, getNotificationAvatar } from '../../utils/notificationHelpers';
+import { getNotificationVisuals, getNotificationAvatar, normalizeNotification } from '../../utils/notificationHelpers';
 import NotificationAvatar from './NotificationAvatar';
 import { getNotificationPermission, subscribeUserToPush, sendTestPush } from '../../utils/pushNotifications';
 
@@ -75,7 +75,7 @@ export const NotificationBell = ({ user }) => {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && !isCancelled) {
-            setNotifications(data);
+            setNotifications(data.slice(0, 40).map(normalizeNotification).filter(Boolean));
             return;
           }
         }
@@ -93,7 +93,7 @@ export const NotificationBell = ({ user }) => {
         }
         const { data } = await query;
         if (Array.isArray(data) && !isCancelled) {
-          setNotifications(data);
+          setNotifications(data.slice(0, 40).map(normalizeNotification).filter(Boolean));
         }
       } catch (dbErr) {
         console.error('[NOTIFICATIONS] Direct DB query error:', dbErr);
@@ -153,7 +153,8 @@ export const NotificationBell = ({ user }) => {
     const broadcastChannel = supabase
       .channel('system-notifications')
       .on('broadcast', { event: 'NEW_NOTIFICATION' }, (payload) => {
-        const notif = payload.payload;
+        const notif = normalizeNotification(payload?.payload);
+        if (!notif) return;
         if (notif.target === user.id || (user.role === 'admin' && notif.target === 'admin')) {
           playNotificationChime();
           const visuals = getNotificationVisuals(notif.type);
@@ -181,14 +182,14 @@ export const NotificationBell = ({ user }) => {
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700">
                     {visuals.label}
                   </span>
-                  <p className="text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
+                  <p dir="auto" className="min-w-0 text-xs font-bold text-slate-200 truncate">{notif.title || 'System Notification'}</p>
                 </div>
-                <p className="text-xs text-slate-300 font-medium mt-1 leading-snug">{notif.text}</p>
+                <p dir="auto" className="text-xs text-slate-300 font-medium mt-1 leading-snug line-clamp-2 [overflow-wrap:anywhere]">{notif.text}</p>
               </div>
             </div>
           ), { duration: 6000 });
 
-          setNotifications(prev => [notif, ...prev]);
+          setNotifications(prev => [notif, ...prev.filter(item => item.id !== notif.id)].slice(0, 40));
 
           window.dispatchEvent(new Event('refresh_dashboard'));
           window.dispatchEvent(new Event('refresh_leaves'));
@@ -304,9 +305,9 @@ export const NotificationBell = ({ user }) => {
                         <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                           {visuals.label}
                         </span>
-                        <p className="text-xs font-bold text-slate-800 truncate">{notif.title || 'System Alert'}</p>
+                        <p dir="auto" className="min-w-0 text-xs font-bold text-slate-800 truncate">{notif.title || 'System Alert'}</p>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                      <p dir="auto" className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed [overflow-wrap:anywhere]">
                         {notif.text}
                       </p>
                     </div>

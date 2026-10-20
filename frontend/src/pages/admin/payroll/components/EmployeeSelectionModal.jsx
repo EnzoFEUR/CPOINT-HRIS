@@ -28,7 +28,7 @@ const EmployeeSelectionModal = ({
                 </div>
 
                 <div className="p-3.5 border-b border-slate-100 space-y-3 bg-white">
-                    <input
+                    <input maxLength={200}
                         type="text"
                         value={empSearch}
                         onChange={(e) => setEmpSearch(e.target.value)}

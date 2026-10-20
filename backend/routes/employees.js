@@ -1850,6 +1850,9 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+    const requestId = req.reqId || randomUUID();
+    let deletionCommitted = false;
+    let stage = 'employee_lookup';
     try {
         if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
             return res.status(403).json({ success: false, error: 'Only verified administrators can delete employee accounts.' });
@@ -1857,17 +1860,21 @@ router.delete('/:id', async (req, res) => {
         const empId = req.params.id;
 
         // 1. Fetch employee metadata prior to deletion for storage and audit cleanup
-        const { data: empData } = await supabase
+        const { data: empData, error: employeeError } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, auth_user_id')
             .eq('id', empId)
             .maybeSingle();
+        if (employeeError) throw employeeError;
+        if (!empData) return res.status(404).json({ success: false, error: 'Employee not found.' });
 
         // 2. Fetch biometric/attendance photos from attendances
-        const { data: attendanceLogs } = await supabase
+        stage = 'attendance_lookup';
+        const { data: attendanceLogs, error: attendanceError } = await supabase
             .from('attendances')
             .select('time_in_photo, time_out_photo')
             .eq('employee_id', empId);
+        if (attendanceError) throw attendanceError;
 
         let photosToShred = [];
         if (attendanceLogs) {
@@ -1882,15 +1889,13 @@ router.delete('/:id', async (req, res) => {
         }
         photosToShred.push(`face-baselines/${empId}/${empId}.jpg`);
 
-        if (photosToShred.length > 0) {
-            await supabase.storage.from('public-bucket').remove(photosToShred).catch(() => { });
-        }
-
         // 3. Fetch uploaded documents from employee_documents and vault
-        const { data: docLogs } = await supabase
+        stage = 'document_lookup';
+        const { data: docLogs, error: documentError } = await supabase
             .from('employee_documents')
             .select('file_path')
             .eq('employee_id', empId);
+        if (documentError) throw documentError;
 
         let docsToShred = [];
         if (docLogs) {
@@ -1908,18 +1913,31 @@ router.delete('/:id', async (req, res) => {
             }
         } catch (_) { }
 
-        if (docsToShred.length > 0) {
-            await supabase.storage.from('documents').remove(docsToShred).catch(() => { });
-        }
-
         // 4. Execute atomic PostgreSQL cascading purge via stored procedure
+        stage = 'database_purge';
         const { data: cascadeResult, error: cascadeError } = await supabase.rpc('purge_employee_cascade', {
             target_emp_id: empId
         });
 
-        if (cascadeError) {
-            console.error('[EMPLOYEE PURGE] Cascading database purge error:', cascadeError);
-            throw new Error(`Database error during cascading purge: ${cascadeError.message}`);
+        if (cascadeError) throw cascadeError;
+        if (cascadeResult?.success !== true) throw Object.assign(new Error('Employee deletion was not confirmed.'), { code: 'PURGE_NOT_CONFIRMED' });
+        deletionCommitted = true;
+
+        // Never remove files or accounts while a database rollback can still preserve the employee.
+        let cleanupPending = false;
+        let totalShredded = 0;
+        stage = 'storage_cleanup';
+        for (const [bucket, files] of [['public-bucket', photosToShred], ['documents', docsToShred]]) {
+            const paths = [...new Set(files)];
+            if (!paths.length) continue;
+            try {
+                const { error } = await supabase.storage.from(bucket).remove(paths);
+                if (error) throw error;
+                totalShredded += paths.length;
+            } catch (error) {
+                cleanupPending = true;
+                console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: error?.code || 'UNKNOWN' });
+            }
         }
 
         // 5. Invalidate auth user cache in authMiddleware
@@ -1929,6 +1947,7 @@ router.delete('/:id', async (req, res) => {
         }
 
         // 6. Delete user account from Supabase Auth admin
+        stage = 'auth_cleanup';
         const authUserIds = [empId];
         if (empData?.auth_user_id && empData.auth_user_id !== empId) {
             authUserIds.push(empData.auth_user_id);
@@ -1937,17 +1956,18 @@ router.delete('/:id', async (req, res) => {
         for (const authId of authUserIds) {
             try {
                 const { error: authError } = await supabase.auth.admin.deleteUser(authId);
-                if (authError && !authError.message.includes('User not found')) {
-                    console.warn(`[EMPLOYEE PURGE] Auth user deletion notice for ${authId}:`, authError.message);
+                if (authError && authError.code !== 'user_not_found' && !authError.message?.includes('User not found')) {
+                    cleanupPending = true;
+                    console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: authError.code || 'UNKNOWN' });
                 }
             } catch (err) {
-                console.warn(`[EMPLOYEE PURGE] Non-fatal auth deletion warning for ${authId}:`, err.message);
+                cleanupPending = true;
+                console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: err?.code || 'UNKNOWN' });
             }
         }
 
         // 7. Record enterprise audit log if admin_id is provided
-        const totalShredded = photosToShred.length + docsToShred.length;
-        if (req.body.admin_id) {
+        if (req.body?.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
@@ -1955,7 +1975,7 @@ router.delete('/:id', async (req, res) => {
                 subject_type: 'App\\Models\\Employee',
                 subject_id: empId,
                 event: 'deleted',
-                causer_id: req.body.admin_id,
+                causer_id: req.user.id,
                 properties: {
                     files_shredded: totalShredded,
                     company_id: empData?.company_id,
@@ -1982,7 +2002,8 @@ router.delete('/:id', async (req, res) => {
 
         return res.json({
             success: true,
-            message: `Employee forensically purged successfully. Shredded ${totalShredded} orphaned storage artifacts.`,
+            cleanup_pending: cleanupPending,
+            message: cleanupPending ? 'Employee deleted. Some file or account cleanup needs administrator review.' : 'Employee account and associated records deleted.',
             details: {
                 employee_id: empId,
                 files_shredded: totalShredded,
@@ -1990,8 +2011,16 @@ router.delete('/:id', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('[EMPLOYEE PURGE] Critical error during deletion:', error);
-        return res.status(500).json({ success: false, error: error.message });
+        const constraint = typeof error?.message === 'string' ? error.message.match(/constraint "([a-zA-Z0-9_]+)"/)?.[1] : undefined;
+        console.error('[EMPLOYEE PURGE] Deletion could not complete:', { requestId, stage, code: error?.code || 'UNKNOWN', constraint });
+        if (deletionCommitted) return res.json({ success: true, cleanup_pending: true, message: 'Employee deleted. Remaining account cleanup needs administrator review.' });
+        if (['23503', '23502', 'P0001'].includes(error?.code)) {
+            const offlineHistory = constraint?.startsWith('offline_attendance_');
+            return res.status(409).json({ success: false, code: 'EMPLOYEE_HISTORY_PROTECTED', error: offlineHistory
+                ? 'This employee has protected offline attendance records. Archive the employee instead to preserve the history.'
+                : 'This employee has linked records that must be kept. Archive the employee instead of permanently deleting them.' });
+        }
+        return res.status(error?.code ? 503 : 500).json({ success: false, code: 'EMPLOYEE_DELETE_UNAVAILABLE', error: 'Employee deletion could not be verified. No file or account cleanup was started. Please contact your administrator.' });
     }
 });
 

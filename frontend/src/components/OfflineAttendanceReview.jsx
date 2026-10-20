@@ -523,7 +523,7 @@ export default function OfflineAttendanceReview() {
             {/* Search Input */}
             <div className="relative flex-1 md:w-56">
               <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-              <input
+              <input maxLength={200}
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}

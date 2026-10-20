@@ -1,5 +1,6 @@
 import { calculateBIRWithholdingTax } from '../../../../../shared/payrollTax.mjs';
 import { getSssMsc } from '../../../../../shared/sssContribution.mjs';
+import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput } from '../../../../../shared/inputLimits.mjs';
 import { isFirstCutoffOfMonth } from '../../../../../shared/statutoryTiming.mjs';
 import { isLastCutoffOfDecember } from '../../../../../shared/thirteenthMonth.mjs';
 import { getUser } from '../../../routes/guards';
@@ -1728,6 +1729,7 @@ const PayrollCreate = () => {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
+        if (Object.hasOwn(PAYROLL_NUMBER_LIMITS, name) && !isBoundedDecimalInput(value, PAYROLL_NUMBER_LIMITS[name], true)) return;
         const next = name === 'late_deductions' ? sanitizeAmount(value) : value;
         setFormData(prev => ({ ...prev, [name]: next }));
     };

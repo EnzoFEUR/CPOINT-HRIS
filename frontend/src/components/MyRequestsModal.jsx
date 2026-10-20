@@ -245,7 +245,7 @@ export default function MyRequestsModal({
 
                         <div className="relative flex-1 sm:max-w-xs">
                             <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-                            <input
+                            <input maxLength={200}
                                 type="text"
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}

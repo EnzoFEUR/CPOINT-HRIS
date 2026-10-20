@@ -168,7 +168,7 @@ export default function ProvisionAdmin() {
                                 type="text"
                                 required
                                 value={firstName}
-                                maxLength={255}
+                                maxLength={100}
                                 onChange={(e) => setFirstName(sanitizePersonnelText(e.target.value))}
                                 placeholder="e.g. Maria Clara"
                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
@@ -183,7 +183,7 @@ export default function ProvisionAdmin() {
                                 type="text"
                                 required
                                 value={lastName}
-                                maxLength={255}
+                                maxLength={100}
                                 onChange={(e) => setLastName(sanitizePersonnelText(e.target.value))}
                                 placeholder="e.g. Santos"
                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"

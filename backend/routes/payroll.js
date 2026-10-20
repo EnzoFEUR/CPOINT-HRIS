@@ -29,6 +29,7 @@ import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
 import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
 import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError } from '../../shared/statutorySettings.mjs';
+import { getFactoryRowsError } from '../../shared/inputLimits.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
 import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
 
@@ -2169,6 +2170,8 @@ router.post('/factory-logs', requirePayrollManager, async (req, res) => {
         if (!rows || !Array.isArray(rows) || rows.length === 0) {
             return res.status(400).json({ error: 'No factory operation rows provided' });
         }
+        const inputError = getFactoryRowsError(rows);
+        if (inputError) return res.status(400).json({ error: inputError });
 
         let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
         if (!resolvedGroupId && group_name) {
