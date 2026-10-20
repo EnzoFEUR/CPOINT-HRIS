@@ -685,7 +685,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
         };
 
         const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr, briefingData);
-        const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal) : null;
+        const cachedPayrollInsight = forecast ? Brain.Analytics.getCachedPayrollInsight(forecast) : null;
         const payrollData = forecast ? { ...forecast, insight: cachedPayrollInsight?.insight || forecast.insight } : null;
 
         // Background pre-warm: if briefing is not yet cached, generate asynchronously without blocking response
@@ -735,16 +735,15 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
  * Dedicated Asynchronous AI Workforce Briefing & Analytics Endpoint
  * Enterprise concurrent execution: generates workforce briefing & payroll insight in parallel.
  */
-router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
+router.get('/ai-briefing', checkRole('admin'), cacheResponse(30), async (req, res) => {
     try {
-        const forceFresh = req.query.fresh === 'true';
         const todayStr = toDateStr(new Date());
 
-        // Parallel fetch of today's operational signals (< 10ms)
+        // Parallel fetch of today's operational signals.
         const [
-            { data: rawEmployees },
-            { data: rawAttendances },
-            { data: rawLeaves }
+            { data: rawEmployees, error: employeeError },
+            { data: rawAttendances, error: attendanceError },
+            { data: rawLeaves, error: leaveError }
         ] = await Promise.all([
             applyWorkforceFilter(
                 supabase
@@ -759,6 +758,7 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
                 .from('leave_requests')
                 .select('status, start_date, end_date')
         ]);
+        if (employeeError || attendanceError || leaveError) throw new Error('Dashboard signals could not be loaded.');
 
         const employees = (rawEmployees || []).filter(isWorkforceEmployee);
         const empMap = new Map(employees.map(e => [e.id, e]));
@@ -811,36 +811,9 @@ router.get('/ai-briefing', checkRole('admin'), async (req, res) => {
             departments: Object.entries(deptBreakdown).map(([name, count]) => ({ name, count }))
         };
 
-        // Cache validation check against current live metrics
-        if (!forceFresh) {
-            const cachedBriefing = Brain.Analytics.getCachedBriefing(todayStr, briefingData);
-            const isCorruptedBriefing = (b) => {
-                if (!b) return true;
-                if (b.executive_summary?.includes('single recorded employee')) return true;
-                if (b.executive_summary?.includes('critical disruption with a 0%') && totalEmployees > 1) return true;
-                return false;
-            };
-
-            if (cachedBriefing && !isCorruptedBriefing(cachedBriefing)) {
-                let cachedPayrollInsight = null;
-                try {
-                    const forecast = await computePayrollForecast();
-                    if (forecast) {
-                        cachedPayrollInsight = Brain.Analytics.getCachedPayrollInsight(forecast.cutoffStart, forecast.projectedCutoffTotal);
-                    }
-                } catch {
-                    // Non-blocking fallback
-                }
-                return res.json({ 
-                    briefing: cachedBriefing,
-                    payrollInsight: cachedPayrollInsight?.insight || null
-                });
-            }
-        }
-
-        // Concurrent execution: run workforce briefing and payroll insight in parallel
+        // Shared service enforces caching, cooldown and budget for every caller, including legacy fresh requests.
         const [briefing, payrollInsight] = await Promise.all([
-            Brain.Analytics.generateWorkforceBriefing(briefingData, forceFresh, todayStr),
+            Brain.Analytics.generateWorkforceBriefing(briefingData, false, todayStr),
             (async () => {
                 try {
                     const forecast = await computePayrollForecast();

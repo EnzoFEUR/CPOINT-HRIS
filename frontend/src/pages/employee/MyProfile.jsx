@@ -1200,7 +1200,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                     {/* Admin Section 1: Personal Identity & Administrative Governance Details */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                         {/* Personal Information */}
-                        <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                        <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                                 <div className="flex items-center gap-2.5">
                                     <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
@@ -1448,7 +1448,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                     {/* Personal and employment details */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 {/* Personal Information */}
-                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-2.5">
                             <div className="h-9 w-9 rounded-md bg-accent-subtle text-accent flex items-center justify-center border border-accent/20">
@@ -1503,7 +1503,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                 <p className="text-slate-500 font-semibold uppercase text-[10px]">Emergency Contact</p>
                             </div>
                             {profile?.emergency_contact_name ? (
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-semibold text-slate-900">
+                                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-semibold text-slate-900 [&>span]:min-w-0 [&>span]:max-w-full">
                                     <span>{profile.emergency_contact_name}</span>
                                     {profile.emergency_contact_relationship && (
                                         <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded font-normal">
@@ -1783,7 +1783,7 @@ const normalizeJobTitle = (title, isAdmin) => {
             </div>
 
             {/* Compliance & Disciplinary Standing */}
-            <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+            <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
                         <div className="h-9 w-9 rounded-md bg-warning-subtle text-warning-ink flex items-center justify-center border border-warning/20">

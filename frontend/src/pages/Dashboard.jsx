@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import { fetchWithAuth } from '../utils/api';
+import toast from 'react-hot-toast';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import {
     RefreshCw,
@@ -47,6 +48,9 @@ export default function Dashboard() {
     const queryClient = useQueryClient();
     const [trendView, setTrendView] = useState('weekly');
     const [isManualRefreshingAI, setIsManualRefreshingAI] = useState(false);
+    const aiRefreshBusy = useRef(false);
+    const [manualRefreshAfter, setManualRefreshAfter] = useState(0);
+    const [refreshClock, setRefreshClock] = useState(Date.now);
     const [activeModal, setActiveModal] = useState(null); // 'present' | 'late' | null
     const [expandedRiskFlag, setExpandedRiskFlag] = useState(null); // index of expanded burnout row, or null
     const [expandedDole, setExpandedDole] = useState(null); // 'rest' | 'holiday' | null
@@ -228,7 +232,7 @@ export default function Dashboard() {
             }
             return { briefing: null, payrollInsight: null };
         },
-        staleTime: 60 * 1000,           // 1 minute: Fast cache responsiveness with real-time invalidation
+        staleTime: 10 * 60 * 1000,       // Summary wording is cached; dashboard figures keep their live updates.
         gcTime: 30 * 60 * 1000,          // Retain in memory across page/tab navigation
         refetchOnMount: true,           // Always sync on mount
         refetchOnWindowFocus: false,    // Never auto-refetch when switching browser tabs
@@ -355,26 +359,44 @@ export default function Dashboard() {
         || liveSynthesizedBriefing;
 
     const payrollInsight = aiQueryData?.payrollInsight || payrollData?.insight || null;
-    const isAILoading = isManualRefreshingAI || (!briefing && isAIFetching);
+    const isAILoading = isManualRefreshingAI || isAIFetching;
+    const serverRefreshAfter = Date.parse(briefing?.refresh_after) || 0;
+    const refreshAfter = Math.max(serverRefreshAfter, manualRefreshAfter);
+    const summaryCoolingDown = refreshAfter > refreshClock;
+    const summaryUpdatedAt = Date.parse(briefing?.generated_at);
+
+    useEffect(() => {
+        const delay = refreshAfter - Date.now();
+        const timer = setTimeout(() => {
+            setRefreshClock(Date.now());
+            if (delay > 0 && serverRefreshAfter === refreshAfter) queryClient.invalidateQueries({ queryKey: ['adminDashboardAI'] });
+        }, Math.max(0, delay) + 50);
+        return () => clearTimeout(timer);
+    }, [refreshAfter, serverRefreshAfter, queryClient]);
 
     // Manual Refresh of AI Briefing only (zero overhead on telemetry)
     const handleRefreshAI = async () => {
-        if (isManualRefreshingAI) return;
+        if (aiRefreshBusy.current || isAIFetching || Date.now() < refreshAfter) return;
+        aiRefreshBusy.current = true;
         setIsManualRefreshingAI(true);
         try {
-            const res = await fetchWithAuth('/api/dashboard/ai-briefing?fresh=true');
-            if (res.ok) {
-                const fresh = await res.json();
-                queryClient.setQueryData(['adminDashboardAI'], fresh);
-                if (fresh?.briefing) {
+            const res = await fetchWithAuth('/api/dashboard/ai-briefing');
+            if (!res.ok) throw new Error('Could not update the summary. Please try again.');
+            const fresh = await res.json();
+            queryClient.setQueryData(['adminDashboardAI'], fresh);
+            setManualRefreshAfter(Date.now() + 60000);
+            if (fresh?.briefing) {
+                setLocalAIBriefing(fresh.briefing);
+                try {
                     const today = getTodayManilaKey();
                     localStorage.setItem(`cpoint_ai_briefing_${today}`, JSON.stringify(fresh.briefing));
-                    setLocalAIBriefing(fresh.briefing);
-                }
+                } catch { /* Storage availability must not turn a successful refresh into a failure. */ }
             }
         } catch (err) {
             console.error('[DASHBOARD_UI] AI Refresh error:', err);
+            toast.error('Could not update the summary. Please try again.', { id: 'dashboard-summary-refresh' });
         } finally {
+            aiRefreshBusy.current = false;
             setIsManualRefreshingAI(false);
         }
     };
@@ -540,13 +562,21 @@ export default function Dashboard() {
                                 <button
                                     type="button"
                                     onClick={handleRefreshAI}
-                                    disabled={isAILoading}
+                                    disabled={isAILoading || summaryCoolingDown}
+                                    title={summaryCoolingDown ? `Available after ${new Date(refreshAfter).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} (Philippine time)` : 'Check for an updated summary'}
                                     className="self-start shrink-0 h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md text-xs font-medium text-white flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
                                 >
                                     <RefreshCw className={`w-3.5 h-3.5 text-ink-subtle ${isManualRefreshingAI ? 'animate-spin' : ''}`} />
-                                    <span>{isManualRefreshingAI ? 'Updating...' : 'Refresh summary'}</span>
+                                    <span>{isManualRefreshingAI ? 'Updating...' : summaryCoolingDown ? 'Refresh later' : 'Refresh summary'}</span>
                                 </button>
                             </div>
+
+                            {briefing.refresh_after && (
+                                <p className="text-[11px] text-surface-muted/70">
+                                    {Number.isFinite(summaryUpdatedAt) ? <>Updated <time dateTime={briefing.generated_at}>{new Date(summaryUpdatedAt).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}</time> (PH)</> : 'Summary available'}
+                                    {briefing.summary_status === 'deferred' ? ' · Update scheduled' : briefing.summary_status === 'daily_limit' ? ' · Daily summary limit reached' : ''}
+                                </p>
+                            )}
 
                             {briefing.department_needs_attention && briefing.department_needs_attention !== 'None' && (
                                 <div className="flex flex-wrap items-center gap-2">
