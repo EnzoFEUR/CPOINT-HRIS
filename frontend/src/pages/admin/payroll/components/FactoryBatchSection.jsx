@@ -172,7 +172,7 @@ const FactoryBatchSection = ({
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
                         <div className="relative flex-1 max-w-xs sm:max-w-sm">
                             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-                            <input
+                            <input maxLength={200}
                                 type="text"
                                 value={breakdownSearch}
                                 onChange={(e) => setBreakdownSearch(e.target.value)}

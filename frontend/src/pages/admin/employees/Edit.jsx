@@ -7,6 +7,8 @@ import { fetchWithAuth } from '../../../utils/api';
 import { FACTORY_SHOE_ROLES, extractProductionLines, getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
 import PhilippineAddressSelector from '../../../components/PhilippineAddressSelector';
+import EmailDomainWarning from '../../../components/EmailDomainWarning';
+import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail, isEmployeePayInput, getEmployeePayError } from '../../../../../shared/personnelInput.mjs';
 
 export default function Edit() {
     const { id } = useParams();
@@ -213,6 +215,8 @@ export default function Edit() {
         return () => clearTimeout(timer);
     }, [emailInput, employee?.email, id]);
 
+    const [payError, setPayError] = useState('');
+
     function formatSalary(value) {
         if (value === null || value === undefined || value === '') return '';
         let strVal = String(value);
@@ -223,7 +227,12 @@ export default function Edit() {
     }
 
     const handleDailyPayChange = (e) => {
-        const value = e.target.value.replace(/[^0-9.]/g, '');
+        const value = e.target.value.replace(/,/g, '').trim();
+        if (!isEmployeePayInput(value)) {
+            setPayError(getEmployeePayError({ daily_rate: value }));
+            return;
+        }
+        setPayError('');
         setRawDailyPay(value);
         setDisplayDailyPay(formatSalary(value));
 
@@ -239,7 +248,18 @@ export default function Edit() {
     };
 
     const handleHourlyPayChange = (e) => {
-        const value = e.target.value.replace(/[^0-9.]/g, '');
+        const value = e.target.value.replace(/,/g, '').trim();
+        if (!isEmployeePayInput(value)) {
+            setPayError(getEmployeePayError({ hourly_rate: value }));
+            return;
+        }
+        const daily = value && value !== '.' ? (Number(value) * 8).toFixed(2) : '';
+        const error = getEmployeePayError({ daily_rate: daily });
+        if (error) {
+            setPayError(error);
+            return;
+        }
+        setPayError('');
         setRawHourlyPay(value);
         setDisplayHourlyPay(formatSalary(value));
 
@@ -258,6 +278,10 @@ export default function Edit() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!isFactory) {
+            const error = payError || getEmployeePayError({ daily_rate: rawDailyPay, hourly_rate: rawHourlyPay });
+            if (error) { toast.error(error); return; }
+        }
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
@@ -285,7 +309,7 @@ export default function Edit() {
         }
 
         const cleanEmail = (emailInput || data.email || '').trim().toLowerCase();
-        if (!cleanEmail) {
+        if (!isValidPersonnelEmail(cleanEmail)) {
             toast.error('A valid email address is required.');
             return;
         }
@@ -418,11 +442,18 @@ export default function Edit() {
                                     )}
                                 </div>
                                 <input 
-                                    type="email" 
+                                    type="email"
+                                    maxLength={254}
                                     name="email" 
                                     required 
                                     value={emailInput}
-                                    onChange={(e) => setEmailInput(e.target.value)}
+                                    onChange={e => {
+                                        if (!isPersonnelEmailInput(e.target.value)) {
+                                            toast.error('Use letters, numbers, @, dots, hyphens, underscores and plus signs only.', { id: 'personnel-email-characters' });
+                                            return;
+                                        }
+                                        setEmailInput(e.target.value);
+                                    }}
                                     placeholder="employee@cpoint.com"
                                     className={`w-full h-9 px-3 bg-white border rounded-md focus:outline-none text-xs text-slate-800 transition-colors duration-100 shadow-2xs ${
                                         emailStatus.state === 'available'
@@ -434,6 +465,7 @@ export default function Edit() {
                                             : 'border-slate-200 focus:border-accent'
                                     }`} 
                                 />
+                                <EmailDomainWarning email={emailInput} />
                             </div>
 
                             <div>
@@ -497,12 +529,14 @@ export default function Edit() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">First Name</label>
-                                <input type="text" name="first_name" required defaultValue={employee.first_name || ''}
+                                <input type="text" name="first_name" required maxLength={100} defaultValue={employee.first_name || ''}
+                                    onChange={e => { e.target.value = sanitizePersonnelText(e.target.value); }}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
                             <div>
                                 <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Last Name</label>
-                                <input type="text" name="last_name" required defaultValue={employee.last_name || ''}
+                                <input type="text" name="last_name" required maxLength={100} defaultValue={employee.last_name || ''}
+                                    onChange={e => { e.target.value = sanitizePersonnelText(e.target.value); }}
                                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                             </div>
 
@@ -571,7 +605,8 @@ export default function Edit() {
                             {!isFactory ? (
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Job Title</label>
-                                    <input type="text" name="job_title" required defaultValue={employee.job_title || ''}
+                                    <input type="text" name="job_title" required maxLength={120} defaultValue={employee.job_title || ''}
+                                        onChange={e => { e.target.value = sanitizePersonnelText(e.target.value, 'job_title'); }}
                                         className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors duration-100 shadow-2xs" />
                                 </div>
                             ) : null}
@@ -651,7 +686,7 @@ export default function Edit() {
 
                                         {isCustomLine ? (
                                             <div>
-                                                <input
+                                                <input maxLength={100}
                                                     type="text"
                                                     value={selectedGroup}
                                                     onChange={(e) => setSelectedGroup(e.target.value)}
@@ -756,15 +791,17 @@ export default function Edit() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {payError && <div role="alert" className="sm:col-span-2 rounded-md border border-danger/20 bg-danger-subtle px-3 py-2 text-xs text-danger-ink">{payError}</div>}
                                 <div>
                                     <label className="block text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                                         Daily Pay Rate
                                     </label>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
+                                        <input maxLength={11}
                                             type="text"
                                             value={displayDailyPay}
+                                            inputMode="decimal"
                                             onChange={handleDailyPayChange}
                                             className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"
@@ -782,9 +819,10 @@ export default function Edit() {
                                     </label>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₱</span>
-                                        <input
+                                        <input maxLength={11}
                                             type="text"
                                             value={displayHourlyPay}
+                                            inputMode="decimal"
                                             onChange={handleHourlyPayChange}
                                             className="w-full h-10 pl-8 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent font-bold text-sm text-slate-800 transition-colors duration-100 placeholder:text-slate-300 font-mono shadow-2xs"
                                             placeholder="0.00"

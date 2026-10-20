@@ -1,4 +1,6 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
+import { getEmployeePayError } from '../../shared/personnelInput.mjs';
 import { postgrestValue, postgrestLikeValue, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
@@ -294,6 +296,9 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader('X-Request-ID', requestId);
+    let creationStage = 'validation';
     try {
         if (!hasVerifiedManagerRole(req.user)) {
             return res.status(403).json({ success: false, error: 'Administrative privileges required to register employees.' });
@@ -422,6 +427,9 @@ router.post('/', async (req, res) => {
             }
         }
 
+        const payError = getEmployeePayError({ daily_rate: parsedDailyRate, hourly_rate: parsedHourlyRate });
+        if (payError) return res.status(400).json({ success: false, code: 'EMPLOYEE_PAY_OUT_OF_RANGE', error: payError });
+
         // Normalize and hash email
         const normalizedEmail = email.trim().toLowerCase();
         const crypto = await import('crypto');
@@ -429,11 +437,13 @@ router.post('/', async (req, res) => {
         const lookupHash = crypto.createHash('sha256').update(normalizedEmail + APP_KEY).digest('hex');
 
         // Check if an employee record already exists with this email or hash
-        const { data: existingEmp } = await supabase
+        creationStage = 'employee_email_lookup';
+        const { data: existingEmp, error: lookupError } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, status, is_active, archived_at, separation_notes')
             .or(`email_hash.eq.${lookupHash},email.eq.${postgrestValue(normalizedEmail)}`)
             .maybeSingle();
+        if (lookupError) throw lookupError;
 
         if (existingEmp) {
             const isArchived = Boolean(existingEmp.archived_at) || existingEmp.is_active === false || existingEmp.status === 'terminated';
@@ -472,6 +482,7 @@ router.post('/', async (req, res) => {
         const defaultPassword = 'Emp-' + Math.floor(1000 + Math.random() * 9000);
 
         // Attempt creating the auth user
+        creationStage = 'auth_create';
         let authData;
         const { data: createdAuth, error: authError } = await supabase.auth.admin.createUser({
             email: normalizedEmail,
@@ -485,20 +496,24 @@ router.post('/', async (req, res) => {
             const isDuplicate = authError.message?.toLowerCase().includes('already') || authError.status === 422;
             if (isDuplicate) {
                 // Find and reconcile orphaned auth account
-                const { data: userList } = await supabase.auth.admin.listUsers();
+                creationStage = 'orphan_lookup';
+                const { data: userList, error: userListError } = await supabase.auth.admin.listUsers();
+                if (userListError) throw userListError;
                 const orphanUser = userList?.users?.find(u => u.email?.toLowerCase() === normalizedEmail);
 
                 if (orphanUser) {
                     // Verify that no employee row is bound to this orphan user
-                    const { data: boundEmp } = await supabase
+                    const { data: boundEmp, error: boundError } = await supabase
                         .from('employees')
                         .select('id')
                         .eq('id', orphanUser.id)
                         .maybeSingle();
+                    if (boundError) throw boundError;
 
                     if (!boundEmp) {
                         // Purge orphan and recreate
-                        await supabase.auth.admin.deleteUser(orphanUser.id);
+                        const { error: orphanDeleteError } = await supabase.auth.admin.deleteUser(orphanUser.id);
+                        if (orphanDeleteError) throw orphanDeleteError;
                         const retry = await supabase.auth.admin.createUser({
                             email: normalizedEmail,
                             password: defaultPassword,
@@ -526,15 +541,17 @@ router.post('/', async (req, res) => {
         // Insert into employees table with rollback protection
         try {
             // Generate next Company ID (e.g., CP-2026-001)
+            creationStage = 'company_id_lookup';
             const currentYear = new Date().getFullYear();
 
-            const { data: latestEmp } = await supabase
+            const { data: latestEmp, error: latestError } = await supabase
                 .from('employees')
                 .select('company_id')
                 .like('company_id', `CP-${currentYear}-%`)
                 .order('company_id', { ascending: false })
                 .limit(1)
                 .maybeSingle();
+            if (latestError) throw latestError;
 
             let newIdNum = 1;
             if (latestEmp && latestEmp.company_id) {
@@ -552,12 +569,14 @@ router.post('/', async (req, res) => {
             let resolvedGroupName = 'Line A';
 
             if (department === 'Factory') {
+                creationStage = 'production_group_lookup';
                 if (production_group_id) {
-                    const { data: groupById } = await supabase
+                    const { data: groupById, error: groupLookupError } = await supabase
                         .from('production_groups')
                         .select('id, name')
                         .eq('id', production_group_id)
                         .maybeSingle();
+                    if (groupLookupError) throw groupLookupError;
 
                     if (groupById) {
                         resolvedGroupId = groupById.id;
@@ -569,17 +588,19 @@ router.post('/', async (req, res) => {
                     const candidateName = (production_group_name || (shift ? shift.split('·')[0].trim() : 'Line A')).trim();
                     const generatedCode = candidateName.toUpperCase().replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
-                    const { data: matchedGroup } = await supabase
+                    const { data: matchedGroup, error: groupMatchError } = await supabase
                         .from('production_groups')
                         .select('id, name')
                         .or(`name.ilike.${postgrestLikeValue(candidateName)},code.ilike.${postgrestLikeValue(generatedCode)}`)
                         .maybeSingle();
+                    if (groupMatchError) throw groupMatchError;
 
                     if (matchedGroup) {
                         resolvedGroupId = matchedGroup.id;
                         resolvedGroupName = matchedGroup.name;
                     } else if (candidateName) {
-                        const { data: createdGroup } = await supabase
+                        creationStage = 'production_group_create';
+                        const { data: createdGroup, error: groupCreateError } = await supabase
                             .from('production_groups')
                             .insert({
                                 code: generatedCode || `LINE-${Date.now()}`,
@@ -589,6 +610,7 @@ router.post('/', async (req, res) => {
                             })
                             .select('id, name')
                             .single();
+                        if (groupCreateError) throw groupCreateError;
 
                         if (createdGroup) {
                             resolvedGroupId = createdGroup.id;
@@ -631,6 +653,7 @@ router.post('/', async (req, res) => {
             };
 
             let empData = null;
+            creationStage = 'employee_insert';
             const tryInsert = await supabase
                 .from('employees')
                 .insert({ ...insertRecord, phone: sanitizedPhone })
@@ -642,7 +665,7 @@ router.post('/', async (req, res) => {
                 `)
                 .single();
 
-            if (tryInsert.error && tryInsert.error.message?.includes('phone')) {
+            if (['PGRST204', '42703'].includes(tryInsert.error?.code) && /['"]phone['"]/.test(tryInsert.error.message || '')) {
                 // Table doesn't have phone column; fallback to inserting without phone column
                 const retryInsert = await supabase
                     .from('employees')
@@ -674,14 +697,25 @@ router.post('/', async (req, res) => {
                 temp_password: defaultPassword
             });
         } catch (dbError) {
-            // Atomic rollback: clean up newly created auth user if database insert fails
+            // Compensate the newly created Auth account if the employee insert fails.
             if (authData?.user?.id) {
-                await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+                try {
+                    const { error: rollbackError } = await supabase.auth.admin.deleteUser(authData.user.id);
+                    if (rollbackError) throw rollbackError;
+                } catch {
+                    console.error('[EMPLOYEE_CREATE_ROLLBACK]', { requestId, code: 'AUTH_CLEANUP_FAILED' });
+                }
             }
             throw dbError;
         }
     } catch (error) {
         const msg = error.message || '';
+        const code = typeof error.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code) ? error.code : 'UNEXPECTED_ERROR';
+        const field = msg.match(/(?:find the|column) ['"]([a-z_][a-z0-9_]*)['"]/i)?.[1] || null;
+        console.error('[EMPLOYEE_CREATE]', { requestId, stage: creationStage, code, field });
+        if (code === '22003') {
+            return res.status(400).json({ success: false, code: 'EMPLOYEE_PAY_OUT_OF_RANGE', error: 'A pay amount exceeds the supported range. Check the daily and hourly pay rates.' });
+        }
         if (msg.includes('employees_email_key') || msg.includes('duplicate key') || error.code === '23505') {
             return res.status(409).json({
                 success: false,
@@ -689,7 +723,10 @@ router.post('/', async (req, res) => {
                 error: 'An employee with this email address already exists. Please verify the email address.'
             });
         }
-        res.status(500).json({ success: false, error: msg });
+        if (['PGRST200', 'PGRST201', 'PGRST204', '42703', '42P01', '42883'].includes(code)) {
+            return res.status(503).json({ success: false, code: 'EMPLOYEE_SCHEMA_UNAVAILABLE', error: 'Employee registration needs a database setup update. Contact the administrator.' });
+        }
+        res.status(500).json({ success: false, error: 'The employee account could not be created. Please retry or contact the administrator.' });
     }
 });
 
@@ -971,6 +1008,9 @@ router.put('/:id', async (req, res) => {
             parsedDailyRate = parseFloat((parseFloat(monthly_salary) / 26).toFixed(2));
             parsedHourlyRate = parseFloat((parsedDailyRate / 8).toFixed(2));
         }
+
+        const payError = getEmployeePayError({ daily_rate: parsedDailyRate, hourly_rate: parsedHourlyRate });
+        if (payError) return res.status(400).json({ success: false, code: 'EMPLOYEE_PAY_OUT_OF_RANGE', error: payError });
 
         const updatePayload = {
             first_name,
@@ -1810,6 +1850,9 @@ router.post('/:id/reset-biometrics', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+    const requestId = req.reqId || randomUUID();
+    let deletionCommitted = false;
+    let stage = 'employee_lookup';
     try {
         if (req.user?.role !== 'admin' || !hasVerifiedManagerRole(req.user)) {
             return res.status(403).json({ success: false, error: 'Only verified administrators can delete employee accounts.' });
@@ -1817,17 +1860,21 @@ router.delete('/:id', async (req, res) => {
         const empId = req.params.id;
 
         // 1. Fetch employee metadata prior to deletion for storage and audit cleanup
-        const { data: empData } = await supabase
+        const { data: empData, error: employeeError } = await supabase
             .from('employees')
             .select('id, company_id, first_name, last_name, auth_user_id')
             .eq('id', empId)
             .maybeSingle();
+        if (employeeError) throw employeeError;
+        if (!empData) return res.status(404).json({ success: false, error: 'Employee not found.' });
 
         // 2. Fetch biometric/attendance photos from attendances
-        const { data: attendanceLogs } = await supabase
+        stage = 'attendance_lookup';
+        const { data: attendanceLogs, error: attendanceError } = await supabase
             .from('attendances')
             .select('time_in_photo, time_out_photo')
             .eq('employee_id', empId);
+        if (attendanceError) throw attendanceError;
 
         let photosToShred = [];
         if (attendanceLogs) {
@@ -1842,15 +1889,13 @@ router.delete('/:id', async (req, res) => {
         }
         photosToShred.push(`face-baselines/${empId}/${empId}.jpg`);
 
-        if (photosToShred.length > 0) {
-            await supabase.storage.from('public-bucket').remove(photosToShred).catch(() => { });
-        }
-
         // 3. Fetch uploaded documents from employee_documents and vault
-        const { data: docLogs } = await supabase
+        stage = 'document_lookup';
+        const { data: docLogs, error: documentError } = await supabase
             .from('employee_documents')
             .select('file_path')
             .eq('employee_id', empId);
+        if (documentError) throw documentError;
 
         let docsToShred = [];
         if (docLogs) {
@@ -1868,18 +1913,31 @@ router.delete('/:id', async (req, res) => {
             }
         } catch (_) { }
 
-        if (docsToShred.length > 0) {
-            await supabase.storage.from('documents').remove(docsToShred).catch(() => { });
-        }
-
         // 4. Execute atomic PostgreSQL cascading purge via stored procedure
+        stage = 'database_purge';
         const { data: cascadeResult, error: cascadeError } = await supabase.rpc('purge_employee_cascade', {
             target_emp_id: empId
         });
 
-        if (cascadeError) {
-            console.error('[EMPLOYEE PURGE] Cascading database purge error:', cascadeError);
-            throw new Error(`Database error during cascading purge: ${cascadeError.message}`);
+        if (cascadeError) throw cascadeError;
+        if (cascadeResult?.success !== true) throw Object.assign(new Error('Employee deletion was not confirmed.'), { code: 'PURGE_NOT_CONFIRMED' });
+        deletionCommitted = true;
+
+        // Never remove files or accounts while a database rollback can still preserve the employee.
+        let cleanupPending = false;
+        let totalShredded = 0;
+        stage = 'storage_cleanup';
+        for (const [bucket, files] of [['public-bucket', photosToShred], ['documents', docsToShred]]) {
+            const paths = [...new Set(files)];
+            if (!paths.length) continue;
+            try {
+                const { error } = await supabase.storage.from(bucket).remove(paths);
+                if (error) throw error;
+                totalShredded += paths.length;
+            } catch (error) {
+                cleanupPending = true;
+                console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: error?.code || 'UNKNOWN' });
+            }
         }
 
         // 5. Invalidate auth user cache in authMiddleware
@@ -1889,6 +1947,7 @@ router.delete('/:id', async (req, res) => {
         }
 
         // 6. Delete user account from Supabase Auth admin
+        stage = 'auth_cleanup';
         const authUserIds = [empId];
         if (empData?.auth_user_id && empData.auth_user_id !== empId) {
             authUserIds.push(empData.auth_user_id);
@@ -1897,17 +1956,18 @@ router.delete('/:id', async (req, res) => {
         for (const authId of authUserIds) {
             try {
                 const { error: authError } = await supabase.auth.admin.deleteUser(authId);
-                if (authError && !authError.message.includes('User not found')) {
-                    console.warn(`[EMPLOYEE PURGE] Auth user deletion notice for ${authId}:`, authError.message);
+                if (authError && authError.code !== 'user_not_found' && !authError.message?.includes('User not found')) {
+                    cleanupPending = true;
+                    console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: authError.code || 'UNKNOWN' });
                 }
             } catch (err) {
-                console.warn(`[EMPLOYEE PURGE] Non-fatal auth deletion warning for ${authId}:`, err.message);
+                cleanupPending = true;
+                console.warn('[EMPLOYEE PURGE] Cleanup needs review:', { requestId, stage, code: err?.code || 'UNKNOWN' });
             }
         }
 
         // 7. Record enterprise audit log if admin_id is provided
-        const totalShredded = photosToShred.length + docsToShred.length;
-        if (req.body.admin_id) {
+        if (req.body?.admin_id) {
             const { createAuditLog } = await import('./auditLogs.js');
             await createAuditLog({
                 log_name: 'employees',
@@ -1915,7 +1975,7 @@ router.delete('/:id', async (req, res) => {
                 subject_type: 'App\\Models\\Employee',
                 subject_id: empId,
                 event: 'deleted',
-                causer_id: req.body.admin_id,
+                causer_id: req.user.id,
                 properties: {
                     files_shredded: totalShredded,
                     company_id: empData?.company_id,
@@ -1942,7 +2002,8 @@ router.delete('/:id', async (req, res) => {
 
         return res.json({
             success: true,
-            message: `Employee forensically purged successfully. Shredded ${totalShredded} orphaned storage artifacts.`,
+            cleanup_pending: cleanupPending,
+            message: cleanupPending ? 'Employee deleted. Some file or account cleanup needs administrator review.' : 'Employee account and associated records deleted.',
             details: {
                 employee_id: empId,
                 files_shredded: totalShredded,
@@ -1950,8 +2011,16 @@ router.delete('/:id', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('[EMPLOYEE PURGE] Critical error during deletion:', error);
-        return res.status(500).json({ success: false, error: error.message });
+        const constraint = typeof error?.message === 'string' ? error.message.match(/constraint "([a-zA-Z0-9_]+)"/)?.[1] : undefined;
+        console.error('[EMPLOYEE PURGE] Deletion could not complete:', { requestId, stage, code: error?.code || 'UNKNOWN', constraint });
+        if (deletionCommitted) return res.json({ success: true, cleanup_pending: true, message: 'Employee deleted. Remaining account cleanup needs administrator review.' });
+        if (['23503', '23502', 'P0001'].includes(error?.code)) {
+            const offlineHistory = constraint?.startsWith('offline_attendance_');
+            return res.status(409).json({ success: false, code: 'EMPLOYEE_HISTORY_PROTECTED', error: offlineHistory
+                ? 'This employee has protected offline attendance records. Archive the employee instead to preserve the history.'
+                : 'This employee has linked records that must be kept. Archive the employee instead of permanently deleting them.' });
+        }
+        return res.status(error?.code ? 503 : 500).json({ success: false, code: 'EMPLOYEE_DELETE_UNAVAILABLE', error: 'Employee deletion could not be verified. No file or account cleanup was started. Please contact your administrator.' });
     }
 });
 

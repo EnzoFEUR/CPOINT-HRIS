@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { getResidentialAddressError, MAX_RESIDENTIAL_ADDRESS_LENGTH } from '../../../shared/personnelInput.mjs';
 import {
   getAllProvinces,
   getMunicipalitiesByProvince,
@@ -36,6 +37,7 @@ export default function PhilippineAddressSelector({
 
   // Freeform text for manual mode
   const manualText = value || '';
+  const [inputError, setInputError] = useState('');
 
   // Cascading selections
   const [selectedPrvCode, setSelectedPrvCode] = useState('');
@@ -86,10 +88,12 @@ export default function PhilippineAddressSelector({
       province: selectedProvince
     });
   }, [mode, manualText, streetAddress, selectedBarangay, selectedMunicipality, selectedProvince]);
+  const addressError = getResidentialAddressError(formattedAddress);
 
   // Notify parent component on changes
   const notifyChange = useCallback(
     (nextAddress, details) => {
+      setInputError('');
       if (typeof onChange === 'function') {
         onChange(nextAddress, details);
       }
@@ -173,7 +177,8 @@ export default function PhilippineAddressSelector({
   // Street address input handler
   const handleStreetChange = (e) => {
     const text = e.target.value;
-    setStreetAddress(text);
+    const error = getResidentialAddressError(text, true);
+    if (error) { setInputError(error); return; }
 
     const nextFormatted = formatAddress({
       street: text,
@@ -181,6 +186,9 @@ export default function PhilippineAddressSelector({
       municipality: selectedMunicipality,
       province: selectedProvince
     });
+    const completeError = getResidentialAddressError(nextFormatted, true);
+    if (completeError) { setInputError(completeError); return; }
+    setStreetAddress(text);
 
     notifyChange(nextFormatted, {
       province: selectedProvince,
@@ -195,6 +203,8 @@ export default function PhilippineAddressSelector({
   // Manual textarea input handler
   const handleManualChange = (e) => {
     const text = e.target.value;
+    const error = getResidentialAddressError(text, true);
+    if (error) { setInputError(error); return; }
     notifyChange(text, { isManual: true });
   };
 
@@ -252,7 +262,10 @@ export default function PhilippineAddressSelector({
             id={`${idPrefix}_manual`}
             name="address"
             rows={compact ? 2 : 3}
-            maxLength={300}
+            maxLength={MAX_RESIDENTIAL_ADDRESS_LENGTH}
+            ref={node => { node?.setCustomValidity(addressError || ''); }}
+            aria-invalid={Boolean(addressError)}
+            aria-describedby={inputError || addressError ? `${idPrefix}_error` : undefined}
             value={manualText}
             onChange={handleManualChange}
             disabled={disabled}
@@ -262,7 +275,7 @@ export default function PhilippineAddressSelector({
           />
           <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400">
             <span>Freeform address mode enabled.</span>
-            <span className="font-mono">{manualText.length} / 300</span>
+            <span className="font-mono">{manualText.length} / {MAX_RESIDENTIAL_ADDRESS_LENGTH}</span>
           </div>
         </div>
       ) : (
@@ -364,6 +377,10 @@ export default function PhilippineAddressSelector({
               <input
                 id={`${idPrefix}_street`}
                 type="text"
+                maxLength={MAX_RESIDENTIAL_ADDRESS_LENGTH}
+                ref={node => { node?.setCustomValidity(addressError || ''); }}
+                aria-invalid={Boolean(addressError)}
+                aria-describedby={inputError || addressError ? `${idPrefix}_error` : undefined}
                 value={streetAddress}
                 onChange={handleStreetChange}
                 disabled={disabled}
@@ -389,6 +406,11 @@ export default function PhilippineAddressSelector({
             </div>
           )}
         </div>
+      )}
+      {(inputError || addressError) && (
+        <p id={`${idPrefix}_error`} role="status" className="text-xs text-danger-ink">
+          {inputError || addressError}
+        </p>
       )}
     </div>
   );

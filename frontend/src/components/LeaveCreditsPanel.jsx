@@ -15,6 +15,7 @@ import {
     getLeaveCreditAllocationMessage,
 } from '../../../shared/leavePolicy.js';
 import { getEmployeeRestDays } from '../../../shared/workPolicy.mjs';
+import { isBoundedDecimalInput } from '../../../shared/inputLimits.mjs';
 import useEmployeeLeaveCredits, { leaveCreditKey, readLeaveCreditResponse } from '../utils/useEmployeeLeaveCredits';
 
 const days = value => Number(value).toLocaleString('en-PH', { maximumFractionDigits: 3 });
@@ -819,13 +820,15 @@ export default function LeaveCreditsPanel({
                                     </label>
                                     <input
                                         id="taxable-amount-input"
-                                        type="number"
+                                        type="text"
+                                        inputMode="decimal"
+                                        maxLength={12}
                                         required
                                         min="0"
                                         step="0.01"
                                         className={inputClass}
                                         value={form.taxable_amount}
-                                        onChange={e => set('taxable_amount', e.target.value)}
+                                        onChange={e => { if (isBoundedDecimalInput(e.target.value, 366000000, true)) set('taxable_amount', e.target.value); }}
                                         placeholder="0.00"
                                     />
                                     <p className="text-[10px] text-slate-500 mt-1">

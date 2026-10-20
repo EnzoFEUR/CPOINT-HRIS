@@ -6,6 +6,9 @@ import { supabase } from '../supabaseClient.js';
 import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
 import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
 import { createAuditLog } from './auditLogs.js';
+import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { resetVerifiedPassword } from '../services/passwordService.js';
+import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../shared/passwordPolicy.mjs';
 
 const router = express.Router();
 
@@ -78,6 +81,7 @@ export function validatePasswordEntropy(password) {
     if (password.length < 10) {
         return { valid: false, error: 'Password must be at least 10 characters long for enterprise security.' };
     }
+    if (password.length > 1024) return { valid: false, error: 'Password must be at most 1024 characters long.' };
     if (!/[A-Z]/.test(password)) {
         return { valid: false, error: 'Password must contain at least one uppercase letter (A-Z).' };
     }
@@ -501,6 +505,7 @@ router.post('/verify-reset-otp', async (req, res) => {
         const resetTicket = crypto.randomBytes(32).toString('hex');
         resetTicketStore.set(resetTicket, {
             userId: emp.id,
+            authUserId: emp.auth_user_id || emp.id,
             email: normalizedEmail,
             role: emp.role,
             verifiedVia,
@@ -555,7 +560,7 @@ router.post('/verify-emergency-key', async (req, res) => {
 
         const { data: emp, error: empErr } = await supabase
             .from('employees')
-            .select('id, email, role, first_name, last_name, is_active')
+            .select('id, auth_user_id, email, role, first_name, last_name, is_active')
             .eq('email', normalizedEmail)
             .maybeSingle();
 
@@ -567,6 +572,7 @@ router.post('/verify-emergency-key', async (req, res) => {
         const resetTicket = crypto.randomBytes(32).toString('hex');
         resetTicketStore.set(resetTicket, {
             userId: emp.id,
+            authUserId: emp.auth_user_id || emp.id,
             email: normalizedEmail,
             role: emp.role,
             expiresAt: Date.now() + TICKET_EXPIRATION_MS
@@ -603,6 +609,7 @@ router.post('/verify-emergency-key', async (req, res) => {
  * Executes password update with NIST entropy check, global session termination, and audit trail
  */
 router.post('/reset-password', async (req, res) => {
+    let activeTicket;
     try {
         const { resetTicket, newPassword } = req.body;
 
@@ -630,20 +637,21 @@ router.post('/reset-password', async (req, res) => {
             return res.status(401).json({ success: false, error: 'Reset ticket has expired. Please request a new one.' });
         }
 
+        if (ticketData.processing) return res.status(409).json({ success: false, error: 'A password update is already in progress. Please wait.' });
+        const attempt = checkRateLimit(`reset_${resetTicket}`);
+        if (!attempt.allowed) return res.status(429).json({ success: false, error: 'Too many password reset attempts. Please restart recovery.' });
+
         const { userId, email, role } = ticketData;
+        const authUserId = ticketData.authUserId || userId;
+        // 3. Lock this ticket across asynchronous verification; rejected passwords keep it usable.
+        activeTicket = ticketData;
+        ticketData.processing = true;
 
-        // 3. Consume Ticket Immediately (Strict Single-Use Nonce)
+        // 4. Use the provider's normal password update, including its same-password check.
+        const { sessionsInvalidated } = await resetVerifiedPassword({ authUserId, email, password: newPassword });
         resetTicketStore.delete(resetTicket);
-
-        // 4. Update Password via Supabase Auth Admin API
-        const { error: updateAuthErr } = await supabase.auth.admin.updateUserById(userId, {
-            password: newPassword
-        });
-
-        if (updateAuthErr) {
-            console.error('[AUTH_SECURITY_UPDATE_ERR]', updateAuthErr);
-            return res.status(500).json({ success: false, error: 'Failed to update credentials. Please try again.' });
-        }
+        invalidateAuthUser(authUserId);
+        if (authUserId !== userId) invalidateAuthUser(userId);
 
         // 5. Update employees table if flag exists
         await supabase
@@ -651,19 +659,12 @@ router.post('/reset-password', async (req, res) => {
             .update({ requires_password_change: false, updated_at: new Date().toISOString() })
             .eq('id', userId);
 
-        // 6. Global Session Revocation: Invalidate all existing tokens / sessions
-        try {
-            if (supabase.auth.admin.signOut) {
-                await supabase.auth.admin.signOut(userId, 'global');
-            }
-        } catch (signOutErr) {
-            console.warn('[AUTH_SECURITY_GLOBAL_SIGNOUT_NOTE]', signOutErr.message);
-        }
+        // 6. The isolated recovery session performs global refresh-session revocation.
 
         // 7. Write High-Severity Security Audit Log
         await createAuditLog({
             log_name: 'security',
-            description: `Security Alert: Password successfully reset for ${email} (${role}). All active sessions revoked.`,
+            description: `Security Alert: Password successfully reset for ${email} (${role}).`,
             subject_type: 'Security',
             subject_id: userId,
             event: 'PASSWORD_RESET_SUCCESS',
@@ -674,19 +675,23 @@ router.post('/reset-password', async (req, res) => {
                 ip: req.ip || req.headers['x-forwarded-for'],
                 user_agent: req.headers['user-agent'],
                 compliance: 'NIST_SP_800_63B',
-                sessions_invalidated: true,
+                sessions_invalidated: sessionsInvalidated,
                 timestamp: new Date().toISOString()
             }
         });
 
         res.json({
             success: true,
-            message: 'Password successfully updated. For maximum security, all previous active sessions have been terminated. Please log in with your new password.'
+            message: 'Password successfully updated. Please log in with your new password.'
         });
 
     } catch (err) {
-        console.error('[AUTH_SECURITY_RESET_ERROR]', err);
-        res.status(500).json({ success: false, error: 'An unexpected error occurred during password reset.' });
+        if (isPasswordReuseError(err)) return res.status(400).json({ success: false, code: 'PASSWORD_REUSED', error: PASSWORD_REUSE_MESSAGE });
+        if (err?.code === 'weak_password') return res.status(400).json({ success: false, error: 'Choose a stronger password that meets the password requirements.' });
+        console.error('[AUTH_SECURITY_RESET_ERROR]', { code: err?.code || 'UNAVAILABLE' });
+        res.status(err?.status === 429 ? 429 : 503).json({ success: false, error: 'Unable to update your password right now. Please try again.' });
+    } finally {
+        if (activeTicket) activeTicket.processing = false;
     }
 });
 

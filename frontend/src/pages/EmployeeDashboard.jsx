@@ -26,6 +26,125 @@ import useDocumentRequests from '../utils/useDocumentRequests';
 import { getEmployeeLeaveStatus } from '../../../shared/leaveRequests.mjs';
 import { acknowledgeDashboardNotices, createDashboardRefresh, getDashboardPayrolls, targetsDashboardEmployee } from '../utils/employeeDashboardData';
 
+const getLeaveTypeStyle = (type = '') => {
+    const lower = String(type || '').toLowerCase();
+    if (lower.includes('sick')) {
+        return { icon: 'ti-first-aid-kit', color: 'text-rose-600 bg-rose-50 border-rose-200/70' };
+    }
+    if (lower.includes('vacation')) {
+        return { icon: 'ti-beach', color: 'text-amber-600 bg-amber-50 border-amber-200/70' };
+    }
+    if (lower.includes('emergency')) {
+        return { icon: 'ti-alert-circle', color: 'text-orange-600 bg-orange-50 border-orange-200/70' };
+    }
+    if (lower.includes('maternity') || lower.includes('paternity') || lower.includes('parental') || lower.includes('solo')) {
+        return { icon: 'ti-heart-handshake', color: 'text-pink-600 bg-pink-50 border-pink-200/70' };
+    }
+    if (lower.includes('bereavement')) {
+        return { icon: 'ti-feather', color: 'text-indigo-600 bg-indigo-50 border-indigo-200/70' };
+    }
+    if (lower.includes('incentive') || lower.includes('sil')) {
+        return { icon: 'ti-award', color: 'text-emerald-600 bg-emerald-50 border-emerald-200/70' };
+    }
+    return { icon: 'ti-calendar-event', color: 'text-slate-600 bg-slate-100 border-slate-200' };
+};
+
+const formatLeaveDates = (startDate, endDate, scheduledWorkdays) => {
+    if (!startDate) return { dateText: '--', daysText: '' };
+    const parse = (d) => {
+        if (!d) return null;
+        const s = String(d).split('T')[0];
+        const parts = s.split('-');
+        return parts.length === 3 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) : new Date(d);
+    };
+    const sDate = parse(startDate);
+    const eDate = parse(endDate || startDate);
+    const isSameDay = String(startDate).split('T')[0] === String(endDate || startDate).split('T')[0];
+
+    let count = scheduledWorkdays;
+    if (count == null || isNaN(count) || count <= 0) {
+        if (sDate && eDate) {
+            const diffMs = Math.abs(eDate.getTime() - sDate.getTime());
+            count = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
+        } else {
+            count = 1;
+        }
+    }
+    const daysLabel = `${count} ${count === 1 ? 'day' : 'days'}`;
+
+    if (!sDate || isNaN(sDate.getTime())) return { dateText: String(startDate), daysText: daysLabel };
+
+    if (isSameDay) {
+        const dateText = sDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return { dateText, daysText: daysLabel };
+    }
+
+    const startYear = sDate.getFullYear();
+    const endYear = eDate?.getFullYear();
+    const sameYear = startYear === endYear;
+
+    const startText = sDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        ...(sameYear ? {} : { year: 'numeric' })
+    });
+    const endText = eDate && !isNaN(eDate.getTime())
+        ? eDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        })
+        : '';
+
+    return {
+        dateText: `${startText} – ${endText}`,
+        daysText: daysLabel
+    };
+};
+
+const resolveLeaveStatusBadge = (leave) => {
+    const rawStatus = String(leave?.status || 'Pending').trim().toLowerCase();
+    const isPending = ['new', 'pending'].includes(rawStatus);
+    const isApproved = rawStatus === 'approved';
+    const isRejected = ['rejected', 'declined'].includes(rawStatus);
+
+    let statusText = 'Pending';
+    let statusClass = 'bg-warning-subtle text-warning-ink border border-warning/20';
+
+    if (isApproved) {
+        statusText = 'Approved';
+        statusClass = 'bg-surface-muted text-ink border border-line';
+    } else if (isRejected) {
+        statusText = 'Rejected';
+        statusClass = 'bg-danger-subtle text-danger-ink border border-danger/20';
+    } else if (rawStatus === 'cancelled') {
+        statusText = 'Cancelled';
+        statusClass = 'bg-slate-100 text-slate-600 border border-slate-200';
+    }
+
+    let payDetail = '';
+    const fullStatus = typeof getEmployeeLeaveStatus === 'function' ? getEmployeeLeaveStatus(leave) : '';
+    if (fullStatus && fullStatus.includes(' - ')) {
+        payDetail = fullStatus.split(' - ').slice(1).join(' - ');
+    } else if (isPending) {
+        if (leave?.requested_pay_type === 'with_pay') payDetail = 'Paid requested';
+        else if (leave?.requested_pay_type === 'without_pay') payDetail = 'Unpaid requested';
+        else payDetail = 'Under review';
+    } else if (isApproved) {
+        if (leave?.is_paid === false || leave?.pay_type === 'without_pay' || /\[PAY_TYPE:WITHOUT_PAY\]|\[UNPAID\]/i.test(leave?.notes || '')) {
+            payDetail = 'Unpaid';
+        } else if (leave?.credit_pool) {
+            payDetail = `${leave.credit_pool === 'sil' ? 'SIL' : 'Credits'} (${leave.credit_days || 1}d)`;
+        } else {
+            payDetail = 'Paid';
+        }
+    } else if (isRejected) {
+        payDetail = leave?.rejection_reason || leave?.review_notes ? 'Declined with notes' : '';
+    }
+
+    return { statusText, statusClass, payDetail };
+};
+
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
     const [storedUser] = useState(() => getUser() || { name: 'Loading...', id: '', department: 'Team Member' });
@@ -345,7 +464,7 @@ const EmployeeDashboard = () => {
             window.removeEventListener('open_disciplinary_modal', openDisciplinary);
             window.removeEventListener('hris_disciplinary_sync', syncDisciplinary);
         };
-    }, [enabled, storedUser.id, refresh]);
+    }, [enabled, storedUser.id, refresh, queryClient]);
 
     const rawAttendance = data?.attendanceData?.data || data?.attendanceData || [];
     const recentLogs = Array.isArray(rawAttendance) ? rawAttendance.slice(0, 5) : [];
@@ -1640,36 +1759,97 @@ const EmployeeDashboard = () => {
 
                     {/* Leave requests */}
                     <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200">
-                        <div className="flex items-center gap-3 mb-5 sm:mb-8">
-                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
-                                <i className="ti ti-plane-departure text-lg sm:text-xl" />
+                        <div className="flex items-center justify-between gap-3 mb-5 sm:mb-6">
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 shrink-0">
+                                    <i className="ti ti-plane-departure text-lg sm:text-xl" />
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight truncate">Recent Leave Requests</h3>
+                                    <p className="text-[11px] sm:text-xs text-slate-400 font-medium hidden xs:block">Applications & review status</p>
+                                </div>
                             </div>
-                            <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">Recent Leave Requests</h3>
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMyRequestsModal(true)}
+                                    className="px-2.5 py-1 sm:py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                    title="View all requests"
+                                >
+                                    <span>View All</span>
+                                    <i className="ti ti-arrow-right text-[11px]" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLeaveModal(true)}
+                                    className="px-2.5 py-1 sm:py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md border border-slate-900 transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    title="Apply for new leave"
+                                >
+                                    <i className="ti ti-plus text-xs" />
+                                    <span>Apply</span>
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-2.5 sm:space-y-3">
                             {myLeaves.length > 0 ? myLeaves.slice(0, 4).map((leave) => {
-                                const statusColors = {
-                                    'New': 'bg-warning-subtle text-warning-ink',
-                                    'Pending': 'bg-warning-subtle text-warning-ink',
-                                    'Approved': 'bg-surface-muted text-ink',
-                                    'Rejected': 'bg-danger-subtle text-danger-ink'
-                                };
+                                const { icon, color } = getLeaveTypeStyle(leave.type);
+                                const { dateText, daysText } = formatLeaveDates(leave.start_date, leave.end_date, leave.scheduled_workdays || leave.days);
+                                const { statusText, statusClass, payDetail } = resolveLeaveStatusBadge(leave);
+
                                 return (
-                                    <div key={leave.id} className="p-3 sm:p-4 rounded-md border border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <h4 className="font-bold text-slate-800 text-sm sm:text-base">{leave.type}</h4>
-                                            <p className="text-slate-500 text-xs sm:text-sm mt-0.5 truncate">
-                                                {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                            </p>
+                                    <div
+                                        key={leave.id}
+                                        onClick={() => setShowMyRequestsModal(true)}
+                                        className="p-3 sm:p-3.5 rounded-md border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-slate-300 transition-all flex items-center justify-between gap-3 cursor-pointer group shadow-2xs"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-md flex items-center justify-center shrink-0 text-sm sm:text-base border ${color}`}>
+                                                <i className={`ti ${icon}`} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="font-bold text-slate-800 text-xs sm:text-sm truncate group-hover:text-slate-900">
+                                                    {leave.type || 'Leave Request'}
+                                                </h4>
+                                                <p className="text-slate-500 text-[11px] sm:text-xs mt-0.5 truncate flex items-center gap-1.5">
+                                                    <span>{dateText}</span>
+                                                    {daysText && (
+                                                        <>
+                                                            <span className="text-slate-300 font-bold">&middot;</span>
+                                                            <span className="font-medium text-slate-500">{daysText}</span>
+                                                        </>
+                                                    )}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <span className={`px-2.5 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${statusColors[leave.status] || 'bg-slate-200 text-slate-700'}`}>
-                                            {getEmployeeLeaveStatus(leave)}
-                                        </span>
+                                        <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
+                                                {statusText}
+                                            </span>
+                                            {payDetail && (
+                                                <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 whitespace-nowrap">
+                                                    {payDetail}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             }) : (
-                                <p className="text-xs text-slate-400">No leave requests</p>
+                                <div className="text-center py-6 px-4 rounded-md border border-dashed border-slate-200 bg-slate-50/50">
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2 text-slate-400">
+                                        <i className="ti ti-calendar-off text-base" />
+                                    </div>
+                                    <p className="text-xs font-semibold text-slate-600">No recent leave requests</p>
+                                    <p className="text-[11px] text-slate-400 mt-0.5">Need time off? Submit a leave request anytime.</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowLeaveModal(true)}
+                                        className="mt-3 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-md border border-slate-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <i className="ti ti-plus text-xs" />
+                                        <span>Apply for Leave</span>
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1873,7 +2053,7 @@ const EmployeeDashboard = () => {
                                 <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
                                     <div className="relative min-w-[130px] flex-1 sm:flex-initial">
                                         <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400" />
-                                        <input
+                                        <input maxLength={200}
                                             type="text"
                                             value={paySearchQuery}
                                             onChange={(e) => setPaySearchQuery(e.target.value)}

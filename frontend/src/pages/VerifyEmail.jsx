@@ -7,14 +7,20 @@ export default function VerifyEmail() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let redirectTimer;
     // Supabase handles the actual verification natively via hash in URL, we just confirm session
-    supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN') {
         setStatus('Email Verified Successfully!');
-        setTimeout(() => navigate('/'), 2000);
+        clearTimeout(redirectTimer);
+        redirectTimer = setTimeout(() => navigate('/'), 2000);
       }
     });
-  }, []);
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(redirectTimer);
+    };
+  }, [navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">

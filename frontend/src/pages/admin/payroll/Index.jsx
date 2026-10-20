@@ -1650,7 +1650,7 @@ export default function PayrollIndex() {
                 <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                     <div className="relative flex-1 min-w-[240px]">
                         <i className="ti ti-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none" />
-                        <input
+                        <input maxLength={200}
                             type="text"
                             placeholder="Search employee name, company ID, line (Line A), position..."
                             value={searchQuery}
@@ -2331,7 +2331,7 @@ export default function PayrollIndex() {
                             This action cannot be undone. To proceed, please type <span className="font-mono font-bold text-danger-ink">DELETE</span> below.
                         </p>
 
-                        <input
+                        <input maxLength={6}
                             type="text"
                             placeholder="Type DELETE to confirm"
                             value={bulkDeleteConfirmText}

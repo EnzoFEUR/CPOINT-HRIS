@@ -123,7 +123,7 @@ const AbsenteeOutputModal = ({
 
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <div className="relative">
-                                                        <input
+                                                        <input maxLength={9}
                                                             type="text"
                                                             inputMode="decimal"
                                                             value={raw}

@@ -409,7 +409,7 @@ export default function EmployeesIndex() {
         refetchOnWindowFocus: false,
     });
 
-    const { data: docPendingCounts = {} } = useQuery({
+    const { data: docPendingCounts } = useQuery({
         queryKey: ['adminDocumentPendingCounts'],
         queryFn: () => fetchPendingDocumentCounts(),
         staleTime: 15_000,
@@ -640,7 +640,7 @@ export default function EmployeesIndex() {
                 const firstNameB = (b.first_name || '').trim();
                 return firstNameA.localeCompare(firstNameB, undefined, { sensitivity: 'base' });
             });
-    }, [employees, filterStatus, selectedDepartment, searchQuery]);
+    }, [employees, filterStatus, selectedDepartment, searchQuery, docPendingCounts]);
 
     // Calculate directory metrics in single pass
     const counts = useMemo(() => {
@@ -762,7 +762,7 @@ export default function EmployeesIndex() {
                         {/* Search input: rigid h-9 (36px) */}
                         <div className="relative flex-1 min-w-0">
                             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
-                            <input
+                            <input maxLength={200}
                                 type="text"
                                 placeholder="Search by name, company ID, email, role, or craft..."
                                 value={searchQuery}

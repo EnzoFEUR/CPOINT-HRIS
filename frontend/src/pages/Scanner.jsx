@@ -1026,7 +1026,7 @@ const Scanner = () => {
         dispatch({ type: 'SET_MODE', payload: MODES.QR });
       }, 2500);
     }
-  }, [vault, dispatch]);
+  }, [vault, dispatch, updateStatus]);
 
   // QR scanner initialization
   const startQr = useCallback(async (isUserGesture = false) => {

@@ -70,7 +70,13 @@ export function sendCreditError(res, error) {
     if (['EMPLOYEE_NOT_FOUND', 'LEAVE_NOT_FOUND', 'SIL_CASH_REQUEST_NOT_FOUND', 'PAYROLL_NOT_FOUND'].includes(error?.message)) return res.status(404).json({ error: 'Employee, payslip or request not found.' });
     if (error?.message === 'INVALID_CREDIT_COMMAND' || error?.message === 'INVALID_EMPLOYEE_HIRE_DATE') return res.status(400).json({ error: 'Invalid leave credit operation.' });
     if (error?.status === 400) return res.status(400).json({ error: error.message });
-    console.error('[leaves] Operation failed:', error?.code || 'UNKNOWN');
+    const constraint = error?.code === '23514'
+        ? (/^[a-z_][a-z0-9_]{0,62}$/i.test(error?.constraint || '') ? error.constraint
+            : /\bconstraint "([a-z_][a-z0-9_]{0,62})"/i.exec(error?.message || '')?.[1] || null)
+        : null;
+    // Log only diagnostic metadata; provider details can contain the entire rejected row.
+    console.error('[leaves] Operation failed:', error?.code || 'UNKNOWN', { constraint });
+    if (constraint === 'leave_requests_type_check') return res.status(503).json({ code: 'LEAVE_TYPES_UNAVAILABLE', error: 'The database does not support this leave type yet. Ask an administrator to install the leave-type compatibility update.' });
     return res.status(500).json({ error: 'Unable to complete the leave credit operation. Refresh before retrying.' });
 }
 
@@ -572,7 +578,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
         } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
     });
 
-    // Leave filing: locks balances upon request if paid
+    // Filing records the payment preference; approval rechecks and deducts credits.
     router.post('/', async (req, res) => {
         try {
             const command = validateLeaveRequest(req.body || {});
@@ -688,6 +694,7 @@ export function createLeavesRouter(client = supabase, notify = createNotificatio
 
             res.json({ success: true, message: 'Leave request submitted successfully!', data: insertedLeave });
         } catch (err) {
+            if (err?.code === '23514') return sendCreditError(res, err);
             res.status(err.message?.includes('LEAVE_OVERLAP') ? 409 : err.status || 500).json({ error: err.message?.includes('LEAVE_OVERLAP') ? 'A leave request already covers these dates. Refresh your recent requests.' : err.message });
         }
     });

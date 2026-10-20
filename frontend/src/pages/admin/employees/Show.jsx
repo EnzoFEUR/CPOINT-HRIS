@@ -532,8 +532,9 @@ export default function Show() {
                 body: JSON.stringify({ admin_id: user?.id })
             });
             const resData = await response.json();
-            if (resData.success) {
-                toast.success(resData.message || 'Employee forensically purged.');
+            if (response.ok && resData.success) {
+                if (resData.cleanup_pending) toast(resData.message, { id: 'employee-delete-cleanup' });
+                else toast.success(resData.message || 'Employee deleted.');
                 queryClient.setQueryData(['adminEmployees'], (oldData) => {
                     return oldData ? oldData.filter(emp => emp.id !== employee.id) : [];
                 });
@@ -542,7 +543,7 @@ export default function Show() {
                 queryClient.invalidateQueries({ queryKey: ['dashboard'] });
                 navigate('/admin/employees');
             } else {
-                toast.error('Failed: ' + (resData.error || 'Cascading purge failed'));
+                toast.error(resData.error || 'Employee could not be deleted.', { id: 'employee-delete-error' });
             }
         } catch (err) {
             toast.error('Network Error. Failed to delete employee.');
@@ -1669,7 +1670,7 @@ export default function Show() {
                                     <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                         Primary Reason / DOLE Statutory Ground
                                     </label>
-                                    <input
+                                    <input maxLength={255}
                                         type="text"
                                         value={separationReason}
                                         onChange={(e) => setSeparationReason(e.target.value)}
@@ -1682,7 +1683,7 @@ export default function Show() {
                                     <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                         Exit Clearance & Handover Remarks (Optional)
                                     </label>
-                                    <textarea
+                                    <textarea maxLength={2000}
                                         rows={2}
                                         value={separationNotes}
                                         onChange={(e) => setSeparationNotes(e.target.value)}
@@ -1768,7 +1769,7 @@ export default function Show() {
                                         <span>{employeeFullName}</span>
                                         <span className="text-[10px] text-slate-400 font-normal">(click to auto-fill)</span>
                                     </div>
-                                    <input
+                                    <input maxLength={201}
                                         type="text"
                                         value={deleteConfirmText}
                                         onChange={(e) => setDeleteConfirmText(e.target.value)}
@@ -1979,7 +1980,7 @@ export default function Show() {
                                 <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                     Clinical Reason / Trauma Description <span className="text-danger-ink">*</span>
                                 </label>
-                                <textarea
+                                <textarea maxLength={1000}
                                     required
                                     rows={2}
                                     value={exemptionForm.reason}
@@ -1994,7 +1995,7 @@ export default function Show() {
                                     <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                         Medical Cert / Ref ID <span className="text-danger-ink">*</span>
                                     </label>
-                                    <input
+                                    <input maxLength={120}
                                         type="text"
                                         required
                                         value={exemptionForm.cert_ref}
@@ -2025,7 +2026,7 @@ export default function Show() {
                                 <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
                                     Document Link / Vault File URL (Optional)
                                 </label>
-                                <input
+                                <input maxLength={2048}
                                     type="text"
                                     value={exemptionForm.document_url}
                                     onChange={(e) => setExemptionForm({ ...exemptionForm, document_url: e.target.value })}

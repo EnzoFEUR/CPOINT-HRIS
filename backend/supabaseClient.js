@@ -21,3 +21,8 @@ try {
 } catch (_) {}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
+
+// User verification must never replace the shared service client's authorization.
+export const createIsolatedAuthClient = () => createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+});

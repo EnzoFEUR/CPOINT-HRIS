@@ -64,7 +64,7 @@ const ThirteenthMonthModal = ({ onClose }) => {
                     <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 outline-none focus:border-accent cursor-pointer">
                         {years.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
-                    <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employee or department..." className="h-9 flex-1 min-w-[160px] px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-accent rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400" />
+                    <input maxLength={200} type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employee or department..." className="h-9 flex-1 min-w-[160px] px-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-accent rounded-md text-sm font-medium text-slate-800 outline-none transition-colors duration-100 placeholder:text-slate-400" />
                     <button type="button" onClick={exportCsv} disabled={rows.length === 0} className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm border border-slate-200 shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                         <i className="ti ti-download text-base text-slate-500" /> Export CSV
                     </button>

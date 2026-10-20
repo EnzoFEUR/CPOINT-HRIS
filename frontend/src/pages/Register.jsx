@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../utils/phoneUtils';
 import toast from 'react-hot-toast';
 import { UserPlus, Check, User, Mail, Lock, Loader2 } from 'lucide-react';
+import { sanitizePersonnelText, isValidPersonnelText, isValidPersonnelEmail } from '../../../shared/personnelInput.mjs';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -29,6 +30,11 @@ export default function Register() {
     e.preventDefault();
     setError(null);
     setMsg(null);
+
+    if (!isValidPersonnelText(name) || !isValidPersonnelEmail(email.trim())) {
+      setError('Enter a valid full name (up to 100 characters) and email address.');
+      return;
+    }
 
     const phoneCheck = validatePhPhone(phone);
     if (!phoneCheck.isValid) {
@@ -123,10 +129,10 @@ export default function Register() {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <User className="w-4 h-4 text-slate-400" />
                 </div>
-                <input
+                <input maxLength={100}
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setName(sanitizePersonnelText(e.target.value))}
                   required
                   placeholder="Juan Dela Cruz"
                   className="w-full h-9 pl-9 pr-3 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs"
@@ -141,7 +147,7 @@ export default function Register() {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Mail className="w-4 h-4 text-slate-400" />
                 </div>
-                <input
+                <input maxLength={254}
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -199,7 +205,7 @@ export default function Register() {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Lock className="w-4 h-4 text-slate-400" />
                 </div>
-                <input
+                <input maxLength={1024}
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

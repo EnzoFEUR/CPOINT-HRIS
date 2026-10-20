@@ -27,7 +27,9 @@ import {
 } from '../utils/payrollCalculations.js';
 import { getLeaveSummaryForPeriod } from '../utils/leaveUtils.js';
 
-import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness, WORK_POLICY_INPUT_LIMITS, isValidWorkPolicyInput } from '../../shared/workPolicy.mjs';
+import { getEmployeeRestDays, getScheduledWorkDates, getWorkPolicy, calculateTardiness } from '../../shared/workPolicy.mjs';
+import { STATUTORY_INPUT_LIMITS, getStatutorySettingsError } from '../../shared/statutorySettings.mjs';
+import { getFactoryRowsError } from '../../shared/inputLimits.mjs';
 import { fetchPayrollAttendance } from '../utils/payrollAttendance.js';
 import { getOfflinePayrollVersions } from '../utils/offlinePayrollVersion.js';
 
@@ -661,22 +663,21 @@ router.put('/statutory-settings', requirePayrollManager, async (req, res) => {
         delete cleanSettings.created_at;
         const admin_id = req.user.id;
 
-        // Validation for attendance & tardiness policies if provided
-        for (const [name, limits] of Object.entries(WORK_POLICY_INPUT_LIMITS)) {
-            if (!Object.hasOwn(cleanSettings, name)) continue;
-            if (!isValidWorkPolicyInput(name, cleanSettings[name])) {
-                return res.status(400).json({ success: false, code: 'INVALID_WORK_POLICY', error: `${name} must be between ${limits.min} and ${limits.max}, using ${limits.step === 1 ? 'whole numbers' : 'up to two decimal places'}.` });
-            }
-            cleanSettings[name] = Number(cleanSettings[name]);
+        const validationError = getStatutorySettingsError(cleanSettings);
+        if (validationError) return res.status(400).json({ success: false, code: 'INVALID_STATUTORY_SETTINGS', error: validationError });
+        for (const name of Object.keys(STATUTORY_INPUT_LIMITS)) {
+            if (Object.hasOwn(cleanSettings, name)) cleanSettings[name] = Number(cleanSettings[name]);
         }
 
         const { data: existing, error: readError } = await supabase
             .from('statutory_settings')
-            .select('id')
+            .select('id, philhealth_min_salary, philhealth_max_salary')
             .limit(1)
             .maybeSingle();
 
         if (readError) throw readError;
+        const rangeError = getStatutorySettingsError({ ...existing, ...cleanSettings });
+        if (rangeError) return res.status(400).json({ success: false, code: 'INVALID_STATUTORY_SETTINGS', error: rangeError });
         let resultData;
         let error;
         if (existing) {
@@ -2169,6 +2170,8 @@ router.post('/factory-logs', requirePayrollManager, async (req, res) => {
         if (!rows || !Array.isArray(rows) || rows.length === 0) {
             return res.status(400).json({ error: 'No factory operation rows provided' });
         }
+        const inputError = getFactoryRowsError(rows);
+        if (inputError) return res.status(400).json({ error: inputError });
 
         let resolvedGroupId = (production_group_id && isValidUUID(production_group_id)) ? production_group_id : null;
         if (!resolvedGroupId && group_name) {

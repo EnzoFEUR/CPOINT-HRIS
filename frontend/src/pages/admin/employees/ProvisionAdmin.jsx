@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../../components/ui/PageHeader';
 import { fetchWithAuth } from '../../../utils/api';
 import { formatPhPhone, validatePhPhone, cleanPhPhone } from '../../../utils/phoneUtils';
+import EmailDomainWarning from '../../../components/EmailDomainWarning';
+import { sanitizePersonnelText, isPersonnelEmailInput, isValidPersonnelEmail } from '../../../../../shared/personnelInput.mjs';
 
 const ADMIN_DEPARTMENTS = [
     'Information Technology',
@@ -62,7 +64,7 @@ export default function ProvisionAdmin() {
             return;
         }
 
-        if (!email.trim() || !email.includes('@')) {
+        if (!isValidPersonnelEmail(email.trim())) {
             toast.error('A valid corporate email address is required.');
             return;
         }
@@ -166,7 +168,8 @@ export default function ProvisionAdmin() {
                                 type="text"
                                 required
                                 value={firstName}
-                                onChange={(e) => setFirstName(e.target.value)}
+                                maxLength={100}
+                                onChange={(e) => setFirstName(sanitizePersonnelText(e.target.value))}
                                 placeholder="e.g. Maria Clara"
                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                             />
@@ -180,7 +183,8 @@ export default function ProvisionAdmin() {
                                 type="text"
                                 required
                                 value={lastName}
-                                onChange={(e) => setLastName(e.target.value)}
+                                maxLength={100}
+                                onChange={(e) => setLastName(sanitizePersonnelText(e.target.value))}
                                 placeholder="e.g. Santos"
                                 className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                             />
@@ -194,13 +198,21 @@ export default function ProvisionAdmin() {
                                 <i className="ti ti-mail absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
                                 <input
                                     type="email"
+                                    maxLength={254}
                                     required
                                     value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
+                                    onChange={e => {
+                                        if (!isPersonnelEmailInput(e.target.value)) {
+                                            toast.error('Use letters, numbers, @, dots, hyphens, underscores and plus signs only.', { id: 'personnel-email-characters' });
+                                            return;
+                                        }
+                                        setEmail(e.target.value);
+                                    }}
                                     placeholder="maria.santos@c-point.com"
                                     className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-accent text-xs text-slate-800 transition-colors shadow-2xs"
                                 />
                             </div>
+                            <EmailDomainWarning email={email} />
                         </div>
 
                         <div>

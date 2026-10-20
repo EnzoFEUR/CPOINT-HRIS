@@ -746,7 +746,7 @@ export default function BulkImportModal({ isOpen, onClose, employeeId, employeeN
                                 <div className="flex items-center gap-2 ml-auto">
                                     <div className="relative">
                                         <i className="ti ti-search absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ink-subtle pointer-events-none" />
-                                        <input
+                                        <input maxLength={200}
                                             type="text"
                                             value={searchQuery}
                                             onChange={e => setSearchQuery(e.target.value)}

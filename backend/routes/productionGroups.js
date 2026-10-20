@@ -57,8 +57,12 @@ router.get('/', cacheResponse(30), async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { name, target_output_pairs = 100 } = req.body;
-        if (!name || typeof name !== 'string' || !name.trim()) {
-            return res.status(400).json({ success: false, error: 'Group name is required' });
+        if (!name || typeof name !== 'string' || !name.trim() || name.length > 100) {
+            return res.status(400).json({ success: false, error: 'Group name is required and must be at most 100 characters.' });
+        }
+        if (!['number', 'string'].includes(typeof target_output_pairs) || !/^\d{1,6}$/.test(String(target_output_pairs))
+            || Number(target_output_pairs) < 1 || Number(target_output_pairs) > 999999) {
+            return res.status(400).json({ success: false, error: 'Target output must be a whole number from 1 to 999999 pairs.' });
         }
 
         const trimmedName = name.trim();

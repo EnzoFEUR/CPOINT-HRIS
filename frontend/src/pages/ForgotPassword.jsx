@@ -576,7 +576,7 @@ export default function ForgotPassword() {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
                   <i className="ti ti-mail" />
                 </div>
-                <input
+                <input maxLength={254}
                   type="text"
                   value={email}
                   onChange={(e) => {
@@ -737,7 +737,7 @@ export default function ForgotPassword() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
                     <i className="ti ti-key" />
                   </div>
-                  <input
+                  <input maxLength={1024}
                     type="password"
                     value={recoveryKey}
                     onChange={(e) => setRecoveryKey(e.target.value)}

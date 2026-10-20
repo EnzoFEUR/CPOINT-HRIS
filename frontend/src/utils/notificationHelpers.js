@@ -1,6 +1,25 @@
+const notificationText = (value, limit) => typeof value === 'string' ? value.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, '') : '';
+
+// Normalize display copies only; stored notification content remains unchanged.
+export const normalizeNotification = notification => {
+  if (!notification || typeof notification !== 'object' || Array.isArray(notification)) return null;
+  const { id } = notification;
+  if (!(typeof id === 'string' && id.trim() && id.length <= 128)
+      && !(typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)) return null;
+  return {
+    ...notification,
+    title: notificationText(notification.title, 200).trim() || 'System Notification',
+    text: notificationText(notification.text, 2000),
+    type: notificationText(notification.type, 80).trim() || 'system',
+    sender_name: notificationText(notification.sender_name, 201).trim() || null,
+    sender_avatar: notificationText(notification.sender_avatar, 2048).trim() || null,
+    read: notification.read === true,
+  };
+};
+
 // Category Icon, Color & Route Mapping Helper
 export const getNotificationVisuals = (type) => {
-  switch ((type || '').toLowerCase()) {
+  switch (notificationText(type, 80).toLowerCase()) {
     case 'payroll':
       return {
         icon: 'ti-cash-banknote',
@@ -108,11 +127,15 @@ export const notifAvatarCache = new Map();
 
 // Extract or generate employee profile picture / initials with rich employee database matching
 export const getNotificationAvatar = (notif, employeeMap) => {
+  notif = notif && typeof notif === 'object' ? notif : {};
+  const title = notificationText(notif.title, 200);
+  const text = notificationText(notif.text, 2000);
+  const senderName = notificationText(notif.sender_name, 201).trim();
   let initials = '';
-  let avatarSrc = notif.sender_avatar || null;
+  let avatarSrc = notificationText(notif.sender_avatar, 2048) || null;
   let matchedEmp = null;
 
-  if (employeeMap && employeeMap.size > 0) {
+  if (employeeMap instanceof Map && employeeMap.size > 0) {
     if (notif.sender_id && employeeMap.has(notif.sender_id)) {
       matchedEmp = employeeMap.get(notif.sender_id);
     } else if (notif.target && employeeMap.has(notif.target)) {
@@ -121,8 +144,8 @@ export const getNotificationAvatar = (notif, employeeMap) => {
       matchedEmp = employeeMap.get(notif.company_id);
     } else {
       // Match by full name in title or text
-      const lowerTitle = (notif.title || '').toLowerCase();
-      const lowerText = (notif.text || '').toLowerCase();
+      const lowerTitle = title.toLowerCase();
+      const lowerText = text.toLowerCase();
       for (const [key, emp] of employeeMap.entries()) {
         if (typeof key === 'string' && key.includes(' ')) {
           if (lowerTitle.includes(key) || lowerText.includes(key)) {
@@ -136,33 +159,34 @@ export const getNotificationAvatar = (notif, employeeMap) => {
 
   if (matchedEmp) {
     if (!avatarSrc) {
-      if (matchedEmp.biometric_baseline_path) {
-        avatarSrc = matchedEmp.biometric_baseline_path.startsWith('http')
-          ? matchedEmp.biometric_baseline_path
-          : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${matchedEmp.biometric_baseline_path.replace(/^\/+/, '')}`;
+      const baselinePath = notificationText(matchedEmp.biometric_baseline_path, 2048);
+      if (baselinePath) {
+        avatarSrc = baselinePath.startsWith('http')
+          ? baselinePath
+          : `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${baselinePath.replace(/^\/+/, '')}`;
       } else if (matchedEmp.company_id && matchedEmp.id) {
         avatarSrc = `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/face-baselines/${matchedEmp.company_id}/${matchedEmp.id}.jpg`;
       }
     }
 
-    if (matchedEmp.first_name) {
-      const f = matchedEmp.first_name[0] || '';
-      const l = (matchedEmp.last_name && matchedEmp.last_name[0]) || '';
+    if (typeof matchedEmp.first_name === 'string') {
+      const f = Array.from(notificationText(matchedEmp.first_name, 100).trim())[0] || '';
+      const l = Array.from(notificationText(matchedEmp.last_name, 100).trim())[0] || '';
       initials = (f + l).toUpperCase();
     }
   }
 
   // Fallback initials resolution from sender_name, title, or text
   if (!initials) {
-    const rawName = notif.sender_name || notif.title?.split(':')[1]?.trim() || '';
+    const rawName = senderName || title.split(':')[1]?.trim() || '';
     if (rawName) {
-      const parts = rawName.trim().split(' ').filter(Boolean);
-      initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-    } else if (notif.text) {
-      const match = notif.text.match(/^([A-Z][a-z]+ [A-Z][a-z]+)/);
+      const parts = rawName.trim().split(/\s+/u).filter(Boolean);
+      if (parts.length > 1) initials = (Array.from(parts[0])[0] + Array.from(parts.at(-1))[0]).toUpperCase();
+      else if (parts.length === 1) initials = Array.from(parts[0]).slice(0, 2).join('').toUpperCase();
+    } else if (text) {
+      const match = text.match(/^([\p{L}\p{M}]+)\s+([\p{L}\p{M}]+)/u);
       if (match) {
-        const parts = match[1].split(' ');
-        initials = (parts[0][0] + parts[1][0]).toUpperCase();
+        initials = (Array.from(match[1])[0] + Array.from(match[2])[0]).toUpperCase();
       }
     }
     if (!initials) initials = 'CP';
@@ -171,7 +195,7 @@ export const getNotificationAvatar = (notif, employeeMap) => {
   return {
     avatarSrc,
     initials,
-    name: matchedEmp ? `${matchedEmp.first_name} ${matchedEmp.last_name}` : (notif.sender_name || null),
+    name: matchedEmp ? [notificationText(matchedEmp.first_name, 100), notificationText(matchedEmp.last_name, 100)].filter(Boolean).join(' ') : (senderName || null),
     employee: matchedEmp
   };
 };

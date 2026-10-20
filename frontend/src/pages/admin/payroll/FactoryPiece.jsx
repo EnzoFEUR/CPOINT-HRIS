@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { matchJobTitle } from './Create';
+import { PAYROLL_NUMBER_LIMITS, isBoundedDecimalInput, MAX_FACTORY_ROW_TOTAL, getFactoryRowsError } from '../../../../../shared/inputLimits.mjs';
 
 export default function FactoryPiece({
     isOpen,
@@ -93,7 +94,7 @@ export default function FactoryPiece({
     const [viewMode, setViewMode] = useState('compact');
 
     // Close modal WITHOUT saving (discards in-memory session drafts)
-    const handleClose = (e) => {
+    const handleClose = useCallback((e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -103,7 +104,7 @@ export default function FactoryPiece({
         if (onClose) {
             onClose();
         }
-    };
+    }, [factoryRows, onClose]);
 
     // Explicitly commit changes to database and close modal
     const handleSaveAndClose = async (e) => {
@@ -131,6 +132,10 @@ export default function FactoryPiece({
         const drafts = { ...draftsRef.current };
         if (selectedGroup) {
             drafts[selectedGroup] = localRows;
+        }
+        for (const rows of Object.values(drafts)) {
+            const inputError = getFactoryRowsError(rows);
+            if (inputError) { setSaveError(inputError); return; }
         }
 
         if (onSave) {
@@ -169,16 +174,20 @@ export default function FactoryPiece({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, isOpAssignModalOpen, factoryRows]);
+    }, [isOpen, isOpAssignModalOpen, handleClose]);
 
     // Updates row value, auto-syncing Stock No. and Quantity IN across all rows locally
     const handleFactoryRowChange = (id, field, value) => {
-        setLocalRows(prev => prev.map(row => {
-            if (field === 'stock_no' || field === 'quantity_in') {
-                return { ...row, [field]: value };
-            }
-            return String(row.id) === String(id) ? { ...row, [field]: value } : row;
-        }));
+        if (Object.hasOwn(PAYROLL_NUMBER_LIMITS, field) && !isBoundedDecimalInput(value, PAYROLL_NUMBER_LIMITS[field], true)) return;
+        setLocalRows(prev => {
+            const rows = prev.map(row => {
+                if (field === 'stock_no' || field === 'quantity_in') {
+                    return { ...row, [field]: value };
+                }
+                return String(row.id) === String(id) ? { ...row, [field]: value } : row;
+            });
+            return rows.some(row => Number(row.quantity_in || 0) * Number(row.amount || 0) > MAX_FACTORY_ROW_TOTAL) ? prev : rows;
+        });
     };
 
     const addFactoryRow = () => {
@@ -292,7 +301,6 @@ export default function FactoryPiece({
                                 </div>
                             </div>
                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md border shrink-0 ${selectedGroup ? 'text-accent bg-accent-subtle border-accent/20' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${selectedGroup ? 'bg-accent' : 'bg-slate-400'}`} />
                                 {selectedGroup ? `${activeGroupEmployees.length} Workers Active` : 'No Group Selected'}
                             </span>
                         </div>
@@ -412,7 +420,7 @@ export default function FactoryPiece({
                                         {activeComputedRows.map((row) => (
                                             <tr key={row.id} className={`transition-colors duration-100 ${row.effectiveAssignedIds.length === 0 ? 'bg-danger-subtle/40' : 'hover:bg-slate-50'}`}>
                                                 <td className="p-2.5 font-bold text-slate-800">
-                                                    <input
+                                                    <input maxLength={120}
                                                         type="text"
                                                         value={row.operation}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
@@ -422,7 +430,7 @@ export default function FactoryPiece({
                                                 </td>
                                                 <td className="p-2.5">
                                                     <div className="flex items-center gap-1.5">
-                                                        <input
+                                                        <input maxLength={80}
                                                             type="text"
                                                             value={row.stock_no}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
@@ -431,7 +439,9 @@ export default function FactoryPiece({
                                                         />
                                                         <span className="text-slate-400">×</span>
                                                         <input
-                                                            type="number"
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            maxLength={9}
                                                             value={row.quantity_in}
                                                             onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
                                                             placeholder="Qty"
@@ -441,7 +451,9 @@ export default function FactoryPiece({
                                                 </td>
                                                 <td className="p-2.5 text-right font-mono">
                                                     <input
-                                                        type="number"
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        maxLength={11}
                                                         step="0.01"
                                                         value={row.amount}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'amount', e.target.value)}
@@ -504,7 +516,7 @@ export default function FactoryPiece({
                                         <div className="space-y-2.5">
                                             <div>
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Process Name</label>
-                                                <input
+                                                <input maxLength={120}
                                                     type="text"
                                                     value={row.operation}
                                                     onChange={(e) => handleFactoryRowChange(row.id, 'operation', e.target.value)}
@@ -516,7 +528,7 @@ export default function FactoryPiece({
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div>
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase">Stock No. (Auto-Sync)</label>
-                                                    <input
+                                                    <input maxLength={80}
                                                         type="text"
                                                         value={row.stock_no}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'stock_no', e.target.value)}
@@ -527,7 +539,9 @@ export default function FactoryPiece({
                                                 <div>
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase">Quantity IN (Auto-Sync)</label>
                                                     <input
-                                                        type="number"
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        maxLength={9}
                                                         min="0"
                                                         value={row.quantity_in}
                                                         onChange={(e) => handleFactoryRowChange(row.id, 'quantity_in', e.target.value)}
@@ -540,7 +554,9 @@ export default function FactoryPiece({
                                             <div>
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Amount Rate (₱)</label>
                                                 <input
-                                                    type="number"
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    maxLength={11}
                                                     step="0.01"
                                                     min="0"
                                                     value={row.amount}
@@ -655,7 +671,7 @@ export default function FactoryPiece({
                         </div>
 
                         <div className="p-3.5 border-b border-slate-100 space-y-3 bg-white">
-                            <input
+                            <input maxLength={200}
                                 type="text"
                                 value={opWorkerSearch}
                                 onChange={(e) => setOpWorkerSearch(e.target.value)}

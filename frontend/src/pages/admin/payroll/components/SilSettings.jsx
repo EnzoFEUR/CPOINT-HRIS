@@ -356,7 +356,7 @@ export default function SilSettings() {
                     {/* Instant Search Input */}
                     <div className="relative flex-1">
                         <i className="ti ti-search absolute left-3 top-2.5 text-xs text-slate-400 pointer-events-none" />
-                        <input
+                        <input maxLength={80}
                             type="search"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}

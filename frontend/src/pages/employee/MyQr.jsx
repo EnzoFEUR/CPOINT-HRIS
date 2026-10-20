@@ -34,7 +34,7 @@ const LiveClock = React.memo(() => {
     return now.toLocaleDateString('en-US', {
       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
     });
-  }, [now.toDateString()]);
+  }, [now]);
 
   const formattedTime = now.toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -184,7 +184,7 @@ const MyQr = () => {
     } catch (err) {
       console.warn('Disciplinary sync note:', err.message);
     }
-  }, [user?.id, user?.status, user?.is_terminated, user?.operational_status, user?.archived_at, user?.separation_reason]);
+  }, [user]);
 
   const syncProfile = useCallback(async () => {
     if (!user?.id) return;

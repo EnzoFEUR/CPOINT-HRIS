@@ -4,9 +4,11 @@ import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { HUMAN_TEXT_LIMITS } from '../../shared/inputLimits.mjs';
 
 const router = express.Router();
 router.param('id', validateRecordId);
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
 // Real-time high-throughput broadcast bus (Persistent singleton socket connection)
 let realtimeSyncChannel = null;
@@ -160,7 +162,7 @@ async function dispatchDisciplinaryEmail(employee, { type, severity, reason, dat
                     <table class="meta-table">
                         <tr>
                             <td class="meta-label">Personnel</td>
-                            <td class="meta-val">${fullName} (${employee.company_id || 'ID N/A'})</td>
+                            <td class="meta-val">${escapeHtml(fullName)} (${escapeHtml(employee.company_id || 'ID N/A')})</td>
                         </tr>
                         <tr>
                             <td class="meta-label">Date Issued</td>
@@ -179,7 +181,7 @@ async function dispatchDisciplinaryEmail(employee, { type, severity, reason, dat
 
                     <div class="desc-box">
                         <strong style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Grounds & Official HR Statement</strong>
-                        <p>${reason}</p>
+                        <p>${escapeHtml(reason)}</p>
                     </div>
 
                     <p class="legal-notice">
@@ -266,11 +268,11 @@ async function dispatchClearanceEmail(employee, { exoneration_reason, investigat
                     <table class="meta-table">
                         <tr>
                             <td class="meta-label">Personnel</td>
-                            <td class="meta-val">${fullName} (${employee.company_id || 'ID N/A'})</td>
+                            <td class="meta-val">${escapeHtml(fullName)} (${escapeHtml(employee.company_id || 'ID N/A')})</td>
                         </tr>
                         <tr>
                             <td class="meta-label">Action Cleared</td>
-                            <td class="meta-val">${original_type || 'Disciplinary Action'}</td>
+                            <td class="meta-val">${escapeHtml(original_type || 'Disciplinary Action')}</td>
                         </tr>
                         <tr>
                             <td class="meta-label">Effective Date</td>
@@ -288,8 +290,8 @@ async function dispatchClearanceEmail(employee, { exoneration_reason, investigat
 
                     <div class="desc-box">
                         <strong style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; color: #047857;">Reason for Clearance</strong>
-                        <p>${reasonText}</p>
-                        ${investigation_notes ? `<p style="margin-top: 8px; font-size: 12px; color: #047857;"><strong>Notes:</strong> ${investigation_notes}</p>` : ''}
+                        <p>${escapeHtml(reasonText)}</p>
+                        ${investigation_notes ? `<p style="margin-top: 8px; font-size: 12px; color: #047857;"><strong>Notes:</strong> ${escapeHtml(investigation_notes)}</p>` : ''}
                     </div>
 
                     <p class="legal-notice">
@@ -418,9 +420,16 @@ router.post('/', async (req, res) => {
         }
 
         const { employee_id, type, reason, severity, duration_days } = req.body;
+        if (duration_days !== undefined && duration_days !== '' && (!['number', 'string'].includes(typeof duration_days)
+            || !/^\d{1,2}$/.test(String(duration_days)) || Number(duration_days) < 1 || Number(duration_days) > 60)) {
+            return res.status(400).json({ error: 'Suspension duration must be a whole number from 1 to 60 days.' });
+        }
         
         if (!employee_id || !type || !reason) {
             return res.status(400).json({ error: 'Employee, type, and detailed reason are required.' });
+        }
+        if (typeof reason !== 'string' || !reason.trim() || reason.length > HUMAN_TEXT_LIMITS.reason) {
+            return res.status(400).json({ error: `Incident details must contain 1-${HUMAN_TEXT_LIMITS.reason} characters.` });
         }
 
         // Validate target employee existence and disciplinary exemption policy

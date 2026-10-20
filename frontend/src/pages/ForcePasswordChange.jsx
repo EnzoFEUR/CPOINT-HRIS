@@ -6,6 +6,7 @@ import { fetchWithAuth } from '../utils/api';
 import { isSecurity, isAdmin, isMedicalExempt } from '../routes/guards';
 import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { performLogout } from '../utils/authSession';
+import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../../shared/passwordPolicy.mjs';
 
 export default function ForcePasswordChange() {
     const [password, setPassword] = useState('');
@@ -82,7 +83,7 @@ export default function ForcePasswordChange() {
                 navigate('/employee/dashboard');
             }
         } catch (err) {
-            setError(err.message || "Failed to update password. Please try again.");
+            setError(isPasswordReuseError(err) ? PASSWORD_REUSE_MESSAGE : err.message || "Failed to update password. Please try again.");
         }
     };
 
@@ -130,6 +131,7 @@ export default function ForcePasswordChange() {
                                 <input 
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
+                                    maxLength={1024}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full h-9 pl-9 pr-9 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs font-mono"
                                     placeholder="Create new password"
@@ -148,6 +150,7 @@ export default function ForcePasswordChange() {
                                 <input 
                                     type={showConfirmPassword ? 'text' : 'password'}
                                     value={passwordConfirmation}
+                                    maxLength={1024}
                                     onChange={(e) => setPasswordConfirmation(e.target.value)}
                                     className="w-full h-9 pl-9 pr-9 bg-white border border-slate-300 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors duration-100 shadow-2xs font-mono"
                                     placeholder="Confirm new password"
