@@ -1018,7 +1018,7 @@ export default function Show() {
                 {/* Personal and payroll details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
 
-                    <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
+                    <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
                             <div className="h-8 w-8 bg-accent-subtle text-accent rounded-md flex items-center justify-center border border-accent/20">
                                 <i className="ti ti-user text-lg" />
@@ -1070,7 +1070,7 @@ export default function Show() {
                             <div className="col-span-2 pt-2 border-t border-slate-100">
                                 <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">Emergency Contact</p>
                                 {employee.emergency_contact_name ? (
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold text-slate-800">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold text-slate-800 [&>span]:min-w-0 [&>span]:max-w-full">
                                         <span>{employee.emergency_contact_name}</span>
                                         {employee.emergency_contact_relationship && (
                                             <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded font-normal">
@@ -1385,20 +1385,20 @@ export default function Show() {
                 </div>
 
                 {/* Disciplinary & Compliance Records */}
-                <div className="bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+                <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg shadow-2xs border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                        <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/70">
+                        <div className="flex min-w-0 w-full sm:w-auto sm:flex-1 items-center gap-3">
+                            <div className="h-8 w-8 shrink-0 bg-warning-subtle text-warning-ink rounded-md flex items-center justify-center border border-warning/70">
                                 <i className="ti ti-scale text-lg" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight">
                                     Disciplinary & Compliance Records
                                 </h3>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-md border uppercase tracking-wider ${standing.badgeClass}`}>
                                 {standing.badgeLabel}
                             </span>

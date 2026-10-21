@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import NodeCache from 'node-cache';
+import { createSummaryCache } from './summaryCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,8 +12,33 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 // Cache responses for 15 minutes
 const aiCache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
-// Single-Flight Promise Coalescing to eliminate concurrent duplicate Gemini requests
-const inFlightPromises = new Map();
+// Single-flight promise coalescing and spending limits shared by all dashboard summary callers.
+const dashboardSummaries = createSummaryCache();
+
+const workforceSummaryKey = (today, data) => JSON.stringify({
+  today, total: data.totalEmployees || 0, present: data.presentCount || 0,
+  late: data.lateCount || 0, onLeave: data.onLeaveCount || 0, absent: data.absentCount || 0,
+  rate: data.attendanceRate || 0, restDay: Boolean(data.isRestDay), preShift: Boolean(data.isPreShift),
+  phase: data.shiftPhase || 'Active Shift', day: data.dayName || 'Work Day',
+  departments: [...(data.departments || [])].sort((a, b) => a.name.localeCompare(b.name)),
+});
+const payrollSummaryKey = forecast => JSON.stringify({
+  cutoff: forecast.cutoffStart, total: forecast.projectedCutoffTotal, departments: forecast.deptBreakdown,
+});
+const fallbackWorkforceBriefing = data => ({
+  executive_summary: data.isRestDay
+    ? `Facility operations are on scheduled weekend/rest-day standby. Active production lines resume next scheduled shift with ${data.totalEmployees || 0} rostered personnel.`
+    : data.isPreShift
+      ? `Shift call time begins at 8:00 AM Manila time. Currently ${data.presentCount || 0} of ${data.totalEmployees || 0} personnel checked in early.`
+      : `Workforce operational capacity is stable with ${data.presentCount || 0} of ${data.totalEmployees || 0} active personnel on site.`,
+  punctuality_grade: data.isRestDay ? 'A' : (data.lateCount > 2 ? 'B' : 'A'),
+  attendance_rate_percent: data.attendanceRate || (data.isRestDay ? 100 : 0),
+  top_performing_department: data.departments?.[0]?.name || 'Production',
+  department_needs_attention: 'None',
+  key_insights: data.isRestDay ? ['Weekend rest-day schedule active.', 'Real-time telemetry monitoring.'] : ['Stable daily workforce volume.', 'Real-time telemetry active.'],
+  actionable_recommendations: data.isRestDay ? ['Maintain gate security protocols.'] : ['Maintain regular shift monitoring.'],
+  fallback: true,
+});
 
 // Model configuration with fallback
 const getPrimaryModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -301,59 +327,32 @@ Respond with strictly valid JSON:
      */
     getCachedBriefing(dateStr = null, data = null) {
       const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-      if (data) {
-        const specificKey = `workforce_briefing_${today}_p${data.presentCount || 0}_l${data.lateCount || 0}_lv${data.onLeaveCount || 0}_tot${data.totalEmployees || 0}`;
-        const specific = aiCache.get(specificKey);
-        if (specific) return specific;
-      }
-      return aiCache.get(`workforce_briefing_${today}`) || null;
+      return dashboardSummaries.peek('workforce', data ? workforceSummaryKey(today, data) : undefined);
     },
 
-    /**
-     * Bust all daily briefing caches (e.g. when an employee clocks in/out or takes leave)
-     */
-    invalidateBriefing(dateStr = null) {
-      try {
-        const keys = aiCache.keys();
-        const targetPrefix = dateStr ? `workforce_briefing_${dateStr}` : 'workforce_briefing_';
-        keys.forEach(k => {
-          if (k.startsWith(targetPrefix)) {
-            aiCache.del(k);
-          }
-        });
-      } catch (err) {
-        console.warn('[BRAIN_ANALYTICS] Invalidate briefing error:', err.message);
-      }
+    /** Attendance changes are compared with the saved summary when it is next read. */
+    invalidateBriefing() {
+      // Current metrics determine freshness on read; preserve the snapshot and generation limits during scan bursts.
     },
 
     /**
      * Fast retrieval of cached payroll narrative insight
      */
-    getCachedPayrollInsight(cutoffStart, projectedTotal) {
-      if (!cutoffStart) return null;
-      const cacheKey = `payroll_insight_v2_${cutoffStart}_${projectedTotal}`;
-      return aiCache.get(cacheKey) || null;
+    getCachedPayrollInsight(forecast) {
+      if (!forecast?.cutoffStart) return null;
+      return dashboardSummaries.peek('payroll', payrollSummaryKey(forecast));
     },
 
     /**
      * Generate daily executive workforce briefing with Manila timezone alignment
      * Features: Single-flight promise coalescing, dynamic metric-aware cache keys, and schedule context
      */
-    async generateWorkforceBriefing(data, forceFresh = false, dateStr = null) {
+    async generateWorkforceBriefing(data, _forceFresh = false, dateStr = null) {
       const today = dateStr || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-      const specificKey = `workforce_briefing_${today}_p${data.presentCount || 0}_l${data.lateCount || 0}_lv${data.onLeaveCount || 0}_tot${data.totalEmployees || 0}`;
-      const dateKey = `workforce_briefing_${today}`;
+      const specificKey = workforceSummaryKey(today, data);
 
-      if (!forceFresh && aiCache.has(specificKey)) {
-        return aiCache.get(specificKey);
-      }
-
-      // Single-flight coalescing: Attach concurrent requests to in-flight promise to prevent duplicate Gemini calls
-      if (!forceFresh && inFlightPromises.has(specificKey)) {
-        return await inFlightPromises.get(specificKey);
-      }
-
-      const executionPromise = (async () => {
+      // Single-flight coalescing includes manual refresh and changing metrics during an existing request.
+      return dashboardSummaries.run('workforce', specificKey, async () => {
         const systemInstruction = `You are the Chief Workforce Intelligence AI for C-Point HRIS (a shoe manufacturing enterprise in Marikina, Philippines).
 Transform workforce attendance and leave metrics into concise, highly actionable, executive-level briefings for HR Management. Be direct, professional, and clear.`;
 
@@ -410,44 +409,18 @@ Provide a comprehensive workforce analysis in strictly valid JSON:
             key_insights: data.isRestDay
               ? ['Scheduled weekend / rest day operations active.', 'Facility security and maintenance telemetry operational.']
               : [`${data.presentCount || 0} active personnel logged on site.`, 'Standard shift monitoring active.'],
+            fallback: true,
             actionable_recommendations: data.isRestDay
               ? ['Maintain regular gate security protocols.', 'Verify shift allocations for upcoming production week.']
               : ['Monitor afternoon departure logs.', 'Review pending leave approvals for upcoming cutoffs.']
           });
 
-          // Dynamic multi-tiered cache: specific metric state + date fallback
-          aiCache.set(specificKey, parsed, 86400);
-          aiCache.set(dateKey, parsed, 86400);
-          return parsed;
+          return parsed && typeof parsed.executive_summary === 'string' ? parsed : fallbackWorkforceBriefing(data);
         } catch (err) {
           console.warn('[BRAIN_ANALYTICS] Briefing fallback active:', err.message);
-          const defaultSummary = data.isRestDay
-            ? `Facility operations are on scheduled weekend/rest-day standby. Active production lines resume next scheduled shift with ${data.totalEmployees || 0} rostered personnel.`
-            : (data.isPreShift
-              ? `Shift call time begins at 8:00 AM Manila time. Currently ${data.presentCount || 0} of ${data.totalEmployees || 0} personnel checked in early.`
-              : `Workforce operational capacity is stable with ${data.presentCount || 0} of ${data.totalEmployees || 0} active personnel on site.`);
-
-          return {
-            executive_summary: defaultSummary,
-            punctuality_grade: data.isRestDay ? 'A' : (data.lateCount > 2 ? 'B' : 'A'),
-            attendance_rate_percent: data.attendanceRate || (data.isRestDay ? 100 : 0),
-            top_performing_department: data.departments?.[0]?.name || 'Production',
-            department_needs_attention: 'None',
-            key_insights: data.isRestDay
-              ? ['Weekend rest-day schedule active.', 'Real-time telemetry monitoring.']
-              : ['Stable daily workforce volume.', 'Real-time telemetry active.'],
-            actionable_recommendations: data.isRestDay
-              ? ['Maintain gate security protocols.']
-              : ['Maintain regular shift monitoring.'],
-            fallback: true
-          };
-        } finally {
-          inFlightPromises.delete(specificKey);
+          return fallbackWorkforceBriefing(data);
         }
-      })();
-
-      inFlightPromises.set(specificKey, executionPromise);
-      return await executionPromise;
+      }, () => fallbackWorkforceBriefing(data));
     },
 
     /**
@@ -505,14 +478,7 @@ Respond in strictly valid JSON: { "general_health_assessment": "string" }`;
         return { insight: forecast.insight || 'No active workforce payroll projected for this cutoff.' };
       }
 
-      const cacheKey = `payroll_insight_v2_${forecast.cutoffStart}_${forecast.projectedCutoffTotal}`;
-      if (aiCache.has(cacheKey)) {
-        return aiCache.get(cacheKey);
-      }
-
-      if (inFlightPromises.has(cacheKey)) {
-        return await inFlightPromises.get(cacheKey);
-      }
+      const cacheKey = payrollSummaryKey(forecast);
 
       const fallbackInsight = forecast.insight || (
         forecast.deptBreakdown?.[0]
@@ -520,7 +486,7 @@ Respond in strictly valid JSON: { "general_health_assessment": "string" }`;
           : `Projected cutoff payroll total is ₱${forecast.projectedCutoffTotal.toLocaleString()}.`
       );
 
-      const insightPromise = (async () => {
+      return dashboardSummaries.run('payroll', cacheKey, async () => {
         const topDept = forecast.deptBreakdown?.[0];
         const prompt = `Write ONE ultra-short, simple executive observation (under 12 words) for this payroll forecast:
 Projected total: PHP ${forecast.projectedCutoffTotal}
@@ -547,24 +513,17 @@ Respond in strictly valid JSON: { "insight": "string" }`;
           // Reject verbose, boilerplate, or overly long responses (> 16 words or repeating dates/days)
           if (text && text.split(/\s+/).length <= 16 && !text.toLowerCase().includes('working days elapsed') && !text.toLowerCase().includes('cutoff with')) {
             const result = { insight: text };
-            aiCache.set(cacheKey, result, 86400);
             return result;
           }
           
           // Clean fallback
-          const result = { insight: fallbackInsight };
-          aiCache.set(cacheKey, result, 86400);
+          const result = { insight: fallbackInsight, fallback: true };
           return result;
         } catch (err) {
           console.warn('[BRAIN_ANALYTICS] Payroll insight fallback to deterministic calculation:', err.message);
-          return { insight: fallbackInsight };
-        } finally {
-          inFlightPromises.delete(cacheKey);
+          return { insight: fallbackInsight, fallback: true };
         }
-      })();
-
-      inFlightPromises.set(cacheKey, insightPromise);
-      return await insightPromise;
+      }, () => ({ insight: fallbackInsight, fallback: true }));
     },
 
     /**

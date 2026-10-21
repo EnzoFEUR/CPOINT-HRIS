@@ -8,7 +8,8 @@ import { needsProfileCompletion } from '../utils/userAccess.mjs';
 import { getStoredUser } from '../utils/storedUser.mjs';
 import { performLogout, broadcastAuthChange } from '../utils/authSession';
 import PhilippineAddressSelector from '../components/PhilippineAddressSelector';
-import { sanitizePersonnelText, isValidPersonnelText, MAX_EMERGENCY_CONTACT_NAME_LENGTH } from '../../../shared/personnelInput.mjs';
+import { sanitizePersonnelText, isValidPersonnelText, MAX_EMERGENCY_CONTACT_NAME_LENGTH, getResidentialAddressError } from '../../../shared/personnelInput.mjs';
+import { HUMAN_TEXT_LIMITS, hasUnsafeDisplayCharacters } from '../../../shared/inputLimits.mjs';
 
 const SEX_OPTIONS = ['Male', 'Female'];
 const RELATIONSHIP_OPTIONS = [
@@ -116,9 +117,9 @@ export default function EmployeeOnboarding() {
   }, []);
 
   const calculateAge = (dateStr) => {
-    if (!dateStr) return null;
+    if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
     const b = new Date(dateStr + 'T00:00:00Z');
-    if (isNaN(b.getTime())) return null;
+    if (isNaN(b.getTime()) || b.toISOString().slice(0, 10) !== dateStr) return null;
     const today = new Date();
     let age = today.getUTCFullYear() - b.getUTCFullYear();
     const m = today.getUTCMonth() - b.getUTCMonth();
@@ -135,19 +136,19 @@ export default function EmployeeOnboarding() {
     if (!phoneValidation.isValid) return false;
     if (!birthDate) return false;
     if (calculatedAge === null || calculatedAge < 15 || calculatedAge > 100) return false;
-    if (!sex) return false;
+    if (!SEX_OPTIONS.includes(sex)) return false;
     return true;
   }, [phoneValidation.isValid, birthDate, calculatedAge, sex]);
 
   const isStep2Valid = useMemo(() => {
-    if (!address || address.trim().length < 8) return false;
+    if (typeof address !== 'string' || address.trim().length < 8 || getResidentialAddressError(address)) return false;
     return true;
   }, [address]);
 
   const isStep3Valid = useMemo(() => {
     if (!emergencyName || emergencyName.trim().length < 2 || !isValidPersonnelText(emergencyName, 'emergency_contact_name')) return false;
     if (!emergencyPhoneValidation.isValid) return false;
-    if (!emergencyRelationship) return false;
+    if (typeof emergencyRelationship !== 'string' || !emergencyRelationship.trim() || emergencyRelationship.length > HUMAN_TEXT_LIMITS.emergency_contact_relationship || hasUnsafeDisplayCharacters(emergencyRelationship)) return false;
     return true;
   }, [emergencyName, emergencyPhoneValidation.isValid, emergencyRelationship]);
 
@@ -159,11 +160,15 @@ export default function EmployeeOnboarding() {
         setError('Please enter a valid 10-digit Philippine mobile phone number starting with 9.');
         return;
       }
-      if (!birthDate || calculatedAge < 15) {
+      if (!birthDate || calculatedAge === null) {
+        setError('Choose a valid birth date.');
+        return;
+      }
+      if (calculatedAge < 15) {
         setError('DOLE Labor Standards require employees to be at least 15 years old.');
         return;
       }
-      if (!sex) {
+      if (!SEX_OPTIONS.includes(sex)) {
         setError('Please select your sex (Male or Female).');
         return;
       }
@@ -177,7 +182,7 @@ export default function EmployeeOnboarding() {
     e.preventDefault();
     setError(null);
     if (!isStep2Valid) {
-      setError('Please provide your complete residential address (at least 8 characters).');
+      setError(getResidentialAddressError(address) || 'Please provide your complete residential address (at least 8 characters).');
       return;
     }
     setStep(3);
@@ -372,6 +377,9 @@ export default function EmployeeOnboarding() {
                 <input
                   type="tel"
                   maxLength={12}
+                  minLength={12}
+                  inputMode="numeric"
+                  pattern="[89][0-9]{2} [0-9]{3} [0-9]{4}"
                   value={phone}
                   onChange={(e) => setPhone(formatPhPhone(e.target.value))}
                   className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs font-mono ${
@@ -484,13 +492,19 @@ export default function EmployeeOnboarding() {
 
             {/* Emergency Contact Name */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-0.5">
-                Contact Full Name <span className="text-danger-ink">*</span>
-              </label>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label htmlFor="onboarding-contact-name" className="block text-xs font-semibold text-slate-700 ml-0.5">
+                  Contact Full Name <span className="text-danger-ink">*</span>
+                </label>
+                <span id="onboarding-contact-name-count" className="text-[10px] text-ink-muted font-mono">{emergencyName.length}/{MAX_EMERGENCY_CONTACT_NAME_LENGTH}</span>
+              </div>
               <div className="relative">
                 <i className="ti ti-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
                 <input
                   type="text"
+                  id="onboarding-contact-name"
+                  aria-describedby="onboarding-contact-name-count"
+                  minLength={2}
                   maxLength={MAX_EMERGENCY_CONTACT_NAME_LENGTH}
                   value={emergencyName}
                   onChange={(e) => setEmergencyName(sanitizePersonnelText(e.target.value))}
@@ -547,6 +561,9 @@ export default function EmployeeOnboarding() {
                   <input
                     type="tel"
                     maxLength={12}
+                    minLength={12}
+                    inputMode="numeric"
+                    pattern="[89][0-9]{2} [0-9]{3} [0-9]{4}"
                     value={emergencyPhone}
                     onChange={(e) => setEmergencyPhone(formatPhPhone(e.target.value))}
                     className={`w-full h-9 pl-12 pr-3 bg-white border rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors duration-100 shadow-2xs font-mono ${

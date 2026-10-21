@@ -30,10 +30,7 @@ export default function PhilippineAddressSelector({
   compact = false
 }) {
   // Mode: 'dropdown' or 'manual'
-  const [mode, setMode] = useState(() => {
-    // If value already has text when mounting, start in dropdown if user prefers or manual if legacy
-    return value && value.trim().length > 0 ? 'manual' : 'dropdown';
-  });
+  const [mode, setMode] = useState('dropdown');
 
   // Freeform text for manual mode
   const manualText = value || '';
@@ -86,7 +83,7 @@ export default function PhilippineAddressSelector({
       barangay: selectedBarangay,
       municipality: selectedMunicipality,
       province: selectedProvince
-    });
+    }) || manualText;
   }, [mode, manualText, streetAddress, selectedBarangay, selectedMunicipality, selectedProvince]);
   const addressError = getResidentialAddressError(formattedAddress);
 
@@ -205,27 +202,17 @@ export default function PhilippineAddressSelector({
     const text = e.target.value;
     const error = getResidentialAddressError(text, true);
     if (error) { setInputError(error); return; }
+    setSelectedPrvCode('');
+    setSelectedMunCode('');
+    setSelectedBgyCode('');
+    setStreetAddress('');
     notifyChange(text, { isManual: true });
   };
 
   // Toggle mode
   const toggleMode = () => {
-    if (mode === 'dropdown') {
-      // Switching to manual: preserve current composite string
-      setMode('manual');
-      notifyChange(formattedAddress, { isManual: true });
-    } else {
-      // Switching to dropdown
-      setMode('dropdown');
-      notifyChange(formattedAddress, {
-        province: selectedProvince,
-        region: derivedRegion,
-        municipality: selectedMunicipality,
-        barangay: selectedBarangay,
-        street: streetAddress,
-        isManual: false
-      });
-    }
+    // Changing the editor must not rewrite a saved address or infer PSGC codes from freeform text.
+    setMode(mode === 'dropdown' ? 'manual' : 'dropdown');
   };
 
   return (
@@ -397,7 +384,7 @@ export default function PhilippineAddressSelector({
               <i className="ti ti-map-pin text-sm text-slate-700 shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Assembled Address:
+                  {selectedProvince || selectedMunicipality || selectedBarangay || streetAddress ? 'Assembled Address:' : 'Current Address:'}
                 </span>
                 <span className="font-medium text-slate-800 break-words leading-tight">
                   {formattedAddress}
