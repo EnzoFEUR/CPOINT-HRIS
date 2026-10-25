@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
+import { authenticatorService } from '../services/authenticatorService.js';
 import { closePasswordSession } from '../services/passwordService.js';
 import { isPasswordReuseError, PASSWORD_REUSE_MESSAGE } from '../../shared/passwordPolicy.mjs';
 import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
@@ -10,7 +11,7 @@ import { sanitizePhPhone } from './employees.js';
 import { createAuditLog } from './auditLogs.js';
 import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { getOrGenerateOtp, storeOtp, verifyOtpCode, sendEmailOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
-import { verifyTotpCode, verifyAndConsumeBackupCode, checkTotpRateLimit, recordTotpFailure, clearTotpRateLimit } from '../services/totpService.js';
+import { checkTotpRateLimit, recordTotpFailure, clearTotpRateLimit } from '../services/totpService.js';
 
 const router = express.Router();
 
@@ -141,6 +142,10 @@ router.patch('/', verifyToken, async (req, res) => {
         } = req.body;
 
         const candidateSex = sex !== undefined ? sex : gender;
+
+        // Validate before synchronizing email so invalid dates cannot partially update Auth.
+        const birthCheck = birth_date !== undefined ? validateBirthDate(birth_date) : null;
+        if (birthCheck && !birthCheck.isValid) return res.status(400).json({ success: false, error: birthCheck.error });
         
         // Update Supabase Auth if email changes
         if (email && email !== req.user.email) {
@@ -167,13 +172,6 @@ router.patch('/', verifyToken, async (req, res) => {
 
         // Validate and sanitize Birth Date (Philippine DOLE Labor Compliance)
         if (birth_date !== undefined) {
-            const birthCheck = validateBirthDate(birth_date);
-            if (!birthCheck.isValid) {
-                return res.status(400).json({
-                    success: false,
-                    error: birthCheck.error
-                });
-            }
             updatePayload.birth_date = birthCheck.birthDate;
         }
 
@@ -613,29 +611,10 @@ router.post('/change-password', verifyToken, async (req, res) => {
             // Check Google Authenticator TOTP or Backup code fallback
             try {
                 const targetAuthId = req.user.auth_user_id || req.user.id;
-                const { data: authData } = await supabase.auth.admin.getUserById(targetAuthId);
-                const meta = authData?.user?.user_metadata || {};
-
-                if (meta.totp_enabled && meta.totp_secret) {
-                    if (cleanOtp.startsWith('CP-') || cleanOtp.length > 6) {
-                        const backupRes = verifyAndConsumeBackupCode(cleanOtp, meta.totp_backup_codes || []);
-                        if (backupRes.valid) {
-                            isCodeValid = true;
-                            verifiedVia = 'BACKUP_CODE';
-                            await supabase.auth.admin.updateUserById(targetAuthId, {
-                                user_metadata: { ...meta, totp_backup_codes: backupRes.remainingCodes }
-                            });
-                        }
-                    } else {
-                        const totpRes = verifyTotpCode(meta.totp_secret, cleanOtp);
-                        if (totpRes.valid) {
-                            isCodeValid = true;
-                            verifiedVia = 'TOTP_AUTHENTICATOR';
-                        }
-                    }
-                }
-            } catch (totpErr) {
-                console.error('[PASSWORD_CHANGE_TOTP_CHECK_ERR]', totpErr);
+                const proof = await authenticatorService.verify(targetAuthId, cleanOtp);
+                if (proof.valid) { isCodeValid = true; verifiedVia = proof.verifiedVia === 'TOTP' ? 'TOTP_AUTHENTICATOR' : 'BACKUP_CODE'; }
+            } catch {
+                console.error('[PASSWORD_CHANGE_TOTP_CHECK_ERR] Private authenticator storage unavailable.');
             }
         }
 

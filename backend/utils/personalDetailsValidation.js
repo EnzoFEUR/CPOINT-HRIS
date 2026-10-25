@@ -35,7 +35,7 @@ export const sanitizeSex = sanitizeGender;
  * Returns { isValid: boolean, error?: string, birthDate?: string, age?: number }
  */
 export function validateBirthDate(birthDateStr) {
-    if (!birthDateStr) return { isValid: true, birthDate: null };
+    if (birthDateStr == null) return { isValid: true, birthDate: null };
     if (typeof birthDateStr !== 'string') return { isValid: false, error: 'Invalid birth date format.' };
 
     const trimmed = birthDateStr.trim();
@@ -47,8 +47,11 @@ export function validateBirthDate(birthDateStr) {
         return { isValid: false, error: 'Birth date must be in YYYY-MM-DD format.' };
     }
 
-    const birthDate = new Date(trimmed + 'T00:00:00Z');
-    if (isNaN(birthDate.getTime())) {
+    const year = Number(trimmed.slice(0, 4));
+    const month = Number(trimmed.slice(5, 7));
+    const day = Number(trimmed.slice(8, 10));
+    const birthDate = new Date(Date.UTC(year, month - 1, day));
+    if (birthDate.getUTCFullYear() !== year || birthDate.getUTCMonth() + 1 !== month || birthDate.getUTCDate() !== day) {
         return { isValid: false, error: 'Invalid calendar date.' };
     }
 

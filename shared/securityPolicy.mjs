@@ -1,6 +1,7 @@
 export const PRIVATE_API_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, private';
 export const API_CONTENT_SECURITY_POLICY = "default-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'";
 export const DEFAULT_APP_ORIGIN = 'https://cpointhris.vercel.app';
+export const API_RATE_POLICY = Object.freeze({ windowMs: 60000, anonymousRequestsPerIp: 350, verifiedRequestsPerEmployee: 350 });
 
 function httpOrigin(value) {
   const url = new URL(value);
@@ -15,7 +16,7 @@ export function trustedOrigins(env = {}) {
   }
   if (env.NODE_ENV !== 'production') {
     for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-      for (const port of [5173, 4173]) origins.add(`http://${host}:${port}`);
+      for (const port of [5173, 5174, 4173]) origins.add(`http://${host}:${port}`);
     }
   }
   return origins;

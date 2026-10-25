@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import compression from 'compression';
+import { API_RATE_POLICY } from '../shared/securityPolicy.mjs';
 import { supabase } from './supabaseClient.js';
 
 // Route Imports
@@ -27,10 +28,12 @@ import documentRouter from './routes/document.js';
 import { mountOfflineAttendance } from './routes/mountOfflineAttendance.js';
 
 // Middleware & Utilities
-import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions } from './middleware/securityMiddleware.js';
+import { register, telemetryMiddleware, getTelemetrySummary, getPrometheusMetrics } from './utils/telemetry.js';
+import { securityHeaders, removeExposedHeaders, apiRateLimiter, authRateLimiter, createCorsOptions, createAdmissionControl } from './middleware/securityMiddleware.js';
+import { createHealthRouter } from './routes/health.js';
 import { validateApiInput } from './middleware/requestValidation.js';
 import { protectApiResponses, apiNotFound, apiErrorHandler } from './middleware/errorMiddleware.js';
-import { verifyToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
+import { verifyToken as verifyIdentityToken, checkRole, checkVerifiedManagerOrOwnership } from './middleware/authMiddleware.js';
 import { startCronJobs } from './utils/cronJobs.js';
 import './cron/attendanceJobs.js';
 
@@ -42,6 +45,8 @@ const app = express();
 const port = process.env.PORT || 5000;
 app.disable('x-powered-by');
 app.set('query parser', 'simple');
+if (process.env.TRUST_PROXY_CIDRS) app.set('trust proxy', process.env.TRUST_PROXY_CIDRS.split(',').map(value => value.trim()).filter(Boolean));
+app.use(telemetryMiddleware);
 app.use(securityHeaders);
 app.use(removeExposedHeaders);
 app.use('/api', protectApiResponses);
@@ -54,11 +59,13 @@ app.use(compression({
 }));
 
 // Core Middleware
-app.use('/api', apiRateLimiter({ windowMs: 60 * 1000, max: 350 }));
+app.use('/api', createAdmissionControl({ maxInFlight: Number(process.env.MAX_API_IN_FLIGHT || 64) }));
+app.use('/api', apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.anonymousRequestsPerIp, releaseVerified: true }));
 app.use('/api/auth', authRateLimiter());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb', parameterLimit: 1000 }));
 app.use('/api', validateApiInput);
+app.use('/api', createHealthRouter(supabase));
 
 // Static brand and email assets (zero-latency WebP caching)
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '30d', immutable: true }));
@@ -68,6 +75,8 @@ app.use(express.static(path.join(__dirname, '../frontend/public'), { maxAge: '30
 startCronJobs();
 
 // Mount Authenticated Routes
+const verifiedUserLimiter = apiRateLimiter({ windowMs: API_RATE_POLICY.windowMs, max: API_RATE_POLICY.verifiedRequestsPerEmployee, byVerifiedEmployee: true });
+const verifyToken = (req, res, next) => verifyIdentityToken(req, res, () => verifiedUserLimiter(req, res, next));
 await mountOfflineAttendance(app, verifyToken);
 app.use('/api/documents', verifyToken, documentRouter);
 app.use('/api/employees', verifyToken, checkVerifiedManagerOrOwnership, employeeRoutes);
@@ -78,7 +87,7 @@ app.use('/api/leave-credits', verifyToken, createLeaveCreditsRouter());
 app.use('/api/dashboard', verifyToken, dashboardRoutes);
 app.use('/api/disciplinary', verifyToken, disciplinaryRoutes);
 app.use('/api/profile', verifyToken, profileRoutes);
-app.use('/api/audit-logs', verifyToken, checkRole('admin'), auditLogRoutes);
+app.use('/api/audit-logs', verifyToken, checkRole('admin', 'hr'), auditLogRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/ai', verifyToken, aiRoutes);
@@ -88,33 +97,43 @@ app.use('/api/auth/totp', totpRoutes);
 app.use('/api/auth/security', authSecurityRoutes);
 app.use('/api/production-groups', verifyToken, productionGroupRoutes);
 
+
+// Prometheus Exporter & In-App Telemetry Endpoints
+app.get('/metrics', apiRateLimiter({ windowMs: 60000, max: 30 }), async (req, res) => {
+    if (process.env.NODE_ENV === 'production' && (!process.env.METRICS_BEARER_TOKEN || req.headers.authorization !== `Bearer ${process.env.METRICS_BEARER_TOKEN}`)) {
+        return res.status(404).end();
+    }
+    try {
+        res.set('Content-Type', register.contentType);
+        res.set('Cache-Control', 'no-store');
+        res.end(await getPrometheusMetrics());
+    } catch (err) {
+        res.status(503).end('Metrics temporarily unavailable');
+    }
+});
+
+app.get('/api/metrics/summary', verifyToken, checkRole('admin', 'hr'), async (req, res) => {
+    try {
+        const summary = await getTelemetrySummary();
+        res.json({ success: true, ...summary });
+    } catch (err) {
+        res.status(503).json({ success: false, error: 'Metrics temporarily unavailable' });
+    }
+});
+
 // Root Status
 app.get('/', (req, res) => {
     res.status(200).json({ status: 'online', service: 'C-Point HRIS API', timestamp: new Date().toISOString() });
 });
 
-// Sanitized Health Check: Verifies DB connectivity without leaking PII or internal table rows
-app.get('/api/health', async (req, res) => {
-    try {
-        const { error } = await supabase.from('employees').select('id', { head: true, count: 'exact' }).limit(1);
-        if (error) throw error;
-        
-        res.status(200).json({ 
-            status: 'ok', 
-            service: 'C-Point HRIS API',
-            timestamp: new Date().toISOString()
-        });
-    } catch (_) {
-        res.status(500).json({ 
-            status: 'error', 
-            message: 'Database service unavailable'
-        });
-    }
-});
+// Sanitized Health Check: /api/health is liveness; /api/ready checks DB connectivity.
 
 app.use('/api', apiNotFound);
 app.use(apiErrorHandler);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log('HRIS server running on port ' + port);
 });
+server.headersTimeout = 15000;
+server.requestTimeout = 120000;
+server.keepAliveTimeout = 5000;

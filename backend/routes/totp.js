@@ -1,548 +1,127 @@
 import express from 'express';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
-import { supabase } from '../supabaseClient.js';
-import {
-    generateTotpSecret,
-    verifyTotpCode,
-    generateBackupCodes,
-    verifyAndConsumeBackupCode,
-    checkTotpRateLimit,
-    recordTotpFailure,
-    clearTotpRateLimit
-} from '../services/totpService.js';
+import { supabase, createIsolatedAuthClient } from '../supabaseClient.js';
+import { closePasswordSession } from '../services/passwordService.js';
+import { authenticatorService } from '../services/authenticatorService.js';
 import { verifyOtpCode } from '../services/otpService.js';
 import { verifyToken, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
 
 const router = express.Router();
+const failure = (message, status = 400) => Object.assign(new Error(message), { status });
+const respondError = (res, error) => res.status(error.status || 503).json({ success: false, code: error.code, error: error.status ? error.message : 'Authenticator service is temporarily unavailable. Use email verification.' });
 
-/**
- * Helper: Find auth user by ID, email, or company_id
- */
 async function resolveAuthUser(identifier) {
-    if (!identifier) return null;
+    if (typeof identifier !== 'string' || !identifier.trim()) return null;
     const clean = identifier.trim().toLowerCase();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
-
-    // 1. Direct UUID lookup in auth.users
-    if (isUuid) {
-        const { data: authData } = await supabase.auth.admin.getUserById(clean);
-        if (authData?.user) return authData.user;
-    }
-
-    // 2. Query employee record by id, auth_user_id, email, or company_id
-    let empQuery = supabase
-        .from('employees')
-        .select('id, auth_user_id, email, company_id, role, first_name, last_name');
-
-    if (isUuid) {
-        empQuery = empQuery.or(`id.eq.${clean},auth_user_id.eq.${clean}`);
-    } else {
-        empQuery = empQuery.or(`email.ilike.${postgrestLikeValue(clean)},company_id.ilike.${postgrestLikeValue(clean)}`);
-    }
-
-    const { data: emp } = await empQuery.maybeSingle();
-
-    if (emp) {
-        const targetId = emp.auth_user_id || emp.id;
-        const { data: authData } = await supabase.auth.admin.getUserById(targetId);
-        if (authData?.user) {
-            return {
-                ...authData.user,
-                _employee: emp
-            };
-        }
-    }
-
-    // 3. Fallback: match by email across all auth users if employee table was bypassed
-    try {
-        const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        const matched = listData?.users?.find(u => u.email && u.email.toLowerCase() === clean);
-        if (matched) return matched;
-    } catch {}
-
-    return null;
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
+    const query = supabase.from('employees').select('id,auth_user_id,email,company_id');
+    const { data: employee, error } = await (uuid ? query.or('id.eq.' + clean + ',auth_user_id.eq.' + clean)
+        : query.or('email.ilike.' + postgrestLikeValue(clean) + ',company_id.ilike.' + postgrestLikeValue(clean))).maybeSingle();
+    if (error) throw error;
+    if (!employee) return null;
+    const { data, error: authError } = await supabase.auth.admin.getUserById(employee.auth_user_id || employee.id);
+    if (authError) throw authError;
+    return data?.user || null;
 }
 
-/**
- * GET /api/auth/totp/status
- * Returns whether TOTP is configured and active for an identifier or current authenticated session
- */
+async function sessionUser(req) {
+    const authId = req.user?.auth_user_id || req.user?.id;
+    const { data, error } = await supabase.auth.admin.getUserById(authId);
+    if (error || !data?.user) throw failure('Account could not be verified.', 401);
+    return data.user;
+}
+
+async function confirmPassword(user, password) {
+    if (typeof password !== 'string' || !password) throw failure('Confirm your current password to manage the authenticator.');
+    const client = createIsolatedAuthClient();
+    try {
+        const { data, error } = await client.auth.signInWithPassword({ email: user.email, password });
+        if (error || data?.user?.id !== user.id) throw failure('Incorrect account password.', 401);
+    } finally { await closePasswordSession(client); }
+}
+
+async function confirmManagementCode(user, code) {
+    if (typeof code !== 'string' || !code.trim()) throw failure('Enter an authenticator, backup, or emailed verification code.');
+    const emailProof = verifyOtpCode(['authenticator_manage_' + user.email.toLowerCase(), 'authenticator_manage_' + user.id], code);
+    if (emailProof.valid) return;
+    const proof = await authenticatorService.verify(user.id, code);
+    if (!proof.valid) throw failure(proof.error || 'Invalid verification code.', proof.retryAfterSeconds ? 429 : 400);
+}
+
+function audit(req, userId, event) {
+    invalidateAuthUser(req.user?.id || userId);
+    createAuditLog({ log_name: 'security', description: 'Authenticator configuration ' + event + '.',
+        subject_type: 'Security', subject_id: userId, event: 'TOTP_2FA_' + event.toUpperCase(),
+        causer_id: req.user?.id || userId, properties: { ip: req.ip } })
+        .catch(() => console.error('[AUTHENTICATOR_AUDIT] Audit delivery failed.'));
+}
+
 router.get('/status', async (req, res) => {
     try {
-        let user = null;
+        let user;
+        const token = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
+        if (token) {
+            const { data, error } = await supabase.auth.getUser(token);
+            if (error) throw failure('Account could not be verified.', 401);
+            user = data?.user;
+        }
         const identifier = req.query.identifier || req.query.email;
-
-        // 1. Direct JWT auth token extraction if present
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.split(' ')[1];
-            if (token) {
-                const { data: { user: sessionUser } } = await supabase.auth.getUser(token);
-                if (sessionUser) {
-                    user = sessionUser;
-                }
-            }
-        }
-
-        // 2. If user not resolved yet or identifier was explicitly requested
-        if (!user && identifier) {
-            user = await resolveAuthUser(identifier);
-        } else if (identifier && user) {
-            const clean = identifier.trim().toLowerCase();
-            const selfMatch = (user.id && user.id.toLowerCase() === clean) ||
-                              (user.email && user.email.toLowerCase() === clean);
-            if (!selfMatch) {
-                const requestedUser = await resolveAuthUser(identifier);
-                if (requestedUser) user = requestedUser;
-            }
-        }
-
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'User account not found.' });
-        }
-
-        // Always query admin API with user.id to get the freshest live metadata directly
-        const { data: authData } = await supabase.auth.admin.getUserById(user.id);
-        const liveUser = authData?.user || user;
-        const meta = liveUser.user_metadata || {};
-        const isEnabled = Boolean(meta.totp_enabled && meta.totp_secret);
-
-        res.json({
-            success: true,
-            enabled: isEnabled,
-            enabledAt: meta.totp_enabled_at || null,
-            backupCodesRemaining: Array.isArray(meta.totp_backup_codes) ? meta.totp_backup_codes.length : 0
-        });
-
-    } catch (err) {
-        console.error('[TOTP_STATUS_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Failed to retrieve authenticator status.' });
-    }
+        if (!user && identifier) user = await resolveAuthUser(identifier);
+        if (!user) throw failure('Account could not be verified.', 401);
+        const status = await authenticatorService.status(user.id);
+        res.json({ success: true, ...status, requiresReenrollment: !status.enabled && Boolean(user.user_metadata?.totp_enabled) });
+    } catch (error) { respondError(res, error); }
 });
 
-/**
- * POST /api/auth/totp/setup
- * Generates a new TOTP secret & otpauth QR URI for setup (Authenticated only)
- */
 router.post('/setup', verifyToken, async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
-            return res.status(401).json({ success: false, error: 'Unauthorized.' });
-        }
-
-        const { data: authData, error: userErr } = await supabase.auth.admin.getUserById(userId);
-        if (userErr || !authData?.user) {
-            return res.status(404).json({ success: false, error: 'User account not found.' });
-        }
-
-        const user = authData.user;
-        const meta = user.user_metadata || {};
-        const { password } = req.body || {};
-
-        // If reconfiguring an already active 2FA token, enforce account password confirmation
-        if (meta.totp_enabled && meta.totp_secret) {
-            if (!password || !String(password).trim()) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Account password is required to reconfigure authenticator.'
-                });
-            }
-            const { error: pwdErr } = await supabase.auth.signInWithPassword({
-                email: user.email,
-                password: String(password).trim()
-            });
-            if (pwdErr) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Incorrect account password. Reconfiguration rejected.'
-                });
-            }
-        }
-
-        const email = user.email || req.user?.email || 'admin@cpoint.ph';
-        const secretObj = generateTotpSecret(email, 'C-Point HRIS');
-
-        // Store pending secret in user metadata (not active until confirmed)
-        await supabase.auth.admin.updateUserById(userId, {
-            user_metadata: {
-                ...user.user_metadata,
-                totp_pending_secret: secretObj.secret,
-                totp_pending_created_at: new Date().toISOString()
-            }
-        });
-
-        res.json({
-            success: true,
-            secret: secretObj.secret,
-            uri: secretObj.uri,
-            issuer: secretObj.issuer,
-            accountName: secretObj.accountName
-        });
-
-    } catch (err) {
-        console.error('[TOTP_SETUP_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Failed to initialize authenticator setup.' });
-    }
+        const user = await sessionUser(req);
+        await confirmPassword(user, req.body?.password);
+        const factor = await authenticatorService.read(user.id);
+        if (factor.enabled) await confirmManagementCode(user, req.body?.code);
+        const setup = await authenticatorService.begin(user.id, user.email, factor.version);
+        res.json({ success: true, ...setup });
+    } catch (error) { respondError(res, error); }
 });
 
-/**
- * POST /api/auth/totp/enable
- * Validates the confirmation code and activates TOTP with emergency backup codes (Authenticated only)
- */
 router.post('/enable', verifyToken, async (req, res) => {
     try {
-        const userId = req.user?.id;
-        const { code } = req.body;
-
-        if (!userId) {
-            return res.status(401).json({ success: false, error: 'Unauthorized.' });
-        }
-        if (!code || !/^\d{6}$/.test(code.trim())) {
-            return res.status(400).json({ success: false, error: 'A valid 6-digit confirmation code is required.' });
-        }
-
-        const { data: authData } = await supabase.auth.admin.getUserById(userId);
-        const user = authData?.user;
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'User account not found.' });
-        }
-
-        const pendingSecret = user.user_metadata?.totp_pending_secret;
-        if (!pendingSecret) {
-            return res.status(400).json({ success: false, error: 'No pending authenticator setup found. Please initiate setup again.' });
-        }
-
-        // Verify the code against the pending secret
-        const verifyResult = verifyTotpCode(pendingSecret, code.trim());
-        if (!verifyResult.valid) {
-            return res.status(400).json({ success: false, error: verifyResult.error || 'Invalid confirmation code.' });
-        }
-
-        // Generate 8 emergency backup codes
-        const { plainCodes, hashedCodes } = generateBackupCodes(8);
-
-        // Commit active TOTP settings and clear pending
-        const updatedMeta = {
-            ...user.user_metadata,
-            totp_secret: pendingSecret,
-            totp_enabled: true,
-            totp_enabled_at: new Date().toISOString(),
-            totp_backup_codes: hashedCodes
-        };
-        delete updatedMeta.totp_pending_secret;
-        delete updatedMeta.totp_pending_created_at;
-
-        await supabase.auth.admin.updateUserById(userId, {
-            user_metadata: updatedMeta
-        });
-
-        invalidateAuthUser(userId);
-
-        await createAuditLog({
-            log_name: 'security',
-            description: `Google Authenticator TOTP 2FA enabled for ${user.email}`,
-            subject_type: 'Security',
-            subject_id: userId,
-            event: 'TOTP_2FA_ENABLED',
-            causer_id: userId,
-            properties: {
-                email: user.email,
-                ip: req.ip || req.headers['x-forwarded-for']
-            }
-        });
-
-        res.json({
-            success: true,
-            message: 'Google Authenticator 2FA enabled successfully.',
-            backupCodes: plainCodes
-        });
-
-    } catch (err) {
-        console.error('[TOTP_ENABLE_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Failed to activate authenticator.' });
-    }
+        const user = await sessionUser(req);
+        const enabled = await authenticatorService.enable(user.id, req.body?.code);
+        audit(req, user.id, 'enabled');
+        res.json({ success: true, message: 'Authenticator enabled successfully.', ...enabled });
+    } catch (error) { respondError(res, error); }
 });
 
-/**
- * POST /api/auth/totp/verify
- * Public verification endpoint for login 2FA or step-up authentication (<15ms response)
- */
 router.post('/verify', async (req, res) => {
     try {
-        const { identifier, email, code, isBackupCode } = req.body;
-        const rawTarget = identifier || email;
-
-        if (!rawTarget || !code) {
-            return res.status(400).json({ success: false, error: 'Account identifier and authentication code are required.' });
+        const user = await resolveAuthUser(req.body?.identifier || req.body?.email);
+        if (!user) throw failure('Account or verification code could not be verified.');
+        const code = req.body?.code;
+        const purpose = typeof req.body?.purpose === 'string' ? req.body.purpose : 'login_2fa';
+        const fallback = verifyOtpCode([purpose + '_' + user.email.toLowerCase(), purpose + '_' + user.id], code);
+        if (fallback.valid) return res.json({ success: true, verifiedVia: 'EMAIL_OTP_FALLBACK' });
+        const result = await authenticatorService.verify(user.id, code);
+        if (!result.valid) {
+            if (result.retryAfterSeconds) res.setHeader('Retry-After', String(result.retryAfterSeconds));
+            return res.status(result.retryAfterSeconds ? 429 : 400).json({ success: false, error: result.error, retryAfterSeconds: result.retryAfterSeconds || 0 });
         }
-
-        const user = await resolveAuthUser(rawTarget);
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'Account not found.' });
-        }
-
-        const meta = user.user_metadata || {};
-        if (!meta.totp_enabled || !meta.totp_secret) {
-            return res.status(400).json({ success: false, error: 'Authenticator 2FA is not enabled for this account.' });
-        }
-
-        const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-        const rateLimitKey = `totp_verify:${String(rawTarget).trim().toLowerCase()}:${clientIp}`;
-
-        // 1. Enforce low-latency in-memory rate limiting (<0.005ms)
-        const rateCheck = checkTotpRateLimit(rateLimitKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
-        if (!rateCheck.allowed) {
-            return res.status(429).json({
-                success: false,
-                error: `Too many failed 2FA verification attempts. Account protected. Please try again in ${rateCheck.retryAfterSeconds} seconds.`,
-                retryAfterSeconds: rateCheck.retryAfterSeconds
-            });
-        }
-
-        // PATH 1: Emergency Backup Code Verification
-        if (isBackupCode || String(code).trim().startsWith('CP-') || String(code).trim().length > 6) {
-            const backupResult = verifyAndConsumeBackupCode(String(code).trim(), meta.totp_backup_codes || []);
-            if (!backupResult.valid) {
-                const failRecord = recordTotpFailure(rateLimitKey, 5, 5 * 60 * 1000);
-                if (failRecord.locked) {
-                    await createAuditLog({
-                        log_name: 'security',
-                        description: `2FA brute-force lockout triggered for ${user.email} from IP ${clientIp}.`,
-                        subject_type: 'Security',
-                        subject_id: user.id,
-                        event: 'TOTP_BRUTE_FORCE_BLOCKED',
-                        causer_id: user.id,
-                        properties: { email: user.email, ip: clientIp }
-                    });
-                    return res.status(429).json({
-                        success: false,
-                        error: 'Too many consecutive failed attempts. 2FA verification locked for 5 minutes.',
-                        retryAfterSeconds: failRecord.retryAfterSeconds
-                    });
-                }
-                return res.status(401).json({
-                    success: false,
-                    error: `Invalid or already consumed backup code. (${failRecord.remainingAttempts} attempts remaining before temporary lockout)`
-                });
-            }
-
-            // Successful backup code: clear rate limit counter
-            clearTotpRateLimit(rateLimitKey);
-
-            // Persist remaining backup codes
-            await supabase.auth.admin.updateUserById(user.id, {
-                user_metadata: {
-                    ...meta,
-                    totp_backup_codes: backupResult.remainingCodes
-                }
-            });
-
-            await createAuditLog({
-                log_name: 'security',
-                description: `Emergency 2FA backup code consumed for ${user.email}. Remaining codes: ${backupResult.remainingCodes.length}`,
-                subject_type: 'Security',
-                subject_id: user.id,
-                event: 'TOTP_BACKUP_CODE_CONSUMED',
-                causer_id: user.id,
-                properties: {
-                    email: user.email,
-                    remaining_backup_codes: backupResult.remainingCodes.length,
-                    ip: clientIp
-                }
-            });
-
-            return res.json({
-                success: true,
-                message: 'Backup code verified successfully.',
-                verifiedVia: 'BACKUP_CODE',
-                remainingCodes: backupResult.remainingCodes.length
-            });
-        }
-
-        // PATH 2: Live Time-Based Token Verification
-        const verifyResult = verifyTotpCode(meta.totp_secret, code);
-        if (!verifyResult.valid) {
-            // Reciprocal Omnichannel Fallback: Check if user entered an active Email OTP instead
-            const candidateKeys = [
-                `modal_stepup_${user.email}`.toLowerCase().trim(),
-                `login_2fa_${user.email}`.toLowerCase().trim(),
-                `dest_email_${user.email}`.toLowerCase().trim(),
-                user.email.toLowerCase().trim()
-            ];
-            if (rawTarget && typeof rawTarget === 'string') {
-                const cleanRaw = rawTarget.toLowerCase().trim();
-                candidateKeys.push(`modal_stepup_${cleanRaw}`);
-                candidateKeys.push(`login_2fa_${cleanRaw}`);
-                candidateKeys.push(cleanRaw);
-            }
-
-            let isEmailOtpFallbackValid = false;
-            for (const key of candidateKeys) {
-                const check = verifyOtpCode(key, code);
-                if (check.valid) {
-                    isEmailOtpFallbackValid = true;
-                    break;
-                }
-            }
-
-            if (isEmailOtpFallbackValid) {
-                clearTotpRateLimit(rateLimitKey);
-                return res.json({
-                    success: true,
-                    message: 'Identity verified successfully via Email OTP fallback.',
-                    verifiedVia: 'EMAIL_OTP_SEAMLESS_FALLBACK'
-                });
-            }
-
-            const failRecord = recordTotpFailure(rateLimitKey, 5, 5 * 60 * 1000);
-            if (failRecord.locked) {
-                await createAuditLog({
-                    log_name: 'security',
-                    description: `2FA brute-force lockout triggered for ${user.email} from IP ${clientIp}.`,
-                    subject_type: 'Security',
-                    subject_id: user.id,
-                    event: 'TOTP_BRUTE_FORCE_BLOCKED',
-                    causer_id: user.id,
-                    properties: { email: user.email, ip: clientIp }
-                });
-                return res.status(429).json({
-                    success: false,
-                    error: 'Too many consecutive failed attempts. 2FA verification locked for 5 minutes.',
-                    retryAfterSeconds: failRecord.retryAfterSeconds
-                });
-            }
-            return res.status(401).json({
-                success: false,
-                error: `${verifyResult.error || 'Invalid authenticator code.'} (${failRecord.remainingAttempts} attempts remaining before temporary lockout)`
-            });
-        }
-
-        // Clear rate limit counter on valid code entry
-        clearTotpRateLimit(rateLimitKey);
-
-        res.json({
-            success: true,
-            message: 'Authenticator code verified successfully.',
-            verifiedVia: 'TOTP'
-        });
-
-    } catch (err) {
-        console.error('[TOTP_VERIFY_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Failed to verify authentication code.' });
-    }
+        res.json({ success: true, message: 'Authenticator code verified successfully.', verifiedVia: result.verifiedVia, remainingCodes: result.remainingCodes });
+    } catch (error) { respondError(res, error); }
 });
 
-/**
- * POST /api/auth/totp/disable
- * Disables TOTP for an authenticated user
- */
 router.post('/disable', verifyToken, async (req, res) => {
     try {
-        const userId = req.user?.id;
-        const { password, code } = req.body || {};
-
-        if (!userId) {
-            return res.status(401).json({ success: false, error: 'Unauthorized.' });
-        }
-
-        const { data: authData } = await supabase.auth.admin.getUserById(userId);
-        const user = authData?.user;
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'User account not found.' });
-        }
-
-        const meta = user.user_metadata || {};
-        if (!meta.totp_enabled) {
-            return res.json({ success: true, message: 'Authenticator 2FA is already disabled.' });
-        }
-
-        // Step-Up Verification: Must provide account password OR emergency recovery code / TOTP token
-        let stepUpVerified = false;
-
-        // Verification Path A: Account Password
-        if (password && String(password).trim()) {
-            const { error: pwdErr } = await supabase.auth.signInWithPassword({
-                email: user.email,
-                password: String(password).trim()
-            });
-            if (!pwdErr) {
-                stepUpVerified = true;
-            } else if (!code) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Incorrect account password. Deactivation rejected.'
-                });
-            }
-        }
-
-        // Verification Path B: Emergency Backup Code or Active Authenticator Token
-        if (!stepUpVerified && code && String(code).trim()) {
-            const cleanCode = String(code).trim();
-            if (cleanCode.startsWith('CP-') || cleanCode.length > 6) {
-                const backupResult = verifyAndConsumeBackupCode(cleanCode, meta.totp_backup_codes || []);
-                if (backupResult.valid) {
-                    stepUpVerified = true;
-                } else {
-                    return res.status(400).json({ success: false, error: 'Invalid or already consumed backup recovery code.' });
-                }
-            } else {
-                const verifyResult = verifyTotpCode(meta.totp_secret, cleanCode);
-                if (verifyResult.valid) {
-                    stepUpVerified = true;
-                } else {
-                    return res.status(400).json({ success: false, error: 'Invalid authenticator code.' });
-                }
-            }
-        }
-
-        if (!stepUpVerified) {
-            return res.status(400).json({
-                success: false,
-                error: 'Account password or emergency recovery code is required to disable 2FA.'
-            });
-        }
-
-        // Explicitly set keys to null/false so Supabase jsonb merge removes them
-        const updatedMeta = {
-            ...meta,
-            totp_secret: null,
-            totp_enabled: false,
-            totp_enabled_at: null,
-            totp_backup_codes: null,
-            totp_pending_secret: null,
-            totp_pending_created_at: null
-        };
-
-        await supabase.auth.admin.updateUserById(userId, {
-            user_metadata: updatedMeta
-        });
-
-        invalidateAuthUser(userId);
-
-        await createAuditLog({
-            log_name: 'security',
-            description: `Authenticator 2FA disabled for ${user.email}`,
-            subject_type: 'Security',
-            subject_id: userId,
-            event: 'TOTP_2FA_DISABLED',
-            causer_id: userId,
-            properties: {
-                email: user.email,
-                ip: req.ip || req.headers['x-forwarded-for']
-            }
-        });
-
-        res.json({
-            success: true,
-            message: 'Authenticator 2FA has been disabled.'
-        });
-
-    } catch (err) {
-        console.error('[TOTP_DISABLE_ERROR]', err);
-        res.status(500).json({ success: false, error: 'Failed to disable authenticator.' });
-    }
+        const user = await sessionUser(req);
+        const factor = await authenticatorService.read(user.id);
+        if (!factor.enabled) return res.json({ success: true, message: 'Authenticator is already disabled.' });
+        await confirmPassword(user, req.body?.password);
+        await confirmManagementCode(user, req.body?.code);
+        await authenticatorService.disable(user.id, factor.version);
+        audit(req, user.id, 'disabled');
+        res.json({ success: true, message: 'Authenticator disabled successfully.' });
+    } catch (error) { respondError(res, error); }
 });
 
 export default router;

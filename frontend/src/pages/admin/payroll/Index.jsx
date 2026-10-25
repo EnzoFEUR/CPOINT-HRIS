@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
+import { fetchCompleteList, fetchEmployeeRoster } from '../../../utils/listData';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
@@ -806,7 +807,7 @@ export default function PayrollIndex() {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['adminPayrolls'], refetchType: 'active' });
-                queryClient.invalidateQueries({ queryKey: ['adminPayrollEligibleEmployees'], refetchType: 'active' });
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees', 'roster'], refetchType: 'active' });
             }, 150);
         };
 
@@ -918,46 +919,26 @@ export default function PayrollIndex() {
         setCurrentPage(1);
     };
 
-    const fetchPayrolls = async () => {
-        let endpoint = '/api/payroll';
-        const queryParams = new URLSearchParams();
-        if (currentMonth) queryParams.append('month', currentMonth);
-        if (currentYear) queryParams.append('year', currentYear);
-
-        if (queryParams.toString()) {
-            endpoint += `?${queryParams.toString()}`;
-        }
-
-        const res = await fetchWithAuth(endpoint);
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || 'Failed to fetch payroll records');
-        return Array.isArray(result) ? result : (result.data || []);
+    const fetchPayrolls = async ({ signal }) => {
+        const params = new URLSearchParams({ view: 'list' });
+        if (currentMonth) params.set('month', currentMonth);
+        if (currentYear) params.set('year', currentYear);
+        return fetchCompleteList(fetchWithAuth, `/api/payroll?${params}`, signal);
     };
 
-    const { data: payrolls = [], isLoading: isLoadingPayrolls } = useQuery({
+    const { data: payrolls = [], isLoading: isLoadingPayrolls, error: payrollsError, refetch: refetchPayrolls } = useQuery({
         queryKey: ['adminPayrolls', currentMonth, currentYear],
         queryFn: fetchPayrolls,
         staleTime: 10_000,
         gcTime: 600_000,
         refetchOnMount: 'always',
         refetchOnWindowFocus: true,
-        placeholderData: (prev) => prev,
     });
 
-    const fetchEmployees = async () => {
-        const res = await fetchWithAuth('/api/employees');
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || 'Failed to fetch employees');
-        const list = Array.isArray(result) ? result : (result.data || []);
-        return list.filter(e => {
-            const roleStr = (e.role || '').toLowerCase();
-            return roleStr !== 'admin' && roleStr !== 'security';
-        });
-    };
-
-    const { data: employees = [], isLoading: isLoadingEmployees } = useQuery({
-        queryKey: ['adminPayrollEligibleEmployees'],
-        queryFn: fetchEmployees,
+    const { data: employees = [], isLoading: isLoadingEmployees, error: employeesError, refetch: refetchEmployees } = useQuery({
+        queryKey: ['adminEmployees', 'roster'],
+        queryFn: ({ signal }) => fetchEmployeeRoster(fetchWithAuth, signal),
+        select: rows => rows.filter(e => !['admin', 'security'].includes((e.role || '').toLowerCase())),
         staleTime: 30_000,
         gcTime: 600_000,
         refetchOnMount: true,
@@ -965,6 +946,7 @@ export default function PayrollIndex() {
     });
 
     const isLoading = isLoadingPayrolls || isLoadingEmployees;
+    const listError = payrollsError || employeesError;
 
     const cycleBounds = useMemo(() => {
         const targetYear = currentYear ? parseInt(currentYear, 10) : currentYearNum;
@@ -1422,6 +1404,10 @@ export default function PayrollIndex() {
     }, [sortedPayrolls]);
 
     const handleExportCSV = useCallback(() => {
+        if (isLoading || listError) {
+            toast.error('Wait for the complete payroll list before exporting.');
+            return;
+        }
         if (filteredPayrolls.length === 0) {
             toast.error('No payroll records to export');
             return;
@@ -1436,7 +1422,10 @@ export default function PayrollIndex() {
 
         const escapeCSV = (val) => {
             if (val === null || val === undefined) return '""';
-            const str = String(val).replace(/"/g, '""');
+            let str = String(val).replace(/"/g, '""');
+            if (/^[=+\-@]/.test(str)) {
+                str = "'" + str;
+            }
             return `"${str}"`;
         };
 
@@ -1472,7 +1461,7 @@ export default function PayrollIndex() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         toast.success(`Exported ${filteredPayrolls.length} payroll entries to CSV!`);
-    }, [filteredPayrolls, rosterCategory, currentYear, currentMonth]);
+    }, [filteredPayrolls, rosterCategory, currentYear, currentMonth, isLoading, listError]);
 
     const isFiltered = Boolean(
         currentMonth ||
@@ -1520,6 +1509,16 @@ export default function PayrollIndex() {
         return ids;
     }, [paginatedDisplayItems]);
 
+    if (listError) return (
+        <div className="space-y-4 p-5">
+            <PageHeader breadcrumbs={['Admin', 'Payroll', 'Payroll History']} />
+            <div role="alert" className="rounded-lg border border-danger/20 p-5 text-sm text-danger-ink">
+                {listError.message}
+                <button type="button" onClick={() => { refetchPayrolls(); refetchEmployees(); }} className="ml-3 font-semibold underline">Retry</button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="w-full pb-24 lg:pb-8 font-sans space-y-5">
             <PageHeader
@@ -1529,6 +1528,7 @@ export default function PayrollIndex() {
                         <button
                             type="button"
                             onClick={handleExportCSV}
+                            disabled={isLoading}
                             className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-md font-medium text-xs sm:text-sm transition-colors duration-100 flex items-center gap-1.5 border border-slate-200 shadow-2xs cursor-pointer"
                             title="Export filtered records to CSV"
                         >

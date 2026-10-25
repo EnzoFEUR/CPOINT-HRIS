@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAdmin } from '../../routes/guards';
 import { fetchWithAuth } from '../../utils/api';
+import { fetchEmployeeRoster } from '../../utils/listData';
 import EmployeeAvatar from '../EmployeeAvatar';
 import { matchLocalIntent } from './localSemanticMatcher';
 
@@ -16,7 +17,7 @@ const DEBOUNCE_MS = 280;
 const MAX_PEOPLE = 4;
 
 const EMPLOYEES_QUERY = {
-  queryKey: ['adminEmployees'],
+  queryKey: ['adminEmployees', 'roster'],
   staleTime: 60_000,
   gcTime: 300_000,
 };
@@ -28,15 +29,8 @@ const IS_MAC =
 const SURFACE =
   'rounded-xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] ring-1 ring-slate-900/[0.04]';
 
-async function fetchEmployees() {
-  try {
-    const res = await fetchWithAuth('/api/employees');
-    if (!res.ok) return [];
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
-  } catch {
-    return [];
-  }
+async function fetchEmployees({ signal }) {
+  return fetchEmployeeRoster(fetchWithAuth, signal);
 }
 
 // Lowercase and strip diacritics so "nino" matches "Niño" and "munoz" matches "Muñoz".

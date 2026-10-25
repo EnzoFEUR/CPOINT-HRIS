@@ -34,6 +34,8 @@ import { requestHardwareCamera, stopHardwareStream } from '../utils/hardwareCame
 import { playScannerSound as playSound } from '../utils/audio';
 import { performLogout } from '../utils/authSession';
 import { isOfflineFeatureActive } from '../routes/OfflineRouteGate.js';
+import { getStoredUser } from '../utils/storedUser.mjs';
+import { isAdmin, isSecurity } from '../utils/userAccess.mjs';
 
 // Scanner configuration
 const ENV = {
@@ -245,16 +247,8 @@ const Scanner = () => {
   });
 
   // Auth Gate
-  const user = useMemo(() => {
-    try { 
-      const raw = localStorage.getItem('user');
-      return (raw && raw !== 'undefined') ? JSON.parse(raw) : { name: 'Gate Guard', role: 'security' }; 
-    }
-    catch { return { name: 'Gate Guard', role: 'security' }; }
-  }, []);
-
-  const role = (user?.role || '').toLowerCase();
-  const isAuthorized = role === 'security' || role === 'guard' || role === 'security_guard' || role === 'admin' || role === 'hr';
+  const user = useMemo(() => getStoredUser(), []);
+  const isAuthorized = isSecurity(user) || isAdmin(user);
 
   if (!isAuthorized) {
     return (

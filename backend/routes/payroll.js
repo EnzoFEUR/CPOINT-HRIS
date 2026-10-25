@@ -10,6 +10,7 @@ import { fetchPendingSilCash, cashPayForEmployee, fetchPayrollLeavePay, payrollL
 import { refreshLeaveCredits, sendCreditError } from './leaves.js';
 import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { supabase } from '../supabaseClient.js';
+import { parseListQuery, payrollListRecord } from '../utils/listViews.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { createAuditLog } from './auditLogs.js';
 import { createNotification } from './notifications.js';
@@ -1296,30 +1297,57 @@ router.post('/preview', async (req, res) => {
 });
 
 // 5. Compute and save payroll
-router.get('/', cacheResponse(20), async (req, res) => {
+const payrollListCache = cacheResponse(20);
+router.get('/', (req, res, next) => {
+    // Separately cached pages can combine old and new totals during a complete-list read.
+    return req.query.view === 'list' ? next() : payrollListCache(req, res, next);
+}, async (req, res) => {
     try {
-        let query = supabase.from('payrolls').select('*, employees:employee_id(*)').order('created_at', { ascending: false });
+        if (req.query.view !== undefined && req.query.view !== 'list') return res.status(400).json({ error: 'Invalid payroll list view.' });
+        const compact = req.query.view === 'list';
+        const paging = compact ? parseListQuery(req.query) : null;
+        if (compact && !hasVerifiedManagerRole(req.user)) return res.status(403).json({ error: 'Administrative access is required.' });
+        if (compact && ((req.query.year !== undefined && (typeof req.query.year !== 'string' || !/^\d{4}$/.test(req.query.year) || Number(req.query.year) < 1900 || Number(req.query.year) > 9998)) ||
+            (req.query.month !== undefined && (typeof req.query.month !== 'string' || !/^(0?[1-9]|1[0-2])$/.test(req.query.month))))) {
+            return res.status(400).json({ error: 'Invalid payroll month or year.' });
+        }
+        let query = supabase.from('payrolls').select('*, employees:employee_id(*)', compact ? { count: 'exact' } : undefined).order('created_at', { ascending: false });
 
         if (req.query.employee_id) {
             query = query.eq('employee_id', req.query.employee_id);
         }
 
-        if (req.query.month) {
+        if (compact && (req.query.month || req.query.year)) {
+            const year = Number(req.query.year || new Date().getFullYear());
+            const month = Number(req.query.month || 1);
+            const nextMonth = req.query.month ? month + 1 : 1;
+            const nextYear = req.query.month && month < 12 ? year : year + 1;
+            const start = `${year}-${String(month).padStart(2, '0')}-01`;
+            const end = `${nextYear}-${String(nextMonth > 12 ? 1 : nextMonth).padStart(2, '0')}-01`;
+            query = query.gte('period_start', start).lt('period_start', end);
+        } else if (req.query.month) {
             const year = req.query.year || new Date().getFullYear();
             const monthStr = req.query.month.padStart(2, '0');
             query = query.gte('period_start', `${year}-${monthStr}-01`);
         }
 
-        if (req.query.limit) {
+        if (compact) {
+            query = query.order('id', { ascending: false }).range((paging.page - 1) * paging.limit, paging.page * paging.limit - 1);
+        } else if (req.query.limit) {
             const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
             query = query.limit(limitNum);
         }
 
-        const { data, error } = await query;
+        const { data, error, count } = await query;
         if (error) throw error;
+        if (compact) {
+            if (!Number.isSafeInteger(count) || count < 0) throw new Error('The payroll list could not be counted completely.');
+            return res.json({ success: true, data: (data || []).map(payrollListRecord),
+                meta: { page: paging.page, limit: paging.limit, total: count, totalPages: Math.max(1, Math.ceil(count / paging.limit)) } });
+        }
         res.json(data);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(err.status === 400 ? 400 : 500).json({ error: err.message });
     }
 });
 

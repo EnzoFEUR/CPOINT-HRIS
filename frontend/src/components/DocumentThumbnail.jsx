@@ -14,10 +14,12 @@ export default function DocumentThumbnail({
 
     if (!doc) return null;
 
-    const fileName = doc.file_name || doc.title || '';
-    const isImage = isImageDocument(fileName);
-    const isPdf = isPdfDocument(fileName);
-    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    const safeTitle = typeof doc.title === 'string' ? doc.title.trim() : '';
+    const fileName = typeof doc.file_name === 'string' && doc.file_name.trim() ? doc.file_name.trim() : safeTitle;
+    const ext = fileName.includes('.') ? (fileName.split('.').pop() || '').toLowerCase() : '';
+    const isImage = Boolean(ext) && isImageDocument(fileName);
+    const isPdf = Boolean(ext) && isPdfDocument(fileName);
+    const label = safeTitle || fileName || 'Document';
     const previewUrl = doc.preview_url || null;
 
     // Size mappings for box variant
@@ -43,7 +45,7 @@ export default function DocumentThumbnail({
                 tabIndex={onPreview ? 0 : undefined}
                 onClick={onPreview ? (e) => { e.stopPropagation(); onPreview(doc); } : undefined}
                 onKeyDown={handleKeyDown}
-                title={onPreview ? `Preview ${doc.title || fileName}` : (doc.title || fileName)}
+                title={onPreview ? `Preview ${label}` : label}
                 className={`relative group shrink-0 overflow-hidden border border-slate-200/80 bg-slate-50 transition-all duration-150 ${onPreview ? 'cursor-pointer hover:border-slate-400 hover:shadow-xs' : ''} ${sizeClasses} ${className}`}
             >
                 {isImage && previewUrl && !imgError ? (
@@ -55,7 +57,7 @@ export default function DocumentThumbnail({
                         )}
                         <img
                             src={previewUrl}
-                            alt={doc.title || fileName}
+                            alt={label}
                             loading="lazy"
                             onLoad={() => setImgLoaded(true)}
                             onError={() => setImgError(true)}
@@ -122,7 +124,7 @@ export default function DocumentThumbnail({
             tabIndex={onPreview ? 0 : undefined}
             onClick={onPreview ? (e) => { e.stopPropagation(); onPreview(doc); } : undefined}
             onKeyDown={handleKeyDown}
-            title={onPreview ? `Preview ${doc.title || fileName}` : (doc.title || fileName)}
+            title={onPreview ? `Preview ${label}` : label}
             className={`relative group w-full h-32 sm:h-36 rounded-t-lg overflow-hidden border-b border-slate-200 bg-slate-100 transition-colors ${onPreview ? 'cursor-pointer hover:bg-slate-200/60' : ''} ${className}`}
         >
             {isImage && previewUrl && !imgError ? (
@@ -134,7 +136,7 @@ export default function DocumentThumbnail({
                     )}
                     <img
                         src={previewUrl}
-                        alt={doc.title || fileName}
+                        alt={label}
                         loading="lazy"
                         onLoad={() => setImgLoaded(true)}
                         onError={() => setImgError(true)}

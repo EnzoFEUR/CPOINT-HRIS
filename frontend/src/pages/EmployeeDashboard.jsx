@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { fetchWithAuth } from '../utils/api';
+import { createDisciplinaryMutation } from '../utils/disciplinaryMutation';
 import { supabase } from '../supabaseClient';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { getDisciplinaryCache, setDisciplinaryCache, clearDisciplinaryCache } from '../utils/disciplinaryCache';
@@ -147,6 +148,7 @@ const resolveLeaveStatusBadge = (leave) => {
 
 const EmployeeDashboard = () => {
     const queryClient = useQueryClient();
+    const disciplinaryMutation = useMemo(() => createDisciplinaryMutation(fetchWithAuth), []);
     const [storedUser] = useState(() => getUser() || { name: 'Loading...', id: '', department: 'Team Member' });
     const enabled = Boolean(storedUser.id) && !isSecurity(storedUser) && !isAdmin(storedUser);
     const { dashboard, history, refresh } = useEmployeeDashboard(storedUser.id, enabled);
@@ -733,7 +735,7 @@ const EmployeeDashboard = () => {
         if (acknowledgingId) return;
         setAcknowledgingId(infId);
         try {
-            const result = await acknowledgeDashboardNotices(fetchWithAuth, [infId]);
+            const result = await acknowledgeDashboardNotices(disciplinaryMutation, [infId]);
             if (result.failed) toast.error('Failed to acknowledge notice.');
             else toast.success('Disciplinary notice acknowledged.');
             await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
@@ -745,7 +747,7 @@ const EmployeeDashboard = () => {
         if (acknowledgingId || !infractions.length) return;
         setAcknowledgingId('all');
         try {
-            const result = await acknowledgeDashboardNotices(fetchWithAuth, infractions.map(infraction => infraction.id));
+            const result = await acknowledgeDashboardNotices(disciplinaryMutation, infractions.map(infraction => infraction.id));
             if (result.failed) toast.error(`${result.acknowledged} acknowledged; ${result.failed} failed. Retry the remaining notices.`);
             else toast.success('All notices acknowledged.');
             await queryClient.invalidateQueries({ queryKey: ['employeeDashboard', user.id], exact: true });
@@ -2427,7 +2429,7 @@ const EmployeeDashboard = () => {
                                     return (
                                         <div
                                             key={record.id}
-                                            className={`p-4 sm:p-5 rounded-md border transition-colors duration-100 ${isPending
+                                            className={`min-w-0 p-4 sm:p-5 rounded-md border transition-colors duration-100 ${isPending
                                                 ? 'bg-danger-subtle/40 border-danger/20 shadow-2xs'
                                                 : isCleared
                                                     ? 'bg-success-subtle/20 border-success/20'
@@ -2453,8 +2455,8 @@ const EmployeeDashboard = () => {
                                                 <span className="text-[11px] font-mono text-slate-400 font-normal">REF: DISC-{(record.id || '').slice(0, 6).toUpperCase()}</span>
                                             </h3>
 
-                                            <div className="bg-white/80 p-3 rounded-sm border border-slate-200/80 mb-3">
-                                                <p className="text-xs text-slate-700 leading-relaxed font-medium">{record.reason}</p>
+                                            <div className="min-w-0 bg-white/80 p-3 rounded-sm border border-slate-200/80 mb-3">
+                                                <p className="min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap text-xs text-slate-700 leading-relaxed font-medium">{record.reason}</p>
                                             </div>
 
                                             {isPending && (

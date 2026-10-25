@@ -1,10 +1,12 @@
 import express from 'express';
 import { supabase } from '../supabaseClient.js';
-import { cacheResponse } from '../middleware/cacheMiddleware.js';
+import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
 import { hasVerifiedManagerRole } from '../middleware/authMiddleware.js';
 import { postgrestValue } from '../middleware/requestValidation.js';
+import { HUMAN_TEXT_LIMITS } from '../../shared/inputLimits.mjs';
 
 const router = express.Router();
+const MAX_NOTIFICATION_MESSAGE_LENGTH = 1000;
 
 export function authorizeNotifications(req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Authentication is required.' });
@@ -36,6 +38,7 @@ router.get('/', authorizeNotifications, cacheResponse(15), async (req, res) => {
 
         const { data: notifications, error } = await query;
         if (error) throw error;
+        if (!notifications?.length) return res.json([]);
 
         // Fetch active employees to enrich notifications with real biometric photos and names
         const { data: employees } = await supabase
@@ -194,12 +197,20 @@ export const createNotification = async ({ target, title, text, type, sender_id,
         })
         .catch(err => console.error('[PUSH_IMPORT] Error:', err.message));
 
+    invalidateCache('/api/notifications');
     return enrichedPayload;
 };
 
 // POST new notification
 router.post('/', authorizeNotifications, async (req, res) => {
     try {
+        const { text, title } = req.body;
+        if (typeof text !== 'string' || text.length > MAX_NOTIFICATION_MESSAGE_LENGTH || !text.trim()) {
+            return res.status(400).json({ error: 'Notification text is required and must be at most 1000 characters.' });
+        }
+        if (title !== undefined && (typeof title !== 'string' || title.length > HUMAN_TEXT_LIMITS.title || !title.trim())) {
+            return res.status(400).json({ error: `Notification title must be nonempty text of at most ${HUMAN_TEXT_LIMITS.title} characters.` });
+        }
         const payload = hasVerifiedManagerRole(req.user) ? req.body : { ...req.body, sender_id: req.user.id, company_id: req.user.company_id, sender_name: `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() };
         const newNotif = await createNotification(payload);
         if (!newNotif) return res.status(500).json({ error: 'Failed to create notification' });
@@ -225,6 +236,7 @@ router.put('/read-all', authorizeNotifications, async (req, res) => {
         const { error } = await query;
         if (error) throw error;
 
+        invalidateCache('/api/notifications');
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -14,6 +14,9 @@ export const SYSTEM_ROLES = [
     'hr_manager'
 ];
 
+const EXEMPT_DEPARTMENTS = ['security', 'admin', 'hr', 'human resources', 'administration'];
+const EXEMPT_TITLES = ['guard', 'security', 'administrator', 'admin', 'gate attendant', 'hr'];
+
 /**
  * Checks if a given employee object or role is an attendance-exempt operator
  * (Admins, HR Administrators, and Security Guards).
@@ -37,8 +40,8 @@ export const isAttendanceExempt = (employee) => {
         'hrmanager'
     ].includes(role) || role.includes('admin') || role.includes('security') || role.includes('guard') || role.includes('hr');
 
-    const isExemptDept = dept.includes('security') || dept.includes('admin') || dept.includes('hr') || dept.includes('human resources') || dept.includes('administration');
-    const isExemptTitle = title.includes('guard') || title.includes('security') || title.includes('administrator') || title.includes('admin') || title.includes('gate attendant') || title.includes('hr');
+    const isExemptDept = EXEMPT_DEPARTMENTS.some(value => dept.includes(value));
+    const isExemptTitle = EXEMPT_TITLES.some(value => title.includes(value));
 
     return Boolean(isSystemRole || isExemptDept || isExemptTitle);
 };
@@ -55,6 +58,22 @@ export const isWorkforceEmployee = (employee) => {
     if (role && role !== 'employee') return false;
     return !isAttendanceExempt(employee);
 };
+
+// Filter an empty eligibility embed without changing the displayed employee relationship.
+export function applyAttendanceWorkforceFilters(query, department) {
+    const referencedTable = 'workforce';
+    query = query.not('workforce.company_id', 'is', null).neq('workforce.company_id', '')
+        .or('status.is.null,status.eq."",status.eq.active', { referencedTable })
+        .or('role.is.null,role.eq."",role.ilike.employee', { referencedTable });
+    for (const [field, terms] of [['department', EXEMPT_DEPARTMENTS], ['job_title', EXEMPT_TITLES]]) {
+        query = query.or(`${field}.is.null,and(${terms.map(term => `${field}.not.ilike.${JSON.stringify(`%${term}%`)}`).join(',')})`, { referencedTable });
+    }
+    if (department && department.toLowerCase() !== 'all') {
+        return query.ilike('workforce.department', department.replace(/[\\%_]/g, '\\$&')).not('workforce', 'is', null);
+    }
+    // History has always retained orphan relationships; department-specific reads exclude them.
+    return query.or('workforce.not.is.null,employees.is.null');
+}
 
 /**
  * Applies universal workforce filtering to any Supabase query on the `employees` table.

@@ -47,10 +47,12 @@ export const EmployeeAvatar = ({
     const resolvedAvatarSrc = useMemo(() => {
         const rawPhoto = photoUrl || avatarUrl || employee?.avatar_url || employee?.photo_url || employee?.photo || employee?.profile_picture || employee?.image_url || employee?.biometric_baseline_path;
         if (rawPhoto) {
-            if (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:')) {
-                return rawPhoto;
+            const safePhoto = typeof rawPhoto === 'string' ? rawPhoto.trim() : '';
+            if (!safePhoto) return null;
+            if (safePhoto.startsWith('http') || safePhoto.startsWith('data:')) {
+                return safePhoto;
             }
-            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${rawPhoto.replace(/^\/+/, '')}`;
+            return `https://lzqshktnrvtlattdiwxf.supabase.co/storage/v1/object/public/public-bucket/${safePhoto.replace(/^\/+/, '')}`;
         }
         const cId = companyId || employee?.company_id;
         const eId = employeeId || employee?.id;

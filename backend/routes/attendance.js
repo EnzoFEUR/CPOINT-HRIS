@@ -4,8 +4,10 @@ import { supabase } from '../supabaseClient.js';
 import { Brain } from '../services/geminiBrain.js';
 import { checkVerifiedManagerOrOwnership, hasVerifiedManagerRole, invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { isAttendanceExempt, isWorkforceEmployee } from '../utils/workforce.js';
+import { isAttendanceExempt, isWorkforceEmployee, applyAttendanceWorkforceFilters } from '../utils/workforce.js';
 import { getEmployeeMonthlyAttendance } from '../utils/attendanceReconciliation.js';
+import { disciplinaryService } from '../services/disciplinaryService.js';
+import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
 
 import { getWorkPolicy, getEmployeeRestDays, getGraceDeadline, getChargeableLateMinutes } from '../../shared/workPolicy.mjs';
 import { getActiveWorkPolicy } from './payroll.js';
@@ -285,9 +287,12 @@ const logSecurityViolation = async (reqId, employee_id, type, description, ip_ad
   };
 
   // Write to disciplinary_logs
-  await supabase.from('disciplinary_logs').insert(payload).catch(err => {
+  try {
+    const { error: discErr } = await supabase.from('disciplinary_logs').insert(payload);
+    if (discErr) logger.error(reqId, 'Failed to write disciplinary log', { error: discErr.message });
+  } catch (err) {
     logger.error(reqId, 'Failed to write disciplinary log', { error: err.message });
-  });
+  }
 
   // Write to audit trail
   await auditLog(reqId, {
@@ -524,11 +529,12 @@ router.get(
       });
     }
 
-    let query = supabase
+    let query = applyAttendanceWorkforceFilters(supabase
       .from('attendances')
-      .select('*, employees:employee_id(*)', { count: 'exact' })
+      .select('*, employees:employee_id(*), workforce:employee_id()', { count: 'exact' }), department)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(offset, offset + limitNum - 1);
 
     if (employee_id) query = query.eq('employee_id', employee_id);
@@ -541,7 +547,12 @@ router.get(
       query = query.lte('date', end_date);
     }
 
-    const { data, error, count } = await query;
+    let result = await query;
+    if (offset > 0 && result.error?.code === 'PGRST103') {
+      // A filter change or deletion may leave the client on a page that no longer exists.
+      result = { ...await query.range(0, 0), data: [] };
+    }
+    const { data, error, count } = result;
     if (error) throw new AppError(`Database error: ${error.message}`, 500, 'DB_ERROR');
 
     logger.info(reqId, 'Attendance list fetched', { count: data?.length, total: count, filters: { employee_id, start_date, end_date } });
@@ -554,10 +565,7 @@ router.get(
       ip_address: req.ip,
     }).catch(err => logger.error(reqId, 'Background audit log failed', { error: err.message }));
 
-    let baseList = (data || []).filter(log => !log.employees || isWorkforceEmployee(log.employees));
-    if (department && department.toLowerCase() !== 'all') {
-      baseList = baseList.filter(log => log.employees?.department?.toLowerCase() === department.toLowerCase());
-    }
+    const baseList = data || [];
 
     // Parallel fetch matching approved leave requests to reconcile and enrich leave statuses
     const empIds = [...new Set(baseList.map(l => l.employee_id).filter(Boolean))];
@@ -568,13 +576,14 @@ router.get(
       const minDate = dates.reduce((min, d) => d < min ? d : min, dates[0]);
       const maxDate = dates.reduce((max, d) => d > max ? d : max, dates[0]);
 
-      const { data: leaves } = await supabase
+      const { data: leaves, error: leaveError } = await supabase
         .from('leave_requests')
         .select('id, employee_id, start_date, end_date, type, status, notes, credit_pool, requested_pay_type')
         .in('employee_id', empIds)
         .eq('status', 'Approved')
         .lte('start_date', maxDate)
         .gte('end_date', minDate);
+      if (leaveError) throw new AppError(`Database error: ${leaveError.message}`, 500, 'DB_ERROR');
       approvedLeaves = leaves || [];
     }
 
@@ -668,6 +677,37 @@ router.get(
     if (!employee) {
       logger.warn(reqId, 'Employee not found for QR scan', { query: target });
       throw new NotFoundError(`Employee not found for QR value: ${target}`);
+
+    }
+    // Disciplinary boundary and expiration check on QR scan
+    const isSusp = employee.status === 'Suspended' || employee.status === 'suspended';
+    if (isSusp) {
+      const { data: discLog } = await supabase
+        .from('disciplinary_logs')
+        .select('id, type, reason, date, status')
+        .eq('employee_id', employee.id)
+        .eq('type', 'Suspension')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const todayStr = getTodayString();
+      if (discLog) {
+        const matchUntil = (discLog.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const endDateStr = matchUntil ? matchUntil[1] : null;
+        const matchFrom = (discLog.reason || '').match(/From\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const startDateStr = matchFrom ? matchFrom[1] : (discLog.date || null);
+
+        if (endDateStr && todayStr > endDateStr) {
+          const committed = await disciplinaryService.expire(employee.id, discLog.id);
+          Object.assign(employee, committed.employee);
+          publishCommittedDisciplinary(committed);
+        } else if (startDateStr && todayStr < startDateStr) {
+          // Allow only this pre-effective-date scan; keep the stored suspension for its start date.
+          employee.status = 'active';
+          employee.is_active = true;
+        }
+      }
     }
 
     // System operators (Admins, HR, Security Guards) do not log attendance
@@ -760,28 +800,57 @@ router.post(
       throw new ValidationError('Exempt personnel (Admin / Security Guard). Attendance clock-in is not required.');
     }
 
-    const isSuspended = employee.status === 'Suspended' || employee.status === 'suspended';
-    const isTerminated = employee.status === 'Terminated' || employee.status === 'terminated';
+    let isSuspended = employee.status === 'Suspended' || employee.status === 'suspended';
+    let isTerminated = employee.status === 'Terminated' || employee.status === 'terminated';
 
     if (!employee.is_active || isSuspended || isTerminated) {
       const { data: discLog } = await supabase
         .from('disciplinary_logs')
-        .select('type, reason, date')
+        .select('id, type, reason, date, status')
         .eq('employee_id', employee_id)
         .in('type', ['Suspension', 'Termination'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      const discType = isSuspended ? 'Suspension' : (isTerminated ? 'Termination' : (discLog?.type || 'Deactivated'));
-      const errorMessage = discType === 'Suspension'
-        ? 'ACCESS DENIED: Attendance prohibited. Personnel account is currently under disciplinary suspension.'
-        : discType === 'Termination'
-        ? 'ACCESS DENIED: Attendance pass revoked. Personnel employment has been terminated.'
-        : 'Employee account is deactivated. Contact HR.';
+      const todayStr = getTodayString();
 
-      await auditLog(reqId, { employee_id, action: `SCAN_BLOCKED_${discType.toUpperCase()}`, details: { reason: discLog?.reason }, ip_address: req.ip });
-      throw new AuthorizationError(errorMessage);
+      // Check disciplinary effective-date boundary and expiration
+      if (isSuspended && discLog && discLog.type === 'Suspension') {
+        const matchUntil = (discLog.reason || '').match(/Until\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const endDateStr = matchUntil ? matchUntil[1] : null;
+        const matchFrom = (discLog.reason || '').match(/From\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const startDateStr = matchFrom ? matchFrom[1] : (discLog.date || null);
+
+        if (endDateStr && todayStr > endDateStr) {
+          // Suspension interval has ended: Auto-reinstate employee
+          const committed = await disciplinaryService.expire(employee_id, discLog.id);
+          Object.assign(employee, committed.employee);
+          isSuspended = employee.status?.toLowerCase() === 'suspended';
+          isTerminated = employee.status?.toLowerCase() === 'terminated' || employee.separation_type === 'Disciplinary Termination';
+          publishCommittedDisciplinary(committed);
+          logger.info(reqId, 'Expired suspension reconciled at turnstile', { employee_id, endDateStr, todayStr, employment_restored: committed.employment_restored });
+        } else if (startDateStr && todayStr < startDateStr) {
+          // Future suspension: Interval has not arrived yet; employee remains active before effective interval
+          // Allow only this pre-effective-date scan; keep the stored suspension for its start date.
+          employee.status = 'active';
+          employee.is_active = true;
+          isSuspended = false;
+          logger.info(reqId, 'Disciplinary suspension is future-dated; employee allowed before effective interval', { employee_id, startDateStr, todayStr });
+        }
+      }
+
+      if (!employee.is_active || isSuspended || isTerminated) {
+        const discType = isSuspended ? 'Suspension' : (isTerminated ? 'Termination' : (discLog?.type || 'Deactivated'));
+        const errorMessage = discType === 'Suspension'
+          ? 'ACCESS DENIED: Attendance prohibited. Personnel account is currently under disciplinary suspension.'
+          : discType === 'Termination'
+          ? 'ACCESS DENIED: Attendance pass revoked. Personnel employment has been terminated.'
+          : 'Employee account is deactivated. Contact HR.';
+
+        await auditLog(reqId, { employee_id, action: `SCAN_BLOCKED_${discType.toUpperCase()}`, details: { reason: discLog?.reason }, ip_address: req.ip });
+        throw new AuthorizationError(errorMessage);
+      }
     }
 
     // Check for active medical exemption

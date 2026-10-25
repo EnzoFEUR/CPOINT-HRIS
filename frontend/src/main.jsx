@@ -188,7 +188,11 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, 
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: (failureCount, error) => {
+        const status = error?.status || error?.http_status;
+        if (status === 429 || status === 401 || status === 403) return false;
+        return failureCount < 1;
+      },
     },
   },
 });
@@ -200,14 +204,17 @@ const originalFetch = window.fetch;
 window.fetch = async (...args) => {
     let [resource, config] = args;
     
-    if (typeof resource === 'string' && resource.includes('http://localhost:5000')) {
+    if (typeof resource === 'string' && /^http:\/\/localhost:5000(?:[/?#]|$)/.test(resource)) {
+        config?.signal?.throwIfAborted();
         resource = resource.replace('http://localhost:5000', API_URL);
-        const { data: { session } } = await supabase.auth.getSession();
-        config = config || {};
-        config.headers = { ...config.headers };
-        if (session?.access_token) {
-            config.headers['Authorization'] = `Bearer ${session.access_token}`;
+        const headers = new Headers(config?.headers);
+        // fetchWithAuth already resolved the session for authenticated requests.
+        if (!headers.has('Authorization')) {
+            const { data: { session } } = await supabase.auth.getSession();
+            config?.signal?.throwIfAborted();
+            if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
         }
+        config = { ...config, headers };
     }
     return originalFetch(resource, config);
 };

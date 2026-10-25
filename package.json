@@ -13,7 +13,18 @@
     "test:offline": "node --test tests/offline*.test.mjs",
     "install:all": "npm install",
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
-    "build": "npm run build --workspaces"
+    "build": "npm run build --workspaces",
+    "test:stress": "node scripts/security-stress-500.mjs 500 5m http://localhost:5000",
+    "test:stress:500": "node scripts/security-stress-500.mjs 500 5m http://localhost:5000",
+    "test:stress:1000": "node scripts/security-stress-500.mjs 1000 5m http://localhost:5000",
+    "test:stress:quick": "node scripts/security-stress-500.mjs 500 15 http://localhost:5000",
+    "test:stress:unli": "node scripts/security-stress-500.mjs 500 unli http://localhost:5000",
+    "test:k6:500": "node scripts/run-k6.mjs",
+    "monitoring:up": "docker compose -f docker-compose.monitoring.yml up -d",
+    "monitoring:down": "docker compose -f docker-compose.monitoring.yml down",
+    "monitoring:status": "docker compose -f docker-compose.monitoring.yml ps",
+    "monitoring:logs": "docker compose -f docker-compose.monitoring.yml logs -f",
+    "test:k6:authenticated": "node scripts/run-authenticated-k6.mjs"
   },
   "overrides": {
     "node-fetch": "2.7.0"

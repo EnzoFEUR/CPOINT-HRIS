@@ -560,7 +560,7 @@ async function computePayrollForecast() {
  * Consolidated admin dashboard overview
  * Delivers KPI telemetry, trends, punctuality, and payroll forecast without blocking on AI generation.
  */
-router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) => {
+router.get('/overview', checkRole('admin', 'hr'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = toDateStr(new Date());
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));
@@ -735,7 +735,7 @@ router.get('/overview', checkRole('admin'), cacheResponse(15), async (req, res) 
  * Dedicated Asynchronous AI Workforce Briefing & Analytics Endpoint
  * Enterprise concurrent execution: generates workforce briefing & payroll insight in parallel.
  */
-router.get('/ai-briefing', checkRole('admin'), cacheResponse(30), async (req, res) => {
+router.get('/ai-briefing', checkRole('admin', 'hr'), cacheResponse(30), async (req, res) => {
     try {
         const todayStr = toDateStr(new Date());
 
@@ -965,7 +965,7 @@ function formatLateLabel(minutes) {
  * Full detail of today's attendance, split into present / late, for the
  * Present Rate and Late Arrivals dashboard drill-down modals.
  */
-router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (req, res) => {
+router.get('/attendance-today', checkRole('admin', 'hr'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = toDateStr(new Date());
 
@@ -1027,7 +1027,7 @@ router.get('/attendance-today', checkRole('admin'), cacheResponse(15), async (re
     }
 });
 
-router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (req, res) => {
+router.get('/payroll-forecast', checkRole('admin', 'hr'), cacheResponse(60), async (req, res) => {
     try {
         const forecast = await computePayrollForecast();
         const narrative = await Brain.Analytics.generatePayrollInsight(forecast).catch(() => null);
@@ -1042,7 +1042,7 @@ router.get('/payroll-forecast', checkRole('admin'), cacheResponse(60), async (re
  * Optimized Single-Pass Admin Dashboard Telemetry
  * Consolidates 16 database roundtrips into 3 high-speed queries with in-memory aggregation.
  */
-router.get('/admin', checkRole('admin'), cacheResponse(15), async (req, res) => {
+router.get('/admin', checkRole('admin', 'hr'), cacheResponse(15), async (req, res) => {
     try {
         const todayStr = toDateStr(new Date());
         const thirtyFiveDaysAgo = toDateStr(new Date(Date.now() - 35 * DAY_MS));

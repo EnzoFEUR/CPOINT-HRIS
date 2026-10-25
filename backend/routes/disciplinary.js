@@ -2,85 +2,17 @@ import express from 'express';
 import { validateRecordId } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import { createNotification } from './notifications.js';
-import { cacheResponse, invalidateCache } from '../middleware/cacheMiddleware.js';
-import { invalidateAuthUser } from '../middleware/authMiddleware.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
+import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
 import { HUMAN_TEXT_LIMITS } from '../../shared/inputLimits.mjs';
+import { isLeaveDate } from '../../shared/leavePolicy.js';
+import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
+
+import { disciplinaryService } from '../services/disciplinaryService.js';
 
 const router = express.Router();
 router.param('id', validateRecordId);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-
-// Real-time high-throughput broadcast bus (Persistent singleton socket connection)
-let realtimeSyncChannel = null;
-function getRealtimeChannel() {
-    if (!realtimeSyncChannel) {
-        realtimeSyncChannel = supabase.channel('disciplinary_realtime_sync');
-        realtimeSyncChannel.subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log('[REALTIME_SYNC] Disciplinary broadcast channel active.');
-            }
-        });
-    }
-    return realtimeSyncChannel;
-}
-
-// Eager initialization on server boot
-getRealtimeChannel();
-
-// Low-latency non-blocking broadcast helper (<5ms execution overhead)
-// Dispatches to admin dashboards, physical gate scanners, and employee private channels
-const dynamicChannelPool = new Map();
-function getChannelForTopic(topic) {
-    if (topic === 'disciplinary_realtime_sync') return getRealtimeChannel();
-    let ch = dynamicChannelPool.get(topic);
-    if (!ch) {
-        ch = supabase.channel(topic);
-        ch.subscribe();
-        dynamicChannelPool.set(topic, ch);
-        if (dynamicChannelPool.size > 100) {
-            const oldestKey = dynamicChannelPool.keys().next().value;
-            try { supabase.removeChannel(dynamicChannelPool.get(oldestKey)); } catch (_) {}
-            dynamicChannelPool.delete(oldestKey);
-        }
-    }
-    return ch;
-}
-
-function broadcastDisciplinaryUpdate(event, payload = {}) {
-    const timestamp = new Date().toISOString();
-    const enrichedPayload = { ...payload, broadcast_timestamp: timestamp };
-
-    const targetTopics = [
-        'disciplinary_realtime_sync',
-        'disciplinary-updates',
-        'admin-live-employees-directory',
-        'scanner_disciplinary_realtime'
-    ];
-
-    const empId = payload.employee_id || payload.employeeId;
-    if (empId) {
-        invalidateAuthUser(empId);
-        targetTopics.push(
-            `dashboard-disciplinary-sync-${empId}`,
-            `employee-live-dashboard-${empId}`,
-            `myprofile-realtime-${empId}`,
-            `qr-disciplinary-sync-${empId}`,
-            `qr-realtime-${empId}`
-        );
-    }
-
-    // Concurrent non-blocking dispatch across all target channels
-    targetTopics.forEach(topic => {
-        try {
-            const ch = getChannelForTopic(topic);
-            ch.send({
-                type: 'broadcast',
-                event,
-                payload: enrichedPayload
-            }).catch(() => {});
-        } catch (_) {}
-    });
-}
 
 // Dispatch official formal written disciplinary memo via Brevo REST API v3
 async function dispatchDisciplinaryEmail(employee, { type, severity, reason, date, duration_days, end_date }) {
@@ -330,29 +262,6 @@ async function dispatchClearanceEmail(employee, { exoneration_reason, investigat
 const dispatchExonerationEmail = dispatchClearanceEmail;
 
 // Senior-Fullstack Policy: Disciplinary exemption check for administrative and security guard personnel
-function isDisciplinaryExempt(employee) {
-    if (!employee) return false;
-    const r = (employee.role || '').toLowerCase().replace(/[\s_-]/g, '');
-    const dept = (employee.department || '').toLowerCase();
-    const title = (employee.job_title || employee.position || '').toLowerCase();
-    const name = `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase();
-
-    const isAdmin =
-        ['admin', 'hr', 'hrmanager', 'hr_manager'].includes(r) ||
-        r.includes('admin') || r.includes('hr') ||
-        dept.includes('admin') || dept.includes('human resources') || dept.includes('hr') ||
-        title.includes('admin') || title.includes('administrator') || title.includes('hr');
-
-    const isGuard =
-        ['security', 'guard', 'securityguard', 'security_guard'].includes(r) ||
-        r.includes('guard') || r.includes('security') ||
-        dept.includes('security') ||
-        title.includes('guard') || title.includes('security') || title.includes('gate attendant') || title.includes('watchman') ||
-        name.includes('guard');
-
-    return Boolean(isAdmin || isGuard);
-}
-
 // GET /api/disciplinary - Fetch disciplinary logs with employee metadata
 router.get('/', cacheResponse(15), async (req, res) => {
     try {
@@ -411,868 +320,93 @@ router.get('/', cacheResponse(15), async (req, res) => {
     }
 });
 
-// POST /api/disciplinary - Issue Warning, Suspension (3-7 days), or Termination
+// Each mutation commits its record, employment state, audit, and operation key together.
+function afterCommit(req, result) {
+    if (result.replayed) return;
+    const record = result.record, employee = result.employee;
+    publishCommittedDisciplinary(result);
+    if (result.action !== 'delete') createNotification({
+        target: result.action === 'acknowledge' ? 'admin' : employee.id,
+        title: result.action === 'issue' ? 'Disciplinary Notice' : 'Disciplinary Status Updated',
+        text: 'Your ' + record.type + ' notice is ' + record.status + '. Employment status: ' + employee.status + '.',
+        type: 'disciplinary', sender_id: req.user.id, sender_name: 'HR & Compliance Management', company_id: employee.company_id
+    }).catch(() => console.error('[DISCIPLINARY_NOTIFICATION] Post-commit notification failed.'));
+    if (result.action === 'issue' && record.status === 'Active' && employee.email) dispatchDisciplinaryEmail(employee, {
+        type: record.type, severity: record.severity, reason: record.reason, date: record.date, duration_days: result.duration_days, end_date: result.end_date
+    }).catch(() => console.error('[DISCIPLINARY_EMAIL] Post-commit email failed.'));
+    if (result.action === 'overturn' && employee.email) dispatchClearanceEmail(employee, {
+        exoneration_reason: req.body.clearing_reason || req.body.exoneration_reason || req.body.reason,
+        investigation_notes: req.body.investigation_notes || null, original_type: record.type, date: getManilaWorkDate()
+    }).catch(() => console.error('[DISCIPLINARY_EMAIL] Post-commit clearance email failed.'));
+}
+
+function committedResponse(req, res, result) {
+    afterCommit(req, result);
+    const record = { ...result.record, employees: result.employee, employee_name: [result.employee.first_name, result.employee.last_name].filter(Boolean).join(' '),
+        employee_status: result.employee.status, employee_is_active: result.employee.is_active };
+    return res.json({ success: true, data: record, employee: result.employee, replayed: result.replayed });
+}
+function transactionError(res, error) {
+    if (error.status === 503) res.setHeader('Retry-After', '2');
+    return res.status(error.status || 503).json({ success: false, code: error.code, error: error.status ? error.message : 'The disciplinary action could not be confirmed.' });
+}
+
 router.post('/', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin) {
-            return res.status(403).json({ error: 'Administrative privileges required to issue disciplinary actions.' });
-        }
-
-        const { employee_id, type, reason, severity, duration_days } = req.body;
-        if (duration_days !== undefined && duration_days !== '' && (!['number', 'string'].includes(typeof duration_days)
-            || !/^\d{1,2}$/.test(String(duration_days)) || Number(duration_days) < 1 || Number(duration_days) > 60)) {
-            return res.status(400).json({ error: 'Suspension duration must be a whole number from 1 to 60 days.' });
-        }
-        
-        if (!employee_id || !type || !reason) {
-            return res.status(400).json({ error: 'Employee, type, and detailed reason are required.' });
-        }
-        if (typeof reason !== 'string' || !reason.trim() || reason.length > HUMAN_TEXT_LIMITS.reason) {
-            return res.status(400).json({ error: `Incident details must contain 1-${HUMAN_TEXT_LIMITS.reason} characters.` });
-        }
-
-        // Validate target employee existence and disciplinary exemption policy
-        const { data: targetEmp, error: empErr } = await supabase
-            .from('employees')
-            .select('id, status, is_active, first_name, last_name, role, department, job_title')
-            .eq('id', employee_id)
-            .single();
-
-        if (empErr || !targetEmp) {
-            return res.status(404).json({ error: 'Target employee not found.' });
-        }
-
-        if (isDisciplinaryExempt(targetEmp)) {
-            return res.status(400).json({ 
-                error: `Disciplinary actions cannot be issued to administrative or security guard personnel (${targetEmp.first_name} ${targetEmp.last_name}).` 
-            });
-        }
-
-        // Standardize types Warning, Suspension, Termination
-        const validTypes = ['Warning', 'Suspension', 'Termination'];
-        const resolvedType = validTypes.find(t => t.toLowerCase() === type.toLowerCase()) || 'Warning';
-
-        const todayStr = new Date().toISOString().split('T')[0];
-        let formattedReason = reason.trim();
-        let resolvedSeverity = severity || 'Low';
-        let durationDays = 0;
-        let endDateStr = null;
-
-        // 1. Logic for Warning Account remains active
-        if (resolvedType === 'Warning') {
-            resolvedSeverity = severity || 'Low';
-        } 
-        // 2. Logic for Suspension - Temporarily locked out (Mananatili sa Personnel Directory as Suspended)
-        else if (resolvedType === 'Suspension') {
-            // Enterprise Rule: Prevent double-suspending an employee who is already suspended or deactivated
-
-            if (targetEmp.status?.toLowerCase() === 'suspended') {
-                return res.status(400).json({ 
-                    error: `Cannot suspend ${targetEmp.first_name} ${targetEmp.last_name}: Employee is currently serving an active suspension.` 
-                });
-            }
-
-            if (targetEmp.is_active === false || targetEmp.status?.toLowerCase() === 'inactive' || targetEmp.status?.toLowerCase() === 'terminated') {
-                return res.status(400).json({ 
-                    error: `Cannot suspend ${targetEmp.first_name} ${targetEmp.last_name}: Employee is inactive or terminated.` 
-                });
-            }
-
-            // Check if there is already an active suspension record in disciplinary_logs
-            const { data: activeSuspension } = await supabase
-                .from('disciplinary_logs')
-                .select('id, date, status')
-                .eq('employee_id', employee_id)
-                .eq('type', 'Suspension')
-                .in('status', ['Active', 'Action Required', 'Under Review'])
-                .maybeSingle();
-
-            if (activeSuspension) {
-                return res.status(400).json({ 
-                    error: `Cannot suspend employee: An active suspension record is already in effect.` 
-                });
-            }
-
-            durationDays = Math.max(1, Math.min(60, parseInt(duration_days, 10) || 3));
-            const endObj = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
-            endDateStr = endObj.toISOString().split('T')[0];
-
-            formattedReason = `[SUSPENDED ${durationDays} DAYS - Until ${endDateStr}] ${formattedReason}`;
-            resolvedSeverity = severity || 'High';
-
-            const { error: suspendError } = await supabase
-                .from('employees')
-                .update({ 
-                    status: 'suspended', 
-                    is_active: false,
-                    archived_at: null,
-                    archived_by: null,
-                    separation_type: null,
-                    separation_reason: null,
-                    separation_date: null,
-                    separation_notes: null
-                })
-                .eq('id', employee_id);
-
-            if (suspendError) {
-                console.error('[SUSPENSION_EMPLOYEE_UPDATE_FAIL]', suspendError);
-                return res.status(500).json({
-                    error: `Suspension was not applied: could not update employee account (${suspendError.message}). No disciplinary record was created.`
-                });
-            }
-        } 
-        // Archive terminated employee record
-        else if (resolvedType === 'Termination') {
-            formattedReason = `[TERMINATED Effective ${todayStr}] ${formattedReason}`;
-            resolvedSeverity = 'Critical';
-
-            const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
-            const validArchivedBy = isUUID(req.user?.id) ? req.user.id : null;
-
-            const terminationPayload = {
-                status: 'inactive',
-                is_active: false,
-                archived_at: new Date().toISOString(),
-                separation_type: 'Disciplinary Termination',
-                separation_reason: reason.trim(),
-                separation_date: todayStr,
-                archived_by: validArchivedBy,
-                separation_notes: `Terminated via Disciplinary Action: ${reason.trim()}`,
-                updated_at: new Date().toISOString()
-            };
-
-            // Update employee record to inactive/archived with full separation details
-            const { error: terminateError } = await supabase
-                .from('employees')
-                .update(terminationPayload)
-                .eq('id', employee_id);
-
-            if (terminateError) {
-                console.error('[TERMINATION_EMPLOYEE_UPDATE_FAIL]', terminateError);
-                return res.status(500).json({
-                    error: `Termination was not applied: could not update employee account (${terminateError.message}). No disciplinary record was created.`
-                });
-            }
-        }
-        
-        const { data: newRecord, error } = await supabase
-            .from('disciplinary_logs')
-            .insert({
-                employee_id,
-                type: resolvedType,
-                reason: formattedReason,
-                severity: resolvedSeverity,
-                status: 'Active',
-                date: todayStr
-            })
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // Fetch employee bio for proper dispatching
-        const { data: emp } = await supabase
-            .from('employees')
-            .select('id, company_id, first_name, last_name, email, department')
-            .eq('id', employee_id)
-            .maybeSingle();
-
-        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Personnel';
-
-        // Notification copy based on action
-        let notifTitle = `Formal Notice Written Warning`;
-        let notifText = `HR Compliance has issued a ${resolvedSeverity} severity warning notice: ${reason}. Please review and acknowledge in your dashboard.`;
-
-        if (resolvedType === 'Suspension') {
-            notifTitle = `Account Suspended ${durationDays} Days`;
-            notifText = `Your HRIS access has been temporarily suspended until ${endDateStr} (${durationDays} days). Reason: ${reason}. Contact HR for inquiries.`;
-        } else if (resolvedType === 'Termination') {
-            notifTitle = `Notice of Employment Termination`;
-            notifText = `Your employment is terminated effective ${todayStr}. Access has been revoked. Contact HR for final clearance and processing.`;
-        }
-
-        // Low-Latency Broadcast: Fire real-time synchronization event across all connected nodes (<5ms)
-        const enrichedEmployeeState = {
-            id: employee_id,
-            company_id: emp?.company_id || null,
-            first_name: emp?.first_name || '',
-            last_name: emp?.last_name || '',
-            department: emp?.department || '',
-            status: resolvedType === 'Suspension' ? 'suspended' : (resolvedType === 'Termination' ? 'inactive' : 'active'),
-            is_active: resolvedType === 'Suspension' || resolvedType === 'Termination' ? false : true
-        };
-
-        const enrichedCreatedRecord = {
-            ...newRecord,
-            employee_name: empName,
-            first_name: emp?.first_name || '',
-            last_name: emp?.last_name || '',
-            department: emp?.department || 'Operations',
-            company_id: emp?.company_id || null,
-            employee_status: enrichedEmployeeState.status,
-            employee_is_active: enrichedEmployeeState.is_active,
-            employees: enrichedEmployeeState
-        };
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_CREATED', {
-            id: newRecord.id,
-            employee_id,
-            employee_name: empName,
-            company_id: emp?.company_id,
-            type: resolvedType,
-            severity: resolvedSeverity,
-            reason: formattedReason,
-            status: 'Active',
-            date: todayStr,
-            duration_days: durationDays,
-            end_date: endDateStr,
-            employee_status: enrichedEmployeeState.status,
-            employee_is_active: enrichedEmployeeState.is_active,
-            record: enrichedCreatedRecord,
-            employees: enrichedEmployeeState
-        });
-
-        if (resolvedType === 'Termination') {
-            broadcastDisciplinaryUpdate('EMPLOYEE_TERMINATED', {
-                id: newRecord.id,
-                employee_id,
-                company_id: emp?.company_id,
-                date: todayStr,
-                employee_name: empName,
-                type: 'Termination',
-                severity: resolvedSeverity,
-                reason: formattedReason,
-                separation_reason: reason.trim(),
-                separation_type: 'Disciplinary Termination',
-                separation_date: todayStr,
-                archived_at: new Date().toISOString(),
-                status: 'inactive',
-                is_active: false,
-                is_terminated: true,
-                is_suspended: false,
-                operational_status: 'Terminated',
-                record: enrichedCreatedRecord,
-                employees: enrichedEmployeeState
-            });
-        } else if (resolvedType === 'Suspension') {
-            broadcastDisciplinaryUpdate('EMPLOYEE_SUSPENDED', {
-                id: newRecord.id,
-                employee_id,
-                company_id: emp?.company_id,
-                date: todayStr,
-                employee_name: empName,
-                type: 'Suspension',
-                severity: resolvedSeverity,
-                duration_days: durationDays,
-                end_date: endDateStr,
-                reason: formattedReason,
-                status: 'suspended',
-                is_active: false,
-                is_suspended: true,
-                is_terminated: false,
-                operational_status: 'Suspended',
-                record: enrichedCreatedRecord,
-                employees: enrichedEmployeeState
-            });
-        }
-
-        // Asynchronous non-blocking background tasks (ensures API responds in <30ms)
-        createNotification({
-            target: employee_id,
-            title: notifTitle,
-            text: notifText,
-            type: 'disciplinary',
-            sender_id: req.user.id || null,
-            company_id: emp?.company_id,
-            sender_name: 'HR & Compliance Management',
-            sender_avatar: null
-        }).catch(err => console.warn('[NOTIF_BACKGROUND_WARN]', err.message));
-
-        // Official written email memo via Brevo (background)
-        if (emp?.email) {
-            dispatchDisciplinaryEmail(emp, { 
-                type: resolvedType, 
-                severity: resolvedSeverity, 
-                reason: formattedReason, 
-                date: todayStr,
-                duration_days: durationDays,
-                end_date: endDateStr
-            }).catch(err => console.warn('[EMAIL_BACKGROUND_WARN]', err.message));
-        }
-
-        // Structured Audit Log (background)
-        import('../auditLogs.js').then(({ createAuditLog }) => {
-            createAuditLog({
-                log_name: 'disciplinary',
-                description: `Issued ${resolvedType} (${resolvedSeverity}) to ${empName} (${emp?.company_id || employee_id})`,
-                subject_type: 'App\\Models\\Disciplinary',
-                subject_id: employee_id,
-                event: 'created',
-                causer_id: req.user.id || 'admin',
-                properties: { type: resolvedType, severity: resolvedSeverity, reason: formattedReason, date: todayStr }
-            }).catch(() => {});
-        }).catch(() => {});
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${employee_id}`,
-            '/api/attendance',
-            '/api/profile'
-        ]);
-
-        res.json({ 
-            success: true, 
-            message: `${resolvedType} action successfully recorded and applied to personnel account.`, 
-            data: enrichedCreatedRecord 
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        if (!['admin', 'hr'].includes(req.user?.role)) return res.status(403).json({ error: 'Administrative privileges required.' });
+        const { employee_id, type, reason, severity, duration_days, effective_date, date } = req.body;
+        if (duration_days !== undefined && duration_days !== '' && (!['number','string'].includes(typeof duration_days) || !/^\d{1,2}$/.test(String(duration_days)) || Number(duration_days)<1 || Number(duration_days)>60)) return res.status(400).json({ error: 'Suspension duration must be a whole number from 1 to 60 days.' });
+        if (typeof reason !== 'string' || !reason.trim() || reason.length > HUMAN_TEXT_LIMITS.reason) return res.status(400).json({ error: 'Incident details must contain 1-' + HUMAN_TEXT_LIMITS.reason + ' characters.' });
+        const kind = typeof type === 'string' && ['Warning','Suspension','Termination'].find(value => value.toLowerCase() === type.toLowerCase());
+        if (!kind) return res.status(400).json({ error: 'Invalid disciplinary type.' });
+        const today = getManilaWorkDate(), effective = effective_date ?? date ?? today;
+        if (!isLeaveDate(effective) || kind !== 'Warning' && effective > today || kind === 'Termination' && effective !== today) return res.status(400).json({ error: 'Enter a valid supported effective date. Future sanctions are not supported.' });
+        const payload = { type: kind, reason: reason.trim(), effective_date: effective };
+        if (severity) payload.severity = severity;
+        if (kind === 'Suspension') payload.duration_days = Number(duration_days || 3);
+        const result = await disciplinaryService.command({ actorId: req.user.id, employeeId: employee_id, action: 'issue', payload, operationId: req.body.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
 
-// Update disciplinary status and handle employee reinstatement
 router.put('/:id/status', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin) {
-            return res.status(403).json({ error: 'Administrative privileges required.' });
-        }
-
-        const { status } = req.body;
-        if (!status) {
-            return res.status(400).json({ error: 'Status is required.' });
-        }
-
-        const validStatuses = ['Active', 'Acknowledged', 'Under Review', 'Resolved', 'Overturned'];
-        if (!validStatuses.includes(status)) {
-            return res.status(400).json({ error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') });
-        }
-
-        const { data: record, error } = await supabase
-            .from('disciplinary_logs')
-            .update({ status })
-            .eq('id', req.params.id)
-            .select('*')
-            .single();
-
-        if (error) throw error;
-
-        let updatedEmployee = null;
-
-        // Reinstate employee if resolving or overturning a suspension or termination
-        if ((status === 'Resolved' || status === 'Overturned') && record.employee_id) {
-            const infractionType = String(record.type || '').toLowerCase();
-
-            if (infractionType === 'suspension' || infractionType === 'termination') {
-                const { data: empData, error: empErr } = await supabase
-                    .from('employees')
-                    .update({
-                        status: 'active',
-                        is_active: true,
-                        archived_at: null,
-                        separation_reason: null,
-                        separation_type: null,
-                        separation_date: null,
-                        separation_notes: null,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', record.employee_id)
-                    .select('id, company_id, first_name, last_name, email, status, is_active, department, job_title, shift, biometric_baseline_path')
-                    .single();
-
-                if (!empErr && empData) {
-                    updatedEmployee = empData;
-                }
-
-                if (infractionType === 'suspension') {
-                    await supabase
-                        .from('disciplinary_logs')
-                        .update({ status: 'Resolved' })
-                        .eq('employee_id', record.employee_id)
-                        .eq('type', 'Suspension')
-                        .neq('id', req.params.id);
-                }
-            }
-        }
-
-        if (!updatedEmployee && record.employee_id) {
-            const { data: empData } = await supabase
-                .from('employees')
-                .select('id, company_id, first_name, last_name, email, status, is_active, department, job_title, shift, biometric_baseline_path')
-                .eq('id', record.employee_id)
-                .maybeSingle();
-            updatedEmployee = empData;
-        }
-
-        await createNotification({
-            target: record.employee_id,
-            title: 'Disciplinary Status Updated',
-            text: `Your disciplinary notice (${record.type}) status has been updated to: ${status}`,
-            type: 'disciplinary',
-            sender_name: 'HR & Compliance Management'
-        });
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${record.employee_id}`,
-            '/api/profile'
-        ]);
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_STATUS_UPDATED', {
-            id: record.id,
-            employee_id: record.employee_id,
-            status,
-            record,
-            employees: updatedEmployee || null
-        });
-
-        if ((status === 'Resolved' || status === 'Overturned') && updatedEmployee) {
-            broadcastDisciplinaryUpdate('EMPLOYEE_RESTORED', {
-                employee_id: record.employee_id,
-                company_id: updatedEmployee.company_id,
-                status: 'active',
-                is_active: true
-            });
-            broadcastDisciplinaryUpdate('DISCIPLINARY_RESOLVED', {
-                id: record.id,
-                employee_id: record.employee_id,
-                status,
-                record,
-                employees: updatedEmployee
-            });
-        }
-
-        const enrichedRecord = {
-            ...record,
-            employees: updatedEmployee || null,
-            employee_name: updatedEmployee ? `${updatedEmployee.first_name || ''} ${updatedEmployee.last_name || ''}`.trim() : 'Employee',
-            employee_status: updatedEmployee?.status || 'active',
-            employee_is_active: updatedEmployee?.is_active ?? true
-        };
-
-        res.json({ success: true, data: enrichedRecord });
-
-    } catch (err) {
-        console.error('Error updating status:', err);
-        res.status(500).json({ error: err.message });
-    }
+        if (!['admin','hr'].includes(req.user?.role)) return res.status(403).json({ error: 'Administrative privileges required.' });
+        if (!['Active','Acknowledged','Under Review','Resolved','Overturned'].includes(req.body.status)) return res.status(400).json({ error: 'Invalid disciplinary status.' });
+        const result = await disciplinaryService.command({ actorId: req.user.id, recordId: req.params.id, action: 'status',
+            payload: { status: req.body.status, expected_status: req.body.expected_status }, operationId: req.body.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
-
-// Resolve and reinstate employee
 router.put('/:id/resolve', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin) {
-            return res.status(403).json({ error: 'Administrative privileges required.' });
-        }
-
-        const { data: record, error } = await supabase
-            .from('disciplinary_logs')
-            .update({ status: 'Resolved' })
-            .eq('id', req.params.id)
-            .select('*')
-            .single();
-            
-        if (error) throw error;
-
-        let updatedEmployee = null;
-
-        if (record.employee_id) {
-            const infractionType = String(record.type || '').toLowerCase();
-            if (infractionType === 'suspension' || infractionType === 'termination') {
-                const { data: empData } = await supabase
-                    .from('employees')
-                    .update({
-                        status: 'active',
-                        is_active: true,
-                        archived_at: null,
-                        separation_reason: null,
-                        separation_type: null,
-                        separation_date: null,
-                        separation_notes: null,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', record.employee_id)
-                    .select('id, company_id, first_name, last_name, email, status, is_active')
-                    .single();
-
-                updatedEmployee = empData;
-
-                if (infractionType === 'suspension') {
-                    await supabase
-                        .from('disciplinary_logs')
-                        .update({ status: 'Resolved' })
-                        .eq('employee_id', record.employee_id)
-                        .eq('type', 'Suspension')
-                        .neq('id', req.params.id);
-                }
-
-                await createNotification({
-                    target: record.employee_id,
-                    title: infractionType === 'termination' ? 'Employment Restored' : 'Suspension Lifted',
-                    text: `HR Compliance has officially resolved your disciplinary file. Your portal and facility access are fully restored.`,
-                    type: 'disciplinary',
-                    sender_name: 'HR & Compliance Management'
-                });
-            } else {
-                await createNotification({
-                    target: record.employee_id,
-                    title: 'Disciplinary Case Resolved',
-                    text: `Your ${record.type} notice issued on ${record.date} has been officially marked as Resolved by HR.`,
-                    type: 'disciplinary',
-                    sender_name: 'HR & Compliance Management'
-                });
-            }
-        }
-
-        if (!updatedEmployee && record.employee_id) {
-            const { data: empData } = await supabase
-                .from('employees')
-                .select('id, company_id, first_name, last_name, email, status, is_active')
-                .eq('id', record.employee_id)
-                .maybeSingle();
-            updatedEmployee = empData;
-        }
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_RESOLVED', {
-            id: record.id,
-            employee_id: record.employee_id,
-            status: 'Resolved',
-            record,
-            employees: updatedEmployee || null
-        });
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_STATUS_UPDATED', {
-            id: record.id,
-            employee_id: record.employee_id,
-            status: 'Resolved',
-            record,
-            employees: updatedEmployee || null
-        });
-
-        if (updatedEmployee) {
-            broadcastDisciplinaryUpdate('EMPLOYEE_RESTORED', {
-                employee_id: record.employee_id,
-                company_id: updatedEmployee.company_id,
-                status: 'active',
-                is_active: true
-            });
-        }
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${record.employee_id}`,
-            '/api/profile'
-        ]);
-
-        const enrichedRecord = {
-            ...record,
-            employees: updatedEmployee || null,
-            employee_name: updatedEmployee ? `${updatedEmployee.first_name || ''} ${updatedEmployee.last_name || ''}`.trim() : 'Employee',
-            employee_status: updatedEmployee?.status || 'active',
-            employee_is_active: updatedEmployee?.is_active ?? true
-        };
-
-        res.json({ success: true, message: 'Record marked as resolved and account reinstated.', data: enrichedRecord });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const result = await disciplinaryService.command({ actorId: req.user.id, recordId: req.params.id, action: 'resolve',
+            payload: { expected_status: req.body?.expected_status }, operationId: req.body?.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
-
-// PUT /api/disciplinary/:id/overturn - Clear disciplinary record & restore employee standing
 router.put('/:id/overturn', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin) {
-            return res.status(403).json({ error: 'Administrative privileges required to clear disciplinary records.' });
-        }
-
-        const rawReason = req.body.clearing_reason || req.body.exoneration_reason || req.body.reason;
-        const clearingReason = (rawReason || '').trim();
-        const investigationNotes = (req.body.investigation_notes || '').trim();
-
-        if (!clearingReason) {
-            return res.status(400).json({ error: 'A reason is required to clear this record.' });
-        }
-
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        // Fetch existing disciplinary record and employee
-        const { data: existing, error: fetchErr } = await supabase
-            .from('disciplinary_logs')
-            .select('*, employees:employee_id(*)')
-            .eq('id', req.params.id)
-            .single();
-
-        if (fetchErr || !existing) {
-            return res.status(404).json({ error: 'Disciplinary log record not found.' });
-        }
-
-        const employee = existing.employees;
-        const employeeId = existing.employee_id;
-        const originalType = existing.type;
-        const originalReason = existing.reason;
-
-        // Structured clearance note
-        const clearanceHeader = `[CLEARED | ${todayStr}] Reason: ${clearingReason}`;
-        const updatedReason = `${clearanceHeader}\n${investigationNotes ? `Notes: ${investigationNotes}\n` : ''}---\nOriginal Record: ${originalReason}`;
-
-        // 1. Update disciplinary log to Overturned (Cleared)
-        const { data: updatedRecord, error: updateErr } = await supabase
-            .from('disciplinary_logs')
-            .update({
-                status: 'Overturned',
-                reason: updatedReason
-            })
-            .eq('id', req.params.id)
-            .select('*, employees:employee_id(id, company_id, first_name, last_name, email, department, status, is_active)')
-            .single();
-
-        if (updateErr) throw updateErr;
-
-        // 2. If employee was Suspended or Terminated, or is inactive, reinstate immediately
-        if (employeeId) {
-            await supabase
-                .from('employees')
-                .update({
-                    status: 'active',
-                    is_active: true,
-                    archived_at: null,
-                    separation_reason: null,
-                    separation_type: null,
-                    separation_date: null,
-                    separation_notes: null,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', employeeId);
-
-            if (originalType === 'Suspension') {
-                await supabase
-                    .from('disciplinary_logs')
-                    .update({ status: 'Resolved' })
-                    .eq('employee_id', employeeId)
-                    .eq('type', 'Suspension')
-                    .neq('id', req.params.id);
-            }
-        }
-
-        // 3. Send official in-app notification to employee
-        const empName = employee ? `${employee.first_name} ${employee.last_name}` : 'Employee';
-        await createNotification({
-            target: employeeId,
-            title: 'Disciplinary Record Cleared',
-            text: `HR has cleared the ${originalType} notice on your record. Your standing is active and facility access is restored.`,
-            type: 'disciplinary',
-            sender_name: 'HR & Compliance Management',
-            company_id: employee?.company_id
-        });
-
-        // 4. Send formal written clearance memo via Brevo
-        if (employee?.email) {
-            dispatchClearanceEmail(employee, {
-                exoneration_reason: clearingReason,
-                investigation_notes: investigationNotes || null,
-                original_type: originalType,
-                date: todayStr
-            });
-        }
-
-        // 5. Audit Log
-        import('../auditLogs.js').then(({ createAuditLog }) => {
-            createAuditLog({
-                log_name: 'disciplinary',
-                description: `Cleared ${originalType} for ${empName} (${employee?.company_id || employeeId})`,
-                subject_type: 'App\\Models\\Disciplinary',
-                subject_id: employeeId,
-                event: 'cleared',
-                causer_id: req.user.id || 'admin',
-                properties: {
-                    record_id: req.params.id,
-                    type: originalType,
-                    clearing_reason: clearingReason,
-                    investigation_notes: investigationNotes || null,
-                    date: todayStr
-                }
-            }).catch(() => {});
-        }).catch(() => {});
-
-        invalidateCache([
-            '/api/disciplinary',
-            '/api/dashboard',
-            '/api/employees',
-            `/api/employees/${employeeId}`,
-            '/api/attendance',
-            '/api/profile'
-        ]);
-
-        // 6. Broadcast Realtime event
-        broadcastDisciplinaryUpdate('DISCIPLINARY_OVERTURNED', {
-            record_id: req.params.id,
-            id: req.params.id,
-            employee_id: employeeId,
-            company_id: employee?.company_id,
-            status: 'Overturned',
-            original_type: originalType,
-            clearing_reason: clearingReason,
-            record: updatedRecord,
-            timestamp: new Date().toISOString()
-        });
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_STATUS_UPDATED', {
-            id: req.params.id,
-            employee_id: employeeId,
-            status: 'Overturned',
-            record: updatedRecord,
-            employees: employee || null
-        });
-
-        broadcastDisciplinaryUpdate('EMPLOYEE_RESTORED', {
-            employee_id: employeeId,
-            company_id: employee?.company_id,
-            status: 'active',
-            is_active: true
-        });
-
-        res.json({
-            success: true,
-            message: `Disciplinary record cleared. ${empName} has been restored to active standing.`,
-            data: updatedRecord
-        });
-    } catch (err) {
-        console.error('Error overturning disciplinary action:', err);
-        res.status(500).json({ error: err.message });
-    }
+        const reason = req.body.clearing_reason || req.body.exoneration_reason || req.body.reason;
+        if (typeof reason !== 'string' || !reason.trim() || reason.length>HUMAN_TEXT_LIMITS.reason || typeof req.body.investigation_notes !== 'undefined' && (typeof req.body.investigation_notes !== 'string' || req.body.investigation_notes.length>1000)) return res.status(400).json({ error: 'Enter a valid clearing reason and investigation notes of at most 1000 characters.' });
+        const result = await disciplinaryService.command({ actorId: req.user.id, recordId: req.params.id, action: 'overturn',
+            payload: { clearing_reason: reason.trim(), investigation_notes: req.body.investigation_notes || '', expected_status: req.body.expected_status }, operationId: req.body.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
-
-// PUT /api/disciplinary/:id/acknowledge - Employee acknowledges receipt of notice
 router.put('/:id/acknowledge', async (req, res) => {
     try {
-        // Fetch record first to check existence and ownership
-        const { data: existing, error: fetchErr } = await supabase
-            .from('disciplinary_logs')
-            .select('*, employees:employee_id(id, company_id, first_name, last_name)')
-            .eq('id', req.params.id)
-            .maybeSingle();
-
-        if (fetchErr || !existing) {
-            return res.status(404).json({ error: 'Disciplinary record not found.' });
-        }
-
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin && existing.employee_id !== req.user.id) {
-            return res.status(403).json({ error: 'You are only authorized to acknowledge your own disciplinary notices.' });
-        }
-
-        const { data: record, error } = await supabase
-            .from('disciplinary_logs')
-            .update({ status: 'Acknowledged' })
-            .eq('id', req.params.id)
-            .select('*, employees:employee_id(id, company_id, first_name, last_name)')
-            .single();
-            
-        if (error) throw error;
-
-        // Notify HR/Admin that employee acknowledged receipt
-        const emp = record.employees;
-        const empName = emp ? `${emp.first_name} ${emp.last_name}` : 'Employee';
-        const companyId = emp?.company_id ? `(${emp.company_id})` : '';
-
-        await createNotification({
-            target: 'admin',
-            title: 'Disciplinary Memo Acknowledged',
-            text: `${empName} ${companyId} has officially acknowledged receipt of the ${record.type || 'disciplinary'} notice issued on ${record.date}.`,
-            type: 'disciplinary',
-            sender_id: record.employee_id,
-            sender_name: empName,
-            company_id: emp?.company_id
-        });
-
-        broadcastDisciplinaryUpdate('DISCIPLINARY_STATUS_UPDATED', {
-            id: req.params.id,
-            employee_id: record.employee_id,
-            status: 'Acknowledged',
-            record,
-            timestamp: new Date().toISOString()
-        });
-
-        invalidateCache(['/api/disciplinary', '/api/dashboard']);
-        res.json({ success: true, message: 'Disciplinary notice acknowledged.', data: record });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const result = await disciplinaryService.command({ actorId: req.user.id, recordId: req.params.id, action: 'acknowledge',
+            operationId: req.body?.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
-
-// DELETE /api/disciplinary/:id - Permanently remove disciplinary log (Admin only)
 router.delete('/:id', async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'hr';
-        if (!isAdmin) {
-            return res.status(403).json({ error: 'Administrative privileges required to delete disciplinary records.' });
-        }
-
-        const { data: record, error: fetchErr } = await supabase
-            .from('disciplinary_logs')
-            .select('*')
-            .eq('id', req.params.id)
-            .single();
-
-        if (fetchErr || !record) {
-            return res.status(404).json({ error: 'Disciplinary log not found.' });
-        }
-
-        // If the record being deleted was an active suspension or termination, reinstate employee
-        if (record.status === 'Active' && (record.type === 'Suspension' || record.type === 'Termination')) {
-            await supabase
-                .from('employees')
-                .update({
-                    status: 'active',
-                    is_active: true,
-                    archived_at: null,
-                    separation_reason: null,
-                    separation_type: null,
-                    separation_date: null,
-                    separation_notes: null,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', record.employee_id);
-        }
-
-        const { error: delErr } = await supabase
-            .from('disciplinary_logs')
-            .delete()
-            .eq('id', req.params.id);
-
-        if (delErr) throw delErr;
-
-        // Broadcast realtime
-        broadcastDisciplinaryUpdate('DISCIPLINARY_DELETED', {
-            id: req.params.id,
-            employee_id: record.employee_id,
-            timestamp: new Date().toISOString()
-        });
-
-        if (record.status === 'Active' && (record.type === 'Suspension' || record.type === 'Termination')) {
-            broadcastDisciplinaryUpdate('EMPLOYEE_RESTORED', {
-                employee_id: record.employee_id,
-                status: 'active',
-                is_active: true
-            });
-        }
-
-        invalidateCache(['/api/disciplinary', '/api/dashboard', '/api/employees', `/api/employees/${record.employee_id}`]);
-
-        res.json({ success: true, message: 'Disciplinary record permanently deleted.' });
-    } catch (err) {
-        console.error('Error deleting disciplinary record:', err);
-        res.status(500).json({ error: err.message });
-    }
+        const result = await disciplinaryService.command({ actorId: req.user.id, recordId: req.params.id, action: 'delete',
+            payload: { expected_status: req.body?.expected_status }, operationId: req.body?.operation_id });
+        return committedResponse(req, res, result);
+    } catch (error) { return transactionError(res, error); }
 });
 
 export default router;

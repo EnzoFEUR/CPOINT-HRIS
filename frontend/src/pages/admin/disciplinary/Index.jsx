@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchWithAuth } from '../../../utils/api';
+import { createDisciplinaryMutation } from '../../../utils/disciplinaryMutation';
 import { supabase } from '../../../supabaseClient';
 import EmployeeAvatar from '../../../components/EmployeeAvatar';
 import PageHeader from '../../../components/ui/PageHeader';
@@ -11,7 +12,7 @@ import { HUMAN_TEXT_LIMITS } from '../../../../../shared/inputLimits.mjs';
 
 export default function DisciplinaryIndex() {
     const queryClient = useQueryClient();
-
+    const disciplinaryMutation = useMemo(() => createDisciplinaryMutation(fetchWithAuth), []);
     // Query for disciplinary records with 30s staleTime & 5min gcTime
     const {
         data: serverRecords,
@@ -59,21 +60,21 @@ export default function DisciplinaryIndex() {
         return Array.isArray(cached) ? cached.filter(e => !isDisciplinaryExempt(e)) : [];
     });
 
-    // Reconcile server records with local state while protecting optimistic overturns
-    useEffect(() => {
-        if (serverRecords) {
-            setRecords(prev => {
-                if (!prev || prev.length === 0) return serverRecords;
-                const prevMap = new Map(prev.map(r => [r.id, r]));
-                return serverRecords.map(fetched => {
-                    const existing = prevMap.get(fetched.id);
-                    if (existing && (existing.status === 'Overturned' || existing.status === 'Resolved') && fetched.status === 'Active') {
-                        return { ...fetched, status: existing.status, reason: existing.reason, employee_status: 'active', employee_is_active: true };
-                    }
-                    return fetched;
-                });
-            });
+    const applyCommittedDisciplinary = (result, includeRecord = true) => {
+        if (includeRecord) setRecords(previous => previous.map(record => record.id === result.data.id ? { ...record, ...result.data } : record));
+        const employee = result.employee;
+        if (employee) {
+            setEmployees(previous => previous.map(item => item.id === employee.id ? { ...item, ...employee, is_suspended: employee.status === 'suspended', is_terminated: Boolean(employee.archived_at), operational_status: employee.status === 'suspended' ? 'Suspended' : employee.is_active ? 'Active' : 'Terminated' } : item));
+            queryClient.invalidateQueries({ queryKey: ['employeeDetails', employee.id] });
+            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: employee.id, source: 'local' } }));
         }
+        queryClient.invalidateQueries({ queryKey: ['adminDisciplinaryRecords'] });
+        queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+    };
+
+    // Server responses are authoritative; employment state is never inferred from a case status.
+    useEffect(() => {
+        if (serverRecords) setRecords(serverRecords);
     }, [serverRecords]);
 
     // Reconcile server employees
@@ -139,7 +140,7 @@ export default function DisciplinaryIndex() {
             }, 300);
         };
 
-        // Senior-Fullstack Instant Payload-Driven Realtime Mutator (0ms latency reaction)
+        // Reconcile case changes separately from authoritative employee changes.
         const handleDisciplinaryLogChange = (payload) => {
             const { eventType, new: newRec, old: oldRec } = payload;
             
@@ -149,30 +150,9 @@ export default function DisciplinaryIndex() {
                     return [newRec, ...prev];
                 });
 
-                // Immediate optimistic employee operational mutation
-                setEmployees(prev => prev.map(emp => {
-                    if (emp.id === newRec.employee_id) {
-                        if (newRec.type === 'Suspension') {
-                            return { ...emp, status: 'suspended', is_suspended: true, operational_status: 'Suspended' };
-                        }
-                        if (newRec.type === 'Termination') {
-                            return { ...emp, status: 'terminated', is_terminated: true, is_active: false, operational_status: 'Terminated' };
-                        }
-                    }
-                    return emp;
-                }));
             } else if (eventType === 'UPDATE' && newRec) {
                 setRecords(prev => prev.map(r => r.id === newRec.id ? { ...r, ...newRec } : r));
 
-                // If suspension was lifted or record overturned, instantly restore employee in local memory
-                if (newRec.type === 'Suspension' && ['Overturned', 'Resolved', 'Dismissed', 'Closed'].includes(newRec.status)) {
-                    setEmployees(prev => prev.map(emp => {
-                        if (emp.id === newRec.employee_id && emp.status === 'suspended') {
-                            return { ...emp, status: 'active', is_suspended: false, operational_status: 'Active' };
-                        }
-                        return emp;
-                    }));
-                }
             } else if (eventType === 'DELETE' && oldRec) {
                 setRecords(prev => prev.filter(r => r.id !== oldRec.id));
             }
@@ -199,134 +179,27 @@ export default function DisciplinaryIndex() {
             debouncedRefresh();
         };
 
-        // 0ms Instant Broadcast State Mutators
-        const handleBroadcastCreated = ({ payload }) => {
-            if (payload && payload.id) {
-                const rec = payload.record || payload;
-                setRecords(prev => {
-                    if (prev.some(r => r.id === rec.id)) return prev;
-                    return [rec, ...prev];
-                });
-
-                setEmployees(prev => prev.map(emp => {
-                    if (emp.id === payload.employee_id) {
-                        if (payload.type === 'Suspension') {
-                            return { ...emp, status: 'suspended', is_suspended: true, operational_status: 'Suspended' };
-                        }
-                        if (payload.type === 'Termination') {
-                            return { ...emp, status: 'terminated', is_terminated: true, is_active: false, operational_status: 'Terminated' };
-                        }
-                    }
-                    return emp;
-                }));
+        // Only committed employee fields can change employment standing.
+        const handleBroadcastStatusUpdated = ({ payload }) => {
+            if (payload?.record?.id) {
+                const record = payload.record;
+                setRecords(previous => previous.some(item => item.id === record.id)
+                    ? previous.map(item => item.id === record.id ? { ...item, ...record } : item)
+                    : [record, ...previous]);
+            }
+            const employee = payload?.employees;
+            if (employee?.id && typeof employee.is_active === 'boolean') {
+                setEmployees(previous => previous.map(item => item.id === employee.id
+                    ? { ...item, ...employee, is_suspended: employee.status === 'suspended', is_terminated: employee.status === 'terminated' || employee.status === 'inactive', operational_status: employee.status === 'suspended' ? 'Suspended' : employee.is_active ? 'Active' : 'Terminated' }
+                    : item));
             }
             debouncedRefresh();
         };
-
-        const handleBroadcastOverturned = ({ payload }) => {
-            if (payload) {
-                const recId = payload.id || payload.record_id;
-                const newStatus = payload.status || 'Overturned';
-                setRecords(prev => prev.map(r => {
-                    const isTarget = (recId && r.id === recId) || (payload.employee_id && r.employee_id === payload.employee_id && r.type === 'Suspension');
-                    if (isTarget) {
-                        return { ...r, status: newStatus, employee_status: 'active', employee_is_active: true };
-                    }
-                    return r;
-                }));
-
-                if (payload.employee_id) {
-                    setEmployees(prev => prev.map(emp => {
-                        if (emp.id === payload.employee_id || emp.company_id === payload.company_id) {
-                            return { ...emp, status: 'active', is_suspended: false, is_active: true, operational_status: 'Active' };
-                        }
-                        return emp;
-                    }));
-
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', payload.employee_id] });
-                }
-            }
-        };
-
-        const handleBroadcastRestored = ({ payload }) => {
-            if (payload && payload.employee_id) {
-                setRecords(prev => prev.map(r => {
-                    if (r.employee_id === payload.employee_id && (r.type === 'Suspension' || r.type === 'Termination')) {
-                        return { ...r, status: 'Resolved', employee_status: 'active', employee_is_active: true };
-                    }
-                    return r;
-                }));
-
-                setEmployees(prev => prev.map(emp => {
-                    if (emp.id === payload.employee_id || emp.company_id === payload.company_id) {
-                        return { ...emp, status: 'active', is_suspended: false, is_active: true, operational_status: 'Active' };
-                    }
-                    return emp;
-                }));
-
-                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                queryClient.invalidateQueries({ queryKey: ['employeeDetails', payload.employee_id] });
-            }
-        };
-
-        const handleBroadcastStatusUpdated = ({ payload }) => {
-            if (payload && payload.id) {
-                const isResolved = payload.status === 'Resolved' || payload.status === 'Overturned';
-                setRecords(prev => prev.map(r => {
-                    if (r.id === payload.id || (isResolved && payload.employee_id && r.employee_id === payload.employee_id && r.type === 'Suspension')) {
-                        return {
-                            ...r,
-                            status: payload.status,
-                            employee_status: isResolved ? 'active' : r.employee_status,
-                            employee_is_active: isResolved ? true : r.employee_is_active
-                        };
-                    }
-                    return r;
-                }));
-
-                if (isResolved && payload.employee_id) {
-                    setEmployees(prev => prev.map(emp => {
-                        if (emp.id === payload.employee_id || emp.company_id === payload.company_id) {
-                            return { ...emp, status: 'active', is_suspended: false, is_active: true, operational_status: 'Active' };
-                        }
-                        return emp;
-                    }));
-
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', payload.employee_id] });
-                } else if (payload.status === 'Active' && payload.employee_id && payload.record?.type === 'Suspension') {
-                    setEmployees(prev => prev.map(emp => {
-                        if (emp.id === payload.employee_id || emp.company_id === payload.company_id) {
-                            return { ...emp, status: 'suspended', is_suspended: true, operational_status: 'Suspended' };
-                        }
-                        return emp;
-                    }));
-                }
-            }
-        };
-
         const handleBroadcastDeleted = ({ payload }) => {
-            if (payload && payload.id) {
-                setRecords(prev => prev.filter(r => r.id !== payload.id));
-                if (payload.employee_id) {
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                }
-            }
+            if (payload?.id) setRecords(previous => previous.filter(item => item.id !== payload.id));
+            handleBroadcastStatusUpdated({ payload: payload ? { ...payload, record: null } : null });
         };
-
-        const handleWindowSync = (e) => {
-            if (e.detail?.source === 'local') return;
-            const syncEmpId = e.detail?.userId;
-            if (syncEmpId) {
-                setEmployees(prev => prev.map(emp => {
-                    if (emp.id === syncEmpId || emp.employee_id === syncEmpId) {
-                        return { ...emp, status: 'active', is_suspended: false, is_active: true, operational_status: 'Active' };
-                    }
-                    return emp;
-                }));
-            }
-        };
+        const handleWindowSync = () => debouncedRefresh();
 
         window.addEventListener('hris_disciplinary_sync', handleWindowSync);
 
@@ -334,25 +207,25 @@ export default function DisciplinaryIndex() {
             .channel('disciplinary_realtime_sync')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'disciplinary_logs' }, handleDisciplinaryLogChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, handleEmployeeChange)
-            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleBroadcastStatusUpdated)
-            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastOverturned)
-            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastOverturned)
-            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastStatusUpdated)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastStatusUpdated)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, debouncedRefresh)
-            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastRestored)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleBroadcastDeleted)
             .subscribe();
 
         const updatesChannel = supabase
             .channel('disciplinary-updates')
-            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'DISCIPLINARY_CREATED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'DISCIPLINARY_STATUS_UPDATED' }, handleBroadcastStatusUpdated)
-            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastOverturned)
-            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastOverturned)
-            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastCreated)
+            .on('broadcast', { event: 'DISCIPLINARY_RESOLVED' }, handleBroadcastStatusUpdated)
+            .on('broadcast', { event: 'DISCIPLINARY_OVERTURNED' }, handleBroadcastStatusUpdated)
+            .on('broadcast', { event: 'EMPLOYEE_SUSPENDED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'EMPLOYEE_TERMINATED' }, debouncedRefresh)
-            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastRestored)
+            .on('broadcast', { event: 'EMPLOYEE_RESTORED' }, handleBroadcastStatusUpdated)
             .on('broadcast', { event: 'DISCIPLINARY_DELETED' }, handleBroadcastDeleted)
             .subscribe();
 
@@ -515,108 +388,24 @@ export default function DisciplinaryIndex() {
     // Clear false or unfounded disciplinary record
     const handleClearSubmit = async (e) => {
         e.preventDefault();
-        if (!selectedRecordForClear || !clearReason.trim()) {
-            toast.error('Please enter a reason for clearing this record.');
-            return;
+        if (!selectedRecordForClear || !clearReason.trim() || !isConfirmed) {
+            toast.error('Enter a clearing reason and confirm the action.'); return;
         }
-
-        if (!isConfirmed) {
-            toast.error('Please check the confirmation box before clearing this record.');
-            return;
-        }
-
-        const targetRecordId = selectedRecordForClear.id;
-        const targetEmpId = selectedRecordForClear.employee_id || selectedRecordForClear.employee?.id;
-        const previousRecords = [...records];
-        const previousEmployees = [...employees];
-        const todayDate = new Date().toISOString().split('T')[0];
-        const updatedReason = `[CLEARED | ${todayDate}] Reason: ${clearReason.trim()}\n---\n${selectedRecordForClear.reason || ''}`;
-
         setIsClearing(true);
-
-        // 0ms Optimistic UI update on records
-        setRecords(prev => prev.map(rec => {
-            if (rec.id === targetRecordId) {
-                return {
-                    ...rec,
-                    status: 'Overturned',
-                    employee_status: 'active',
-                    employee_is_active: true,
-                    reason: updatedReason
-                };
-            }
-            return rec;
-        }));
-
-        // 0ms Optimistic UI update on employees
-        if (targetEmpId) {
-            setEmployees(prev => prev.map(emp => {
-                if (emp.id === targetEmpId || emp.employee_id === targetEmpId) {
-                    return {
-                        ...emp,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        operational_status: 'Active'
-                    };
-                }
-                return emp;
-            }));
-        }
-
         try {
-            const res = await fetchWithAuth(`/api/disciplinary/${targetRecordId}/overturn`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                    clearing_reason: clearReason.trim(),
-                    investigation_notes: investigationNotes.trim()
-                })
+            const res = await disciplinaryMutation(`/api/disciplinary/${selectedRecordForClear.id}/overturn`, {
+                method: 'PUT', body: JSON.stringify({ clearing_reason: clearReason.trim(), investigation_notes: investigationNotes.trim(), expected_status: selectedRecordForClear.status })
             });
-
             const data = await res.json();
-            if (res.ok && data.success) {
-                // Ensure local state holds the authoritative server data
-                setRecords(prev => prev.map(rec => {
-                    if (rec.id === targetRecordId) {
-                        return {
-                            ...rec,
-                            ...(data.data || {}),
-                            status: 'Overturned',
-                            employee_status: 'active',
-                            employee_is_active: true
-                        };
-                    }
-                    return rec;
-                }));
-
-                toast.success(data.message || 'Record cleared and employee reinstated.');
-                setShowClearModal(false);
-                setSelectedRecordForClear(null);
-                setClearReason('');
-                setInvestigationNotes('');
-                setIsConfirmed(false);
-
-                if (targetEmpId) {
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', targetEmpId] });
-                    window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: targetEmpId, source: 'local' } }));
-                }
-            } else {
-                setRecords(previousRecords);
-                setEmployees(previousEmployees);
-                toast.error(data.error || 'Failed to clear record.');
-            }
-        } catch (err) {
-            console.error('Error clearing record:', err);
-            setRecords(previousRecords);
-            setEmployees(previousEmployees);
-            toast.error('Network error while clearing record.');
-        } finally {
-            setIsClearing(false);
-        }
+            if (!res.ok) throw new Error(data.error || 'Unable to clear the record.');
+            applyCommittedDisciplinary(data);
+            toast.success('Record cleared. Employment status: ' + data.employee.status + '.');
+            setShowClearModal(false); setSelectedRecordForClear(null); setClearReason(''); setInvestigationNotes(''); setIsConfirmed(false);
+        } catch (error) { toast.error(error.message || 'The outcome could not be confirmed. Retry the same action.'); }
+        finally { setIsClearing(false); }
     };
 
-    // Log Infraction Submit
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!reason.trim() || reason.length > HUMAN_TEXT_LIMITS.reason) {
@@ -636,7 +425,7 @@ export default function DisciplinaryIndex() {
         try {
             setIsSubmitting(true);
             const resolvedDuration = type === 'Suspension' ? (customDays ? parseInt(customDays, 10) : durationDays) : undefined;
-            const res = await fetchWithAuth('/api/disciplinary', {
+            const res = await disciplinaryMutation('/api/disciplinary', {
                 method: 'POST',
                 body: JSON.stringify({
                     employee_id: employeeId,
@@ -672,140 +461,29 @@ export default function DisciplinaryIndex() {
 
     // Lift suspension or resolve disciplinary action
     const handleResolve = async (id, empId, isSuspension = false) => {
-        const targetRec = records.find(r => r.id === id);
-        const resolvedEmpId = empId || targetRec?.employee_id || targetRec?.employee?.id;
-        const previousRecords = [...records];
-        const previousEmployees = [...employees];
-
-        // 0ms Instant Optimistic update on records
-        setRecords(prev => prev.map(rec => {
-            if (rec.id === id) {
-                return {
-                    ...rec,
-                    status: 'Resolved',
-                    employee_status: 'active',
-                    employee_is_active: true
-                };
-            }
-            return rec;
-        }));
-
-        // 0ms Instant Optimistic update on employees
-        if (resolvedEmpId) {
-            setEmployees(prev => prev.map(emp => {
-                if (emp.id === resolvedEmpId || emp.employee_id === resolvedEmpId) {
-                    return {
-                        ...emp,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        operational_status: 'Active'
-                    };
-                }
-                return emp;
-            }));
-
-            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            queryClient.invalidateQueries({ queryKey: ['employeeDetails', resolvedEmpId] });
-        }
-
+        const record = records.find(item => item.id === id);
         try {
-            const res = await fetchWithAuth(`/api/disciplinary/${id}/status`, {
-                method: 'PUT',
-                body: JSON.stringify({ status: 'Resolved' })
-            });
-
-            if (res.ok) {
-                const result = await res.json();
-                if (result?.data) {
-                    setRecords(prev => prev.map(rec => {
-                        if (rec.id === id) {
-                            return {
-                                ...rec,
-                                ...result.data,
-                                status: 'Resolved',
-                                employee_status: 'active',
-                                employee_is_active: true
-                            };
-                        }
-                        return rec;
-                    }));
-                }
-                if (resolvedEmpId) {
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', resolvedEmpId] });
-                    window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: resolvedEmpId, source: 'local' } }));
-                }
-                toast.success(isSuspension ? 'Suspension lifted and account reinstated.' : 'Record marked as resolved.');
-            } else {
-                setRecords(previousRecords);
-                setEmployees(previousEmployees);
-                const errorData = await res.json().catch(() => ({}));
-                toast.error(errorData.error || 'Failed to update status.');
-            }
-        } catch (err) {
-            console.error('Error updating status:', err);
-            setRecords(previousRecords);
-            setEmployees(previousEmployees);
-            toast.error('Network error updating status.');
-        }
+            const res = await disciplinaryMutation(`/api/disciplinary/${id}/status`, { method: 'PUT', body: JSON.stringify({ status: 'Resolved', expected_status: record?.status }) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unable to resolve the record.');
+            applyCommittedDisciplinary(data);
+            toast.success(isSuspension ? 'Suspension record resolved. Employment status: ' + data.employee.status + '.' : 'Record resolved.');
+        } catch (error) { toast.error(error.message || 'The outcome could not be confirmed. Retry the same action.'); }
     };
 
-    // Permanently delete disciplinary record
     const handleDeleteRecord = async (id) => {
-        if (!window.confirm('Permanently delete this disciplinary record? This will remove it from compliance logs.')) {
-            return;
-        }
-
-        const targetRec = records.find(r => r.id === id);
-        const targetEmpId = targetRec?.employee_id || targetRec?.employee?.id;
-        const previousRecords = [...records];
-        const previousEmployees = [...employees];
-
-        setRecords(prev => prev.filter(r => r.id !== id));
-
-        if (targetEmpId && targetRec?.type === 'Suspension') {
-            setEmployees(prev => prev.map(emp => {
-                if (emp.id === targetEmpId || emp.employee_id === targetEmpId) {
-                    return {
-                        ...emp,
-                        status: 'active',
-                        is_active: true,
-                        is_suspended: false,
-                        operational_status: 'Active'
-                    };
-                }
-                return emp;
-            }));
-            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-            queryClient.invalidateQueries({ queryKey: ['employeeDetails', targetEmpId] });
-            window.dispatchEvent(new CustomEvent('hris_disciplinary_sync', { detail: { userId: targetEmpId } }));
-        }
-
+        if (!window.confirm('Permanently delete this disciplinary record? An audit entry will be retained.')) return;
+        const record = records.find(item => item.id === id);
         try {
-            const res = await fetchWithAuth(`/api/disciplinary/${id}`, {
-                method: 'DELETE'
-            });
-
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                setRecords(previousRecords);
-                setEmployees(previousEmployees);
-                toast.error(data.error || 'Failed to delete record.');
-            } else {
-                toast.success('Disciplinary record deleted.');
-                if (targetEmpId) {
-                    queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
-                    queryClient.invalidateQueries({ queryKey: ['employeeDetails', targetEmpId] });
-                }
-            }
-        } catch (err) {
-            console.error('Error deleting record:', err);
-            setRecords(previousRecords);
-            setEmployees(previousEmployees);
-            toast.error('Network error deleting record.');
-        }
+            const res = await disciplinaryMutation(`/api/disciplinary/${id}`, { method: 'DELETE', body: JSON.stringify({ expected_status: record?.status }) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unable to delete the record.');
+            setRecords(previous => previous.filter(item => item.id !== id));
+            applyCommittedDisciplinary(data, false);
+            toast.success('Disciplinary record deleted.');
+        } catch (error) { toast.error(error.message || 'The outcome could not be confirmed. Retry the same action.'); }
     };
+
 
     // Open employee profile modal
     const handleOpenProfile = (record) => {
@@ -1319,7 +997,7 @@ export default function DisciplinaryIndex() {
                         const isTerminated = record.type === 'Termination' && !['Resolved', 'Overturned', 'Dismissed', 'Closed'].includes(record.status);
 
                         return (
-                            <div key={record.id} className="p-4 space-y-3">
+                            <div key={record.id} className="min-w-0 p-4 space-y-3">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-center gap-3">
                                         <div onClick={() => handleOpenProfile(record)} className="relative cursor-pointer">
@@ -1357,7 +1035,7 @@ export default function DisciplinaryIndex() {
                                     </Badge>
                                 </div>
 
-                                <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-1.5">
+                                <div className="min-w-0 bg-slate-50 p-3 rounded-md border border-slate-200 space-y-1.5">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             {record.type === 'Termination' && (record.status === 'Resolved' || record.employee_is_active) ? (
@@ -1385,7 +1063,7 @@ export default function DisciplinaryIndex() {
                                         </div>
                                         <span className="text-[10px] font-mono text-slate-400">{record.date}</span>
                                     </div>
-                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">{record.reason}</p>
+                                    <p className="min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap text-xs text-slate-600 leading-relaxed font-medium">{record.reason}</p>
                                 </div>
 
                                 <div className="flex items-center justify-between pt-1">
@@ -2257,7 +1935,7 @@ export default function DisciplinaryIndex() {
                                         {selectedEmployeeProfile.infractionHistory.map((inf) => (
                                             <div 
                                                 key={inf.id}
-                                                className={`p-3.5 rounded-md border flex flex-col gap-1.5 ${
+                                                className={`min-w-0 p-3.5 rounded-md border flex flex-col gap-1.5 ${
                                                     inf.status === 'Resolved' ? 'bg-slate-50/60 border-slate-200 opacity-80' :
                                                     inf.status === 'Overturned' ? 'bg-success-subtle/40 border-success/20' :
                                                     'bg-white border-slate-200 shadow-2xs'
@@ -2288,7 +1966,7 @@ export default function DisciplinaryIndex() {
                                                         {inf.status === 'Overturned' ? 'Cleared' : inf.status}
                                                     </Badge>
                                                 </div>
-                                                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
+                                                <p className="min-w-0 break-words [overflow-wrap:anywhere] text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
                                                     {inf.reason}
                                                 </p>
                                             </div>

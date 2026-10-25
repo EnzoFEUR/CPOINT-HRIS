@@ -18,6 +18,7 @@ import { sanitizePersonnelText } from '../../../../shared/personnelInput.mjs';
 import { HUMAN_TEXT_LIMITS } from '../../../../shared/inputLimits.mjs';
 import { PASSWORD_REUSE_MESSAGE, isPasswordReuseError } from '../../../../shared/passwordPolicy.mjs';
 import { formatPhDisplay } from '../../utils/phoneUtils';
+import { useOtpCooldown } from '../../utils/useOtpCooldown';
 import DocumentThumbnail from '../../components/DocumentThumbnail';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import PhilippineAddressSelector from '../../components/PhilippineAddressSelector';
@@ -70,6 +71,9 @@ export default function MyProfile() {
     const [showTotpModal, setShowTotpModal] = useState(false);
     const [showReconfigureModal, setShowReconfigureModal] = useState(false);
     const [reconfigurePassword, setReconfigurePassword] = useState('');
+    const [reconfigureCode, setReconfigureCode] = useState('');
+    const [managementOtpSending, setManagementOtpSending] = useState(false);
+    const { cooldown: managementCooldown, isCooldown: managementIsCooldown, startCooldown: startManagementCooldown } = useOtpCooldown('authenticator_manage_dest_email_' + (storedUser?.email || 'self'));
     const [showDisableModal, setShowDisableModal] = useState(false);
     const [disablePassword, setDisablePassword] = useState('');
     const [disableCode, setDisableCode] = useState('');
@@ -86,6 +90,7 @@ export default function MyProfile() {
             if (res.ok && data.success) {
                 setTotpStatus({
                     enabled: Boolean(data.enabled),
+                    requiresReenrollment: Boolean(data.requiresReenrollment),
                     loading: false,
                     remainingCodes: data.backupCodesRemaining || 0
                 });
@@ -117,7 +122,7 @@ export default function MyProfile() {
     const executeTotpSetup = async (pwd = '') => {
         setTotpSubmitting(true);
         try {
-            const bodyPayload = pwd ? JSON.stringify({ password: pwd }) : undefined;
+            const bodyPayload = JSON.stringify({ password: pwd, code: reconfigureCode });
             const res = await fetchWithAuth('/api/auth/totp/setup', {
                 method: 'POST',
                 headers: bodyPayload ? { 'Content-Type': 'application/json' } : undefined,
@@ -129,6 +134,7 @@ export default function MyProfile() {
             }
             setShowReconfigureModal(false);
             setReconfigurePassword('');
+            setReconfigureCode('');
             setTotpSetupData(data);
             setTotpVerifyCode('');
             setTotpStep(1);
@@ -141,12 +147,22 @@ export default function MyProfile() {
     };
 
     const handleStartTotpSetup = () => {
-        if (totpStatus.enabled) {
-            setReconfigurePassword('');
-            setShowReconfigureModal(true);
-        } else {
-            executeTotpSetup();
-        }
+        setReconfigurePassword('');
+        setReconfigureCode('');
+        setShowReconfigureModal(true);
+    };
+
+    const sendManagementOtp = async () => {
+        if (managementOtpSending || managementIsCooldown) return;
+        setManagementOtpSending(true);
+        try {
+            const res = await fetchWithAuth('/api/auth/otp/send', { method: 'POST', body: JSON.stringify({ email: storedUser?.email, purpose: 'authenticator_manage' }) });
+            const data = await res.json();
+            if (!res.ok) { if (data.retry_after) startManagementCooldown(data.retry_after); throw new Error(data.error || 'Unable to send verification email.'); }
+            startManagementCooldown(data.cooldown || 60);
+            toast.success('Verification email sent.');
+        } catch (error) { toast.error(error.message); }
+        finally { setManagementOtpSending(false); }
     };
 
     const handleConfirmTotp = async (e) => {
@@ -179,14 +195,14 @@ export default function MyProfile() {
 
     const handleConfirmDisableTotp = async (e) => {
         e?.preventDefault();
-        if (!disablePassword.trim() && !disableCode.trim()) {
-            toast.error('Please enter your account password or emergency code.');
+        if (!disablePassword || !disableCode.trim()) {
+            toast.error('Enter your password and an authenticator, backup, or emailed code.');
             return;
         }
         setTotpSubmitting(true);
         try {
             const payload = {
-                password: disablePassword.trim() || undefined,
+                password: disablePassword || undefined,
                 code: disableCode.trim() || undefined
             };
             const res = await fetchWithAuth('/api/auth/totp/disable', {
@@ -1097,7 +1113,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                         <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">
                             {profile?.first_name} {profile?.last_name}
                         </h1>
-                        <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5">
+                        <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5 [overflow-wrap:anywhere]">
                             {profile?.job_title || (isAdminAccount ? 'Admin' : 'Staff Member')}
                         </p>
 
@@ -1524,7 +1540,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                 </div>
 
                 {/* Employment & Payroll Details */}
-                <div className="bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
+                <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg p-5 sm:p-6 shadow-2xs border border-slate-200 space-y-4">
                     <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                         <div className="h-9 w-9 rounded-md bg-surface-muted text-ink flex items-center justify-center border border-line">
                             <i className="ti ti-briefcase text-lg" />
@@ -2710,7 +2726,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     <i className="ti ti-refresh text-base" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">Reconfigure 2FA</h3>
+                                    <h3 className="font-bold text-slate-900 text-sm">{totpStatus.enabled ? 'Reconfigure 2FA' : 'Set Up Authenticator'}</h3>
                                     <p className="text-[11px] text-slate-500">Pair a new authenticator device</p>
                                 </div>
                             </div>
@@ -2724,7 +2740,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                         </div>
                         <div className="p-5 space-y-3">
                             <p className="text-xs text-slate-600 leading-relaxed">
-                                Generating a new QR code will replace your existing Google Authenticator key. For security, please confirm your account password.
+                                Confirm your password to pair an authenticator. Replacing an active authenticator also requires a verification code.
+                                {totpStatus.requiresReenrollment && ' For security, pair your device again. Your old authenticator setup was not imported.'}
                             </p>
                             <div className="space-y-1 pt-1">
                                 <label className="block text-[11px] font-semibold text-slate-700">
@@ -2738,6 +2755,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900"
                                 />
                             </div>
+                            {totpStatus.enabled && <div className="space-y-2">
+                                <label htmlFor="reconfigure-verification-code" className="block text-[11px] font-semibold text-slate-700">Authenticator, backup, or emailed code</label>
+                                <input id="reconfigure-verification-code" value={reconfigureCode} onChange={e => setReconfigureCode(e.target.value)} maxLength={20} autoComplete="one-time-code" className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300" />
+                                <button type="button" disabled={managementOtpSending || managementIsCooldown} onClick={sendManagementOtp} className="text-xs font-semibold underline disabled:opacity-50">{managementIsCooldown ? 'Resend in ' + managementCooldown + 's' : 'Email me a verification code'}</button>
+                            </div>}
                         </div>
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
                             <button
@@ -2754,7 +2776,8 @@ const normalizeJobTitle = (title, isAdmin) => {
                                         toast.error('Please enter your account password.');
                                         return;
                                     }
-                                    executeTotpSetup(reconfigurePassword.trim());
+                                    if (totpStatus.enabled && !reconfigureCode.trim()) { toast.error('Enter a verification code.'); return; }
+                                    executeTotpSetup(reconfigurePassword);
                                 }}
                                 disabled={totpSubmitting}
                                 className="h-8 px-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-2xs cursor-pointer flex items-center gap-1.5"
@@ -2800,11 +2823,11 @@ const normalizeJobTitle = (title, isAdmin) => {
                         </div>
                         <div className="p-5 space-y-3">
                             <p className="text-xs text-slate-600 leading-relaxed">
-                                Enter your account password or emergency backup code to confirm deactivation.
+                                Enter your password and an authenticator, backup, or emailed verification code to confirm deactivation.
                             </p>
                             <div className="space-y-1">
                                 <label className="block text-[11px] font-semibold text-slate-700">
-                                    Account Password (Recommended)
+                                    Account Password (Required)
                                 </label>
                                 <input maxLength={1024}
                                     type="password"
@@ -2816,12 +2839,12 @@ const normalizeJobTitle = (title, isAdmin) => {
                             </div>
                             <div className="relative flex py-0.5 items-center">
                                 <div className="grow border-t border-slate-200"></div>
-                                <span className="shrink mx-2 text-[10px] uppercase font-bold text-slate-400">or</span>
+                                <span className="shrink mx-2 text-[10px] uppercase font-bold text-slate-400">and</span>
                                 <div className="grow border-t border-slate-200"></div>
                             </div>
                             <div className="space-y-1">
                                 <label className="block text-[11px] font-semibold text-slate-700">
-                                    Emergency Backup Code or Token
+                                    Authenticator, Backup, or Emailed Code (Required)
                                 </label>
                                 <input maxLength={14}
                                     type="text"
@@ -2830,6 +2853,7 @@ const normalizeJobTitle = (title, isAdmin) => {
                                     placeholder="e.g. CP-XXXX-XXXX or 6-digit token"
                                     className="w-full h-8 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-mono"
                                 />
+                                <button type="button" disabled={managementOtpSending || managementIsCooldown} onClick={sendManagementOtp} className="text-xs font-semibold underline disabled:opacity-50">{managementIsCooldown ? 'Resend in ' + managementCooldown + 's' : 'Email me a verification code'}</button>
                             </div>
                         </div>
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">

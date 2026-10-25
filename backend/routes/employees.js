@@ -10,11 +10,15 @@ import { DOCUMENT_URL_TTL } from '../services/documentService.js';
 import { computeDisciplinaryStanding } from '../utils/disciplinaryStanding.js';
 import { sanitizeGender, validateBirthDate, sanitizeAddress, validateHireDate } from '../utils/personalDetailsValidation.js';
 import { getManilaWorkDate } from '../../shared/workPolicy.mjs';
+import { parseListQuery, employeeListRecord, employeeDirectoryPage, readAllRows } from '../utils/listViews.js';
+import { readDocumentPendingCounts } from '../utils/documentPendingCounts.js';
 
 import { isVerifiedCreditManager, isMissingCreditSchema, sendCreditError, refreshLeaveCredits } from './leaves.js';
 
 const router = express.Router();
 router.param('id', validateUuidParam);
+const ASSIGNMENT_TEXT_LIMITS = Object.freeze({ department: 100, shift: 160 });
+const ASSIGNMENT_TEXT_PATTERN = /^[\p{L}\p{M}\p{N} .,&'’_()\/:·-]+$/u;
 
 export function sanitizePhPhone(phone) {
     if (!phone) return null;
@@ -106,34 +110,36 @@ function evaluateOperationalStanding(emp, logs = [], now = new Date()) {
 
 router.get('/', cacheResponse(15), async (req, res) => {
     try {
-        let query = supabase
-            .from('employees')
-            .select(`
-                *,
-                production_groups (
-                    id, code, name, target_output_pairs, is_active
-                ),
-                disciplinary_logs (
-                    id, type, reason, severity, status, date, created_at
-                )
-            `)
-            .order('last_name', { ascending: true })
-            .order('first_name', { ascending: true });
+        const view = req.query.view;
+        if (view !== undefined && !['directory', 'roster'].includes(view)) return res.status(400).json({ error: 'Invalid employee list view.' });
+        const filters = view ? parseListQuery(req.query) : null;
+        if (view && !hasVerifiedManagerRole(req.user)) return res.status(403).json({ error: 'Administrative access is required.' });
+        const makeQuery = () => {
+            let query = supabase
+                .from('employees')
+                .select(`
+                    *,
+                    production_groups (
+                        id, code, name, target_output_pairs, is_active
+                    ),
+                    disciplinary_logs (
+                        id, type, reason, severity, status, date, created_at
+                    )
+                `, view ? { count: 'exact' } : undefined)
+                .order('last_name', { ascending: true })
+                .order('first_name', { ascending: true });
 
-        if (req.query.employee_id) {
-            query = query.eq('id', req.query.employee_id);
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-
-        let userPhoneMap = new Map();
-        try {
-            const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-            for (const u of authUsers?.users || []) {
-                const p = u.user_metadata?.phone || u.phone || null;
-                if (p) userPhoneMap.set(u.id, p);
+            if (req.query.employee_id) {
+                query = query.eq('id', req.query.employee_id);
             }
-        } catch {}
+            return view ? query.order('id', { ascending: true }) : query;
+        };
+        const [employeeResult, pendingCounts] = await Promise.all([
+            view ? readAllRows(makeQuery).then(data => ({ data })) : makeQuery(),
+            view === 'directory' ? readDocumentPendingCounts(supabase) : null,
+        ]);
+        const { data, error } = employeeResult;
+        if (error) throw error;
 
         const now = new Date();
         const enriched = (data || []).map(emp => {
@@ -142,7 +148,7 @@ router.get('/', cacheResponse(15), async (req, res) => {
             return {
                 ...emp,
                 sex: emp.gender,
-                phone: emp.phone || userPhoneMap.get(emp.id) || null,
+                phone: emp.phone || null,
                 ...standing
             };
         });
@@ -160,9 +166,22 @@ router.get('/', cacheResponse(15), async (req, res) => {
             return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), undefined, { sensitivity: 'base' });
         });
 
-        res.json({ success: true, data: enriched });
+        let result = { success: true, data: enriched };
+        if (view === 'directory') {
+            result = employeeDirectoryPage(enriched, pendingCounts, filters, now);
+        } else if (view === 'roster') {
+            result = { success: true, data: enriched.map(employeeListRecord) };
+        }
+        if (view !== 'roster' && result.data.some(emp => !emp.phone)) {
+            try {
+                const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+                const phones = new Map((authUsers?.users || []).map(u => [u.id, u.user_metadata?.phone || u.phone || null]));
+                result.data = result.data.map(emp => ({ ...emp, phone: emp.phone || phones.get(emp.id) || null }));
+            } catch {}
+        }
+        res.json(result);
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(error.status === 400 ? 400 : 500).json({ success: false, error: error.message });
     }
 });
 
@@ -243,16 +262,18 @@ router.get('/:id', cacheResponse(15), async (req, res) => {
 
         let tempPassword = null;
         let phone = emp.phone || null;
-        try {
-            const { data: authUser } = await supabase.auth.admin.getUserById(id);
-            if (emp.requires_password_change && hasVerifiedManagerRole(req.user)) {
-                tempPassword = authUser?.user?.user_metadata?.temp_password || null;
+        if (!phone || (emp.requires_password_change && hasVerifiedManagerRole(req.user))) {
+            try {
+                const { data: authUser } = await supabase.auth.admin.getUserById(id);
+                if (emp.requires_password_change && hasVerifiedManagerRole(req.user)) {
+                    tempPassword = authUser?.user?.user_metadata?.temp_password || null;
+                }
+                if (!phone) {
+                    phone = authUser?.user?.user_metadata?.phone || authUser?.user?.phone || null;
+                }
+            } catch {
+                // Ignore auth fetch failure
             }
-            if (!phone) {
-                phone = authUser?.user?.user_metadata?.phone || authUser?.user?.phone || null;
-            }
-        } catch {
-            // Ignore auth fetch failure
         }
 
         const enrichedEmp = {
@@ -956,6 +977,15 @@ router.put('/:id', async (req, res) => {
         if (req.body?.role !== undefined && req.user?.role !== 'admin') {
             return res.status(403).json({ success: false, error: 'Only administrators can modify employee system roles.' });
         }
+        for (const field in ASSIGNMENT_TEXT_LIMITS) {
+            const value = req.body[field];
+            if (value === undefined) continue;
+            const normalized = typeof value === 'string' && value.length <= ASSIGNMENT_TEXT_LIMITS[field] ? value.trim() : '';
+            if (!normalized || !ASSIGNMENT_TEXT_PATTERN.test(normalized)) {
+                return res.status(400).json({ success: false, error: `Enter a valid ${field} using at most ${ASSIGNMENT_TEXT_LIMITS[field]} characters.` });
+            }
+            req.body[field] = normalized;
+        }
         const {
             first_name,
             last_name,
@@ -979,6 +1009,9 @@ router.put('/:id', async (req, res) => {
         } = req.body;
 
         const candidateSex = sex !== undefined ? sex : gender;
+
+        const birthCheck = birth_date !== undefined ? validateBirthDate(birth_date) : null;
+        if (birthCheck && !birthCheck.isValid) return res.status(400).json({ success: false, error: birthCheck.error });
 
         if (date_hired !== undefined) {
             if (req.user?.employee_identity_verified !== true || !isVerifiedCreditManager(req.user)) return res.status(403).json({ success: false, error: 'Only HR or an administrator can change the date hired.' });
@@ -1162,13 +1195,6 @@ router.put('/:id', async (req, res) => {
         }
 
         if (birth_date !== undefined) {
-            const birthCheck = validateBirthDate(birth_date);
-            if (!birthCheck.isValid) {
-                return res.status(400).json({
-                    success: false,
-                    error: birthCheck.error
-                });
-            }
             updatePayload.birth_date = birthCheck.birthDate;
         }
 
