@@ -16,15 +16,15 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
         const token = session?.access_token;
 
         // 2. Prepare headers with injected token & conditional Content-Type
-        const headers = { ...(options.headers || {}) };
+        const headers = new Headers(options.headers);
 
         // Do NOT set Content-Type to application/json if sending FormData
         if (!(options.body instanceof FormData)) {
-            headers['Content-Type'] = 'application/json';
+            headers.set('Content-Type', 'application/json');
         }
 
         if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+            headers.set('Authorization', `Bearer ${token}`);
         }
 
         const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;

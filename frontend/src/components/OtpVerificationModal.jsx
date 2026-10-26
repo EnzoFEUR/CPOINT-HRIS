@@ -287,6 +287,7 @@ export default function OtpVerificationModal({
                         identifier: email || sessionUser?.email,
                         email: email || sessionUser?.email,
                         code: targetCode,
+                        purpose,
                         isBackupCode: backupMode || targetCode.startsWith('CP-') || targetCode.length > 6
                     })
                 });

@@ -1,4 +1,5 @@
 import express from 'express';
+import { readDocumentPendingCounts } from '../utils/documentPendingCounts.js';
 import { validateRecordId, validateUuidParam } from '../middleware/requestValidation.js';
 import { supabase } from '../supabaseClient.js';
 import {
@@ -317,7 +318,7 @@ export function createDocumentRouter(client = supabase) {
             ...metadata,
             file_name: cleanFileName,
             file_path: filePath,
-            file_size: body.file_size || null,
+            file_size: body.file_size || 0,
             status: 'pending'
         }).select().single();
         if (error) throw error;
@@ -327,12 +328,14 @@ export function createDocumentRouter(client = supabase) {
         } catch (_) {}
 
         if (metadata.request_id) {
-            await client.from('document_requests').update({
-                status: 'submitted',
-                fulfilled_document_id: data.id,
-                fulfilled_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }).eq('id', metadata.request_id).catch(() => {});
+            try {
+                await client.from('document_requests').update({
+                    status: 'submitted',
+                    fulfilled_document_id: data.id,
+                    fulfilled_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', metadata.request_id);
+            } catch (_) {}
         }
 
         documentChanged(client, data.employee_id, data.id, 'uploaded', req.user);
@@ -344,42 +347,7 @@ export function createDocumentRouter(client = supabase) {
 
     // Admin pending review and submission counts per employee
     router.get('/pending-counts', requireDocumentAdmin, documentRoute(async (req, res) => {
-        const [pendingDocsRes, submittedReqsRes] = await Promise.all([
-            client.from('employee_documents').select('id, employee_id, document_type, title, status').or('status.eq.pending,status.is.null'),
-            client.from('document_requests').select('id, employee_id, document_type, status').eq('status', 'submitted')
-        ]);
-
-        if (pendingDocsRes.error) throw pendingDocsRes.error;
-        if (submittedReqsRes.error) throw submittedReqsRes.error;
-
-        const pendingDocs = pendingDocsRes.data || [];
-        const submittedReqs = submittedReqsRes.data || [];
-        const counts = {};
-
-        for (const doc of pendingDocs) {
-            if (!doc.employee_id) continue;
-            if (!counts[doc.employee_id]) {
-                counts[doc.employee_id] = { pending_documents: 0, submitted_requests: 0, total: 0, doc_titles: [] };
-            }
-            counts[doc.employee_id].pending_documents += 1;
-            counts[doc.employee_id].total += 1;
-            if (doc.title || doc.document_type) {
-                counts[doc.employee_id].doc_titles.push(doc.document_type || doc.title);
-            }
-        }
-
-        for (const req of submittedReqs) {
-            if (!req.employee_id) continue;
-            if (!counts[req.employee_id]) {
-                counts[req.employee_id] = { pending_documents: 0, submitted_requests: 0, total: 0, doc_titles: [] };
-            }
-            counts[req.employee_id].submitted_requests += 1;
-            // If employee has submitted requests but no separate pending_documents counted yet, increment total
-            if (counts[req.employee_id].pending_documents === 0) {
-                counts[req.employee_id].total += 1;
-                if (req.document_type) counts[req.employee_id].doc_titles.push(req.document_type);
-            }
-        }
+        const counts = await readDocumentPendingCounts(client);
 
         let grandTotal = 0;
         for (const id of Object.keys(counts)) {

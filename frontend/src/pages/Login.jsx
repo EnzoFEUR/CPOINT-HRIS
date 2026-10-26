@@ -101,7 +101,7 @@ export default function Login() {
             savedSession?.employeeData?.hasTotp ||
             savedSession?.employeeData?.totp_enabled ||
             savedSession?.employeeData?.has_totp ||
-            (savedSession?.employeeData?._auth_metadata?.totp_enabled && savedSession?.employeeData?._auth_metadata?.totp_secret)
+            savedSession?.employeeData?._auth_metadata?.totp_enabled
         );
     });
 
@@ -376,7 +376,12 @@ export default function Login() {
                 const hasExistingValidOtp = existingExpiresAt && (existingExpiresAt > Date.now());
 
                 const meta = authData.user?.user_metadata || {};
-                const userHasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+                let userHasTotp = false;
+                try {
+                    const statusResponse = await fetchWithAuth('/api/auth/totp/status');
+                    const status = await statusResponse.json();
+                    userHasTotp = statusResponse.ok && status.enabled === true;
+                } catch { /* Email verification remains available when authenticator status cannot load. */ }
                 setHasTotp(userHasTotp);
 
                 const empWithMeta = { 
@@ -386,7 +391,7 @@ export default function Login() {
                     emergency_contact_name: employee?.emergency_contact_name || meta.emergency_contact_name || null,
                     emergency_contact_phone: employee?.emergency_contact_phone || meta.emergency_contact_phone || null,
                     emergency_contact_relationship: employee?.emergency_contact_relationship || meta.emergency_contact_relationship || null,
-                    _auth_metadata: authData.user.user_metadata 
+                    _auth_metadata: { totp_enabled: userHasTotp }
                 };
 
                 setEmployeeData(empWithMeta);

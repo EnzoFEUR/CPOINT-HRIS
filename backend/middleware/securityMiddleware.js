@@ -1,4 +1,5 @@
 import { API_CONTENT_SECURITY_POLICY, trustedOrigins } from '../../shared/securityPolicy.mjs';
+import { recordRateLimitBlock } from '../utils/telemetry.js';
 
 export const securityHeaders = (req, res, next) => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -35,22 +36,85 @@ export const removeExposedHeaders = (req, res, next) => {
     next();
 };
 
-// In-memory rate limiting store: ip -> { count, resetTime }
-const apiRateLimitMap = new Map();
-const authRateLimitMap = new Map();
+// In-memory rate limiting store: ip -> { count, resetTime }, bounded per limiter.
+const isLivenessProbe = req => (req.method === 'GET' || req.method === 'HEAD') && (req.originalUrl || req.path || '').split('?')[0] === '/api/health';
 
-// Periodic cleanup every 5 minutes to prevent memory leaks
-const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [ip, data] of apiRateLimitMap.entries()) {
-        if (now > data.resetTime) apiRateLimitMap.delete(ip);
-    }
-    for (const [ip, data] of authRateLimitMap.entries()) {
-        if (now > data.resetTime) authRateLimitMap.delete(ip);
-    }
-}, 5 * 60 * 1000);
-if (cleanupInterval.unref) {
-    cleanupInterval.unref();
+const verifiedEmployeeId = req => req.user?.employee_identity_verified === true && req.user?.role_verified === true &&
+    typeof req.user.id === 'string' && req.user.id ? req.user.id : null;
+
+function createRateLimiter({ windowMs, max, maxKeys = 10000, byVerifiedEmployee = false, releaseVerified = false }, kind) {
+    if (!Number.isInteger(max) || max < 1 || !Number.isInteger(windowMs) || windowMs < 1 || !Number.isInteger(maxKeys) || maxKeys < 1) throw new Error('Invalid rate limiter configuration.');
+    const records = new Map();
+    return (req, res, next) => {
+        // The liveness probe does no database work; readiness and metrics remain rate limited.
+        if (isLivenessProbe(req)) return next();
+        const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+        const employeeId = byVerifiedEmployee && verifiedEmployeeId(req);
+        const key = employeeId ? `employee:${employeeId}` : `ip:${ip}`;
+        const now = Date.now();
+        let record = records.get(key);
+        if (!record || now >= record.resetTime) {
+            if (record) records.delete(key);
+            if (records.size >= maxKeys) {
+                // Expiry order follows insertion order, avoiding an unbounded request-time sweep.
+                const oldest = records.entries().next().value;
+                if (oldest[1].resetTime <= now) records.delete(oldest[0]);
+                else {
+                    res.setHeader('Retry-After', '2');
+                    return res.status(503).json({ code: 'SERVER_BUSY', error: 'The service is busy. Please retry shortly.' });
+                }
+            }
+            record = { count: 0, resetTime: now + windowMs };
+            records.set(key, record);
+        }
+        if (record.count >= max) {
+            recordRateLimitBlock(kind);
+            res.setHeader('Retry-After', String(Math.max(1, Math.ceil((record.resetTime - now) / 1000))));
+            return res.status(429).json({ error: kind === 'auth'
+                ? 'Too many authentication attempts. Please wait before retrying.'
+                : 'Too many requests. Enterprise rate limit exceeded, please retry later.' });
+        }
+        record.count++;
+        if (releaseVerified) {
+            let released = false;
+            const release = () => {
+                if (released) return;
+                released = true;
+                // Only server-verified requests earn their own employee budget.
+                if (verifiedEmployeeId(req)) record.count = Math.max(0, record.count - 1);
+                res.off('finish', release);
+                res.off('close', release);
+            };
+            res.once('finish', release);
+            res.once('close', release);
+        }
+        next();
+    };
+}
+
+export function createAdmissionControl({ maxInFlight = 64 } = {}) {
+    if (!Number.isInteger(maxInFlight) || maxInFlight < 1 || maxInFlight > 4096) throw new Error('MAX_API_IN_FLIGHT must be an integer between 1 and 4096.');
+    let active = 0;
+    return (req, res, next) => {
+        if (isLivenessProbe(req)) return next();
+        if (active >= maxInFlight) {
+            recordRateLimitBlock('overload');
+            res.setHeader('Retry-After', '2');
+            return res.status(503).json({ success: false, code: 'SERVER_BUSY', error: 'The service is busy. Please retry shortly.' });
+        }
+        active++;
+        let released = false;
+        const release = () => {
+            if (released) return;
+            released = true;
+            active--;
+            res.off('finish', release);
+            res.off('close', release);
+        };
+        res.once('finish', release);
+        res.once('close', release);
+        next();
+    };
 }
 
 /**
@@ -59,33 +123,7 @@ if (cleanupInterval.unref) {
  * Default: 300 requests per minute per IP.
  */
 export const apiRateLimiter = (options = { windowMs: 60 * 1000, max: 300 }) => {
-    return (req, res, next) => {
-        // Bypass rate limiting for static assets and root health probe
-        const path = req.path || '';
-        if (path.startsWith('/assets') || path.startsWith('/public') || path === '/' || path === '/api/health') {
-            return next();
-        }
-
-        const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-        const now = Date.now();
-        let record = apiRateLimitMap.get(ip);
-
-        if (!record || now > record.resetTime) {
-            record = { count: 1, resetTime: now + options.windowMs };
-            apiRateLimitMap.set(ip, record);
-            return next();
-        }
-
-        record.count++;
-        if (record.count > options.max) {
-            res.setHeader('Retry-After', Math.ceil((record.resetTime - now) / 1000));
-            return res.status(429).json({
-                error: 'Too many requests. Enterprise rate limit exceeded, please retry later.'
-            });
-        }
-
-        next();
-    };
+    return createRateLimiter(options, 'api');
 };
 
 /**
@@ -94,25 +132,5 @@ export const apiRateLimiter = (options = { windowMs: 60 * 1000, max: 300 }) => {
  * Default: 45 requests per minute per IP.
  */
 export const authRateLimiter = (options = { windowMs: 60 * 1000, max: 45 }) => {
-    return (req, res, next) => {
-        const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-        const now = Date.now();
-        let record = authRateLimitMap.get(ip);
-
-        if (!record || now > record.resetTime) {
-            record = { count: 1, resetTime: now + options.windowMs };
-            authRateLimitMap.set(ip, record);
-            return next();
-        }
-
-        record.count++;
-        if (record.count > options.max) {
-            res.setHeader('Retry-After', Math.ceil((record.resetTime - now) / 1000));
-            return res.status(429).json({
-                error: 'Too many authentication attempts. Please wait before retrying.'
-            });
-        }
-
-        next();
-    };
+    return createRateLimiter(options, 'auth');
 };

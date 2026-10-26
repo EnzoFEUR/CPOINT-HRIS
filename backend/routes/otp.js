@@ -2,14 +2,12 @@ import express from 'express';
 import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { otpTestMode } from '../services/otpService.js';
 import { generateOtpCode, storeOtp, verifyOtpCode, deleteOtp, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, getActiveOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
-import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
+import { authenticatorService } from '../services/authenticatorService.js';
+import { disciplinaryService } from '../services/disciplinaryService.js';
+import { publishCommittedDisciplinary } from '../services/disciplinaryEvents.js';
 import { supabase } from '../supabaseClient.js';
 
 const router = express.Router();
-
-function authUserDataMeta(user) {
-    return user?.user_metadata || {};
-}
 
 // GET /api/auth/otp/status - Legacy clients; POST keeps account identifiers out of URLs.
 const getOtpStatus = async (req, res) => {
@@ -57,8 +55,8 @@ const getOtpStatus = async (req, res) => {
             }
 
             if (authUser) {
-                const meta = authUserDataMeta(authUser);
-                hasTotp = Boolean(meta.totp_enabled && meta.totp_secret);
+                try { hasTotp = (await authenticatorService.status(authUser.id)).enabled; }
+                catch { hasTotp = false; }
             }
         }
 
@@ -135,7 +133,6 @@ router.post('/send', async (req, res) => {
         let targetEmail = (email || '').trim().toLowerCase();
         let targetPhone = (phone || '').trim();
         let targetName = 'Employee';
-        let targetAuthUserId = null;
         let empRecord = null;
 
         if (user_id || email) {
@@ -154,7 +151,6 @@ router.post('/send', async (req, res) => {
                 targetName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Employee';
                 targetEmail = (emp.email || targetEmail).toLowerCase().trim();
                 targetPhone = emp.phone || targetPhone;
-                targetAuthUserId = emp.auth_user_id || emp.id;
 
                 // Auto-reinstatement check for expired suspensions
                 if (emp.role !== 'admin') {
@@ -174,9 +170,8 @@ router.post('/send', async (req, res) => {
                         const todayStr = new Date().toISOString().split('T')[0];
 
                         if (endDateStr && todayStr > endDateStr) {
-                            await supabase.from('disciplinary_logs').update({ status: 'Resolved' }).eq('id', disc.id);
-                            await supabase.from('employees').update({ status: 'active', is_active: true }).eq('id', emp.id);
-                            console.log(`[AUTO_REINSTATE] Suspension for ${emp.id} ended on ${endDateStr}. Reinstated to active.`);
+                            const committed = await disciplinaryService.expire(emp.id, disc.id);
+                            publishCommittedDisciplinary(committed);
                         }
                     }
                 }
@@ -246,36 +241,6 @@ router.post('/send', async (req, res) => {
             const code = otpInfo.code;
             storeOtp(aliasList, code, method);
 
-            // Persist active OTP into Supabase user_metadata as crash-resilient backup
-            if (targetAuthUserId) {
-                supabase.auth.admin.getUserById(targetAuthUserId).then(({ data: authData }) => {
-                    if (authData?.user) {
-                        const existingOtps = authData.user.user_metadata?.active_otps || {};
-                        supabase.auth.admin.updateUserById(targetAuthUserId, {
-                            user_metadata: {
-                                ...authData.user.user_metadata,
-                                active_otp: {
-                                    code,
-                                    purpose,
-                                    expiresAt: Date.now() + 5 * 60 * 1000,
-                                    method,
-                                    targetEmail
-                                },
-                                active_otps: {
-                                    ...existingOtps,
-                                    [purpose]: {
-                                        code,
-                                        expiresAt: Date.now() + 5 * 60 * 1000,
-                                        method,
-                                        targetEmail
-                                    }
-                                }
-                            }
-                        }).catch(() => {});
-                    }
-                }).catch(() => {});
-            }
-
             let dispatchResult;
             const isMock = Boolean(req.body.mock || req.body.is_mock);
             if (isMock) {
@@ -341,10 +306,10 @@ router.post('/verify', async (req, res) => {
 
         // 2. High-speed in-memory lookup across all candidate keys
         let candidateList = Array.from(candidateKeys);
+        const hadActiveOtp = Boolean(getActiveOtp(candidateList));
         let result = verifyOtpCode(candidateList, otp);
 
         let targetAuthUserId = null;
-        let authUserRecord = null;
 
         // 3. If memory lookup missed, resolve employee record from database to gather full aliases
         if (!result.valid) {
@@ -374,64 +339,21 @@ router.post('/verify', async (req, res) => {
                     }
 
                     candidateList = Array.from(candidateKeys);
-                    result = verifyOtpCode(candidateList, otp);
+                    if (!hadActiveOtp) result = verifyOtpCode(candidateList, otp);
                 }
             } catch (dbErr) {
                 console.error('[OTP_VERIFY_DB_LOOKUP_ERR]', dbErr.message);
             }
         }
 
-        // 4. Crash-resilient fallback: Check Supabase user_metadata.active_otps / active_otp (survives server restarts)
+        // 5. TOTP / Google Authenticator / Backup code fallback
         if (!result.valid && targetAuthUserId) {
             try {
-                const { data: authData } = await supabase.auth.admin.getUserById(targetAuthUserId);
-                if (authData?.user) {
-                    authUserRecord = authData.user;
-                    const meta = authUserDataMeta(authData.user);
-                    const activeMetaOtp = meta.active_otps?.[purpose] || (meta.active_otp?.purpose === purpose ? meta.active_otp : null);
-
-                    if (
-                        activeMetaOtp &&
-                        activeMetaOtp.code === String(otp).trim() &&
-                        activeMetaOtp.expiresAt > Date.now()
-                    ) {
-                        result = { valid: true, via: 'DB_RECOVERED_OTP' };
-                    }
-                }
-            } catch (metaErr) {
-                console.error('[OTP_VERIFY_META_LOOKUP_ERR]', metaErr.message);
-            }
-        }
-
-        // 5. TOTP / Google Authenticator / Backup code fallback
-        if (!result.valid) {
-            try {
-                if (!authUserRecord && targetAuthUserId) {
-                    const { data: authData } = await supabase.auth.admin.getUserById(targetAuthUserId);
-                    if (authData?.user) authUserRecord = authData.user;
-                }
-
-                if (authUserRecord) {
-                    const meta = authUserDataMeta(authUserRecord);
-                    if (meta.totp_enabled && meta.totp_secret) {
-                        if (String(otp).trim().startsWith('CP-') || String(otp).trim().length > 6) {
-                            const backupResult = verifyAndConsumeBackupCode(String(otp).trim(), meta.totp_backup_codes || []);
-                            if (backupResult.valid) {
-                                result = { valid: true, via: 'BACKUP_CODE' };
-                                await supabase.auth.admin.updateUserById(targetAuthUserId, {
-                                    user_metadata: { ...meta, totp_backup_codes: backupResult.remainingCodes }
-                                });
-                            }
-                        } else {
-                            const totpCheck = verifyTotpCode(meta.totp_secret, otp);
-                            if (totpCheck.valid) {
-                                result = { valid: true, via: 'TOTP' };
-                            }
-                        }
-                    }
-                }
-            } catch (totpErr) {
-                console.error('[OTP_VERIFY_TOTP_CHECK_ERR]', totpErr.message);
+                const proof = await authenticatorService.verify(targetAuthUserId, otp);
+                if (proof.valid) result = { valid: true, via: proof.verifiedVia };
+                else if (proof.retryAfterSeconds) return res.set('Retry-After', String(proof.retryAfterSeconds)).status(429).json({ success: false, error: proof.error });
+            } catch {
+                // A failed private-store lookup must never recover proof from Auth metadata.
             }
         }
 
@@ -439,25 +361,8 @@ router.post('/verify', async (req, res) => {
             return res.status(400).json({ success: false, error: result.error || 'Invalid or expired verification code' });
         }
 
-        // Burn token across memory and database backup on success
+        // Email challenges are server-only; client-readable Auth metadata is not a trusted OTP store.
         deleteOtp(candidateList);
-        if (targetAuthUserId) {
-            supabase.auth.admin.getUserById(targetAuthUserId).then(({ data: authData }) => {
-                const meta = authData?.user?.user_metadata;
-                if (meta) {
-                    const newActiveOtps = { ...(meta.active_otps || {}) };
-                    delete newActiveOtps[purpose];
-                    const newActiveOtp = (meta.active_otp?.purpose === purpose) ? null : meta.active_otp;
-                    supabase.auth.admin.updateUserById(targetAuthUserId, {
-                        user_metadata: {
-                            ...meta,
-                            active_otp: newActiveOtp,
-                            active_otps: newActiveOtps
-                        }
-                    }).catch(() => {});
-                }
-            }).catch(() => {});
-        }
 
         res.json({
             success: true,

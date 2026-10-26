@@ -145,15 +145,24 @@ const fetchArchivedEmployees = async () => {
       'Status'
     ];
     
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '""';
+      let str = String(val).replace(/"/g, '""');
+      if (/^[=+\-@]/.test(str)) {
+        str = "'" + str;
+      }
+      return `"${str}"`;
+    };
+
     const rows = filteredEmployees.map((emp) => [
-      `"${getCompanyId(emp)}"`,
-      `"${emp.first_name || ''}"`,
-      `"${emp.last_name || ''}"`,
-      `"${emp.email || emp.email_address || ''}"`,
-      `"${emp.department || ''}"`,
-      `"${emp.line_group || emp.line_assignment || emp.shoe_production_station || ''}"`,
-      `"${emp.compensation_mode || emp.pay_type || ''}"`,
-      `"${emp.status || emp.operational_status || 'TERMINATED'}"`,
+      escapeCSV(getCompanyId(emp)),
+      escapeCSV(emp.first_name || ''),
+      escapeCSV(emp.last_name || ''),
+      escapeCSV(emp.email || emp.email_address || ''),
+      escapeCSV(emp.department || ''),
+      escapeCSV(emp.line_group || emp.line_assignment || emp.shoe_production_station || ''),
+      escapeCSV(emp.compensation_mode || emp.pay_type || ''),
+      escapeCSV(emp.status || emp.operational_status || 'TERMINATED'),
     ]);
 
     const csvContent =

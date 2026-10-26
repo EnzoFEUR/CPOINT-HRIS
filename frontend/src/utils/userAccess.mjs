@@ -1,33 +1,13 @@
-export const getRole = (user) => (user?.role || '').toLowerCase();
-
-export const isSecurity = (user) => {
-  if (!user) return false;
-  const r = getRole(user);
-  const dept = (user?.department || '').toLowerCase();
-  const title = (user?.job_title || user?.position || '').toLowerCase();
-  return (
-    r === 'security' ||
-    r === 'guard' ||
-    r === 'security_guard' ||
-    dept === 'security' ||
-    title.includes('security') ||
-    title.includes('guard') ||
-    title.includes('gate attendant')
-  );
+export const getRole = (user) => {
+  const role = typeof user?.role === 'string' ? user.role.trim().toLowerCase() : '';
+  if (role === 'guard' || role === 'security_guard') return 'security';
+  return role === 'hr_manager' ? 'hr' : role;
 };
 
-export const isAdmin = (user) => {
-  if (!user) return false;
-  const r = getRole(user);
-  const dept = (user?.department || '').toLowerCase();
-  return (
-    r === 'admin' ||
-    r === 'hr' ||
-    r === 'hr_manager' ||
-    dept === 'administration' ||
-    dept === 'human resources'
-  );
-};
+// Display fields must not determine access or redirect users into restricted routes.
+export const isSecurity = (user) => getRole(user) === 'security';
+
+export const isAdmin = (user) => ['admin', 'hr'].includes(getRole(user));
 
 export const needsProfileCompletion = (user) => {
   if (!user) return false;

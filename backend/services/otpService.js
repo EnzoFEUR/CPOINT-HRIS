@@ -178,11 +178,14 @@ export function storeOtp(identifiers, code, method = 'email', options = {}) {
 
     const now = Date.now();
     const expiresAt = options.expiresAt || (now + 5 * 60 * 1000);
+    const activeRecords = keys.map(key => otpStore.get(key)).filter(record => record?.code === code && record.expiresAt > now);
+    const attempts = Math.max(0, ...activeRecords.map(record => record.attempts));
+    const challengeExpiry = activeRecords.length ? Math.min(...activeRecords.map(record => record.expiresAt)) : expiresAt;
 
     for (const key of keys) {
         const existing = otpStore.get(key);
         const previousCodes = [];
-        if (existing && existing.expiresAt > now) {
+        if (existing && existing.expiresAt > now && existing.attempts < 5) {
             if (existing.code && existing.code !== code) {
                 previousCodes.push(existing.code);
             }
@@ -199,10 +202,8 @@ export function storeOtp(identifiers, code, method = 'email', options = {}) {
             code,
             method: method || existing?.method || 'email',
             previousCodes: previousCodes.slice(0, 5),
-            expiresAt: (existing && existing.code === code && existing.expiresAt > now)
-                ? existing.expiresAt
-                : expiresAt,
-            attempts: 0,
+            expiresAt: challengeExpiry,
+            attempts,
             linkedKeys: keys
         });
     }
@@ -291,6 +292,10 @@ export function verifyOtpCode(identifiers, code) {
 
     if (!matchesCurrent && !matchesPrevious) {
         foundRecord.attempts++;
+        for (const key of allLinkedKeys) {
+            const linked = otpStore.get(key);
+            if (linked?.code === foundRecord.code) linked.attempts = foundRecord.attempts;
+        }
         return { valid: false, error: `Invalid code. ${5 - foundRecord.attempts} attempts remaining.` };
     }
 
@@ -301,7 +306,19 @@ export function verifyOtpCode(identifiers, code) {
     return { valid: true };
 }
 
-// Send OTP email with fallback dispatching
+// Testing helper to simulate deadline expiry
+export function expireOtpForTesting(identifier) {
+    if (!otpTestMode()) return false;
+    const key = String(identifier).toLowerCase().trim();
+    const record = otpStore.get(key);
+    if (record) {
+        record.expiresAt = Date.now() - 1000;
+        return true;
+    }
+    return false;
+}
+
+// Send OTP email through Brevo with explicit development simulation for test domains.
 export async function sendEmailOtp(email, code, userName = 'Employee') {
     const appBaseUrl = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://cpointhris.vercel.app').replace(/\/+$/, '');
     const logoUrl = process.env.OTP_LOGO_URL || `${appBaseUrl}/logo-crop.png`;
@@ -386,6 +403,13 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
     </html>
     `;
 
+    // Reserved test domains cannot receive email; real mailboxes always use Brevo.
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    if (otpTestMode() && /\.(?:test|example|invalid)$/.test(normalizedEmail)) {
+        console.info('[OTP_EMAIL_SIMULATED] Synthetic test recipient; no email was sent.');
+        return { success: true, simulated: true, code };
+    }
+
     // 1. Primary dispatcher: Brevo REST API v3
     if (process.env.BREVO_API_KEY) {
         try {
@@ -394,6 +418,7 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
 
             const res = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
+                signal: AbortSignal.timeout(10000),
                 headers: {
                     'api-key': process.env.BREVO_API_KEY,
                     'Content-Type': 'application/json',
@@ -401,7 +426,7 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
                 },
                 body: JSON.stringify({
                     sender: { name: senderName, email: senderEmail },
-                    to: [{ email: email.trim().toLowerCase(), name: userName }],
+                    to: [{ email: normalizedEmail, name: userName }],
                     subject: `${code} is your C-Point HRIS Verification Code`,
                     htmlContent: htmlContent,
                     textContent: `Your C-Point HRIS verification code is ${code}. It expires in 5 minutes. Never share this code with anyone.`
@@ -409,21 +434,17 @@ export async function sendEmailOtp(email, code, userName = 'Employee') {
             });
 
             const data = await res.json();
-            if (res.ok && data.messageId) {
-                console.log(`[OTP_BREVO_SUCCESS] Dispatched to ${email}: MessageID ${data.messageId}`);
+            if (res.ok && typeof data.messageId === 'string' && data.messageId.trim()) {
+                console.info('[OTP_BREVO_SUCCESS] Verification email accepted by provider.');
                 return { success: true, provider: 'brevo', messageId: data.messageId };
             }
-        } catch (err) {
+        } catch {
             console.warn('[OTP_BREVO_ERROR] Verification email delivery failed.');
-            if (!otpTestMode()) throw unavailableDelivery();
-            return { success: true, simulated: true, code, warning: err.message };
+            throw unavailableDelivery();
         }
     }
 
-    // Local simulation fallback
-    if (!otpTestMode()) throw unavailableDelivery();
-    console.warn('[OTP_EMAIL_SIMULATED] Explicit development simulation is enabled.');
-    return { success: true, simulated: true, code };
+    throw unavailableDelivery();
 }
 
 // Send OTP via SMS (Decommissioned - SMS Gateway Removed)

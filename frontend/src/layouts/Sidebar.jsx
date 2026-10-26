@@ -108,7 +108,7 @@ export const Sidebar = ({ user, handleLogout }) => {
 
   const bottomAdminNavItems = [
     { route: '/admin/disciplinary', icon: 'ti-gavel', label: 'Disciplinary' },
-    { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' }
+    { route: '/admin/audit-logs', icon: 'ti-history', label: 'Audit Trail' },
   ];
 
   return (

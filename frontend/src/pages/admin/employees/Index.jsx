@@ -9,7 +9,6 @@ import PageHeader from '../../../components/ui/PageHeader';
 import ActionMenu from '../../../components/ui/ActionMenu';
 import OtpVerificationModal from "../../../components/OtpVerificationModal";
 import { getShoeRoleDetails, parseProductionGroup } from '../../../utils/factoryRoles';
-import { fetchPendingDocumentCounts } from '../../../utils/documentApi';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
 
 function formatDate(dateString) {
@@ -318,12 +317,17 @@ export default function EmployeesIndex() {
     
     // UI State
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [selectedDepartment, setSelectedDepartment] = useState('All');
     const [filterStatus, setFilterStatus] = useState('Active');
     const [viewMode, setViewMode] = useState('grid');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = viewMode === 'grid' ? 9 : 12;
     const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 250);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     // Retrieve the active logged-in user session
     const currentUser = useMemo(() => {
@@ -383,116 +387,42 @@ export default function EmployeesIndex() {
         setTimeout(() => setCopiedAll(false), 2000);
     }, [tempCreds]);
 
-    const fetchEmployees = async () => {
-        const res = await fetchWithAuth('/api/employees');
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || 'Failed to fetch employee records');
-        const data = Array.isArray(result) ? result : (result.data || []);
-        
-        return data.filter(emp => {
-            const isTerm = emp.operational_status === 'Terminated' || emp.is_terminated || emp.status === 'terminated' || Boolean(emp.archived_at);
-            if (isTerm) {
-                // Keep terminated / separated personnel in directory during the 14-day clearance cooldown window
-                const daysLeft = getDaysUntilArchive(emp);
-                return daysLeft === null || daysLeft > 0;
-            }
-            // Active and suspended personnel are always retained in directory
-            return true;
-        });
-    };
-
-    const { data: employees = [], isLoading } = useQuery({
-        queryKey: ['adminEmployees'],
-        queryFn: fetchEmployees,
+    const { data: directory, isLoading, isFetching, error, refetch } = useQuery({
+        queryKey: ['adminEmployees', 'directory', currentUser.id, currentPage, itemsPerPage, filterStatus, selectedDepartment, debouncedSearch],
+        queryFn: async ({ signal }) => {
+            const params = new URLSearchParams({ view: 'directory', page: String(currentPage), limit: String(itemsPerPage),
+                status: filterStatus, department: selectedDepartment, search: debouncedSearch });
+            const response = await fetchWithAuth(`/api/employees?${params}`, { signal });
+            const result = await response.json();
+            signal.throwIfAborted();
+            if (!response.ok) throw Object.assign(new Error(result.error || 'Unable to load the employee directory.'), { status: response.status });
+            if (!Array.isArray(result.data) || !result.meta) throw new Error('The employee directory could not be verified.');
+            return result;
+        },
         staleTime: 15_000,
         gcTime: 300_000,
         refetchOnWindowFocus: false,
+        placeholderData: previous => previous,
     });
+    const docPendingCounts = directory?.docPendingCounts || {};
+    const paginatedEmployees = directory?.data || [];
+    const counts = directory?.meta?.counts || { all: 0, active: 0, suspended: 0, pendingTermination: 0, salaried: 0, pieceRate: 0, pendingDocs: 0 };
+    const departments = directory?.meta?.departments || ['All'];
+    const totalItems = directory?.meta?.total || 0;
+    const totalPages = directory?.meta?.totalPages || 1;
+    const displayedPage = directory?.meta?.page || currentPage;
 
-    const { data: docPendingCounts } = useQuery({
-        queryKey: ['adminDocumentPendingCounts'],
-        queryFn: () => fetchPendingDocumentCounts(),
-        staleTime: 15_000,
-        refetchOnWindowFocus: true,
-    });
-
-    // Realtime subscriptions for directory updates
+    // Coalesce duplicate table and broadcast events into one authoritative page refresh.
     useEffect(() => {
-        const handleSync = (payload) => {
-            // Instant in-memory cache update for sub-millisecond perceived latency
-            if (payload?.eventType && payload?.table === 'employees') {
-                if (payload.eventType === 'UPDATE' && payload.new) {
-                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
-                        if (!Array.isArray(oldData)) return oldData;
-                        return oldData.map(emp => emp.id === payload.new.id ? { ...emp, ...payload.new } : emp);
-                    });
-                } else if (payload.eventType === 'INSERT' && payload.new) {
-                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
-                        if (!Array.isArray(oldData)) return [payload.new];
-                        if (oldData.some(emp => emp.id === payload.new.id)) return oldData;
-                        return [payload.new, ...oldData];
-                    });
-                } else if (payload.eventType === 'DELETE' && payload.old) {
-                    queryClient.setQueryData(['adminEmployees'], (oldData) => {
-                        if (!Array.isArray(oldData)) return oldData;
-                        return oldData.filter(emp => emp.id !== payload.old.id);
-                    });
-                }
-            } else if (payload?.payload?.employee_id || payload?.payload?.employeeId) {
-                const targetEmpId = payload.payload.employee_id || payload.payload.employeeId;
-                const evt = payload.event;
-                queryClient.setQueryData(['adminEmployees'], (oldData) => {
-                    if (!Array.isArray(oldData)) return oldData;
-                    return oldData.map(emp => {
-                        if (emp.id !== targetEmpId) return emp;
-                        if (evt === 'EMPLOYEE_TERMINATED') {
-                            return {
-                                ...emp,
-                                is_terminated: true,
-                                is_suspended: false,
-                                operational_status: 'Terminated',
-                                status: 'inactive',
-                                is_active: false,
-                                separation_reason: payload.payload.reason || emp.separation_reason,
-                                termination_record: {
-                                    type: 'Termination',
-                                    reason: payload.payload.reason || 'Contract Concluded / Terminated',
-                                    date: payload.payload.date || new Date().toISOString()
-                                }
-                            };
-                        }
-                        if (evt === 'EMPLOYEE_SUSPENDED') {
-                            return {
-                                ...emp,
-                                is_terminated: false,
-                                is_suspended: true,
-                                operational_status: 'Suspended',
-                                status: 'suspended',
-                                is_active: false,
-                                active_suspension: {
-                                    type: 'Suspension',
-                                    reason: payload.payload.reason || 'Serving disciplinary suspension',
-                                    status: 'Active'
-                                }
-                            };
-                        }
-                        if (evt === 'EMPLOYEE_RESTORED' || evt === 'DISCIPLINARY_RESOLVED' || evt === 'DISCIPLINARY_OVERTURNED') {
-                            return {
-                                ...emp,
-                                is_terminated: false,
-                                is_suspended: false,
-                                operational_status: 'Active',
-                                status: 'active',
-                                is_active: true,
-                                active_suspension: null,
-                                termination_record: null
-                            };
-                        }
-                        return emp;
-                    });
-                });
-            }
-            queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+        let timer;
+        let stopped = false;
+        const handleSync = () => {
+            if (stopped) return;
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['adminEmployees'] });
+                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
+            }, 150);
         };
 
         window.addEventListener('hris_disciplinary_sync', handleSync);
@@ -538,18 +468,14 @@ export default function EmployeesIndex() {
 
         const docChannel = supabase
             .channel('document-updates')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'document_requests' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
-            })
-            .on('broadcast', { event: 'DOCUMENT_CHANGED' }, () => {
-                queryClient.invalidateQueries({ queryKey: ['adminDocumentPendingCounts'] });
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_documents' }, handleSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'document_requests' }, handleSync)
+            .on('broadcast', { event: 'DOCUMENT_CHANGED' }, handleSync)
             .subscribe();
 
         return () => {
+            stopped = true;
+            clearTimeout(timer);
             window.removeEventListener('hris_disciplinary_sync', handleSync);
             supabase.removeChannel(channel);
             supabase.removeChannel(syncChannel);
@@ -558,148 +484,7 @@ export default function EmployeesIndex() {
         };
     }, [queryClient]);
 
-    // Extract unique department list for filtering
-    const departments = useMemo(() => {
-        const depts = new Set();
-        employees.forEach(e => {
-            if (e.department) depts.add(e.department);
-        });
-        return ['All', ...Array.from(depts)];
-    }, [employees]);
-
-    // Filter employees by status, department, and search query, sorted alphabetically
-    const filteredEmployees = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-
-        return employees
-            .filter(emp => {
-                const roleStr = (emp.role || emp.job_title || '').toLowerCase();
-                const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim().toLowerCase();
-                const email = (emp.email || '').toLowerCase();
-
-                // Exclude system service accounts
-                if (
-                    fullName.includes('terminal guard') ||
-                    fullName.includes('system admin') ||
-                    email === 'guard@c-point.com' ||
-                    email === 'admin@c-point.com' ||
-                    roleStr.includes('admin') ||
-                    roleStr.includes('security')
-                ) {
-                    return false;
-                }
-
-                const isFactory = (emp.department || '').toLowerCase().includes('factory');
-                const isSuspended = Boolean(
-                    emp.operational_status === 'Suspended' || 
-                    emp.is_suspended ||
-                    emp.status === 'suspended'
-                );
-                const isTerminated = !isSuspended && Boolean(
-                    emp.operational_status === 'Terminated' || 
-                    emp.is_terminated ||
-                    emp.status === 'terminated' ||
-                    (Boolean(emp.archived_at) && emp.status !== 'active')
-                );
-                const isActive = !isTerminated && !isSuspended;
-
-                if (filterStatus === 'Active' && !isActive) return false;
-                if (filterStatus === 'Docs Awaiting Review' && !(docPendingCounts?.[emp.id]?.total > 0)) return false;
-                if (filterStatus === 'Suspended' && !isSuspended) return false;
-                if ((filterStatus === 'Terminated' || filterStatus === 'Pending Termination' || filterStatus === 'Separated') && !isTerminated) return false;
-                if (filterStatus === 'Salaried' && isFactory) return false;
-                if (filterStatus === 'Piece-Rate' && !isFactory) return false;
-
-                if (selectedDepartment !== 'All' && emp.department !== selectedDepartment) return false;
-
-                if (q) {
-                    const companyId = (emp.company_id || '').toLowerCase();
-                    const jobTitle = (emp.job_title || '').toLowerCase();
-
-                    if (!fullName.includes(q) && !companyId.includes(q) && !email.includes(q) && !jobTitle.includes(q)) {
-                        return false;
-                    }
-                }
-
-                return true;
-            })
-            .sort((a, b) => {
-                // Tiered hierarchy: Active and suspended personnel (operational workforce) first,
-                // followed by separated personnel pending final archive review.
-                const aTerm = (a.operational_status === 'Terminated' || a.is_terminated || a.status === 'terminated' || Boolean(a.archived_at)) ? 1 : 0;
-                const bTerm = (b.operational_status === 'Terminated' || b.is_terminated || b.status === 'terminated' || Boolean(b.archived_at)) ? 1 : 0;
-                if (aTerm !== bTerm) return aTerm - bTerm;
-
-                // Alphabetical sort within tier: Last Name ascending, then First Name ascending
-                const lastNameA = (a.last_name || '').trim();
-                const lastNameB = (b.last_name || '').trim();
-                const comp = lastNameA.localeCompare(lastNameB, undefined, { sensitivity: 'base' });
-                if (comp !== 0) return comp;
-
-                const firstNameA = (a.first_name || '').trim();
-                const firstNameB = (b.first_name || '').trim();
-                return firstNameA.localeCompare(firstNameB, undefined, { sensitivity: 'base' });
-            });
-    }, [employees, filterStatus, selectedDepartment, searchQuery, docPendingCounts]);
-
-    // Calculate directory metrics in single pass
-    const counts = useMemo(() => {
-        let all = 0;
-        let active = 0;
-        let suspended = 0;
-        let pendingTermination = 0;
-        let salaried = 0;
-        let pieceRate = 0;
-        let pendingDocs = 0;
-
-        for (let i = 0; i < employees.length; i++) {
-            const e = employees[i];
-            const r = (e.role || '').toLowerCase();
-            const em = (e.email || '').toLowerCase();
-            const fn = `${e.first_name || ''} ${e.last_name || ''}`.trim().toLowerCase();
-            if (r.includes('admin') || r.includes('security') || em === 'admin@c-point.com' || em === 'guard@c-point.com' || fn.includes('terminal guard') || fn.includes('system admin')) {
-                continue;
-            }
-
-            all++;
-            if (docPendingCounts?.[e.id]?.total > 0) {
-                pendingDocs++;
-            }
-            const isSusp = Boolean(
-                e.operational_status === 'Suspended' || 
-                e.is_suspended ||
-                e.status === 'suspended'
-            );
-            const isTerminated = !isSusp && Boolean(
-                e.operational_status === 'Terminated' || 
-                e.is_terminated ||
-                e.status === 'terminated' ||
-                (Boolean(e.archived_at) && e.status !== 'active')
-            );
-
-            if (isTerminated) {
-                pendingTermination++;
-            } else if (isSusp) {
-                suspended++;
-            } else {
-                active++;
-            }
-
-            const isFactory = (e.department || '').toLowerCase().includes('factory');
-            if (isFactory) {
-                pieceRate++;
-            } else {
-                salaried++;
-            }
-        }
-
-        return { all, active, suspended, pendingTermination, salaried, pieceRate, pendingDocs };
-    }, [employees, docPendingCounts]);
-
     const isFiltered = Boolean(searchQuery.trim() || selectedDepartment !== 'All' || filterStatus !== 'Active');
-    const totalItems = filteredEmployees.length;
-    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-    const paginatedEmployees = filteredEmployees.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     const handleClearFilters = useCallback(() => {
         setSearchQuery('');
@@ -762,10 +547,11 @@ export default function EmployeesIndex() {
                         {/* Search input: rigid h-9 (36px) */}
                         <div className="relative flex-1 min-w-0">
                             <i className="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none" />
-                            <input maxLength={200}
+                            <input
                                 type="text"
                                 placeholder="Search by name, company ID, email, role, or craft..."
                                 value={searchQuery}
+                                maxLength={160}
                                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                                 className="h-9 w-full pl-9 pr-8 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-900 placeholder-slate-400 outline-none hover:border-slate-300 focus:bg-white focus:border-slate-950 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 transition-colors duration-100"
                             />
@@ -825,7 +611,7 @@ export default function EmployeesIndex() {
                             <div className="h-9 flex items-center gap-0.5 bg-slate-100 p-1 rounded-md border border-slate-200/60 shrink-0">
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('grid')}
+                                    onClick={() => { setViewMode('grid'); setCurrentPage(1); }}
                                     className={`h-7 w-7 p-0 flex items-center justify-center rounded transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
                                         viewMode === 'grid' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
@@ -835,7 +621,7 @@ export default function EmployeesIndex() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('table')}
+                                    onClick={() => { setViewMode('table'); setCurrentPage(1); }}
                                     className={`h-7 w-7 p-0 flex items-center justify-center rounded transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 ${
                                         viewMode === 'table' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-950'
                                     }`}
@@ -870,7 +656,7 @@ export default function EmployeesIndex() {
 
                         <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
                             <span className="text-[11px] font-medium text-slate-500">
-                                Showing <strong className="font-mono font-semibold text-slate-950">{totalItems}</strong> matching personnel
+                                <span role="status">{isFetching ? 'Updating results…' : <>Showing <strong className="font-mono font-semibold text-slate-950">{totalItems}</strong> matching personnel</>}</span>
                             </span>
 
                             {isFiltered && (
@@ -912,7 +698,12 @@ export default function EmployeesIndex() {
                 )}
 
                 {/* Directory Content */}
-                {paginatedEmployees.length > 0 ? (
+                {error ? (
+                    <div role="alert" className="rounded-lg border border-danger/20 bg-danger-subtle p-4 text-sm text-danger-ink">
+                        {error.message}
+                        <button type="button" onClick={() => refetch()} className="ml-3 font-semibold underline">Retry</button>
+                    </div>
+                ) : paginatedEmployees.length > 0 ? (
                     viewMode === 'grid' ? (
                         /* ── CARD GRID UI ── */
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4.5 items-stretch">
@@ -1191,7 +982,7 @@ export default function EmployeesIndex() {
                 <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-medium">
                     <div className="text-center sm:text-left text-[11px] sm:text-xs">
                         {totalItems > 0 ? (
-                            <span>Showing <span className="text-slate-900 font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-900 font-semibold">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-900 font-semibold">{totalItems}</span> personnel</span>
+                            <span>Showing <span className="text-slate-900 font-semibold">{(displayedPage - 1) * itemsPerPage + 1}</span> - <span className="text-slate-900 font-semibold">{Math.min(displayedPage * itemsPerPage, totalItems)}</span> of <span className="text-slate-900 font-semibold">{totalItems}</span> personnel</span>
                         ) : (
                             <span>Showing <span className="text-slate-900 font-semibold">0</span> of <span className="text-slate-900 font-semibold">0</span></span>
                         )}
@@ -1199,20 +990,20 @@ export default function EmployeesIndex() {
 
                     <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
                         <button
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(Math.max(displayedPage - 1, 1))}
+                            disabled={isFetching || displayedPage === 1}
                             className="flex-1 sm:flex-initial justify-center h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors duration-100 flex items-center gap-1.5 cursor-pointer touch-manipulation"
                         >
                             <i className="ti ti-chevron-left text-sm" /> Prev
                         </button>
 
                         <span className="h-8 px-3 bg-slate-50 border border-slate-200 rounded-md text-slate-700 font-medium text-xs shrink-0 font-mono flex items-center justify-center">
-                            {currentPage} / {totalPages}
+                            {displayedPage} / {totalPages}
                         </span>
 
                         <button
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(Math.min(displayedPage + 1, totalPages))}
+                            disabled={isFetching || displayedPage >= totalPages}
                             className="flex-1 sm:flex-initial justify-center h-8 px-3 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors duration-100 flex items-center gap-1.5 cursor-pointer touch-manipulation"
                         >
                             Next <i className="ti ti-chevron-right text-sm" />

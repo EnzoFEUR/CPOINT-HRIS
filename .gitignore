@@ -20,6 +20,8 @@ build/
 # System Files
 .DS_Store
 Thumbs.db
+~$*.docx
+~$*.xlsx
 
 .vercel
 .env*
@@ -27,8 +29,17 @@ Thumbs.db
 # Local Documentation & Study Plans (Private / Ignored from Git)
 docs/
 *.pdf
+*.md
 *plan*.md
 *guide*.md
+
+# Generated capstone source-code exports and Word appendix documents
+/C-Point_HRIS_*Appendix*.docx
+/C-Point_HRIS_*Appendix*.html
+/C-Point_HRIS_*Appendix*.txt
+/C-Point_HRIS_ALL_SOURCE_CODE.md
+/C-Point_HRIS_ALL_SOURCE_CODE.txt
+/C-Point_HRIS_Capstone_Code_Viewer.html
 
 # Supabase CLI temp files, migrations & local SQL scripts
 supabase/*
@@ -47,4 +58,44 @@ supabase/tests/*
 
 # Local performance and browser QA artifacts
 /benchmarks/
+
+# Local load-test results and harnesses
+/reports/
+/scripts/k6-*.js
+/scripts/k6-*.mjs
+/scripts/run-k6.mjs
+/scripts/run-authenticated-k6.mjs
+/scripts/security-stress-*.mjs
+/scripts/stress-test-*.mjs
+/scripts/stress-report.mjs
+
+# Local strict QA harnesses and Excel exporters
+/scripts/strict-qa.mjs
+/scripts/strict-qa-support.mjs
+/scripts/qa-original-*.mjs
+/scripts/retest-*.mjs
+/scripts/test-offline-sync-flow.mjs
+/scripts/test-resolve-error.mjs
+/scripts/test_dom_cues.mjs
+/scripts/test_ws_probe.mjs
+
+# Local Python QA, workbook, repair, and capstone export helpers
+/scripts/*.py
+
+# Local QA inspection and workbook helpers
+/scripts/check-accounts.mjs
+/scripts/check_emp_cols.mjs
+/scripts/check_excel.ps1
+/scripts/inspect_page_inputs.mjs
+/scripts/query_att.mjs
+
+# Local QA data, temporary fixtures, and Python bytecode
+/scripts/blocked_*.json
+/scripts/pending_workbook_updates.json
+/temp/test/
+/scripts/__pycache__/
+
+# Local Grafana and Prometheus monitoring
+/monitoring/
+/docker-compose.monitoring.yml
 

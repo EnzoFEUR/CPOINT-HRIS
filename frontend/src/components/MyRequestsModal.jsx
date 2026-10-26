@@ -277,7 +277,7 @@ export default function MyRequestsModal({
                             return (
                                 <div
                                     key={item.id}
-                                    className="p-4 rounded-lg border border-slate-200 bg-white space-y-2.5 hover:border-slate-300 transition-colors"
+                                    className="min-w-0 p-4 rounded-lg border border-slate-200 bg-white space-y-2.5 hover:border-slate-300 transition-colors"
                                 >
                                     {/* Card Header */}
                                     <div className="flex items-start justify-between gap-3">
@@ -331,11 +331,11 @@ export default function MyRequestsModal({
 
                                     {/* Employee Application Reason */}
                                     {isLeave && item.reason && (
-                                        <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-md border border-slate-100">
+                                        <div className="min-w-0 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-md border border-slate-100">
                                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-0.5">
                                                 Reason for Application
                                             </span>
-                                            <p className="text-slate-800 whitespace-pre-wrap">{item.reason}</p>
+                                            <p className="min-w-0 break-words [overflow-wrap:anywhere] text-slate-800 whitespace-pre-wrap">{item.reason}</p>
                                         </div>
                                     )}
 

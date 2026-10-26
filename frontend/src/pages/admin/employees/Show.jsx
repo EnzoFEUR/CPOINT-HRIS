@@ -15,6 +15,7 @@ import LeaveCreditsPanel from '../../../components/LeaveCreditsPanel';
 import { computeDisciplinaryStanding } from '../../../utils/disciplinaryStanding';
 import RequestDocumentModal from '../documents/RequestDocumentModal';
 import { formatPhDisplay } from '../../../utils/phoneUtils';
+import { HUMAN_TEXT_LIMITS, hasUnsafeDisplayCharacters } from '../../../../../shared/inputLimits.mjs';
 
 const formatAuthorizer = (authorizer, role) => {
     if (!authorizer) return 'System Administrator (HR)';
@@ -142,6 +143,13 @@ export default function Show() {
     const handleEnableExemption = async (e) => {
         if (e) e.preventDefault();
         if (!employee) return;
+        for (const [field, label, required] of [['reason', 'Clinical reason', true], ['cert_ref', 'Medical reference', true], ['document_url', 'Document link', false]]) {
+            const value = exemptionForm[field];
+            if (typeof value !== 'string' || value.length > HUMAN_TEXT_LIMITS[field] || hasUnsafeDisplayCharacters(value) || (required && !value.trim())) {
+                toast.error(`${label} must contain ${required ? '1-' : 'at most '}${HUMAN_TEXT_LIMITS[field]} readable characters.`, { id: 'medical-exemption-validation' });
+                return;
+            }
+        }
         setIsSubmittingExemption(true);
         try {
             const validUntil = new Date(Date.now() + Number(exemptionForm.duration_days) * 86400000).toISOString().split('T')[0];
@@ -779,7 +787,7 @@ export default function Show() {
                             <h1 className="text-xl sm:text-2xl font-semibold text-white tracking-tight truncate">
                                 {employee.first_name} {employee.last_name}
                             </h1>
-                            <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5">
+                            <p className="text-slate-300 font-medium text-xs sm:text-sm mt-0.5 [overflow-wrap:anywhere]">
                                 {employee.job_title || 'Staff Member'}
                             </p>
 
@@ -1102,7 +1110,7 @@ export default function Show() {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
+                    <div className="min-w-0 [overflow-wrap:anywhere] bg-white rounded-lg border border-slate-200 p-5 shadow-2xs space-y-4">
                         <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
                             <div className={`h-8 w-8 rounded-md flex items-center justify-center border ${isFactory ? 'bg-warning-subtle text-warning-ink border-warning/20' : 'bg-surface-muted text-ink border-line'
                                 }`}>
@@ -1124,8 +1132,8 @@ export default function Show() {
                                 <div>
                                     <p className="font-semibold text-slate-400 uppercase tracking-wider mb-1 text-[10px]">{isFactory ? 'Shoe Production Station' : 'Job Title'}</p>
                                     <p className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle`} />}
-                                        {employee.job_title || 'N/A'}
+                                        {isFactory && <i className={`ti ${shoeRole?.icon || 'ti-shoe'} text-ink-subtle shrink-0`} />}
+                                        <span className="min-w-0">{employee.job_title || 'N/A'}</span>
                                     </p>
                                 </div>
                                 <div className="pt-2 border-t border-slate-100">
@@ -1251,7 +1259,7 @@ export default function Show() {
                     </div>
 
                     {isMedicalExemptActive ? (
-                        <div className="bg-warning-subtle/70 border border-warning/20 rounded-md p-4 text-xs text-slate-700 space-y-3">
+                        <div className="min-w-0 [overflow-wrap:anywhere] bg-warning-subtle/70 border border-warning/20 rounded-md p-4 text-xs text-slate-700 space-y-3">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-warning/60">
                                 <div>
                                     <h4 className="font-semibold text-warning-ink text-sm flex items-center gap-1.5">
@@ -1270,19 +1278,19 @@ export default function Show() {
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-                                <div>
+                                <div className="min-w-0">
                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Valid Until</span>
                                     <span className="font-semibold text-slate-800">{formatDate(medicalExemption?.valid_until)}</span>
                                 </div>
-                                <div>
+                                <div className="min-w-0">
                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Medical Ref / Cert ID</span>
-                                    <span className="font-mono font-semibold text-slate-800">{medicalExemption?.cert_ref || 'N/A'}</span>
+                                    <span className="block font-mono font-semibold text-slate-800">{medicalExemption?.cert_ref || 'N/A'}</span>
                                 </div>
-                                <div>
+                                <div className="min-w-0">
                                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Authorized By</span>
-                                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                                        <i className="ti ti-user-check text-slate-500 text-sm" />
-                                        {formatAuthorizer(medicalExemption?.granted_by, medicalExemption?.granted_by_role)}
+                                    <span className="font-semibold text-slate-800 flex items-start gap-1.5 mt-0.5">
+                                        <i className="ti ti-user-check text-slate-500 text-sm shrink-0" />
+                                        <span className="min-w-0">{formatAuthorizer(medicalExemption?.granted_by, medicalExemption?.granted_by_role)}</span>
                                     </span>
                                     {medicalExemption?.granted_at && (
                                         <span className="text-[10px] text-slate-400 font-mono block">
@@ -1977,14 +1985,19 @@ export default function Show() {
                             </div>
 
                             <div>
-                                <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
-                                    Clinical Reason / Trauma Description <span className="text-danger-ink">*</span>
-                                </label>
-                                <textarea maxLength={1000}
+                                <div className="flex items-start justify-between gap-2 mb-1">
+                                    <label htmlFor="medical-exemption-reason" className="block font-medium text-slate-700 uppercase tracking-wider">
+                                        Clinical Reason / Trauma Description <span className="text-danger-ink">*</span>
+                                    </label>
+                                    <span id="medical-exemption-reason-count" className="shrink-0 text-[10px] text-ink-muted tabular-nums">{exemptionForm.reason.length}/{HUMAN_TEXT_LIMITS.reason}</span>
+                                </div>
+                                <textarea maxLength={HUMAN_TEXT_LIMITS.reason}
+                                    id="medical-exemption-reason"
+                                    aria-describedby="medical-exemption-reason-count"
                                     required
                                     rows={2}
                                     value={exemptionForm.reason}
-                                    onChange={(e) => setExemptionForm({ ...exemptionForm, reason: e.target.value })}
+                                    onChange={(e) => setExemptionForm({ ...exemptionForm, reason: e.target.value.slice(0, HUMAN_TEXT_LIMITS.reason) })}
                                     placeholder="e.g., Facial lacerations and gauze dressing following road accident per attending physician..."
                                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                 />
@@ -1992,14 +2005,19 @@ export default function Show() {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
-                                        Medical Cert / Ref ID <span className="text-danger-ink">*</span>
-                                    </label>
-                                    <input maxLength={120}
+                                    <div className="flex items-start justify-between gap-2 mb-1">
+                                        <label htmlFor="medical-exemption-reference" className="block font-medium text-slate-700 uppercase tracking-wider">
+                                            Medical Cert / Ref ID <span className="text-danger-ink">*</span>
+                                        </label>
+                                        <span id="medical-exemption-reference-count" className="shrink-0 text-[10px] text-ink-muted tabular-nums">{exemptionForm.cert_ref.length}/{HUMAN_TEXT_LIMITS.cert_ref}</span>
+                                    </div>
+                                    <input maxLength={HUMAN_TEXT_LIMITS.cert_ref}
+                                        id="medical-exemption-reference"
+                                        aria-describedby="medical-exemption-reference-count"
                                         type="text"
                                         required
                                         value={exemptionForm.cert_ref}
-                                        onChange={(e) => setExemptionForm({ ...exemptionForm, cert_ref: e.target.value })}
+                                        onChange={(e) => setExemptionForm({ ...exemptionForm, cert_ref: e.target.value.slice(0, HUMAN_TEXT_LIMITS.cert_ref) })}
                                         placeholder="e.g., MC-2026-DR-SANTOS-88"
                                         className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-mono font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                     />
@@ -2023,13 +2041,26 @@ export default function Show() {
                             </div>
 
                             <div>
-                                <label className="block font-medium text-slate-700 uppercase tracking-wider mb-1">
-                                    Document Link / Vault File URL (Optional)
-                                </label>
-                                <input maxLength={2048}
+                                <div className="flex items-start justify-between gap-2 mb-1">
+                                    <label htmlFor="medical-exemption-document" className="block font-medium text-slate-700 uppercase tracking-wider">
+                                        Document Link / Vault File URL (Optional)
+                                    </label>
+                                    <span id="medical-exemption-document-count" className="shrink-0 text-[10px] text-ink-muted tabular-nums">{exemptionForm.document_url.length}/{HUMAN_TEXT_LIMITS.document_url}</span>
+                                </div>
+                                <input maxLength={HUMAN_TEXT_LIMITS.document_url}
+                                    id="medical-exemption-document"
+                                    aria-describedby="medical-exemption-document-count"
                                     type="text"
                                     value={exemptionForm.document_url}
-                                    onChange={(e) => setExemptionForm({ ...exemptionForm, document_url: e.target.value })}
+                                    onChange={(e) => { if (e.target.value.length <= HUMAN_TEXT_LIMITS.document_url) setExemptionForm({ ...exemptionForm, document_url: e.target.value }); }}
+                                    onPaste={(e) => {
+                                        const input = e.currentTarget;
+                                        const length = input.value.length - (input.selectionEnd - input.selectionStart) + e.clipboardData.getData('text').length;
+                                        if (length > HUMAN_TEXT_LIMITS.document_url) {
+                                            e.preventDefault();
+                                            toast.error(`Document link must be at most ${HUMAN_TEXT_LIMITS.document_url} characters.`, { id: 'medical-exemption-validation' });
+                                        }
+                                    }}
                                     placeholder="e.g., /admin/documents?employee_id=... or Medical Certificate scan"
                                     className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-md font-medium text-slate-800 text-xs focus:ring-1 focus:ring-warning focus:bg-white transition-colors duration-100 outline-none"
                                 />

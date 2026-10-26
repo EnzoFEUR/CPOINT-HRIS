@@ -3,8 +3,8 @@ import { postgrestLikeValue } from '../middleware/requestValidation.js';
 import { otpTestMode } from '../services/otpService.js';
 import crypto from 'crypto';
 import { supabase } from '../supabaseClient.js';
-import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock } from '../services/otpService.js';
-import { verifyTotpCode, verifyAndConsumeBackupCode } from '../services/totpService.js';
+import { generateOtpCode, storeOtp, verifyOtpCode, sendEmailOtp, sendSmsOtp, checkOtpCooldown, recordOtpDispatch, getOrGenerateOtp, acquireOtpLock, releaseOtpLock, expireOtpForTesting } from '../services/otpService.js';
+import { authenticatorService } from '../services/authenticatorService.js';
 import { createAuditLog } from './auditLogs.js';
 import { invalidateAuthUser } from '../middleware/authMiddleware.js';
 import { resetVerifiedPassword } from '../services/passwordService.js';
@@ -99,7 +99,7 @@ export function validatePasswordEntropy(password) {
 
 /**
  * POST /api/auth/security/verify-workplace-account
- * Low-latency real-time verification of workplace email or employee identity (<15ms).
+ * Checks recovery eligibility without returning employee profile details.
  * Validates existence, active employment status, and enrolled recovery channels.
  */
 router.post('/verify-workplace-account', async (req, res) => {
@@ -114,7 +114,7 @@ router.post('/verify-workplace-account', async (req, res) => {
         // Query employees by email OR company_id
         const { data: emp, error } = await supabase
             .from('employees')
-            .select('id, company_id, first_name, last_name, email, role, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
+            .select('id, auth_user_id, email, status, is_active, requires_password_change, has_registered_biometrics, biometric_baseline_path, password_changed_at')
             .or(`email.ilike.${postgrestLikeValue(clean)},company_id.ilike.${postgrestLikeValue(clean)}`)
             .maybeSingle();
 
@@ -131,8 +131,6 @@ router.post('/verify-workplace-account', async (req, res) => {
                 exists: true,
                 eligible: false,
                 status: emp.status,
-                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-                company_id: emp.company_id,
                 error: `This workplace account is currently ${emp.status || 'inactive'}. Please contact HR or System Administrator.`
             });
         }
@@ -144,8 +142,6 @@ router.post('/verify-workplace-account', async (req, res) => {
                 exists: true,
                 eligible: false,
                 hasEmail: false,
-                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-                company_id: emp.company_id,
                 error: 'Account found, but no workplace email address is registered on file. Please contact HR for in-person credential reset.'
             });
         }
@@ -160,22 +156,16 @@ router.post('/verify-workplace-account', async (req, res) => {
                 exists: true,
                 eligible: false,
                 reason: 'pending_registration',
-                name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-                company_id: emp.company_id,
-                role: emp.role,
                 error: 'This account has not completed initial registration or forced password change. Self-service password recovery is only available for registered accounts or accounts with enrolled biometrics. Please sign in with your temporary credentials issued by HR.'
             });
         }
 
-        // Fetch registered mobile phone and TOTP status from Supabase Auth identity store
-        let userPhone = null;
+        // Return recovery availability without exposing the employee profile.
         let hasTotp = false;
         const targetUserId = emp.auth_user_id || emp.id;
         if (targetUserId) {
             try {
-                const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
-                userPhone = authUserData?.user?.user_metadata?.phone || authUserData?.user?.phone || null;
-                hasTotp = Boolean(authUserData?.user?.user_metadata?.totp_enabled && authUserData?.user?.user_metadata?.totp_secret);
+                hasTotp = (await authenticatorService.status(targetUserId)).enabled;
             } catch (_) {}
         }
 
@@ -184,14 +174,7 @@ router.post('/verify-workplace-account', async (req, res) => {
             eligible: true,
             hasEmail: true,
             email: emp.email,
-            name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Colleague',
-            company_id: emp.company_id,
-            role: emp.role,
-            hasPhone: Boolean(userPhone),
-            maskedPhone: userPhone ? maskPhone(userPhone) : null,
             has_totp: hasTotp,
-            has_biometrics: hasBiometrics,
-            is_registered: isRegisteredAccount
         });
     } catch (err) {
         return res.status(500).json({ exists: false, error: err.message });
@@ -404,6 +387,17 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
+if (otpTestMode()) {
+    router.post('/test/expire-otp', (req, res) => {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
+        const norm = email.trim().toLowerCase();
+        const expired = expireOtpForTesting('pwd_reset_' + norm);
+        releaseOtpLock(['pwd_reset_' + norm, norm, 'dest_email_pwd_reset_' + norm], false);
+        return res.json({ success: true, expired });
+    });
+}
+
 /**
  * POST /api/auth/security/verify-reset-otp
  * Validates the 6-digit SMS/Email OTP and issues a single-use 10-minute cryptographic Reset Ticket
@@ -435,33 +429,10 @@ router.post('/verify-reset-otp', async (req, res) => {
         // PATH A: Authenticator TOTP verification
         if (method === 'totp' || method === 'authenticator') {
             const targetUserId = emp.auth_user_id || emp.id;
-            const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
-            const meta = authUserData?.user?.user_metadata || {};
-
-            if (meta.totp_enabled && meta.totp_secret) {
-                if (String(otp).trim().startsWith('CP-') || String(otp).trim().length > 6) {
-                    const backupResult = verifyAndConsumeBackupCode(String(otp).trim(), meta.totp_backup_codes || []);
-                    if (backupResult.valid) {
-                        isValid = true;
-                        verifiedVia = 'TOTP_BACKUP_CODE';
-                        await supabase.auth.admin.updateUserById(targetUserId, {
-                            user_metadata: { ...meta, totp_backup_codes: backupResult.remainingCodes }
-                        });
-                    } else {
-                        errorMessage = 'Invalid or already consumed emergency backup code.';
-                    }
-                } else {
-                    const totpResult = verifyTotpCode(meta.totp_secret, otp);
-                    if (totpResult.valid) {
-                        isValid = true;
-                        verifiedVia = 'TOTP';
-                    } else {
-                        errorMessage = totpResult.error || 'Invalid code from Authenticator app.';
-                    }
-                }
-            } else {
-                errorMessage = 'Google Authenticator 2FA is not enabled for this account.';
-            }
+            const proof = await authenticatorService.verify(targetUserId, otp);
+            isValid = proof.valid;
+            if (proof.valid) verifiedVia = proof.verifiedVia;
+            else errorMessage = proof.error;
 
             // Bidirectional Omnichannel Fallback: Check if user entered active Email OTP instead
             if (!isValid) {
@@ -482,15 +453,8 @@ router.post('/verify-reset-otp', async (req, res) => {
             } else {
                 // Seamless fallback: check if user entered active TOTP code
                 const targetUserId = emp.auth_user_id || emp.id;
-                const { data: authUserData } = await supabase.auth.admin.getUserById(targetUserId);
-                const meta = authUserData?.user?.user_metadata || {};
-                if (meta.totp_enabled && meta.totp_secret) {
-                    const totpResult = verifyTotpCode(meta.totp_secret, otp);
-                    if (totpResult.valid) {
-                        isValid = true;
-                        verifiedVia = 'TOTP_SEAMLESS_FALLBACK';
-                    }
-                }
+                const proof = await authenticatorService.verify(targetUserId, otp);
+                if (proof.valid) { isValid = true; verifiedVia = proof.verifiedVia; }
                 if (!isValid) {
                     errorMessage = verifyResult.error;
                 }

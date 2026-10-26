@@ -45,6 +45,7 @@ export const hasVerifiedEmployeeRole = (user, employee) => Boolean(employee?.rol
 const loadAuthUser = async token => {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
+    if (error && error.status !== 400 && error.status !== 401 && error.status !== 403 && error.status !== 422) throw error;
     if (error || !user) {
         return null;
     }
@@ -52,27 +53,30 @@ const loadAuthUser = async token => {
     const EMP_FIELDS = 'id, auth_user_id, company_id, first_name, last_name, email, role, status, is_active, archived_at, department, job_title, shift, requires_password_change, production_group_id, hourly_rate, daily_rate, birth_date, address, gender, phone, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, has_registered_biometrics, biometric_baseline_path';
 
     // Fetch custom user details omitting heavy biometric vector blobs
-    let { data: employee } = await supabase
+    let { data: employee, error: employeeError } = await supabase
         .from('employees')
         .select(EMP_FIELDS)
         .eq('id', user.id)
         .maybeSingle();
+    if (employeeError) throw employeeError;
 
     if (!employee) {
-        const { data: empByAuth } = await supabase
+        const { data: empByAuth, error: authLookupError } = await supabase
             .from('employees')
             .select(EMP_FIELDS)
             .eq('auth_user_id', user.id)
             .maybeSingle();
+        if (authLookupError) throw authLookupError;
         employee = empByAuth;
     }
 
     if (!employee && user.email) {
-        const { data: empByEmail } = await supabase
+        const { data: empByEmail, error: emailLookupError } = await supabase
             .from('employees')
             .select(EMP_FIELDS)
             .ilike('email', user.email.replace(/[\\%_]/g, '\\$&'))
             .maybeSingle();
+        if (emailLookupError) throw emailLookupError;
         employee = empByEmail;
     }
 
@@ -119,6 +123,10 @@ export const verifyToken = async (req, res, next) => {
             pendingAuthUsers.set(token, pending);
         }
         try { resolvedUser = await pending; }
+        catch {
+            res.setHeader('Retry-After', '2');
+            return res.status(503).json({ code: 'AUTH_SERVICE_UNAVAILABLE', error: 'Sign-in verification is temporarily unavailable. Please retry shortly.' });
+        }
         finally { if (pendingAuthUsers.get(token) === pending) pendingAuthUsers.delete(token); }
         if (!resolvedUser) return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -189,10 +197,11 @@ export const verifyToken = async (req, res, next) => {
     next();
 };
 
-export const checkRole = (requiredRole) => {
+export const checkRole = (...allowedRoles) => {
+    const roles = allowedRoles.flat();
     return (req, res, next) => {
-        if (!req.user || req.user.role !== requiredRole) {
-            console.warn(`[RBAC BLOCK] User ${req.user?.id} (${req.user?.email}) with role '${req.user?.role}' attempted access requiring '${requiredRole}'`);
+        if (!req.user || !roles.includes(req.user.role)) {
+            console.warn(`[RBAC BLOCK] User ${req.user?.id} (${req.user?.email}) with role '${req.user?.role}' attempted access requiring '${roles.join(" or ")}'`);
             return res.status(403).json({ error: 'UNAUTHORIZED ACTION.' });
         }
         next();
